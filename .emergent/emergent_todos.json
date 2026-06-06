@@ -1,50 +1,42 @@
 [
   {
-    "content": "Phase 2: Backend - JWT auth, models, all CRUD endpoints",
+    "content": "Backend: ampliar models (PublicOrderCreate, PaymentConfig, RestaurantUpdate con delivery_fee)",
     "status": "completed"
   },
   {
-    "content": "Phase 2: Backend - Seed initial data",
+    "content": "Backend: router /api/public/* + payment-config + extender orders + seed",
     "status": "completed"
   },
   {
-    "content": "Phase 2: Frontend - Design tokens, App shell, routing + protected routes",
-    "status": "completed"
+    "content": "Frontend: CartContext con localStorage",
+    "status": "in_progress"
   },
   {
-    "content": "Phase 2: Frontend - Auth context + Login page",
-    "status": "completed"
+    "content": "Frontend: PublicLayout + Landing (hero + menú por categorías)",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Dashboard, Mesas, Pedido, Pedidos pages",
-    "status": "completed"
+    "content": "Frontend: Checkout (carrito + datos + tipo pedido + método pago + QR + comprobante)",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Cocina (kitchen board with polling)",
-    "status": "completed"
+    "content": "Frontend: PedidoTracking público con polling",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Caja (payment + open/close cash register)",
-    "status": "completed"
+    "content": "Frontend: Admin page Pagos (config Yape/Plin/Transferencia con upload QR)",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Productos, Categorias, Usuarios admin pages",
-    "status": "completed"
+    "content": "Frontend: actualizar Pedidos admin para mostrar datos cliente + comprobante",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Reportes con Recharts",
-    "status": "completed"
+    "content": "Frontend: ajustar rutas en App.js (/ pública, otras admin)",
+    "status": "pending"
   },
   {
-    "content": "Phase 2: Frontend - Configuración restaurante + PWA manifest",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: All 10 user stories covered",
-    "status": "completed"
-  },
-  {
-    "content": "Phase 2: End to End Testing using Testing Agent (92.6% backend pass, frontend roles + key pages verified)",
-    "status": "completed"
+    "content": "Testing E2E del flujo público completo",
+    "status": "pending"
   }
 ]

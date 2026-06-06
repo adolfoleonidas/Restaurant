@@ -16,8 +16,56 @@ def _id():
     return str(uuid.uuid4())
 
 
+async def _ensure_new_fields():
+    """Idempotent updates for new schema fields added in Phase 3."""
+    rest = await db.restaurants.find_one({})
+    if rest:
+        rid = rest["id"]
+        updates = {}
+        if "delivery_fee" not in rest:
+            updates["delivery_fee"] = 5.0
+        if "cover_url" not in rest or not rest.get("cover_url"):
+            updates["cover_url"] = "https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600"
+        if "public_description" not in rest:
+            updates["public_description"] = "Cocina peruana de autor con productos frescos. Pide para recoger, delivery o disfruta en el local."
+        if "social_instagram" not in rest:
+            updates["social_instagram"] = "@saborperuano"
+        if "social_whatsapp" not in rest:
+            updates["social_whatsapp"] = "+51999888777"
+        if updates:
+            updates["updated_at"] = _now()
+            await db.restaurants.update_one({"id": rid}, {"$set": updates})
+
+        cfg = await db.payment_configs.find_one({"restaurant_id": rid})
+        if not cfg:
+            await db.payment_configs.insert_one({
+                "id": _id(),
+                "restaurant_id": rid,
+                "yape_number": "999 888 777",
+                "yape_holder": rest.get("name", "Restaurante"),
+                "yape_qr": None,
+                "plin_number": "999 888 777",
+                "plin_holder": rest.get("name", "Restaurante"),
+                "plin_qr": None,
+                "bank_name": "BCP",
+                "bank_account": "194-12345678-0-12",
+                "bank_cci": "00219400123456780123",
+                "bank_holder": rest.get("name", "Restaurante"),
+                "transfer_instructions": "Envía tu comprobante por WhatsApp indicando tu nº de pedido.",
+                "enable_efectivo": True,
+                "enable_yape": True,
+                "enable_plin": True,
+                "enable_transferencia": True,
+                "enable_tarjeta": False,
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+
+
 async def run_seed():
-    # Skip if already seeded
+    # Always ensure new fields/payment_config exist for existing data
+    await _ensure_new_fields()
+    # Skip first-time seed if already seeded
     existing = await db.restaurants.find_one({})
     if existing:
         return
@@ -31,15 +79,45 @@ async def run_seed():
         "address": "Av. Larco 123, Miraflores, Lima",
         "phone": "+51 999 888 777",
         "logo_url": None,
+        "cover_url": "https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600",
         "currency": "PEN",
         "currency_symbol": "S/",
         "timezone": "America/Lima",
         "opening_hours": "L-D 11:00 - 23:00",
+        "delivery_fee": 5.0,
+        "public_description": "Cocina peruana de autor con productos frescos. Pide para recoger, delivery o disfruta en el local.",
+        "social_facebook": None,
+        "social_instagram": "@saborperuano",
+        "social_whatsapp": "+51999888777",
         "status": "active",
         "created_at": _now(),
         "updated_at": _now(),
     }
     await db.restaurants.insert_one(restaurant)
+
+    # Default payment config (no QR uploaded yet; admin completes from UI)
+    await db.payment_configs.insert_one({
+        "id": _id(),
+        "restaurant_id": restaurant_id,
+        "yape_number": "999 888 777",
+        "yape_holder": "Sabor Peruano S.A.C.",
+        "yape_qr": None,
+        "plin_number": "999 888 777",
+        "plin_holder": "Sabor Peruano S.A.C.",
+        "plin_qr": None,
+        "bank_name": "BCP",
+        "bank_account": "194-12345678-0-12",
+        "bank_cci": "00219400123456780123",
+        "bank_holder": "Sabor Peruano S.A.C.",
+        "transfer_instructions": "Envía tu comprobante por WhatsApp al +51 999 888 777 indicando tu nº de pedido.",
+        "enable_efectivo": True,
+        "enable_yape": True,
+        "enable_plin": True,
+        "enable_transferencia": True,
+        "enable_tarjeta": False,
+        "created_at": _now(),
+        "updated_at": _now(),
+    })
 
     # Users
     users = [

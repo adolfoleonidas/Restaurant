@@ -10,6 +10,8 @@ async def ensure_indexes():
     await db.users.create_index("email", unique=True)
     await db.tables.create_index([("restaurant_id", 1), ("number", 1)], unique=True)
     await db.orders.create_index([("restaurant_id", 1), ("status", 1), ("created_at", -1)])
+    await db.orders.create_index("tracking_code", sparse=True)
+    await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])
     await db.cash_registers.create_index([("restaurant_id", 1), ("status", 1), ("opened_at", -1)])

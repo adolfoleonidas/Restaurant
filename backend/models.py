@@ -51,9 +51,35 @@ class RestaurantUpdate(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     logo_url: Optional[str] = None
+    cover_url: Optional[str] = None
     currency: Optional[str] = None
     timezone: Optional[str] = None
     opening_hours: Optional[str] = None
+    delivery_fee: Optional[float] = None
+    public_description: Optional[str] = None
+    social_facebook: Optional[str] = None
+    social_instagram: Optional[str] = None
+    social_whatsapp: Optional[str] = None
+
+
+# ============== PAYMENT CONFIG ==============
+class PaymentConfigUpdate(BaseModel):
+    yape_number: Optional[str] = None
+    yape_holder: Optional[str] = None
+    yape_qr: Optional[str] = None  # base64 data URL
+    plin_number: Optional[str] = None
+    plin_holder: Optional[str] = None
+    plin_qr: Optional[str] = None
+    bank_name: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_cci: Optional[str] = None
+    bank_holder: Optional[str] = None
+    transfer_instructions: Optional[str] = None
+    enable_efectivo: Optional[bool] = None
+    enable_yape: Optional[bool] = None
+    enable_plin: Optional[bool] = None
+    enable_transferencia: Optional[bool] = None
+    enable_tarjeta: Optional[bool] = None
 
 
 # ============== TABLE ==============
@@ -116,7 +142,7 @@ OrderStatus = Literal[
     "entregado", "pendiente_pago", "pagado", "cancelado"
 ]
 OrderItemStatus = Literal["pendiente", "en_preparacion", "listo", "entregado", "cancelado"]
-OrderType = Literal["mesa", "llevar", "delivery"]
+OrderType = Literal["mesa", "local", "recojo", "delivery"]
 
 
 class OrderItemInput(BaseModel):
@@ -130,6 +156,21 @@ class OrderCreate(BaseModel):
     order_type: OrderType = "mesa"
     items: List[OrderItemInput] = []
     notes: Optional[str] = None
+
+
+class PublicOrderCreate(BaseModel):
+    order_type: Literal["local", "recojo", "delivery"]
+    customer_name: str
+    customer_phone: str
+    customer_address: Optional[str] = None
+    customer_email: Optional[str] = None
+    items: List[OrderItemInput]
+    notes: Optional[str] = None
+    payment_method: Literal["efectivo", "yape", "plin", "transferencia", "tarjeta"]
+
+
+class PublicProofUpload(BaseModel):
+    payment_proof: str  # data URL (base64 image)
 
 
 class OrderItemUpdate(BaseModel):
