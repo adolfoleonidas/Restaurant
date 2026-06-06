@@ -1,0 +1,17 @@
+{
+  "short_name": "Resto POS",
+  "name": "Sistema de Gestión para Restaurantes",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#1F6F66",
+  "background_color": "#FBF6F0",
+  "orientation": "any",
+  "lang": "es"
+}

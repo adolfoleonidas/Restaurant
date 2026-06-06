@@ -1,0 +1,50 @@
+[
+  {
+    "content": "Phase 2: Backend - JWT auth, models, all CRUD endpoints",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Backend - Seed initial data",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Design tokens, App shell, routing + protected routes",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Auth context + Login page",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Dashboard, Mesas, Pedido, Pedidos pages",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Cocina (kitchen board with polling)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Caja (payment + open/close cash register)",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Productos, Categorias, Usuarios admin pages",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Reportes con Recharts",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Frontend - Configuración restaurante + PWA manifest",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: All 10 user stories covered (testing pending)",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 2: End to End Testing using Testing Agent",
+    "status": "in_progress"
+  }
+]
