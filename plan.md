@@ -113,3 +113,17 @@
 - Caja: apertura/cierre y resumen por método cuadra con pagos registrados.
 - Reporte diario muestra totales y rankings coherentes.
 - PWA instalable en Android y usable en tablet/móvil con UI táctil.
+## Estado actual: Fase 2 COMPLETADA ✅
+
+- Backend FastAPI + MongoDB con auth JWT, 10 routers (auth, users, restaurants, tables, categories, products, orders, payments, cash, reports)
+- Seed automático: 1 restaurante (Sabor Peruano), 4 usuarios demo, 5 categorías, 14 productos, 12 mesas
+- Frontend React + Tailwind + shadcn/ui con 13 páginas y AppShell (sidebar + topbar)
+- Recharts en Reportes (bar + pie chart)
+- PWA: manifest.json + meta tags Apple/Android
+- Polling cada 3s para tiempo real (Cocina, Mesas, Pedidos)
+- Testing agent: 92.6% backend pass, frontend roles + páginas clave verificadas, sin bugs reales
+
+## Próximos pasos posibles (V2/V3 a pedido del usuario):
+- Clientes, Delivery, QR menu, descuentos/promos, impresión de tickets, app Android empaquetada (Capacitor)
+- Facturación electrónica, inventario, recetas, stock, multi-sucursal, fidelización, pasarelas de pago
+
