@@ -11,6 +11,7 @@ import { Plus, ChevronLeft, CreditCard, Ban, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasFn } from '@/lib/functions';
 import { useNotify } from '@/contexts/NotifyContext';
 
 function itemOpen(it) {
@@ -62,6 +63,14 @@ export default function PedidoDetalle() {
             await api.post(`/orders/${order.id}/items`, [{ product_id: product.id, quantity: 1 }]);
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error al agregar'); }
+    };
+
+    const serve = async () => {
+        try {
+            await api.post(`/orders/${order.id}/serve`);
+            toast.success('Servido. La cuenta sigue abierta.');
+            await refetch();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
     const requestBill = async () => {
@@ -204,16 +213,24 @@ export default function PedidoDetalle() {
             <div className="text-right font-mono text-lg font-bold tabular-nums" data-testid="pedido-total">{fmtMoney(order.total)}</div>
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
+                {!locked && hasFn(user, 'preparacion', 'atencion', 'administracion') && order.status !== 'entregado' && (
+                    <Button onClick={serve} className="w-full h-14 rounded-full text-base" data-testid="pedido-servir-button">Servir</Button>
+                )}
+                {!locked && hasFn(user, 'cobro', 'administracion') && Number(order.amount_paid || 0) < Number(order.total || 0) && (
+                    <Button onClick={() => navigate(`/caja?order=${order.id}`)} className="w-full h-14 rounded-full text-base" data-testid="pedido-cobrar-button">
+                        <CreditCard className="h-4 w-4 mr-2" /> Cobrar
+                    </Button>
+                )}
                 {order.status === 'listo' && canEdit && (
-                    <Button onClick={markDelivered} className="w-full h-14 rounded-full text-base" data-testid="pedido-entregado-button">Marcar entregado</Button>
+                    <Button onClick={markDelivered} className="w-full h-14 rounded-full text-base" variant="outline" data-testid="pedido-entregado-button">Marcar entregado</Button>
                 )}
                 {['entregado', 'listo'].includes(order.status) && canEdit && (
-                    <Button onClick={requestBill} className="w-full h-14 rounded-full text-base" variant={order.status === 'listo' ? 'outline' : 'default'} data-testid="pedido-solicitar-cuenta-button">
-                        <CreditCard className="h-4 w-4 mr-2" /> Solicitar cuenta
+                    <Button onClick={requestBill} className="w-full h-14 rounded-full text-base" variant="outline" data-testid="pedido-solicitar-cuenta-button">
+                        Solicitar cuenta
                     </Button>
                 )}
                 {order.status === 'pendiente_pago' && (
-                    <Button className="w-full h-14 rounded-full text-base" onClick={() => navigate('/mesas')}>Cuenta solicitada · Volver a mesas</Button>
+                    <Button className="w-full h-14 rounded-full text-base" variant="outline" onClick={() => navigate('/servicio')}>Cuenta solicitada</Button>
                 )}
                 {!locked && ['admin', 'cajero'].includes(user.role) && (
                     <Button variant="outline" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button"><Ban className="h-4 w-4 mr-2" />Anular con motivo</Button>

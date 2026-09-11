@@ -1,10 +1,12 @@
+import { homeFor as homeForUser } from '@/lib/functions';
+
 export const ROLE_HOME = {
     mozo: '/mesas',
     cocina: '/cocina',
     cajero: '/caja',
-    admin: '/dashboard',
+    admin: '/servicio',
 };
 
-export function homeFor(role) {
-    return ROLE_HOME[role] || '/dashboard';
+export function homeFor(userOrRole) {
+    return homeForUser(userOrRole);
 }

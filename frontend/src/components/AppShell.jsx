@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
+import { hasFn } from '@/lib/functions';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
@@ -55,7 +56,24 @@ const NavItems = ({ items, onNav }) => items.map((it) => (
 ));
 
 const SidebarContent = ({ user, onNav }) => {
-    const items = ALL_NAV.filter((n) => n.roles.includes(user.role));
+    const combo = hasFn(user, 'atencion') && (hasFn(user, 'preparacion') || hasFn(user, 'cobro'));
+    let items = ALL_NAV.filter((n) => n.roles.includes(user.role) || (n.roles.includes('admin') && hasFn(user, 'administracion')) || (n.roles.includes('cajero') && hasFn(user, 'cobro')) || (n.roles.includes('mozo') && hasFn(user, 'atencion')) || (n.roles.includes('cocina') && hasFn(user, 'preparacion')));
+    if (combo) {
+        items = [
+            { to: '/servicio', label: 'Servicio', icon: Grid2X2, group: 'main' },
+            ...(hasFn(user, 'cobro') ? [{ to: '/caja', label: 'Caja', icon: Wallet, group: 'main' }] : []),
+            ...(hasFn(user, 'administracion') ? [{ to: '/dashboard', label: 'Gestión', icon: LayoutDashboard, group: 'main' }] : []),
+            { to: '/mesas', label: 'Mesas', icon: Grid2X2, group: 'more' },
+            ...(hasFn(user, 'preparacion') ? [{ to: '/cocina', label: 'Cocina', icon: ChefHat, group: 'more' }] : []),
+            ...(hasFn(user, 'administracion') ? [
+                { to: '/disponibilidad', label: 'Carta', icon: Package, group: 'more' },
+                { to: '/reportes', label: 'Reportes', icon: BarChart3, group: 'more' },
+                { to: '/productos', label: 'Editar carta', icon: Package, group: 'more' },
+                { to: '/usuarios', label: 'Equipo', icon: Users, group: 'more' },
+                { to: '/configuracion', label: 'Casa', icon: Settings, group: 'more' },
+            ] : []),
+        ];
+    }
     const main = items.filter((n) => n.group !== 'more');
     const more = items.filter((n) => n.group === 'more');
     return (

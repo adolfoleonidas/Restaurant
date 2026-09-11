@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { canAccessRole } from '@/lib/functions';
 
 const AuthContext = createContext(null);
 
@@ -33,11 +34,7 @@ export const AuthProvider = ({ children }) => {
         window.location.href = '/login';
     };
 
-    const hasRole = (roles) => {
-        if (!user) return false;
-        if (!roles || roles.length === 0) return true;
-        return roles.includes(user.role);
-    };
+    const hasRole = (roles) => canAccessRole(user, roles);
 
     return (
         <AuthContext.Provider value={{ user, loading, login, logout, hasRole }}>

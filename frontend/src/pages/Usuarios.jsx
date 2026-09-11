@@ -10,25 +10,26 @@ import { Switch } from '@/components/ui/switch';
 import { Plus, Pencil, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/lib/format';
+import { FN_LABELS, ROLE_FUNCTIONS } from '@/lib/functions';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Usuarios() {
     const [users, setUsers] = useState([]);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false });
+    const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false, functions: ['atencion'] });
     const { user: me } = useAuth();
 
     const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
     useEffect(() => { load(); }, []);
 
-    const openNew = () => { setEditing(null); setForm({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false }); setDlg(true); };
-    const openEdit = (u) => { setEditing(u); setForm({ email: u.email, password: '', full_name: u.full_name, role: u.role, phone: u.phone || '', can_discount: !!u.can_discount, can_void: !!u.can_void }); setDlg(true); };
+    const openNew = () => { setEditing(null); setForm({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false, functions: ['atencion'] }); setDlg(true); };
+    const openEdit = (u) => { setEditing(u); setForm({ email: u.email, password: '', full_name: u.full_name, role: u.role, phone: u.phone || '', can_discount: !!u.can_discount, can_void: !!u.can_void, functions: u.functions?.length ? u.functions : (ROLE_FUNCTIONS[u.role] || []) }); setDlg(true); };
 
     const save = async () => {
         try {
             if (editing) {
-                const payload = { full_name: form.full_name, role: form.role, phone: form.phone, can_discount: form.can_discount, can_void: form.can_void };
+                const payload = { full_name: form.full_name, role: form.role, phone: form.phone, can_discount: form.can_discount, can_void: form.can_void, functions: form.functions };
                 if (form.password) payload.password = form.password;
                 await api.patch(`/users/${editing.id}`, payload);
                 toast.success('Actualizado');
@@ -61,7 +62,7 @@ export default function Usuarios() {
                         <div key={u.id} className="p-4 flex flex-wrap items-center gap-3 justify-between">
                             <div>
                                 <div className="font-medium">{u.full_name} {u.id === me.id && <span className="text-xs text-muted-foreground">(tú)</span>}</div>
-                                <div className="text-xs text-muted-foreground">{u.email} · {ROLE_LABELS[u.role]}{u.phone ? ` · ${u.phone}` : ''}</div>
+                                <div className="text-xs text-muted-foreground">{u.email} · {(u.functions?.length ? u.functions : ROLE_FUNCTIONS[u.role] || []).map((f) => FN_LABELS[f] || f).join(', ')}</div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <label className="flex items-center gap-1 text-xs"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
@@ -82,7 +83,7 @@ export default function Usuarios() {
                         <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} data-testid="usuario-form-email" /></div>
                         <div>
                             <Label>Rol</Label>
-                            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                            <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v, functions: ROLE_FUNCTIONS[v] || form.functions })}>
                                 <SelectTrigger data-testid="usuario-form-rol"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     {Object.entries(ROLE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -90,6 +91,21 @@ export default function Usuarios() {
                             </Select>
                         </div>
                         <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /></div>
+                        <div className="sm:col-span-2 space-y-2 text-sm">
+                            <div className="text-xs text-muted-foreground">Funciones (se pueden combinar)</div>
+                            {Object.entries(FN_LABELS).map(([k, lab]) => (
+                                <label key={k} className="flex items-center gap-2">
+                                    <Switch
+                                        checked={(form.functions || []).includes(k)}
+                                        onCheckedChange={(on) => {
+                                            const cur = new Set(form.functions || []);
+                                            if (on) cur.add(k); else cur.delete(k);
+                                            setForm({ ...form, functions: [...cur] });
+                                        }}
+                                    /> {lab}
+                                </label>
+                            ))}
+                        </div>
                         {form.role !== 'admin' && (
                             <div className="sm:col-span-2 space-y-2 text-sm">
                                 <label className="flex items-center gap-2"><Switch checked={form.can_discount} onCheckedChange={(v) => setForm({ ...form, can_discount: v })} /> Puede aplicar descuentos</label>

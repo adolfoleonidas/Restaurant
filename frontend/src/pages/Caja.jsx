@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -832,6 +833,7 @@ function MovementCard({ register, onAdded }) {
 }
 
 export default function Caja() {
+    const [params] = useSearchParams();
     const [pendingOrder, setPendingOrder] = useState(null);
     const [closeDialog, setCloseDialog] = useState(false);
     const [tab, setTab] = useState('cobrar');
@@ -846,6 +848,13 @@ export default function Caja() {
         [generation]
     );
     const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+
+    useEffect(() => {
+        const id = params.get('order');
+        if (!id || !pending) return;
+        const hit = pending.find((o) => o.id === id);
+        if (hit) setPendingOrder(hit);
+    }, [params, pending]);
 
     const cobrables = useMemo(() => {
         const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');

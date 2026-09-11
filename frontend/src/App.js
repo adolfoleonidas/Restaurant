@@ -22,6 +22,7 @@ import Reportes from '@/pages/Reportes';
 import Configuracion from '@/pages/Configuracion';
 import Pagos from '@/pages/Pagos';
 import Disponibilidad from '@/pages/Disponibilidad';
+import Servicio from '@/pages/Servicio';
 import Unauthorized from '@/pages/Unauthorized';
 import Landing from '@/pages/Landing';
 import Checkout from '@/pages/Checkout';
@@ -49,6 +50,7 @@ function App() {
                             {/* ADMIN ROUTES */}
                             <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                                 <Route path="/dashboard" element={<Dashboard />} />
+                                <Route path="/servicio" element={<Servicio />} />
                                 <Route path="/mesas" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Mesas /></ProtectedRoute>} />
                                 <Route path="/pedidos" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Pedidos /></ProtectedRoute>} />
                                 <Route path="/pedidos/nuevo" element={<ProtectedRoute roles={['admin', 'mozo']}><PedidoNuevo /></ProtectedRoute>} />

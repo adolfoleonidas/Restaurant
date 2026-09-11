@@ -27,7 +27,7 @@ export default function Login() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    if (user) return <Navigate to={homeFor(user.role)} replace />;
+    if (user) return <Navigate to={homeFor(user)} replace />;
 
     const submit = async (e) => {
         e.preventDefault();
@@ -36,7 +36,7 @@ export default function Login() {
         try {
             const logged = await login(email, password);
             const from = location.state?.from?.pathname;
-            const fallback = homeFor(logged?.role);
+            const fallback = homeFor(logged);
             navigate(from && from !== '/login' ? from : fallback, { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.detail || 'Error al iniciar sesión');

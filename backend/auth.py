@@ -46,16 +46,68 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+ROLE_FUNCTIONS = {
+    "admin": ["atencion", "preparacion", "cobro", "administracion"],
+    "mozo": ["atencion"],
+    "cocina": ["preparacion"],
+    "cajero": ["cobro"],
+}
+
+ROLE_TO_FN = {
+    "admin": "administracion",
+    "cajero": "cobro",
+    "mozo": "atencion",
+    "cocina": "preparacion",
+}
+
+
+def user_functions(user: dict) -> list:
+    stored = user.get("functions")
+    if isinstance(stored, list) and stored:
+        return [f for f in stored if f in ("atencion", "preparacion", "cobro", "administracion")]
+    return list(ROLE_FUNCTIONS.get(user.get("role"), []))
+
+
+def home_for(user: dict) -> str:
+    if user.get("home_view"):
+        return {
+            "servicio": "/servicio",
+            "mesas": "/mesas",
+            "cocina": "/cocina",
+            "caja": "/caja",
+            "hoy": "/dashboard",
+        }.get(user["home_view"], "/mesas")
+    fns = set(user_functions(user))
+    floor = "atencion" in fns
+    prep = "preparacion" in fns
+    cash = "cobro" in fns
+    admin = "administracion" in fns
+    if floor and (prep or cash):
+        return "/servicio"
+    if floor and not prep and not cash:
+        return "/mesas"
+    if prep and not floor and not cash:
+        return "/cocina"
+    if cash and not floor:
+        return "/caja"
+    if admin:
+        return "/dashboard"
+    return "/mesas"
+
+
 def apply_permissions(user: dict) -> dict:
     out = dict(user)
-    if out.get("role") == "admin":
+    out["functions"] = user_functions(out)
+    out["home"] = home_for(out)
+    fns = set(out["functions"])
+    if out.get("role") == "admin" or "administracion" in fns:
         out["can_discount"] = True
         out["can_void"] = True
         out["can_mark_sold_out"] = True
     else:
         out["can_discount"] = bool(out.get("can_discount"))
         out["can_void"] = bool(out.get("can_void"))
-        if out.get("role") == "cocina":
+        if "preparacion" in fns:
             out["can_mark_sold_out"] = True if out.get("can_mark_sold_out") is None else bool(out.get("can_mark_sold_out"))
         else:
             out["can_mark_sold_out"] = bool(out.get("can_mark_sold_out"))
@@ -76,7 +128,13 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
 
 def require_roles(roles: List[str]):
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
-        if user.get("role") not in roles:
-            raise HTTPException(status_code=403, detail=f"Requiere rol: {', '.join(roles)}")
-        return user
+        if user.get("role") in roles:
+            return user
+        fns = set(user_functions(user))
+        if "administracion" in fns:
+            return user
+        needed = {ROLE_TO_FN[r] for r in roles if r in ROLE_TO_FN}
+        if fns & needed:
+            return user
+        raise HTTPException(status_code=403, detail=f"Requiere rol: {', '.join(roles)}")
     return _checker

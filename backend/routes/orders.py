@@ -351,6 +351,24 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
+@router.post("/{order_id}/serve")
+async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
+    o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o.get("status") in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    items = o.get("items") or []
+    for it in items:
+        if it.get("status") != "cancelado":
+            it["status"] = "entregado"
+    patch = {"items": items, "status": "entregado", "updated_at": _now()}
+    await db.orders.update_one({"id": order_id}, {"$set": patch})
+    await _audit(user["restaurant_id"], user["id"], "serve", "order", order_id)
+    emit_order(user["restaurant_id"], order_id, "entregado", source=o.get("source"), extra="serve")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
 @router.post("/{order_id}/reassign")
 async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depends(require_roles(["admin"]))):
     o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})

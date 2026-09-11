@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
 from database import db
-from auth import require_roles, hash_password, get_current_user
+from auth import require_roles, hash_password, get_current_user, apply_permissions
 from models import UserCreate, UserUpdate
 
 router = APIRouter()
@@ -18,7 +18,7 @@ async def list_users(user: dict = Depends(require_roles(["admin"]))):
         {"restaurant_id": user["restaurant_id"]},
         {"_id": 0, "password_hash": 0}
     ).to_list(1000)
-    return items
+    return [apply_permissions(u) for u in items]
 
 
 @router.post("")
@@ -37,6 +37,7 @@ async def create_user(data: UserCreate, user: dict = Depends(require_roles(["adm
         "status": "active",
         "can_discount": True if data.role == "admin" else bool(data.can_discount),
         "can_void": True if data.role == "admin" else bool(data.can_void),
+        "functions": data.functions or (["atencion", "preparacion", "cobro", "administracion"] if data.role == "admin" else None),
         "created_at": _now(),
         "updated_at": _now(),
     }

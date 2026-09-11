@@ -49,7 +49,7 @@ def _ready_order(qty=1):
     mozo = headers_for("mozo@resto.com", "mozo123")
     admin = headers_for("admin@resto.com", "admin123")
     cajero = headers_for("cajero@resto.com", "cajero123")
-    products = [p for p in requests.get(f"{BASE}/products", headers=admin, timeout=10).json() if not p.get("is_combo")]
+    products = [p for p in requests.get(f"{BASE}/products", headers=admin, timeout=10).json() if not p.get("is_combo") and p.get("is_available", True)]
     free = free_staff_table(mozo, admin)
     created = requests.post(
         f"{BASE}/orders",

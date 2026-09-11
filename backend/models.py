@@ -36,6 +36,7 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     can_discount: bool = False
     can_void: bool = False
+    functions: Optional[List[str]] = None
 
 
 class UserUpdate(BaseModel):
@@ -46,6 +47,8 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     can_discount: Optional[bool] = None
     can_void: Optional[bool] = None
+    functions: Optional[List[str]] = None
+    home_view: Optional[str] = None
 
 
 # ============== RESTAURANT ==============
@@ -64,6 +67,7 @@ class RestaurantUpdate(BaseModel):
     social_facebook: Optional[str] = None
     social_instagram: Optional[str] = None
     social_whatsapp: Optional[str] = None
+    prep_mode: Optional[Literal["simple", "detailed"]] = None
 
 
 # ============== PAYMENT CONFIG ==============
