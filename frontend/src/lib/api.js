@@ -18,9 +18,9 @@ api.interceptors.response.use(
     (r) => r,
     (err) => {
         if (err.response && err.response.status === 401) {
-            // Token expired or invalid -> clear and redirect
             const path = window.location.pathname;
-            if (path !== '/login') {
+            const isPublic = path === '/' || path === '/login' || path.startsWith('/menu') || path.startsWith('/checkout') || path.startsWith('/pedido');
+            if (!isPublic) {
                 localStorage.removeItem('token');
                 localStorage.removeItem('user');
                 window.location.href = '/login';

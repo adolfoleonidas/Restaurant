@@ -2,19 +2,19 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
-
 body {
     margin: 0;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family: 'Outfit', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    color: #1F1D1B;
-    background: #FBF6F0;
 }
 
 .font-display {
-    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-family: 'Fraunces', Georgia, serif;
+}
+
+.font-mono {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
 }
 
 .tabular-nums {
@@ -23,53 +23,58 @@ body {
 
 @layer base {
     :root {
-        /* Warm-neutral + teal palette */
-        --background: 35 50% 96%;        /* #FBF6F0 */
-        --foreground: 30 8% 12%;         /* #1F1D1B */
-        --card: 0 0% 100%;
-        --card-foreground: 30 8% 12%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 30 8% 12%;
-        --primary: 173 56% 28%;          /* #1F6F66 teal */
-        --primary-foreground: 0 0% 100%;
-        --secondary: 33 35% 92%;         /* #F6EFE7 */
-        --secondary-foreground: 30 8% 12%;
-        --muted: 33 28% 90%;             /* #EFE6DA */
-        --muted-foreground: 25 11% 39%;  /* #6F6258 */
-        --accent: 14 53% 51%;            /* #C65A3D terracotta */
-        --accent-foreground: 0 0% 100%;
-        --destructive: 0 70% 50%;
-        --destructive-foreground: 0 0% 100%;
-        --border: 30 24% 87%;            /* #E7DED5 */
-        --input: 30 24% 87%;
-        --ring: 173 53% 36%;
-        --chart-1: 173 56% 38%;          /* teal */
-        --chart-2: 14 60% 55%;           /* terracotta */
-        --chart-3: 38 92% 50%;           /* amber */
-        --chart-4: 210 90% 55%;          /* blue */
-        --chart-5: 142 60% 40%;          /* green */
-        --radius: 0.75rem;
+        /* Carta de papel — tema claro (default) */
+        --background: 36 42% 96%;
+        --foreground: 17 42% 14%;
+        --card: 36 50% 99%;
+        --card-foreground: 17 42% 14%;
+        --popover: 36 50% 99%;
+        --popover-foreground: 17 42% 14%;
+        --primary: 38 72% 36%;
+        --primary-foreground: 36 45% 97%;
+        --secondary: 32 28% 92%;
+        --secondary-foreground: 17 32% 18%;
+        --muted: 32 20% 91%;
+        --muted-foreground: 22 12% 38%;
+        --accent: 9 68% 42%;
+        --accent-foreground: 36 45% 97%;
+        --destructive: 8 72% 42%;
+        --destructive-foreground: 36 45% 97%;
+        --border: 30 18% 82%;
+        --input: 30 18% 82%;
+        --ring: 38 72% 36%;
+        --chart-1: 38 72% 40%;
+        --chart-2: 9 68% 46%;
+        --chart-3: 72 40% 38%;
+        --chart-4: 28 50% 42%;
+        --chart-5: 200 28% 42%;
+        --radius: 0.5rem;
     }
     .dark {
-        --background: 180 8% 6%;
-        --foreground: 36 25% 94%;
-        --card: 180 7% 9%;
-        --card-foreground: 36 25% 94%;
-        --popover: 180 7% 9%;
-        --popover-foreground: 36 25% 94%;
-        --primary: 173 60% 41%;
-        --primary-foreground: 0 0% 100%;
-        --secondary: 180 12% 12%;
-        --secondary-foreground: 36 25% 94%;
-        --muted: 180 8% 15%;
-        --muted-foreground: 30 15% 68%;
-        --accent: 14 70% 62%;
-        --accent-foreground: 0 0% 100%;
-        --destructive: 0 65% 50%;
-        --destructive-foreground: 0 0% 100%;
-        --border: 180 15% 18%;
-        --input: 180 15% 18%;
-        --ring: 173 65% 50%;
+        --background: 17 47% 12%;
+        --foreground: 38 59% 88%;
+        --card: 16 35% 17%;
+        --card-foreground: 38 59% 88%;
+        --popover: 16 35% 15%;
+        --popover-foreground: 38 59% 88%;
+        --primary: 44 82% 51%;
+        --primary-foreground: 17 47% 12%;
+        --secondary: 18 28% 20%;
+        --secondary-foreground: 36 40% 88%;
+        --muted: 18 22% 20%;
+        --muted-foreground: 30 18% 68%;
+        --accent: 9 70% 45%;
+        --accent-foreground: 38 59% 95%;
+        --destructive: 8 72% 46%;
+        --destructive-foreground: 38 59% 95%;
+        --border: 18 24% 24%;
+        --input: 18 24% 24%;
+        --ring: 44 82% 51%;
+        --chart-1: 44 82% 51%;
+        --chart-2: 9 70% 50%;
+        --chart-3: 72 45% 48%;
+        --chart-4: 28 55% 48%;
+        --chart-5: 200 30% 50%;
     }
 }
 
@@ -80,21 +85,56 @@ body {
     body {
         @apply bg-background text-foreground;
     }
+    h1, h2, h3 {
+        font-family: 'Fraunces', Georgia, serif;
+    }
 }
 
-/* State color tokens used by State badges */
-.state-disponible { background: #E7F6EE; color: #0F5132; border-color: #BFE7D0; }
-.state-ocupada    { background: #FDECEC; color: #7A1F1F; border-color: #F7C7C7; }
-.state-esperando  { background: #FFF6DB; color: #6B4E00; border-color: #F3E2A6; }
-.state-listo      { background: #E6F2FF; color: #0B3A66; border-color: #B9DAFF; }
-.state-cancelada  { background: #F2F2F2; color: #3F3F46; border-color: #D4D4D8; }
-.state-pagado     { background: #E7F6EE; color: #0F5132; border-color: #BFE7D0; }
-.state-nuevo      { background: #EAF2FF; color: #1E3A8A; border-color: #BFD7FF; }
-.state-enviado    { background: #FFF6DB; color: #6B4E00; border-color: #F3E2A6; }
-.state-preparacion{ background: #FFF6DB; color: #6B4E00; border-color: #F3E2A6; }
-.state-entregado  { background: #DCEAFF; color: #0B3A66; border-color: #B9DAFF; }
-.state-reservada  { background: #EDE9FE; color: #4C1D95; border-color: #D6CBFE; }
-.state-inactiva   { background: #F2F2F2; color: #3F3F46; border-color: #D4D4D8; }
+/* Carta dotted leaders — the signature of this UI */
+.carta-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+.carta-dots {
+    flex: 1 1 auto;
+    min-width: 1.5rem;
+    border-bottom: 1px dotted hsl(var(--muted-foreground) / 0.45);
+    transform: translateY(-0.28em);
+}
+.page-kicker {
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    font-weight: 600;
+}
+
+.state-disponible { background: #E7F4E8; color: #1F5C32; border-color: #C5E3C9; }
+.state-ocupada    { background: #FBE4E0; color: #8B2A1C; border-color: #F0C4BB; }
+.state-esperando  { background: #F8EDD2; color: #6B4E00; border-color: #E8D39A; }
+.state-listo      { background: #E8F0D8; color: #3F5A18; border-color: #C9D9A4; }
+.state-cancelada  { background: #EEEAE6; color: #5C534C; border-color: #D9D2CB; }
+.state-pagado     { background: #E7F4E8; color: #1F5C32; border-color: #C5E3C9; }
+.state-nuevo      { background: #F3E6D4; color: #5C3D1E; border-color: #E2C9A8; }
+.state-enviado    { background: #F8EDD2; color: #6B4E00; border-color: #E8D39A; }
+.state-preparacion{ background: #F6E4D0; color: #7A3F12; border-color: #E8C49A; }
+.state-entregado  { background: #E8F0D8; color: #3F5A18; border-color: #C9D9A4; }
+.state-reservada  { background: #F1E4DC; color: #6B3A28; border-color: #E0C4B6; }
+.state-inactiva   { background: #EEEAE6; color: #5C534C; border-color: #D9D2CB; }
+
+.dark .state-disponible { background: hsl(90 25% 18%); color: hsl(80 40% 72%); border-color: hsl(90 25% 28%); }
+.dark .state-ocupada    { background: hsl(8 40% 18%); color: hsl(8 70% 78%); border-color: hsl(8 40% 30%); }
+.dark .state-esperando  { background: hsl(44 40% 16%); color: hsl(44 80% 70%); border-color: hsl(44 40% 28%); }
+.dark .state-listo      { background: hsl(72 30% 16%); color: hsl(72 45% 72%); border-color: hsl(72 30% 28%); }
+.dark .state-cancelada  { background: hsl(20 10% 18%); color: hsl(20 10% 70%); border-color: hsl(20 10% 28%); }
+.dark .state-pagado     { background: hsl(90 25% 18%); color: hsl(80 40% 72%); border-color: hsl(90 25% 28%); }
+.dark .state-nuevo      { background: hsl(28 30% 16%); color: hsl(38 60% 78%); border-color: hsl(28 30% 28%); }
+.dark .state-enviado    { background: hsl(44 40% 16%); color: hsl(44 80% 70%); border-color: hsl(44 40% 28%); }
+.dark .state-preparacion{ background: hsl(28 45% 16%); color: hsl(28 70% 72%); border-color: hsl(28 45% 28%); }
+.dark .state-entregado  { background: hsl(72 30% 16%); color: hsl(72 45% 72%); border-color: hsl(72 30% 28%); }
+.dark .state-reservada  { background: hsl(16 30% 16%); color: hsl(16 50% 75%); border-color: hsl(16 30% 28%); }
+.dark .state-inactiva   { background: hsl(20 10% 16%); color: hsl(20 10% 60%); border-color: hsl(20 10% 26%); }
 
 .pulse-dot {
     width: 8px;
@@ -109,12 +149,14 @@ body {
     50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* No global App.css centering */
+@media (prefers-reduced-motion: reduce) {
+    .pulse-dot { animation: none; }
+}
+
 .App {
     min-height: 100vh;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
@@ -123,12 +165,9 @@ body {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: #E7DED5;
+    background: hsl(var(--border));
     border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: #CFC2B5;
-}
-.dark ::-webkit-scrollbar-thumb {
-    background: #2A3434;
+    background: hsl(var(--muted-foreground) / 0.45);
 }

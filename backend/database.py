@@ -11,10 +11,35 @@ async def ensure_indexes():
     await db.tables.create_index([("restaurant_id", 1), ("number", 1)], unique=True)
     await db.orders.create_index([("restaurant_id", 1), ("status", 1), ("created_at", -1)])
     await db.orders.create_index("tracking_code", sparse=True)
+    await db.orders.create_index(
+        [("restaurant_id", 1), ("table_id", 1)],
+        unique=True,
+        partialFilterExpression={
+            "table_id": {"$type": "string"},
+            "status": {
+                "$in": [
+                    "nuevo",
+                    "enviado_cocina",
+                    "en_preparacion",
+                    "listo",
+                    "entregado",
+                    "pendiente_pago",
+                ]
+            },
+        },
+        name="uniq_active_order_per_table",
+    )
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])
+    await db.payments.create_index("order_id", unique=True, name="uniq_payment_per_order")
     await db.cash_registers.create_index([("restaurant_id", 1), ("status", 1), ("opened_at", -1)])
+    await db.cash_registers.create_index(
+        [("restaurant_id", 1)],
+        unique=True,
+        partialFilterExpression={"status": "open"},
+        name="uniq_open_cash_register",
+    )
     await db.audit_logs.create_index([("created_at", -1)])
 
 

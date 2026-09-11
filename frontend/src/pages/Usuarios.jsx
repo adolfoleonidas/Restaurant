@@ -52,7 +52,7 @@ export default function Usuarios() {
     return (
         <div className="space-y-5" data-testid="usuarios-root">
             <div className="flex items-center justify-between">
-                <h1 className="font-display text-2xl font-semibold flex items-center gap-2"><Users className="h-6 w-6" /> Usuarios</h1>
+                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Users className="h-6 w-6 text-primary" /> Equipo</h1>
                 <Button onClick={openNew} data-testid="usuario-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nuevo usuario</Button>
             </div>
             <Card><CardContent className="p-0">

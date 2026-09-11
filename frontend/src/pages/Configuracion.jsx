@@ -107,7 +107,7 @@ function Mesas() {
 export default function Configuracion() {
     return (
         <div className="space-y-5" data-testid="config-root">
-            <h1 className="font-display text-2xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6" /> Configuración</h1>
+            <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Casa</h1>
             <Restaurante />
             <Mesas />
         </div>

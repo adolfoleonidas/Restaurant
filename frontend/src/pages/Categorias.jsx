@@ -37,7 +37,7 @@ export default function Categorias() {
     return (
         <div className="space-y-5" data-testid="categorias-root">
             <div className="flex items-center justify-between">
-                <h1 className="font-display text-2xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6" /> Categorías</h1>
+                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Secciones</h1>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
             </div>
             <Card><CardContent className="p-0">

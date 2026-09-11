@@ -2,15 +2,28 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone
 from typing import Optional, List
 import uuid
+from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate
+from routes.products import combo_components_for
+from notify import emit_order
 
 router = APIRouter()
 
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+_KITCHEN_HIDE = {"discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
+
+
+def _order_projection(user: dict) -> dict:
+    proj = {"_id": 0}
+    if user.get("role") == "cocina":
+        proj.update(_KITCHEN_HIDE)
+    return proj
 
 
 async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, entity_id: str, details: dict = None):
@@ -53,6 +66,7 @@ async def _compute_total(items: list, restaurant_id: str):
         if not prod.get("is_available", True):
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
         line_subtotal = prod["price"] * it["quantity"]
+        combo_components = await combo_components_for(prod, restaurant_id)
         enriched.append({
             "id": it.get("id") or str(uuid.uuid4()),
             "product_id": prod["id"],
@@ -62,6 +76,8 @@ async def _compute_total(items: list, restaurant_id: str):
             "subtotal": line_subtotal,
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),
+            "is_combo": bool(prod.get("is_combo")),
+            "combo_components": combo_components,
         })
         subtotal += line_subtotal
     return enriched, subtotal
@@ -82,7 +98,7 @@ async def list_orders(
         q["table_id"] = table_id
     if active_only:
         q["status"] = {"$nin": ["pagado", "cancelado"]}
-    items = await db.orders.find(q, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    items = await db.orders.find(q, _order_projection(user)).sort("created_at", -1).limit(limit).to_list(limit)
     return items
 
 
@@ -94,7 +110,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
             "restaurant_id": user["restaurant_id"],
             "status": {"$in": ["enviado_cocina", "en_preparacion", "listo"]}
         },
-        {"_id": 0, "discount": 0, "tip": 0}
+        {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
     ).sort("created_at", 1).to_list(500)
     return items
 
@@ -103,7 +119,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     o = await db.orders.find_one(
         {"id": order_id, "restaurant_id": user["restaurant_id"]},
-        {"_id": 0}
+        _order_projection(user),
     )
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
@@ -150,13 +166,17 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         "created_at": _now(),
         "updated_at": _now(),
     }
-    await db.orders.insert_one(o)
+    try:
+        await db.orders.insert_one(o)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
     if data.table_id:
         await db.tables.update_one(
             {"id": data.table_id},
             {"$set": {"status": "ocupada", "updated_at": _now()}}
         )
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
+    emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no)
     return {k: v for k, v in o.items() if k != "_id"}
 
 
@@ -169,13 +189,20 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
     new_items = [it.model_dump() for it in items]
     enriched_new, _ = await _compute_total(new_items, user["restaurant_id"])
+    kitchen_open = o["status"] in ("enviado_cocina", "en_preparacion", "listo", "entregado")
+    for it in enriched_new:
+        it["status"] = "en_preparacion" if kitchen_open else it.get("status", "pendiente")
     combined = (o.get("items") or []) + enriched_new
     subtotal = sum(i["subtotal"] for i in combined)
     total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
-    await db.orders.update_one(
-        {"id": order_id},
-        {"$set": {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}}
-    )
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    new_status = o["status"]
+    if o["status"] in ("listo", "entregado"):
+        patch["status"] = "enviado_cocina"
+        patch["sent_to_kitchen_at"] = _now()
+        new_status = "enviado_cocina"
+    await db.orders.update_one({"id": order_id}, {"$set": patch})
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -242,6 +269,23 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
         {"$set": {"status": "enviado_cocina", "sent_to_kitchen_at": _now(), "items": items, "updated_at": _now()}}
     )
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
+    emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@router.post("/{order_id}/confirm-payment")
+async def confirm_public_payment(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"payment_status": "confirmado", "updated_at": _now()}},
+    )
+    await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), payment_status="confirmado")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -295,4 +339,5 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
 
     await db.orders.update_one({"id": order_id}, {"$set": update})
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"))
     return await db.orders.find_one({"id": order_id}, {"_id": 0})

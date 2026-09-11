@@ -9,6 +9,7 @@ import { fmtMoney, fmtElapsed, fmtTime } from '@/lib/format';
 import { Plus, Receipt } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotify } from '@/contexts/NotifyContext';
 
 const FILTERS = [
     { value: 'activos', label: 'Activos' },
@@ -21,6 +22,7 @@ const FILTERS = [
 export default function Pedidos() {
     const [filter, setFilter] = useState('activos');
     const { user } = useAuth();
+    const { generation } = useNotify();
 
     const { data } = usePolling(
         () => {
@@ -29,15 +31,15 @@ export default function Pedidos() {
             else if (filter !== 'all') params.status = filter;
             return api.get('/orders', { params }).then((r) => r.data);
         },
-        4000,
-        [filter]
+        12000,
+        [filter, generation]
     );
 
     return (
         <div className="space-y-5" data-testid="pedidos-root">
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                    <h1 className="font-display text-2xl font-semibold flex items-center gap-2"><Receipt className="h-6 w-6" /> Pedidos</h1>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Receipt className="h-6 w-6 text-primary" /> Pedidos</h1>
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
                 {['admin', 'mozo'].includes(user.role) && (

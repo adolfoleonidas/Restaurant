@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
+from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate
+from notify import emit_order
 
 router = APIRouter()
 
@@ -23,6 +25,12 @@ async def list_payments(user: dict = Depends(require_roles(["admin", "cajero"]))
 
 @router.post("")
 async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    open_reg = await db.cash_registers.find_one(
+        {"restaurant_id": user["restaurant_id"], "status": "open"}
+    )
+    if not open_reg:
+        raise HTTPException(status_code=400, detail="No hay caja abierta")
+
     order = await db.orders.find_one({"id": data.order_id, "restaurant_id": user["restaurant_id"]})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
@@ -76,7 +84,10 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "notes": data.notes,
         "created_at": _now(),
     }
-    await db.payments.insert_one(payment)
+    try:
+        await db.payments.insert_one(payment)
+    except DuplicateKeyError:
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
 
     # Update order
     await db.orders.update_one(
@@ -91,6 +102,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         }}
     )
 
+    emit_order(user["restaurant_id"], data.order_id, "pagado", source=order.get("source"))
     # Free table
     if order.get("table_id"):
         await db.tables.update_one(

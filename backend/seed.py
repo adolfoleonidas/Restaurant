@@ -36,6 +36,13 @@ async def _ensure_new_fields():
             updates["updated_at"] = _now()
             await db.restaurants.update_one({"id": rid}, {"$set": updates})
 
+        from routes.products import get_or_create_combos_category
+        combos_cat = await get_or_create_combos_category(rid)
+        await db.products.update_many(
+            {"restaurant_id": rid, "is_combo": True},
+            {"$set": {"category_id": combos_cat["id"]}},
+        )
+
         cfg = await db.payment_configs.find_one({"restaurant_id": rid})
         if not cfg:
             await db.payment_configs.insert_one({

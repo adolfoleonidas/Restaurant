@@ -1,9 +1,23 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import CashOpen, CashClose, CashMovement
+
+LIMA = ZoneInfo("America/Lima")
+
+
+def _period_start(period: str) -> str:
+    now = datetime.now(LIMA)
+    if period == "day":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(timezone.utc).isoformat()
 
 router = APIRouter()
 
@@ -25,6 +39,32 @@ async def current_register(user: dict = Depends(require_roles(["admin", "cajero"
     ).sort("created_at", 1).to_list(1000)
     reg["movements"] = movs
     return reg
+
+
+@router.get("/history")
+async def cash_history(
+    user: dict = Depends(require_roles(["admin", "cajero"])),
+    period: str = Query("day", regex="^(day|week|month)$"),
+):
+    start = _period_start(period)
+    regs = await db.cash_registers.find(
+        {"restaurant_id": user["restaurant_id"], "opened_at": {"$gte": start}},
+        {"_id": 0},
+    ).sort("opened_at", -1).to_list(200)
+    closed = [r for r in regs if r.get("status") == "closed"]
+    total_sales = sum(float(r.get("total_sales") or 0) for r in closed)
+    cash_sales = sum(float(r.get("cash_sales") or 0) for r in closed)
+    difference = sum(float(r.get("difference") or 0) for r in closed)
+    return {
+        "period": period,
+        "from": start,
+        "sessions": len(regs),
+        "closed": len(closed),
+        "total_sales": round(total_sales, 2),
+        "cash_sales": round(cash_sales, 2),
+        "difference": round(difference, 2),
+        "registers": regs,
+    }
 
 
 @router.get("")

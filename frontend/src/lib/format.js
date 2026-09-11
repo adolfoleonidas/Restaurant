@@ -70,6 +70,19 @@ export const ORDER_STATUS_LABELS = {
     cancelado: 'Cancelado',
 };
 
+export const ORDER_TYPE_LABELS = {
+    mesa: 'Mesa',
+    local: 'En local',
+    recojo: 'Recojo',
+    delivery: 'Delivery',
+};
+
+export function waMeLink(phone, text) {
+    const n = String(phone || '').replace(/\D/g, '');
+    if (!n) return null;
+    return `https://wa.me/${n}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
+}
+
 export const TABLE_STATUS_LABELS = {
     disponible: 'Disponible',
     ocupada: 'Ocupada',

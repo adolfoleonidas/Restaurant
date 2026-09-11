@@ -3,11 +3,12 @@
 Backend API Testing for Restaurant Management System
 Tests all endpoints with the 4 demo user roles
 """
+import os
 import requests
 import sys
 from datetime import datetime
 
-BASE_URL = "https://meal-hub-184.preview.emergentagent.com/api"
+BASE_URL = os.environ.get("API_BASE", "http://127.0.0.1:8000/api")
 
 # Demo credentials from seed.py
 CREDENTIALS = {

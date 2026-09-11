@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { toast } from 'sonner';
 import { Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote, CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon } from 'lucide-react';
 
@@ -25,7 +25,9 @@ export default function Checkout() {
     const navigate = useNavigate();
     const [restaurant, setRestaurant] = useState(null);
     const [paymentCfg, setPaymentCfg] = useState(null);
-    const [orderType, setOrderType] = useState('recojo');
+    const [orderType, setOrderType] = useState('local');
+    const [tableId, setTableId] = useState('');
+    const [tables, setTables] = useState([]);
     const [customer, setCustomer] = useState({ name: '', phone: '', address: '', email: '' });
     const [notes, setNotes] = useState('');
     const [method, setMethod] = useState('yape');
@@ -37,6 +39,7 @@ export default function Checkout() {
 
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data));
+        api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
         api.get('/public/payment-config').then((r) => {
             setPaymentCfg(r.data);
             const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => r.data[`enable_${m}`]);
@@ -88,11 +91,14 @@ export default function Checkout() {
     };
 
     const submit = async () => {
-        if (!customer.name.trim() || !customer.phone.trim()) {
+        if (orderType !== 'local' && (!customer.name.trim() || !customer.phone.trim())) {
             toast.error('Completa tu nombre y celular'); return;
         }
         if (orderType === 'delivery' && !customer.address.trim()) {
             toast.error('Indica la dirección para delivery'); return;
+        }
+        if (orderType === 'local' && !tableId) {
+            toast.error('Elegí tu mesa'); return;
         }
         setSubmitting(true);
         try {
@@ -105,6 +111,7 @@ export default function Checkout() {
                 items: items.map((it) => ({ product_id: it.product_id, quantity: it.quantity, notes: it.notes || null })),
                 notes: notes.trim() || null,
                 payment_method: method,
+                table_id: orderType === 'local' ? tableId : null,
             };
             const { data } = await api.post('/public/orders', payload);
             setConfirmed(data);
@@ -120,11 +127,11 @@ export default function Checkout() {
             <div className="max-w-2xl mx-auto px-4 py-10 space-y-5" data-testid="checkout-confirmed-root">
                 <Card>
                     <CardContent className="p-6 text-center">
-                        <div className="h-16 w-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-3">
+                        <div className="h-16 w-16 rounded-sm bg-primary text-primary-foreground mx-auto flex items-center justify-center mb-3">
                             <CheckCircle2 className="h-9 w-9" />
                         </div>
-                        <h1 className="font-display text-2xl font-bold">¡Pedido recibido!</h1>
-                        <p className="text-muted-foreground mt-1">Te avisaremos por WhatsApp en cuanto esté listo.</p>
+                        <h1 className="font-display italic text-3xl font-bold">Pedido en cocina</h1>
+                        <p className="text-muted-foreground mt-1">Seguí el estado con tu código. Si necesitás hablar con la casa, usá WhatsApp.</p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
                             <span className="font-display text-3xl font-bold">#{confirmed.order_number}</span>
@@ -162,6 +169,18 @@ export default function Checkout() {
                 )}
 
                 <div className="flex flex-col sm:flex-row gap-2">
+                    {waMeLink(restaurant?.social_whatsapp, `Hola, mi pedido es #${confirmed.order_number} código ${confirmed.tracking_code}`) && (
+                        <Button asChild variant="outline" className="flex-1">
+                            <a
+                                href={waMeLink(restaurant.social_whatsapp, `Hola, mi pedido es #${confirmed.order_number} código ${confirmed.tracking_code}`)}
+                                target="_blank"
+                                rel="noreferrer"
+                                data-testid="checkout-whatsapp"
+                            >
+                                WhatsApp a la casa
+                            </a>
+                        </Button>
+                    )}
                     <Button asChild variant="outline" className="flex-1"><Link to="/">Volver al menú</Link></Button>
                     <Button asChild className="flex-1"><Link to={`/pedido/${confirmed.tracking_code}`} data-testid="checkout-track-button">Ver estado del pedido</Link></Button>
                 </div>
@@ -174,7 +193,8 @@ export default function Checkout() {
             <div className="mb-5">
                 <Button asChild variant="ghost" size="sm"><Link to="/"><ChevronLeft className="h-4 w-4 mr-1" /> Seguir comprando</Link></Button>
             </div>
-            <h1 className="font-display text-3xl font-bold mb-6">Finalizar pedido</h1>
+            <p className="page-kicker mb-2">Carta</p>
+            <h1 className="font-display italic text-4xl font-bold mb-6">Confirmar pedido</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-5">
@@ -197,12 +217,41 @@ export default function Checkout() {
                         </div>
                     </CardContent></Card>
 
+                    {orderType === 'local' && (
+                        <Card><CardContent className="p-5">
+                            <h2 className="font-display text-lg font-semibold mb-3">¿En qué mesa estás?</h2>
+                            {tables.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No hay mesas libres ahora. Pedí recojo o avisá al mozo.</p>
+                            ) : (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                    {tables.map((t) => (
+                                        <button
+                                            key={t.id}
+                                            type="button"
+                                            onClick={() => setTableId(t.id)}
+                                            data-testid={`checkout-mesa-${t.number}`}
+                                            className={`rounded-sm border p-3 text-left ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
+                                        >
+                                            <div className="font-display italic text-xl font-semibold">{t.number}</div>
+                                            <div className="text-[11px] text-muted-foreground">{t.area}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </CardContent></Card>
+                    )}
+
                     {/* Customer data */}
                     <Card><CardContent className="p-5">
-                        <h2 className="font-display text-lg font-semibold mb-3">Tus datos</h2>
+                        <h2 className="font-display text-lg font-semibold mb-1">Tus datos</h2>
+                        {orderType === 'local' ? (
+                            <p className="text-sm text-muted-foreground mb-3">Opcional: si querés, dejá tu nombre para conocerte mejor. En mesa no es obligatorio.</p>
+                        ) : (
+                            <p className="text-sm text-muted-foreground mb-3">Los necesitamos para entregarte el pedido.</p>
+                        )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><Label>Nombre y apellidos *</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} className="h-11" data-testid="checkout-nombre" /></div>
-                            <div><Label>Celular *</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
+                            <div><Label>Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} className="h-11" data-testid="checkout-nombre" /></div>
+                            <div><Label>Celular{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
                             <div className="sm:col-span-2"><Label>Correo (opcional)</Label><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
                             {orderType === 'delivery' && (
                                 <div className="sm:col-span-2"><Label>Dirección de entrega *</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>

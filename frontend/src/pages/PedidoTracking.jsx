@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,22 +27,30 @@ const statusIndex = (s) => {
 
 export default function PedidoTracking() {
     const { code } = useParams();
-    const { data: order, refetch } = usePolling(
-        () => api.get(`/public/orders/${code}`).then((r) => r.data).catch(() => null),
+    const [restaurant, setRestaurant] = useState(null);
+    useEffect(() => {
+        api.get('/public/restaurant').then((r) => setRestaurant(r.data)).catch(() => {});
+    }, []);
+    const { data: order, loading, error, refetch } = usePolling(
+        () => api.get(`/public/orders/${code}`).then((r) => r.data),
         5000,
         [code]
     );
     const [proof, setProof] = useState(null);
     const [uploading, setUploading] = useState(false);
 
-    if (order === null) return (
-        <div className="max-w-xl mx-auto px-4 py-16 text-center">
-            <h2 className="font-display text-2xl font-semibold mb-2">Pedido no encontrado</h2>
-            <p className="text-muted-foreground mb-6">Verifica tu código de seguimiento.</p>
-            <Button asChild><Link to="/">Ir al inicio</Link></Button>
-        </div>
-    );
-    if (!order) return <div className="max-w-xl mx-auto px-4 py-16 text-center text-muted-foreground">Cargando…</div>;
+    if (loading && !order) {
+        return <div className="max-w-xl mx-auto px-4 py-16 text-center text-muted-foreground">Cargando…</div>;
+    }
+    if (!order) {
+        return (
+            <div className="max-w-xl mx-auto px-4 py-16 text-center">
+                <h2 className="font-display text-2xl font-semibold mb-2">Pedido no encontrado</h2>
+                <p className="text-muted-foreground mb-6">{error ? 'No se pudo cargar el pedido.' : 'Verifica tu código de seguimiento.'}</p>
+                <Button asChild><Link to="/">Ir al inicio</Link></Button>
+            </div>
+        );
+    }
 
     const idx = statusIndex(order.status);
     const cancelled = order.status === 'cancelado';
@@ -65,10 +73,10 @@ export default function PedidoTracking() {
     return (
         <div className="max-w-3xl mx-auto px-4 py-8 space-y-5" data-testid="tracking-root">
             <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">Seguimiento</div>
+                <div className="page-kicker">Seguimiento</div>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h1 className="font-display text-2xl md:text-3xl font-bold">Pedido #{order.order_number}</h1>
-                    <span className="font-mono text-sm bg-secondary px-2 py-1 rounded">{order.tracking_code}</span>
+                    <h1 className="font-display italic text-3xl md:text-4xl font-bold">Pedido #{order.order_number}</h1>
+                    <span className="font-mono text-sm bg-secondary px-2 py-1 rounded-sm">{order.tracking_code}</span>
                 </div>
                 <div className="text-sm text-muted-foreground">Realizado hace {fmtElapsed(order.created_at)}</div>
             </div>
@@ -128,7 +136,7 @@ export default function PedidoTracking() {
                 </CardContent></Card>
             )}
             {order.has_proof && (
-                <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">✓ Comprobante enviado al restaurante</div>
+                <div className="text-sm text-primary bg-primary/10 border border-primary/20 rounded-sm p-3 text-center">Comprobante enviado al restaurante</div>
             )}
 
             <Card><CardContent className="p-5">
@@ -156,6 +164,12 @@ export default function PedidoTracking() {
                     <div className="flex justify-between font-display text-xl font-bold pt-2 border-t mt-2"><span>Total</span><span className="tabular-nums">{fmtMoney(order.total)}</span></div>
                 </div>
             </CardContent></Card>
+
+            {waMeLink(restaurant?.social_whatsapp, `Hola, consulto pedido #${order.order_number} código ${order.tracking_code}`) && (
+                <Button asChild variant="outline" className="w-full">
+                    <a href={waMeLink(restaurant.social_whatsapp, `Hola, consulto pedido #${order.order_number} código ${order.tracking_code}`)} target="_blank" rel="noreferrer">WhatsApp a la casa</a>
+                </Button>
+            )}
 
             <div className="text-center">
                 <Button asChild variant="outline"><Link to="/">Volver al menú</Link></Button>

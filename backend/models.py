@@ -116,6 +116,11 @@ class CategoryUpdate(BaseModel):
 
 
 # ============== PRODUCT ==============
+class ComboComponent(BaseModel):
+    product_id: str
+    quantity: int = 1
+
+
 class ProductCreate(BaseModel):
     category_id: str
     name: str
@@ -124,6 +129,9 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     is_available: bool = True
     preparation_time: int = 15  # minutes
+    is_combo: bool = False
+    combo_items: Optional[List[ComboComponent]] = None
+    code: Optional[str] = None
 
 
 class ProductUpdate(BaseModel):
@@ -134,6 +142,9 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
     preparation_time: Optional[int] = None
+    is_combo: Optional[bool] = None
+    combo_items: Optional[List[ComboComponent]] = None
+    code: Optional[str] = None
 
 
 # ============== ORDER ==============
@@ -147,7 +158,7 @@ OrderType = Literal["mesa", "local", "recojo", "delivery"]
 
 class OrderItemInput(BaseModel):
     product_id: str
-    quantity: int = 1
+    quantity: int = Field(ge=1, default=1)
     notes: Optional[str] = None
 
 
@@ -160,8 +171,9 @@ class OrderCreate(BaseModel):
 
 class PublicOrderCreate(BaseModel):
     order_type: Literal["local", "recojo", "delivery"]
-    customer_name: str
-    customer_phone: str
+    table_id: Optional[str] = None
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
     customer_email: Optional[str] = None
     items: List[OrderItemInput]

@@ -19,7 +19,7 @@ export default function Reportes() {
     return (
         <div className="space-y-5" data-testid="reportes-root">
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="font-display text-2xl font-semibold flex items-center gap-2"><BarChart3 className="h-6 w-6" /> Reportes</h1>
+                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Reportes</h1>
                 <Tabs value={period} onValueChange={setPeriod}>
                     <TabsList>
                         <TabsTrigger value="day" data-testid="reportes-periodo-day">Hoy</TabsTrigger>

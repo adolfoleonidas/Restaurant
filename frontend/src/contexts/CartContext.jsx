@@ -3,15 +3,17 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 const KEY = 'public_cart_v1';
 const CartContext = createContext(null);
 
-export const CartProvider = ({ children }) => {
-    const [items, setItems] = useState([]);
+function loadCart() {
+    try {
+        const raw = localStorage.getItem(KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
 
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem(KEY);
-            if (raw) setItems(JSON.parse(raw));
-        } catch { /* ignore */ }
-    }, []);
+export const CartProvider = ({ children }) => {
+    const [items, setItems] = useState(loadCart);
 
     useEffect(() => {
         try { localStorage.setItem(KEY, JSON.stringify(items)); } catch { /* ignore */ }
@@ -28,6 +30,7 @@ export const CartProvider = ({ children }) => {
             return [...cur, {
                 product_id: product.id, name: product.name, price: product.price,
                 image_url: product.image_url, quantity: qty, notes,
+                is_combo: Boolean(product.is_combo),
             }];
         });
     };
