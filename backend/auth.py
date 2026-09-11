@@ -46,6 +46,17 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+def apply_permissions(user: dict) -> dict:
+    out = dict(user)
+    if out.get("role") == "admin":
+        out["can_discount"] = True
+        out["can_void"] = True
+    else:
+        out["can_discount"] = bool(out.get("can_discount"))
+        out["can_void"] = bool(out.get("can_void"))
+    return out
+
+
 async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict:
     if creds is None:
         raise HTTPException(status_code=401, detail="No autorizado")
@@ -55,7 +66,7 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     if user.get("status") != "active":
         raise HTTPException(status_code=403, detail="Usuario inactivo")
-    return user
+    return apply_permissions(user)
 
 
 def require_roles(roles: List[str]):

@@ -35,6 +35,8 @@ async def create_user(data: UserCreate, user: dict = Depends(require_roles(["adm
         "role": data.role,
         "phone": data.phone,
         "status": "active",
+        "can_discount": True if data.role == "admin" else bool(data.can_discount),
+        "can_void": True if data.role == "admin" else bool(data.can_void),
         "created_at": _now(),
         "updated_at": _now(),
     }

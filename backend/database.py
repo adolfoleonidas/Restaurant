@@ -32,7 +32,17 @@ async def ensure_indexes():
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])
-    await db.payments.create_index("order_id", unique=True, name="uniq_payment_per_order")
+    try:
+        await db.payments.drop_index("uniq_payment_per_order")
+    except Exception:
+        pass
+    await db.payments.create_index("order_id")
+    await db.payments.create_index(
+        "idempotency_key",
+        unique=True,
+        sparse=True,
+        name="uniq_payment_idempotency",
+    )
     await db.cash_registers.create_index([("restaurant_id", 1), ("status", 1), ("opened_at", -1)])
     await db.cash_registers.create_index(
         [("restaurant_id", 1)],

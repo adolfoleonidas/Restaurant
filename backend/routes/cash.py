@@ -21,9 +21,73 @@ def _period_start(period: str) -> str:
 
 router = APIRouter()
 
+DRAWER_METHODS = ("efectivo", "yape", "plin", "tarjeta", "transferencia")
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def _method_amounts(payment: dict) -> dict:
+    amount = round(float(payment.get("amount") or 0), 2)
+    method = payment.get("method")
+    if method != "mixto":
+        key = method if method in DRAWER_METHODS else "efectivo"
+        return {key: amount}
+    out = {m: 0.0 for m in DRAWER_METHODS}
+    left = amount
+    for split in payment.get("splits") or []:
+        if left <= 0:
+            break
+        take = min(round(float(split.get("amount") or 0), 2), left)
+        if take <= 0:
+            continue
+        key = split.get("method") if split.get("method") in DRAWER_METHODS else "efectivo"
+        out[key] = round(out[key] + take, 2)
+        left = round(left - take, 2)
+    if left > 0:
+        out["efectivo"] = round(out["efectivo"] + left, 2)
+    return {k: v for k, v in out.items() if v}
+
+
+async def _shift_totals(reg: dict) -> dict:
+    payments = await db.payments.find(
+        {
+            "restaurant_id": reg["restaurant_id"],
+            "created_at": {"$gte": reg["opened_at"]},
+        },
+        {"_id": 0},
+    ).to_list(5000)
+    by_method = {m: 0.0 for m in DRAWER_METHODS}
+    total_sales = 0.0
+    for payment in payments:
+        if payment.get("status") not in (None, "completed"):
+            continue
+        total_sales = round(total_sales + float(payment.get("amount") or 0), 2)
+        for method, value in _method_amounts(payment).items():
+            by_method[method] = round(by_method[method] + value, 2)
+    movements = await db.cash_movements.find(
+        {"cash_register_id": reg["id"]}, {"_id": 0}
+    ).sort("created_at", 1).to_list(1000)
+    income = round(sum(m["amount"] for m in movements if m["type"] == "ingreso"), 2)
+    expense = round(sum(m["amount"] for m in movements if m["type"] == "egreso"), 2)
+    cash_sales = by_method["efectivo"]
+    expected = round(float(reg.get("opening_amount") or 0) + cash_sales + income - expense, 2)
+    return {
+        "total_sales": total_sales,
+        "cash_sales": cash_sales,
+        "by_method": by_method,
+        "income": income,
+        "expense": expense,
+        "expected_amount": expected,
+        "movements": movements,
+    }
+
+
+def _attach_shift(reg: dict, totals: dict) -> dict:
+    for key in ("total_sales", "cash_sales", "by_method", "income", "expense", "expected_amount", "movements"):
+        reg[key] = totals[key]
+    return {k: v for k, v in reg.items() if k != "_id"}
 
 
 @router.get("/current")
@@ -34,11 +98,8 @@ async def current_register(user: dict = Depends(require_roles(["admin", "cajero"
     )
     if not reg:
         return None
-    movs = await db.cash_movements.find(
-        {"cash_register_id": reg["id"]}, {"_id": 0}
-    ).sort("created_at", 1).to_list(1000)
-    reg["movements"] = movs
-    return reg
+    totals = await _shift_totals(reg)
+    return _attach_shift(reg, totals)
 
 
 @router.get("/history")
@@ -107,44 +168,22 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
     if not reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta")
 
-    # Compute totals from payments since opened
-    payments = await db.payments.find(
-        {
-            "restaurant_id": user["restaurant_id"],
-            "created_at": {"$gte": reg["opened_at"]}
-        },
-        {"_id": 0}
-    ).to_list(5000)
-    total_sales = sum(p["total"] for p in payments)
-    cash_payments_total = 0.0
-    for p in payments:
-        if p["method"] == "efectivo":
-            cash_payments_total += p["total"]
-        elif p["method"] == "mixto":
-            for s in p.get("splits", []):
-                if s.get("method") == "efectivo":
-                    cash_payments_total += s.get("amount", 0.0)
-
-    movements = await db.cash_movements.find(
-        {"cash_register_id": reg["id"]}, {"_id": 0}
-    ).to_list(1000)
-    income = sum(m["amount"] for m in movements if m["type"] == "ingreso")
-    expense = sum(m["amount"] for m in movements if m["type"] == "egreso")
-
-    expected = reg["opening_amount"] + cash_payments_total + income - expense
-    difference = data.closing_amount - expected
+    totals = await _shift_totals(reg)
+    expected = totals["expected_amount"]
+    difference = round(float(data.closing_amount) - expected, 2)
 
     await db.cash_registers.update_one(
         {"id": reg["id"]},
         {"$set": {
             "status": "closed",
             "closing_amount": data.closing_amount,
-            "expected_amount": round(expected, 2),
-            "difference": round(difference, 2),
-            "total_sales": round(total_sales, 2),
-            "cash_sales": round(cash_payments_total, 2),
-            "income": round(income, 2),
-            "expense": round(expense, 2),
+            "expected_amount": expected,
+            "difference": difference,
+            "total_sales": totals["total_sales"],
+            "cash_sales": totals["cash_sales"],
+            "by_method": totals["by_method"],
+            "income": totals["income"],
+            "expense": totals["expense"],
             "closed_at": _now(),
             "closed_by": user["id"],
             "closed_by_name": user["full_name"],

@@ -18,6 +18,7 @@ const STATE_BAR = {
     listo: 'bg-[hsl(72,50%,38%)]',
     cuenta: 'bg-accent',
     entregado: 'bg-[hsl(200,30%,40%)]',
+    pagada: 'bg-[hsl(90,25%,32%)]',
     reservada: 'bg-[hsl(16,40%,40%)]',
     inactiva: 'bg-muted',
 };
@@ -26,6 +27,7 @@ function floorState(t) {
     const o = t.active_order;
     if (t.status === 'inactiva') return { key: 'inactiva', label: 'Inactiva' };
     if (t.status === 'reservada' && !o) return { key: 'reservada', label: 'Reservada' };
+    if (t.status === 'pagada' && !o) return { key: 'pagada', label: 'Cuenta pagada' };
     if (t.status === 'disponible' && !o) return { key: 'libre', label: 'Libre' };
     if (o?.status === 'pendiente_pago' || t.status === 'esperando_pago') return { key: 'cuenta', label: 'Cuenta solicitada' };
     if (o?.status === 'listo') return { key: 'listo', label: 'Listo para entregar' };
@@ -66,6 +68,17 @@ export default function Mesas() {
     const openOrCreate = async (table) => {
         if (table.active_order) {
             navigate(`/pedidos/${table.active_order.id}`);
+            return;
+        }
+        if (table.status === 'pagada') {
+            if (!['admin', 'mozo'].includes(user.role)) return;
+            try {
+                await api.post(`/tables/${table.id}/release`);
+                toast.success(`Mesa ${table.number} libre`);
+                refetch();
+            } catch (e) {
+                toast.error(e.response?.data?.detail || 'No se pudo liberar');
+            }
             return;
         }
         if (!['admin', 'mozo'].includes(user.role)) {
@@ -166,7 +179,7 @@ export default function Mesas() {
                                     </div>
                                 )}
                                 <Button size="sm" className="mt-auto h-11 rounded-sm text-base" data-testid={`mesa-action-${t.number}`}>
-                                    {t.active_order ? (floor.key === 'listo' ? 'Entregar' : 'Ver pedido') : t.status === 'disponible' ? <><Plus className="h-4 w-4 mr-1" /> Tomar mesa</> : t.status === 'ocupada' ? 'Tomar pedido' : 'Ver'}
+                                    {t.active_order ? (floor.key === 'listo' ? 'Entregar' : 'Ver pedido') : t.status === 'pagada' ? 'Liberar mesa' : t.status === 'disponible' ? <><Plus className="h-4 w-4 mr-1" /> Tomar mesa</> : t.status === 'ocupada' ? 'Tomar pedido' : 'Ver'}
                                 </Button>
                             </CardContent>
                         </Card>

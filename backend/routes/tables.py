@@ -74,6 +74,8 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     })
     if active:
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+    if t.get("status") == "pagada":
+        raise HTTPException(status_code=400, detail="Liberá la mesa pagada antes de tomarla")
     if t.get("status") not in ("disponible", "ocupada"):
         raise HTTPException(status_code=400, detail="Esta mesa no se puede tomar")
     await db.tables.update_one(

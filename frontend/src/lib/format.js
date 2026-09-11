@@ -89,4 +89,5 @@ export const TABLE_STATUS_LABELS = {
     esperando_pago: 'Esperando pago',
     reservada: 'Reservada',
     inactiva: 'Inactiva',
+    pagada: 'Pagada',
 };

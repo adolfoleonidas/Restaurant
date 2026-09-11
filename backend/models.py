@@ -34,6 +34,8 @@ class UserCreate(BaseModel):
     full_name: str
     role: Role
     phone: Optional[str] = None
+    can_discount: bool = False
+    can_void: bool = False
 
 
 class UserUpdate(BaseModel):
@@ -42,6 +44,8 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     status: Optional[Literal["active", "inactive"]] = None
     password: Optional[str] = None
+    can_discount: Optional[bool] = None
+    can_void: Optional[bool] = None
 
 
 # ============== RESTAURANT ==============
@@ -83,7 +87,7 @@ class PaymentConfigUpdate(BaseModel):
 
 
 # ============== TABLE ==============
-TableStatus = Literal["disponible", "ocupada", "esperando_pago", "reservada", "inactiva"]
+TableStatus = Literal["disponible", "ocupada", "esperando_pago", "reservada", "inactiva", "pagada"]
 
 
 class TableCreate(BaseModel):
@@ -212,6 +216,11 @@ class PaymentSplit(BaseModel):
     amount: float
 
 
+class PaymentLine(BaseModel):
+    item_id: str
+    quantity: int = Field(ge=1)
+
+
 class PaymentCreate(BaseModel):
     order_id: str
     method: PaymentMethod
@@ -220,7 +229,17 @@ class PaymentCreate(BaseModel):
     discount: float = 0.0
     tip: float = 0.0
     splits: Optional[List[PaymentSplit]] = None  # for mixto
+    lines: Optional[List[PaymentLine]] = None
     notes: Optional[str] = None
+    discount_reason: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    expected_updated_at: Optional[str] = None
+    expected_total: Optional[float] = None
+
+
+class PaymentVoid(BaseModel):
+    reason: str = Field(min_length=5)
+    kind: Literal["void", "refund"] = "void"
 
 
 # ============== CASH REGISTER ==============

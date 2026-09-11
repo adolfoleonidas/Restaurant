@@ -16,12 +16,12 @@ import {
 import { Toaster } from '@/components/ui/sonner';
 
 const ALL_NAV = [
-    { to: '/dashboard', label: 'Inicio', icon: LayoutDashboard, roles: ['admin', 'cajero'] },
+    { to: '/dashboard', label: 'Inicio', icon: LayoutDashboard, roles: ['admin'] },
     { to: '/mesas', label: 'Mesas', icon: Grid2X2, roles: ['admin', 'mozo', 'cajero'] },
     { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['admin', 'mozo', 'cajero'] },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['admin', 'cocina'] },
     { to: '/caja', label: 'Caja', icon: Wallet, roles: ['admin', 'cajero'] },
-    { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin', 'cajero'] },
+    { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'] },
     { to: '/productos', label: 'Carta', icon: Package, roles: ['admin'] },
     { to: '/combos', label: 'Combos', icon: Layers, roles: ['admin'] },
     { to: '/pagos', label: 'Pagos', icon: CreditCard, roles: ['admin'] },

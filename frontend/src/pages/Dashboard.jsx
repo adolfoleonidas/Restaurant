@@ -36,6 +36,7 @@ export default function Dashboard() {
 
     if (user?.role === 'mozo') return <Navigate to="/mesas" replace />;
     if (user?.role === 'cocina') return <Navigate to="/cocina" replace />;
+    if (user?.role === 'cajero') return <Navigate to="/caja" replace />;
 
     const isAdmin = user.role === 'admin';
     const isCajero = user.role === 'cajero';

@@ -1,10 +1,23 @@
 from fastapi import APIRouter, Depends, Query
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 from database import db
 from auth import require_roles, get_current_user
 
+LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
+
+
+def _lima_period_start(period: str) -> str:
+    now = datetime.now(LIMA)
+    if period == "day":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "week":
+        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return start.astimezone(timezone.utc).isoformat()
 
 
 def _today_range():
@@ -155,4 +168,55 @@ async def sales_report(
         ],
         "sales_by_day": [{"date": k, "amount": round(v, 2)} for k, v in sorted(sales_by_day.items())],
         "cancelled_orders": cancelled,
+    }
+
+
+@router.get("/products")
+async def product_sales(
+    user: dict = Depends(require_roles(["admin", "cajero"])),
+    period: str = Query("day", regex="^(day|week|month)$"),
+):
+    rid = user["restaurant_id"]
+    start = _lima_period_start(period)
+    orders = await db.orders.find(
+        {
+            "restaurant_id": rid,
+            "$or": [
+                {"created_at": {"$gte": start}},
+                {"paid_at": {"$gte": start}},
+                {"updated_at": {"$gte": start}},
+            ],
+        },
+        {"_id": 0, "items": 1, "status": 1},
+    ).to_list(8000)
+    grouped = {}
+    for order in orders:
+        for item in order.get("items") or []:
+            paid_qty = int(item.get("paid_qty") or 0)
+            qty = int(item.get("quantity") or 0)
+            if paid_qty > 0:
+                sold = paid_qty
+            elif order.get("status") == "pagado":
+                sold = qty
+            else:
+                sold = 0
+            if sold <= 0:
+                continue
+            pid = item.get("product_id") or item.get("id")
+            unit = float(item.get("unit_price") or 0)
+            row = grouped.setdefault(pid, {
+                "product_id": pid,
+                "name": item.get("product_name") or "Ítem",
+                "quantity": 0,
+                "revenue": 0.0,
+            })
+            row["quantity"] += sold
+            row["revenue"] = round(row["revenue"] + sold * unit, 2)
+    products = sorted(grouped.values(), key=lambda r: (-r["quantity"], r["name"]))
+    return {
+        "period": period,
+        "from": start,
+        "products": products,
+        "total_units": sum(p["quantity"] for p in products),
+        "total_revenue": round(sum(p["revenue"] for p in products), 2),
     }

@@ -143,6 +143,8 @@ async def run_seed():
             "role": u["role"],
             "phone": None,
             "status": "active",
+            "can_discount": u["role"] == "admin",
+            "can_void": u["role"] == "admin",
             "created_at": _now(),
             "updated_at": _now(),
         })

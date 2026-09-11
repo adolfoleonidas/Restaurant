@@ -16,19 +16,19 @@ export default function Usuarios() {
     const [users, setUsers] = useState([]);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'mozo', phone: '' });
+    const [form, setForm] = useState({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false });
     const { user: me } = useAuth();
 
     const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
     useEffect(() => { load(); }, []);
 
-    const openNew = () => { setEditing(null); setForm({ email: '', password: '', full_name: '', role: 'mozo', phone: '' }); setDlg(true); };
-    const openEdit = (u) => { setEditing(u); setForm({ email: u.email, password: '', full_name: u.full_name, role: u.role, phone: u.phone || '' }); setDlg(true); };
+    const openNew = () => { setEditing(null); setForm({ email: '', password: '', full_name: '', role: 'mozo', phone: '', can_discount: false, can_void: false }); setDlg(true); };
+    const openEdit = (u) => { setEditing(u); setForm({ email: u.email, password: '', full_name: u.full_name, role: u.role, phone: u.phone || '', can_discount: !!u.can_discount, can_void: !!u.can_void }); setDlg(true); };
 
     const save = async () => {
         try {
             if (editing) {
-                const payload = { full_name: form.full_name, role: form.role, phone: form.phone };
+                const payload = { full_name: form.full_name, role: form.role, phone: form.phone, can_discount: form.can_discount, can_void: form.can_void };
                 if (form.password) payload.password = form.password;
                 await api.patch(`/users/${editing.id}`, payload);
                 toast.success('Actualizado');
@@ -90,6 +90,12 @@ export default function Usuarios() {
                             </Select>
                         </div>
                         <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /></div>
+                        {form.role !== 'admin' && (
+                            <div className="sm:col-span-2 space-y-2 text-sm">
+                                <label className="flex items-center gap-2"><Switch checked={form.can_discount} onCheckedChange={(v) => setForm({ ...form, can_discount: v })} /> Puede aplicar descuentos</label>
+                                <label className="flex items-center gap-2"><Switch checked={form.can_void} onCheckedChange={(v) => setForm({ ...form, can_void: v })} /> Puede anular cobros o devolver dinero</label>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>

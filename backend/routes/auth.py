@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from database import db
-from auth import verify_password, create_token, get_current_user
+from auth import verify_password, create_token, get_current_user, apply_permissions
 from models import LoginInput, TokenOut
 
 router = APIRouter()
@@ -17,7 +17,7 @@ async def login(data: LoginInput):
         raise HTTPException(status_code=403, detail="Usuario inactivo")
 
     token = create_token(user["id"], user["role"], user["restaurant_id"])
-    user_public = {k: v for k, v in user.items() if k != "password_hash"}
+    user_public = apply_permissions({k: v for k, v in user.items() if k != "password_hash"})
     return {"access_token": token, "token_type": "bearer", "user": user_public}
 
 
