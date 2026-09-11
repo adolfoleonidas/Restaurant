@@ -164,7 +164,8 @@ async def public_create_order(data: PublicOrderCreate):
             "unit_price": prod["price"],
             "subtotal": line,
             "notes": it.notes,
-            "status": "en_preparacion",
+            "status": "pendiente",
+            "added_at": _now(),
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })

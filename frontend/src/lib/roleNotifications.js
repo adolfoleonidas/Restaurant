@@ -19,11 +19,12 @@ export function buildRoleNotifications(role, orders = []) {
         const body = dishes(o) || who(o);
         const detailHref = role === 'cocina' ? '/cocina' : `/pedidos/${o.id}`;
 
-        if (['cocina', 'admin'].includes(role) && o.status === 'enviado_cocina') {
+        if (['cocina', 'admin'].includes(role) && (o.status === 'enviado_cocina' || (o.items || []).some((it) => (it.status || 'pendiente') === 'pendiente'))) {
+            const mesa = o.table_number || (o.table_id ? 'mesa' : null);
             items.push({
                 id: `pase-${o.id}`,
                 type: 'kitchen_new',
-                title: `Nuevo pase #${n}`,
+                title: mesa ? `Mesa ${mesa}` : `Pedido #${n}`,
                 body,
                 href: '/cocina',
                 at: o.sent_to_kitchen_at || o.created_at,

@@ -103,9 +103,16 @@ def test_adding_item_to_ready_order_returns_to_kitchen():
         timeout=10,
     )
     assert added.status_code == 200, added.text
-    assert added.json()["status"] == "enviado_cocina"
+    body = added.json()
+    assert body["status"] == "enviado_cocina"
+    statuses = {i["product_id"]: i["status"] for i in body["items"]}
+    assert statuses[simples[0]["id"]] == "listo"
+    assert statuses[simples[1]["id"]] == "pendiente"
     kitchen = requests.get(f"{BASE}/orders/kitchen", headers=cocina, timeout=10).json()
-    assert any(o["id"] == oid for o in kitchen)
+    ticket = next(o for o in kitchen if o["id"] == oid)
+    pending = [i for i in ticket["items"] if i["status"] == "pendiente"]
+    assert len(pending) == 1
+    assert pending[0]["product_id"] == simples[1]["id"]
     requests.post(
         f"{BASE}/orders/{oid}/status",
         headers=admin,

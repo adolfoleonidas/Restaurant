@@ -199,6 +199,10 @@ class OrderItemStatusUpdate(BaseModel):
     status: OrderItemStatus
 
 
+class KitchenBump(BaseModel):
+    from_status: Literal["pendiente", "en_preparacion"] = "pendiente"
+
+
 # ============== PAYMENT ==============
 PaymentMethod = Literal["efectivo", "yape", "plin", "tarjeta", "transferencia", "mixto"]
 

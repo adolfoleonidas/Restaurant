@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump
 from routes.products import combo_components_for
 from notify import emit_order
 
@@ -76,11 +76,25 @@ async def _compute_total(items: list, restaurant_id: str):
             "subtotal": line_subtotal,
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),
+            "added_at": it.get("added_at") or _now(),
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })
         subtotal += line_subtotal
     return enriched, subtotal
+
+
+def _derive_kitchen_status(items: list, current: str) -> str:
+    if current in ("pagado", "cancelado", "pendiente_pago"):
+        return current
+    work = [i for i in items if i.get("status") not in ("entregado", "cancelado")]
+    if not work:
+        return current
+    if all(i.get("status") == "listo" for i in work):
+        return "listo"
+    if any(i.get("status") == "en_preparacion" for i in work):
+        return "en_preparacion"
+    return "enviado_cocina"
 
 
 @router.get("")
@@ -108,11 +122,17 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     items = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
-            "status": {"$in": ["enviado_cocina", "en_preparacion", "listo"]}
+            "status": {"$nin": ["pagado", "cancelado", "pendiente_pago"]},
         },
         {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
     ).sort("created_at", 1).to_list(500)
-    return items
+    board = []
+    for o in items:
+        if o.get("status") == "entregado":
+            continue
+        if any(i.get("status") in ("pendiente", "en_preparacion", "listo", None) for i in (o.get("items") or [])):
+            board.append(o)
+    return board
 
 
 @router.get("/{order_id}")
@@ -189,18 +209,16 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
     new_items = [it.model_dump() for it in items]
     enriched_new, _ = await _compute_total(new_items, user["restaurant_id"])
-    kitchen_open = o["status"] in ("enviado_cocina", "en_preparacion", "listo", "entregado")
     for it in enriched_new:
-        it["status"] = "en_preparacion" if kitchen_open else it.get("status", "pendiente")
+        it["status"] = "pendiente"
+        it["added_at"] = _now()
     combined = (o.get("items") or []) + enriched_new
     subtotal = sum(i["subtotal"] for i in combined)
     total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
-    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
-    new_status = o["status"]
-    if o["status"] in ("listo", "entregado"):
-        patch["status"] = "enviado_cocina"
-        patch["sent_to_kitchen_at"] = _now()
+    new_status = _derive_kitchen_status(combined, o["status"])
+    if o["status"] == "entregado":
         new_status = "enviado_cocina"
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now(), "status": new_status}
     await db.orders.update_one({"id": order_id}, {"$set": patch})
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -263,13 +281,68 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
         raise HTTPException(status_code=400, detail="Solo pedidos nuevos pueden enviarse a cocina")
     items = o["items"]
     for it in items:
-        it["status"] = "en_preparacion"
+        it["status"] = "pendiente"
+        it.setdefault("added_at", _now())
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {"status": "enviado_cocina", "sent_to_kitchen_at": _now(), "items": items, "updated_at": _now()}}
     )
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
     emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@router.post("/{order_id}/bump")
+async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(require_roles(["admin", "cocina"]))):
+    from_status = data.from_status
+    o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    to_status = "en_preparacion" if from_status == "pendiente" else "listo"
+    items = o.get("items") or []
+    moved = 0
+    for it in items:
+        st = it.get("status") or "pendiente"
+        if st == from_status or (from_status == "pendiente" and st in ("pendiente", None, "nuevo")):
+            it["status"] = to_status
+            if to_status == "listo":
+                it["ready_at"] = _now()
+            moved += 1
+    if moved == 0:
+        raise HTTPException(status_code=400, detail="Nada para avanzar")
+    new_status = _derive_kitchen_status(items, o["status"])
+    patch = {"items": items, "status": new_status, "updated_at": _now()}
+    if new_status == "listo":
+        patch["ready_at"] = _now()
+    await db.orders.update_one({"id": order_id}, {"$set": patch})
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="bump")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@router.post("/{order_id}/items/{item_id}/status")
+async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, user: dict = Depends(require_roles(["admin", "cocina"]))):
+    if data.status not in ("en_preparacion", "listo"):
+        raise HTTPException(status_code=400, detail="Estado de ítem no permitido")
+    o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    found = False
+    items = o.get("items") or []
+    for it in items:
+        if it["id"] == item_id:
+            it["status"] = data.status
+            if data.status == "listo":
+                it["ready_at"] = _now()
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    new_status = _derive_kitchen_status(items, o["status"])
+    patch = {"items": items, "status": new_status, "updated_at": _now()}
+    if new_status == "listo":
+        patch["ready_at"] = _now()
+    await db.orders.update_one({"id": order_id}, {"$set": patch})
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_bump")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -314,10 +387,11 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
     update = {"status": new_status, "updated_at": _now()}
     if new_status == "listo":
         update["ready_at"] = _now()
-        # Update items status
         items = o.get("items") or []
         for it in items:
-            it["status"] = "listo"
+            if it.get("status") not in ("entregado", "cancelado"):
+                it["status"] = "listo"
+                it["ready_at"] = _now()
         update["items"] = items
     if new_status == "en_preparacion":
         items = o.get("items") or []
@@ -331,6 +405,12 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
                 {"id": o["table_id"]},
                 {"$set": {"status": "disponible", "updated_at": _now()}}
             )
+    if new_status == "entregado":
+        items = o.get("items") or []
+        for it in items:
+            if it.get("status") == "listo":
+                it["status"] = "entregado"
+        update["items"] = items
     if new_status == "pendiente_pago" and o.get("table_id"):
         await db.tables.update_one(
             {"id": o["table_id"]},
