@@ -435,9 +435,15 @@ function PaymentHistory({ refreshKey }) {
             return;
         }
         try {
-            const { data } = await api.post(`/payments/${detail.id}/void`, { kind: voidKind, reason: voidReason.trim() });
-            toast.success(voidKind === 'refund' ? 'Devolución registrada. El cobro sigue en el historial.' : 'Anulación registrada. El cobro no se eliminó.');
-            setDetail(data);
+            if (canVoid) {
+                const { data } = await api.post(`/payments/${detail.id}/void`, { kind: voidKind, reason: voidReason.trim() });
+                toast.success(voidKind === 'refund' ? 'Devolución registrada. El cobro sigue en el historial.' : 'Anulación registrada. El cobro no se eliminó.');
+                setDetail(data);
+            } else {
+                await api.post('/approvals', { kind: voidKind, reason: voidReason.trim(), payment_id: detail.id });
+                toast.success('Solicitud enviada al encargado. No cobres de nuevo mientras tanto.');
+                setDetail(null);
+            }
             setVoidKind(null);
             setVoidReason('');
             setReload((n) => n + 1);
@@ -510,10 +516,10 @@ function PaymentHistory({ refreshKey }) {
                                         ))}
                                     </div>
                                 )}
-                                {canVoid && detail.status === 'completed' && !voidKind && (
+                                {detail.status === 'completed' && !voidKind && (
                                     <div className="flex gap-2 pt-2">
-                                        <Button variant="outline" className="flex-1" onClick={() => setVoidKind('void')} data-testid="caja-anular">Anular cobro</Button>
-                                        <Button variant="outline" className="flex-1" onClick={() => setVoidKind('refund')} data-testid="caja-devolver">Devolver dinero</Button>
+                                        <Button variant="outline" className="flex-1" onClick={() => setVoidKind('void')} data-testid="caja-anular">{canVoid ? 'Anular cobro' : 'Solicitar anulación'}</Button>
+                                        <Button variant="outline" className="flex-1" onClick={() => setVoidKind('refund')} data-testid="caja-devolver">{canVoid ? 'Devolver dinero' : 'Solicitar devolución'}</Button>
                                     </div>
                                 )}
                                 {voidKind && (

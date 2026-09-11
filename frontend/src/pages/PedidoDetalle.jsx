@@ -27,6 +27,11 @@ export default function PedidoDetalle() {
     const { data: categories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
     const { data: products } = usePolling(() => api.get('/products').then((r) => r.data), 60000);
     const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+    const { data: staff } = usePolling(
+        () => (user?.role === 'admin' ? api.get('/users').then((r) => r.data) : Promise.resolve([])),
+        60000,
+        [user?.role]
+    );
 
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
@@ -75,6 +80,14 @@ export default function PedidoDetalle() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
+    const reassign = async (waiterId) => {
+        try {
+            await api.post(`/orders/${order.id}/reassign`, { waiter_id: waiterId });
+            toast.success('Mozo reasignado. Cocina no se reinicia.');
+            await refetch();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo reasignar'); }
+    };
+
     const doCancel = async () => {
         if (!cancelReason.trim()) { toast.error('Indica el motivo'); return; }
         try {
@@ -107,8 +120,25 @@ export default function PedidoDetalle() {
                     <h1 className="font-display italic text-3xl font-semibold">
                         {table ? `Mesa ${table.number}` : `Pedido #${order.order_number}`}
                     </h1>
+                    <p className="text-sm text-muted-foreground">Atiende: {order.created_by_name || '—'}</p>
                 </div>
             </div>
+            {user.role === 'admin' && !locked && (
+                <div className="flex items-center gap-2 text-sm">
+                    <span>Reasignar mozo</span>
+                    <select
+                        className="h-10 rounded-sm border border-border bg-background px-2"
+                        value={order.created_by || ''}
+                        onChange={(e) => e.target.value && reassign(e.target.value)}
+                        data-testid="pedido-reasignar"
+                    >
+                        {(staff || []).filter((u) => ['mozo', 'admin'].includes(u.role)).map((u) => (
+                            <option key={u.id} value={u.id}>{u.full_name}</option>
+                        ))}
+                    </select>
+                    <span className="text-xs text-muted-foreground">Cocina no se reinicia</span>
+                </div>
+            )}
 
             {pending.length > 0 && (
                 <Card>
@@ -116,7 +146,7 @@ export default function PedidoDetalle() {
                         <div className="page-kicker">Pendientes</div>
                         {pending.map((it) => (
                             <div key={it.id} className="flex justify-between gap-3 text-sm">
-                                <span>{it.quantity}× {it.product_name}</span>
+                                <span>{it.quantity}× {it.product_name} · {it.status === 'en_preparacion' ? 'en preparación' : 'pendiente'}</span>
                                 <span className="font-mono tabular-nums">{fmtMoney(it.subtotal)}</span>
                             </div>
                         ))}

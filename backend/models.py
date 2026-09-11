@@ -242,6 +242,27 @@ class PaymentVoid(BaseModel):
     kind: Literal["void", "refund"] = "void"
 
 
+class ProductAvailability(BaseModel):
+    is_available: bool
+
+
+class ApprovalCreate(BaseModel):
+    kind: Literal["void", "refund", "discount"] = "void"
+    reason: str = Field(min_length=5)
+    payment_id: Optional[str] = None
+    order_id: Optional[str] = None
+    amount: Optional[float] = None
+
+
+class ApprovalDecide(BaseModel):
+    action: Literal["approve", "reject"]
+    note: Optional[str] = None
+
+
+class OrderReassign(BaseModel):
+    waiter_id: str
+
+
 # ============== CASH REGISTER ==============
 class CashOpen(BaseModel):
     opening_amount: float

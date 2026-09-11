@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
 from routes.products import combo_components_for
 from notify import emit_order
 
@@ -77,6 +77,7 @@ async def _compute_total(items: list, restaurant_id: str):
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),
             "added_at": it.get("added_at") or _now(),
+            "prep_minutes": int(prod.get("preparation_time") or 15),
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })
@@ -305,6 +306,8 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
         st = it.get("status") or "pendiente"
         if st == from_status or (from_status == "pendiente" and st in ("pendiente", None, "nuevo")):
             it["status"] = to_status
+            if to_status == "en_preparacion":
+                it["started_at"] = it.get("started_at") or _now()
             if to_status == "listo":
                 it["ready_at"] = _now()
             moved += 1
@@ -331,6 +334,8 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
     for it in items:
         if it["id"] == item_id:
             it["status"] = data.status
+            if data.status == "en_preparacion":
+                it["started_at"] = it.get("started_at") or _now()
             if data.status == "listo":
                 it["ready_at"] = _now()
             found = True
@@ -343,6 +348,29 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
         patch["ready_at"] = _now()
     await db.orders.update_one({"id": order_id}, {"$set": patch})
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_bump")
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@router.post("/{order_id}/reassign")
+async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depends(require_roles(["admin"]))):
+    o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    waiter = await db.users.find_one(
+        {"id": data.waiter_id, "restaurant_id": user["restaurant_id"], "status": "active"},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not waiter:
+        raise HTTPException(status_code=404, detail="Mozo no encontrado")
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "created_by": waiter["id"],
+            "created_by_name": waiter["full_name"],
+            "updated_at": _now(),
+        }},
+    )
+    await _audit(user["restaurant_id"], user["id"], "reassign_waiter", "order", order_id, {"waiter_id": waiter["id"]})
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 

@@ -231,14 +231,11 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     return {k: v for k, v in payment.items() if k != "_id"}
 
 
-@router.post("/{payment_id}/void")
-async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(require_roles(["admin", "cajero"]))):
-    if not user.get("can_void"):
-        raise HTTPException(status_code=403, detail="No tenés permiso para anular o devolver un cobro")
-    reason = (data.reason or "").strip()
+async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str = "void"):
+    reason = (reason or "").strip()
     if len(reason) < 5:
         raise HTTPException(status_code=400, detail="La anulación requiere un motivo")
-    kind = data.kind if data.kind in ("void", "refund") else "void"
+    kind = kind if kind in ("void", "refund") else "void"
     pay = await db.payments.find_one({"id": payment_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     if not pay:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
@@ -308,5 +305,11 @@ async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(
         "details": {"order_id": pay["order_id"], "kind": kind, "reason": reason, "amount": pay.get("amount")},
         "created_at": _now(),
     })
-    updated = await db.payments.find_one({"id": payment_id}, {"_id": 0})
-    return updated
+    return await db.payments.find_one({"id": payment_id}, {"_id": 0})
+
+
+@router.post("/{payment_id}/void")
+async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    if not user.get("can_void"):
+        raise HTTPException(status_code=403, detail="No tenés permiso para anular o devolver un cobro")
+    return await apply_void_payment(payment_id, user, data.reason, data.kind)

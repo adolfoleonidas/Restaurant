@@ -21,6 +21,7 @@ import Usuarios from '@/pages/Usuarios';
 import Reportes from '@/pages/Reportes';
 import Configuracion from '@/pages/Configuracion';
 import Pagos from '@/pages/Pagos';
+import Disponibilidad from '@/pages/Disponibilidad';
 import Unauthorized from '@/pages/Unauthorized';
 import Landing from '@/pages/Landing';
 import Checkout from '@/pages/Checkout';
@@ -54,7 +55,8 @@ function App() {
                                 <Route path="/pedidos/:id" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><PedidoDetalle /></ProtectedRoute>} />
                                 <Route path="/cocina" element={<ProtectedRoute roles={['admin', 'cocina', 'mozo']}><Cocina /></ProtectedRoute>} />
                                 <Route path="/caja" element={<ProtectedRoute roles={['admin', 'cajero']}><Caja /></ProtectedRoute>} />
-                                <Route path="/reportes" element={<ProtectedRoute roles={['admin', 'cajero']}><Reportes /></ProtectedRoute>} />
+                                <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reportes /></ProtectedRoute>} />
+                                <Route path="/disponibilidad" element={<ProtectedRoute roles={['admin', 'cocina']}><Disponibilidad /></ProtectedRoute>} />
                                 <Route path="/productos" element={<ProtectedRoute roles={['admin']}><Productos /></ProtectedRoute>} />
                                 <Route path="/combos" element={<ProtectedRoute roles={['admin']}><Combos /></ProtectedRoute>} />
                                 <Route path="/categorias" element={<ProtectedRoute roles={['admin']}><Categorias /></ProtectedRoute>} />

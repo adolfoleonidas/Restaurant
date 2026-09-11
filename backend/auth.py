@@ -51,9 +51,14 @@ def apply_permissions(user: dict) -> dict:
     if out.get("role") == "admin":
         out["can_discount"] = True
         out["can_void"] = True
+        out["can_mark_sold_out"] = True
     else:
         out["can_discount"] = bool(out.get("can_discount"))
         out["can_void"] = bool(out.get("can_void"))
+        if out.get("role") == "cocina":
+            out["can_mark_sold_out"] = True if out.get("can_mark_sold_out") is None else bool(out.get("can_mark_sold_out"))
+        else:
+            out["can_mark_sold_out"] = bool(out.get("can_mark_sold_out"))
     return out
 
 

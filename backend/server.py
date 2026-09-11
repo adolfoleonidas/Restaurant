@@ -23,6 +23,7 @@ from routes import (
     public_router,
     payment_config_router,
     notifications_router,
+    approvals_router,
 )
 from seed import run_seed
 
@@ -57,6 +58,7 @@ api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 api_router.include_router(public_router, prefix="/public", tags=["public"])
 api_router.include_router(payment_config_router, prefix="/payment-config", tags=["payment-config"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
+api_router.include_router(approvals_router, prefix="/approvals", tags=["approvals"])
 
 app.include_router(api_router)
 

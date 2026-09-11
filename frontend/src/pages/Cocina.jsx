@@ -2,7 +2,9 @@ import React, { useMemo } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
+import { Link } from 'react-router-dom';
 import { fmtElapsed, elapsedMinutes, ORDER_TYPE_LABELS } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -148,9 +150,14 @@ export default function Cocina() {
 
     return (
         <div className="space-y-4" data-testid="cocina-root">
-            <div>
-                <p className="page-kicker mb-1">Pase</p>
-                <h1 className="font-display italic text-3xl font-semibold">Cocina</h1>
+            <div className="flex items-end justify-between gap-3">
+                <div>
+                    <p className="page-kicker mb-1">Pase</p>
+                    <h1 className="font-display italic text-3xl font-semibold">Cocina</h1>
+                </div>
+                <Button asChild variant="outline" className="h-10">
+                    <Link to="/disponibilidad">Agotar plato</Link>
+                </Button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_0.8fr] gap-3 md:gap-4">

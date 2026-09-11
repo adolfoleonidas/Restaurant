@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 import uuid
 from database import db
 from auth import get_current_user, require_roles
-from models import ProductCreate, ProductUpdate
+from models import ProductCreate, ProductUpdate, ProductAvailability
+from notify import emit_notice
 
 
 async def get_or_create_combos_category(restaurant_id: str):
@@ -113,6 +114,42 @@ async def create_product(data: ProductCreate, user: dict = Depends(require_roles
     }
     await db.products.insert_one(p)
     return {k: v for k, v in p.items() if k != "_id"}
+
+
+@router.post("/{product_id}/availability")
+async def set_availability(product_id: str, data: ProductAvailability, user: dict = Depends(get_current_user)):
+    if not (user.get("role") in ("admin", "cocina") or user.get("can_mark_sold_out")):
+        raise HTTPException(status_code=403, detail="No tenés permiso para marcar agotado")
+    prod = await db.products.find_one({"id": product_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    if not prod:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"is_available": data.is_available, "updated_at": _now()}},
+    )
+    pending = []
+    if not data.is_available:
+        orders = await db.orders.find(
+            {
+                "restaurant_id": user["restaurant_id"],
+                "status": {"$nin": ["pagado", "cancelado"]},
+                "items.product_id": product_id,
+            },
+            {"_id": 0, "id": 1, "order_number": 1, "table_id": 1, "status": 1, "items": 1},
+        ).to_list(200)
+        for o in orders:
+            qty = sum(int(it.get("quantity") or 0) for it in (o.get("items") or []) if it.get("product_id") == product_id and it.get("status") != "cancelado")
+            if qty:
+                pending.append({
+                    "id": o["id"],
+                    "order_number": o.get("order_number"),
+                    "table_id": o.get("table_id"),
+                    "status": o.get("status"),
+                    "quantity": qty,
+                })
+    emit_notice(user["restaurant_id"], "product", product_id=product_id, is_available=data.is_available)
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return {"product": updated, "pending_orders": pending}
 
 
 @router.patch("/{product_id}")

@@ -11,6 +11,7 @@ from .reports import router as reports_router
 from .public import router as public_router
 from .payment_config import router as payment_config_router
 from .notifications import router as notifications_router
+from .approvals import router as approvals_router
 
 __all__ = [
     "auth_router",
@@ -26,4 +27,5 @@ __all__ = [
     "public_router",
     "payment_config_router",
     "notifications_router",
+    "approvals_router",
 ]

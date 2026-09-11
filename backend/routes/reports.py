@@ -220,3 +220,110 @@ async def product_sales(
         "total_units": sum(p["quantity"] for p in products),
         "total_revenue": round(sum(p["revenue"] for p in products), 2),
     }
+
+
+def _elapsed_minutes(iso: str) -> float:
+    if not iso:
+        return 0.0
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
+    except Exception:
+        return 0.0
+
+
+@router.get("/today")
+async def today_board(user: dict = Depends(require_roles(["admin"]))):
+    rid = user["restaurant_id"]
+    tables = await db.tables.find({"restaurant_id": rid}, {"_id": 0}).to_list(200)
+    occupied = sum(1 for t in tables if t.get("status") in ("ocupada", "esperando_pago", "pagada"))
+    cash = await db.cash_registers.find_one({"restaurant_id": rid, "status": "open"}, {"_id": 0})
+    active = await db.orders.find(
+        {"restaurant_id": rid, "status": {"$nin": ["pagado", "cancelado"]}},
+        {"_id": 0},
+    ).to_list(500)
+    kitchen_orders = sum(1 for o in active if o.get("status") in ("enviado_cocina", "en_preparacion"))
+    bill_requests = sum(1 for o in active if o.get("status") == "pendiente_pago")
+    products = await db.products.find({"restaurant_id": rid}, {"_id": 0, "id": 1, "name": 1, "preparation_time": 1, "is_available": 1}).to_list(1000)
+    by_prod = {p["id"]: p for p in products}
+    table_by_id = {t["id"]: t for t in tables}
+
+    attention = []
+    delayed_by_order = {}
+    for order in active:
+        for item in order.get("items") or []:
+            if item.get("status") != "en_preparacion":
+                continue
+            prod = by_prod.get(item.get("product_id")) or {}
+            prep = int(prod.get("preparation_time") if prod.get("preparation_time") is not None else item.get("prep_minutes") or 15)
+            started = item.get("started_at") or item.get("added_at") or order.get("sent_to_kitchen_at") or order.get("created_at")
+            elapsed = _elapsed_minutes(started)
+            if elapsed < prep:
+                continue
+            bucket = delayed_by_order.setdefault(order["id"], {
+                "kind": "delay",
+                "order_id": order["id"],
+                "href": f"/pedidos/{order['id']}",
+                "table_number": (table_by_id.get(order.get("table_id") or "") or {}).get("number"),
+                "waiter_name": order.get("created_by_name"),
+                "items": [],
+                "elapsed_minutes": 0,
+                "prep_minutes": prep,
+            })
+            bucket["items"].append({
+                "name": item.get("product_name"),
+                "quantity": item.get("quantity"),
+                "elapsed_minutes": int(elapsed),
+                "prep_minutes": prep,
+                "status": item.get("status"),
+            })
+            bucket["elapsed_minutes"] = max(bucket["elapsed_minutes"], int(elapsed))
+            bucket["prep_minutes"] = prep
+    for card in delayed_by_order.values():
+        mesa = f"Mesa {card['table_number']}" if card.get("table_number") else f"Pedido #{card['order_id'][:6]}"
+        n = len(card["items"])
+        card["title"] = f"{mesa} — Preparación demorada"
+        names = ", ".join(f"{it['quantity']}× {it['name']}" for it in card["items"][:3])
+        card["body"] = f"{names} llevan {card['elapsed_minutes']} min. Referencia: {card['prep_minutes']} min. Mozo: {card.get('waiter_name') or '—'}"
+        attention.append(card)
+
+    pending_approvals = await db.approvals.find(
+        {"restaurant_id": rid, "status": "pending"},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    for ap in pending_approvals:
+        attention.append({
+            "kind": "approval",
+            "approval_id": ap["id"],
+            "href": f"/dashboard?approval={ap['id']}",
+            "title": f"Caja: una {('devolución' if ap.get('kind') == 'refund' else 'anulación')} requiere autorización",
+            "body": f"{ap.get('requested_by_name')}: {ap.get('reason')}",
+            "payload": ap,
+        })
+
+    for prod in products:
+        if prod.get("is_available", True):
+            continue
+        attention.append({
+            "kind": "sold_out",
+            "product_id": prod["id"],
+            "href": "/disponibilidad",
+            "title": f"{prod['name']}: agotado",
+            "body": "Carta de salón actualizada. Revisá pedidos pendientes de ese plato.",
+        })
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "attention": attention,
+        "summary": {
+            "occupied_tables": occupied,
+            "total_tables": len(tables),
+            "kitchen_orders": kitchen_orders,
+            "bill_requests": bill_requests,
+            "cash_open": bool(cash),
+            "cash_opened_by": (cash or {}).get("opened_by_name"),
+            "active_orders": len(active),
+        },
+    }

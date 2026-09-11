@@ -34,3 +34,9 @@ def emit_order(restaurant_id: str, order_id: str, status: str, **extra) -> None:
     }
     payload.update(extra)
     publish(payload)
+
+
+def emit_notice(restaurant_id: str, kind: str, **extra) -> None:
+    payload = {"type": kind, "restaurant_id": restaurant_id}
+    payload.update(extra)
+    publish(payload)
