@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fmtMoney } from '@/lib/format';
-import { Plus, Pencil, Trash2, Package, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 
 const emptyProduct = {
@@ -21,6 +21,194 @@ const emptyCombo = {
     image_url: '', is_available: true, is_combo: true, combo_items: [], category_id: '',
 };
 
+const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+const COLUMN_MAP = {
+    'nombre': 'name', 'name': 'name', 'plato': 'name', 'producto': 'name',
+    'categoria': 'category', 'categoría': 'category', 'category': 'category',
+    'precio': 'price', 'price': 'price', 'precio (s/)': 'price',
+    'descripcion': 'description', 'descripción': 'description', 'description': 'description',
+    'tiempo': 'preparation_time', 'tiempo (min)': 'preparation_time', 'time': 'preparation_time', 'prep': 'preparation_time',
+    'imagen': 'image_url', 'imagen url': 'image_url', 'image': 'image_url', 'image url': 'image_url', 'foto': 'image_url',
+    'codigo': 'code', 'código': 'code', 'code': 'code',
+};
+
+function splitDelimited(line, sep) {
+    const out = [];
+    let cur = '';
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+            if (ch === '"') {
+                if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false;
+            } else cur += ch;
+        } else if (ch === '"') inQ = true;
+        else if (ch === sep) { out.push(cur); cur = ''; }
+        else cur += ch;
+    }
+    out.push(cur);
+    return out;
+}
+
+function parseRows(text) {
+    const lines = (text || '').split(/\r?\n/).filter((l) => l.trim());
+    if (!lines.length) return { error: 'Pegá o subí datos con encabezados (nombre, categoría, precio…).' };
+    const first = lines[0].replace(/^\uFEFF/, '');
+    const seps = ['\t', ';', ','];
+    const counts = seps.map((s) => first.split(s).length - 1);
+    const sepIdx = counts.indexOf(Math.max(...counts));
+    if (Math.max(...counts) === 0) return { error: 'No se detectaron columnas. Separalas con tab, punto y coma o coma.' };
+    const sep = seps[sepIdx];
+    const header = splitDelimited(first, sep).map((h) => norm(h));
+    const fields = header.map((h) => COLUMN_MAP[h] || null);
+    if (!fields.includes('name') || !fields.includes('price')) {
+        return { error: 'Faltan columnas: necesitás al menos «nombre» y «precio». Descargá la plantilla de ejemplo.' };
+    }
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cells = splitDelimited(lines[i].replace(/^\uFEFF/, ''), sep);
+        const row = { name: '', category: '', price: '', description: '', preparation_time: '', image_url: '', code: '' };
+        fields.forEach((f, j) => { if (f) row[f] = (cells[j] || '').trim(); });
+        const okName = Boolean(row.name);
+        const priceNum = Number(String(row.price).replace(',', '.').replace(/[^0-9.\-]/g, ''));
+        const okPrice = row.price !== '' && !Number.isNaN(priceNum) && priceNum >= 0;
+        rows.push({
+            name: row.name, category: row.category || 'General', price: row.price,
+            description: row.description, preparation_time: row.preparation_time,
+            image_url: row.image_url, code: row.code,
+            ok: okName && okPrice,
+            error: !okName ? 'Falta nombre' : (!okPrice ? 'Precio inválido' : ''),
+        });
+    }
+    if (!rows.length) return { error: 'No hay filas de datos después del encabezado.' };
+    return { rows };
+}
+
+function downloadTemplate() {
+    const header = 'nombre;categoría;precio;descripción;tiempo;imagen;código';
+    const sample = [
+        'Causa Limeña;Entradas;18.00;Puré de papa amarilla con pollo;10;;CAU01',
+        'Ceviche Clásico;Platos principales;38.00;Pescado fresco, limón y ají;12;https://…;CEV01',
+    ];
+    const csv = '\uFEFF' + [header, ...sample].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'plantilla-platos.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function ImportarPlatos({ open, onOpenChange, onDone }) {
+    const [text, setText] = useState('');
+    const [busy, setBusy] = useState(false);
+    const parsed = useMemo(() => parseRows(text), [text]);
+    const validRows = useMemo(
+        () => ((parsed.rows || []).filter((r) => r.ok)).map((r) => ({
+            name: r.name, category: r.category, price: r.price,
+            description: r.description || null, preparation_time: r.preparation_time || null,
+            image_url: r.image_url || null, code: r.code || null,
+        })),
+        [parsed]
+    );
+
+    const onFile = (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => setText(String(reader.result || ''));
+        reader.readAsText(f, 'utf-8');
+    };
+
+    const importNow = async () => {
+        setBusy(true);
+        try {
+            const { data } = await api.post('/products/import', { items: validRows });
+            const skipped = data.skipped?.length || 0;
+            toast.success(
+                skipped > 0
+                    ? `${data.created.length} platos creados, ${skipped} omitidos`
+                    : `${data.created.length} platos creados`
+            );
+            if (data.categories_created?.length) {
+                toast.info(`Categorías nuevas: ${data.categories_created.join(', ')}`);
+            }
+            onOpenChange(false);
+            setText('');
+            onDone();
+        } catch (err) {
+            toast.error(err.response?.data?.detail || 'No se pudo importar');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Importar platos desde Excel</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm text-muted-foreground">
+                            Copiá las filas de tu Excel/Google Sheets y pegalas acá, o subí un archivo CSV.
+                        </p>
+                        <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+                            <Download className="h-4 w-4 mr-1" /> Plantilla
+                        </Button>
+                    </div>
+                    <Textarea
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        rows={8}
+                        placeholder={'nombre\tcategoría\tprecio\tdescripción\ttiempo\timagen\tcódigo\nCausa Limeña\tEntradas\t18.00\tPuré de papa\t10\t\tCAU01'}
+                        data-testid="import-text"
+                    />
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-xl py-3 cursor-pointer hover:bg-secondary/30 transition-colors text-sm">
+                        <Upload className="h-4 w-4" /> Subir archivo CSV
+                        <input type="file" accept=".csv,.txt,text/csv" className="hidden" onChange={onFile} data-testid="import-file" />
+                    </label>
+
+                    {parsed.error && <p className="text-sm text-destructive">{parsed.error}</p>}
+
+                    {parsed.rows && (
+                        <div className="border rounded-lg overflow-hidden">
+                            <div className="flex items-center justify-between px-3 py-2 bg-secondary/50 text-xs font-medium">
+                                <span className="flex items-center gap-1.5"><FileSpreadsheet className="h-3.5 w-3.5" /> {parsed.rows.length} filas detectadas</span>
+                                <span>{validRows.length} listas para importar</span>
+                            </div>
+                            <div className="max-h-52 overflow-y-auto divide-y">
+                                {parsed.rows.map((r, i) => (
+                                    <div key={i} className="flex items-center justify-between px-3 py-1.5 text-sm">
+                                        <span className="truncate">{r.name || '—'}<span className="text-muted-foreground"> · {r.category}</span></span>
+                                        {r.ok ? (
+                                            <span className="text-green-600 text-xs font-medium shrink-0 ml-2">✔ {r.price}</span>
+                                        ) : (
+                                            <span className="text-destructive text-xs shrink-0 ml-2">{r.error}</span>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                        Las categorías que no existan se crean solas. Si un plato ya existe por nombre, se omite.
+                    </p>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                    <Button onClick={importNow} disabled={busy || validRows.length === 0} data-testid="import-confirm">
+                        Importar {validRows.length > 0 ? `${validRows.length} plato${validRows.length === 1 ? '' : 's'}` : ''}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 export default function Productos({ section = 'platos' }) {
     const [tab, setTab] = useState(section);
     const [products, setProducts] = useState([]);
@@ -28,6 +216,7 @@ export default function Productos({ section = 'platos' }) {
     const [openDlg, setOpenDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(emptyProduct);
+    const [importOpen, setImportOpen] = useState(false);
 
     const load = async () => {
         const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
@@ -128,9 +317,16 @@ export default function Productos({ section = 'platos' }) {
                             : 'Platos sueltos de la carta.'}
                     </p>
                 </div>
-                <Button onClick={openNew} data-testid={tab === 'combos' ? 'combo-nuevo-button' : 'producto-nuevo-button'}>
-                    <Plus className="h-4 w-4 mr-2" /> {tab === 'combos' ? 'Nuevo combo' : 'Nuevo producto'}
-                </Button>
+                <div className="flex items-center gap-2">
+                    {tab === 'platos' && (
+                        <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="producto-importar-button">
+                            <Upload className="h-4 w-4 mr-2" /> Importar
+                        </Button>
+                    )}
+                    <Button onClick={openNew} data-testid={tab === 'combos' ? 'combo-nuevo-button' : 'producto-nuevo-button'}>
+                        <Plus className="h-4 w-4 mr-2" /> {tab === 'combos' ? 'Nuevo combo' : 'Nuevo producto'}
+                    </Button>
+                </div>
             </div>
 
             <div className="flex gap-2">
@@ -287,6 +483,8 @@ export default function Productos({ section = 'platos' }) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <ImportarPlatos open={importOpen} onOpenChange={setImportOpen} onDone={load} />
         </div>
     );
 }

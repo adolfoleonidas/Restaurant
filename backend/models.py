@@ -270,6 +270,20 @@ class ProductAvailability(BaseModel):
     is_available: bool
 
 
+class ProductImportRow(BaseModel):
+    name: str = ""
+    category: str = ""
+    price: str = ""
+    description: Optional[str] = None
+    preparation_time: Optional[str] = None
+    image_url: Optional[str] = None
+    code: Optional[str] = None
+
+
+class ProductsImport(BaseModel):
+    items: List[ProductImportRow]
+
+
 class ApprovalCreate(BaseModel):
     kind: Literal["void", "refund", "discount"] = "void"
     reason: str = Field(min_length=5)

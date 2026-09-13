@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
+import re
 import uuid
 from database import db
 from auth import get_current_user, require_roles
-from models import ProductCreate, ProductUpdate, ProductAvailability
+from models import ProductCreate, ProductUpdate, ProductAvailability, ProductsImport
 from notify import emit_notice
 
 
@@ -114,6 +115,98 @@ async def create_product(data: ProductCreate, user: dict = Depends(require_roles
     }
     await db.products.insert_one(p)
     return {k: v for k, v in p.items() if k != "_id"}
+
+
+@router.post("/import")
+async def import_products(data: ProductsImport, user: dict = Depends(require_roles(["admin"]))):
+    created = []
+    skipped = []
+    categories_created = []
+    restaurant_id = user["restaurant_id"]
+
+    for idx, row in enumerate(data.items):
+        row_num = idx + 1
+        name = (row.name or "").strip()
+        if not name:
+            skipped.append({"row": row_num, "name": "", "reason": "Nombre vacío"})
+            continue
+        price = _parse_price(row.price)
+        if price is None:
+            skipped.append({"row": row_num, "name": name, "reason": "Precio inválido"})
+            continue
+        category = (row.category or "").strip() or "General"
+        prep = _parse_int(row.preparation_time, 15, 1, 240)
+
+        dup = await db.products.find_one({
+            "restaurant_id": restaurant_id,
+            "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"},
+        })
+        if dup:
+            skipped.append({"row": row_num, "name": name, "reason": "Ya existe un producto con ese nombre"})
+            continue
+
+        cat = await db.categories.find_one({
+            "restaurant_id": restaurant_id,
+            "name": {"$regex": f"^{re.escape(category)}$", "$options": "i"},
+        })
+        if not cat:
+            cat = {
+                "id": str(uuid.uuid4()),
+                "restaurant_id": restaurant_id,
+                "name": category,
+                "description": None,
+                "sort_order": 0,
+                "status": "active",
+                "created_at": _now(),
+                "updated_at": _now(),
+            }
+            await db.categories.insert_one(cat)
+            categories_created.append(category)
+
+        p = {
+            "id": str(uuid.uuid4()),
+            "restaurant_id": restaurant_id,
+            "category_id": cat["id"],
+            "name": name,
+            "description": (row.description or "").strip() or None,
+            "price": price,
+            "image_url": (row.image_url or "").strip() or None,
+            "is_available": True,
+            "preparation_time": prep,
+            "is_combo": False,
+            "combo_items": [],
+            "code": (row.code or "").strip() or None,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        await db.products.insert_one(p)
+        created.append({"id": p["id"], "name": name, "category": category, "price": price})
+
+    return {"created": created, "skipped": skipped, "categories_created": categories_created}
+
+
+def _parse_price(raw):
+    s = str(raw or "").strip()
+    s = re.sub(r"[^\d,.\-]", "", s)
+    if not s or s in (".", ",", "-"):
+        return None
+    s = s.replace(",", ".")
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    return v if v >= 0 else None
+
+
+def _parse_int(raw, default, low, high):
+    s = str(raw or "").strip()
+    if not s:
+        return default
+    try:
+        v = int(float(s))
+    except ValueError:
+        return default
+    return max(low, min(high, v))
 
 
 @router.post("/{product_id}/availability")
