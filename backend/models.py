@@ -68,6 +68,7 @@ class RestaurantUpdate(BaseModel):
     social_instagram: Optional[str] = None
     social_whatsapp: Optional[str] = None
     prep_mode: Optional[Literal["simple", "detailed"]] = None
+    auto_release_table: Optional[bool] = None
 
 
 # ============== PAYMENT CONFIG ==============

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Settings, Save, Grid2X2, Plus, Pencil, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 function Restaurante() {
@@ -36,6 +37,13 @@ function Restaurante() {
                     </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con servido. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
+            </div>
+            <div className="md:col-span-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Switch checked={!!r.auto_release_table} onCheckedChange={(v) => setR({ ...r, auto_release_table: v })} data-testid="config-auto-release" />
+                    Liberar mesa automáticamente al cobrar
+                </label>
+                <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
             </div>
             <div className="md:col-span-2 flex justify-end"><Button onClick={save} data-testid="config-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button></div>
         </CardContent></Card>

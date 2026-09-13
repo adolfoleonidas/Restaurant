@@ -209,9 +209,11 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if fully_paid:
         emit_order(user["restaurant_id"], data.order_id, "pagado", source=order.get("source"))
         if order.get("table_id"):
+            r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
+            new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
             await db.tables.update_one(
                 {"id": order["table_id"]},
-                {"$set": {"status": "pagada", "updated_at": _now()}},
+                {"$set": {"status": new_status, "updated_at": _now()}},
             )
 
     await db.audit_logs.insert_one({
