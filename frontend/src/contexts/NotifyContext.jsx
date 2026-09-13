@@ -6,11 +6,12 @@ const NotifyContext = createContext({ generation: 0, lastEvent: null });
 
 export function NotifyProvider({ children }) {
     const { user } = useAuth();
+    const uid = user?.id;
     const [generation, setGeneration] = useState(0);
     const [lastEvent, setLastEvent] = useState(null);
 
     useEffect(() => {
-        if (!user) return undefined;
+        if (!uid) return undefined;
         const token = localStorage.getItem('token');
         if (!token) return undefined;
 
@@ -59,7 +60,7 @@ export function NotifyProvider({ children }) {
             stopped = true;
             ctrl.abort();
         };
-    }, [user?.id]);
+    }, [uid]);
 
     return (
         <NotifyContext.Provider value={{ generation, lastEvent }}>
