@@ -43,11 +43,10 @@ export default function PedidoDetalle() {
 
     const filteredProducts = useMemo(() => {
         return (products || []).filter((p) => {
-            if (!p.is_available) return false;
             if (categoryId !== 'all' && p.category_id !== categoryId) return false;
             if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
             return true;
-        });
+        }).sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1)));
     }, [products, search, categoryId]);
 
     if (!order) return <div className="text-muted-foreground">Cargando pedido…</div>;
@@ -201,10 +200,17 @@ export default function PedidoDetalle() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {filteredProducts.map((p) => (
-                            <button key={p.id} type="button" onClick={() => addItem(p)} className="text-left border rounded-xl p-4 h-16 flex items-center justify-between" data-testid={`agregar-producto-${p.id}`}>
-                                <span className="font-medium truncate pr-2">{p.name}</span>
-                                <span className="flex items-center gap-2 shrink-0 font-mono text-sm">{fmtMoney(p.price)} <Plus className="h-4 w-4 text-primary" /></span>
-                            </button>
+                            p.is_available ? (
+                                <button key={p.id} type="button" onClick={() => addItem(p)} className="text-left border rounded-xl p-4 h-16 flex items-center justify-between" data-testid={`agregar-producto-${p.id}`}>
+                                    <span className="font-medium truncate pr-2">{p.name}</span>
+                                    <span className="flex items-center gap-2 shrink-0 font-mono text-sm">{fmtMoney(p.price)} <Plus className="h-4 w-4 text-primary" /></span>
+                                </button>
+                            ) : (
+                                <div key={p.id} className="text-left border rounded-xl p-4 h-16 flex items-center justify-between opacity-50" data-testid={`agregar-producto-${p.id}`}>
+                                    <span className="font-medium truncate pr-2">{p.name}</span>
+                                    <span className="shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                                </div>
+                            )
                         ))}
                     </div>
                 </>

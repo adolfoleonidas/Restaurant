@@ -1,40 +1,42 @@
 import React, { useMemo, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney } from '@/lib/format';
-import { Users, Plus, Search, Grid2X2 } from 'lucide-react';
+import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS } from '@/lib/format';
+import { Search, Grid2X2, Plus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { toast } from 'sonner';
 
-const STATE_BAR = {
-    libre: 'bg-[hsl(90,40%,38%)]',
-    sentados: 'bg-[hsl(28,45%,42%)]',
-    preparando: 'bg-[hsl(38,72%,42%)]',
-    listo: 'bg-[hsl(72,50%,38%)]',
-    cuenta: 'bg-accent',
-    entregado: 'bg-[hsl(200,30%,40%)]',
-    pagada: 'bg-[hsl(90,25%,32%)]',
-    reservada: 'bg-[hsl(16,40%,40%)]',
-    inactiva: 'bg-muted',
+const FLOOR_STYLE = {
+    libre: { label: 'Libre', bg: '#E7F6EE', fg: '#0F5132', border: '#BFE7D0', dot: '#22C55E' },
+    sentados: { label: 'Ocupada', bg: '#FDE3E3', fg: '#8C1D1D', border: '#F5B5B5', dot: '#EF4444' },
+    preparando: { label: 'Preparando', bg: '#FFF6DB', fg: '#6B4E00', border: '#F3E2A6', dot: '#F59E0B' },
+    listo: { label: 'Listo', bg: '#E0EEFF', fg: '#0B3A66', border: '#A9CFF5', dot: '#3B82F6' },
+    cuenta: { label: 'Cuenta', bg: '#FFE0CC', fg: '#8C3A12', border: '#F5B488', dot: '#E07A5F' },
+    entregado: { label: 'Entregado', bg: '#EAF6F5', fg: '#0F4F49', border: '#BFE5E0', dot: '#14B8A6' },
+    pagada: { label: 'Cuenta pagada', bg: '#F2F2F2', fg: '#3F3F46', border: '#D4D4D8', dot: '#71717A' },
+    reservada: { label: 'Reservada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
+    inactiva: { label: 'Inactiva', bg: '#EFEFEF', fg: '#71717A', border: '#D4D4D8', dot: '#A1A1AA' },
 };
+
+const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'reservada'];
 
 function floorState(t) {
     const o = t.active_order;
-    if (t.status === 'inactiva') return { key: 'inactiva', label: 'Inactiva' };
-    if (t.status === 'reservada' && !o) return { key: 'reservada', label: 'Reservada' };
-    if (t.status === 'pagada' && !o) return { key: 'pagada', label: 'Cuenta pagada' };
-    if (t.status === 'disponible' && !o) return { key: 'libre', label: 'Libre' };
-    if (o?.status === 'pendiente_pago' || t.status === 'esperando_pago') return { key: 'cuenta', label: 'Cuenta solicitada' };
-    if (o?.status === 'listo') return { key: 'listo', label: 'Listo para entregar' };
-    if (o?.status === 'entregado') return { key: 'entregado', label: 'Entregado' };
-    if (o && ['enviado_cocina', 'en_preparacion', 'nuevo'].includes(o.status)) return { key: 'preparando', label: 'Preparando' };
-    if (t.status === 'ocupada' && !o) return { key: 'sentados', label: 'En mesa' };
-    return { key: 'sentados', label: 'Ocupada' };
+    if (t.status === 'inactiva') return { key: 'inactiva' };
+    if (t.status === 'reservada' && !o) return { key: 'reservada' };
+    if (t.status === 'pagada' && !o) return { key: 'pagada' };
+    if (t.status === 'disponible' && !o) return { key: 'libre' };
+    if (o?.status === 'pendiente_pago' || t.status === 'esperando_pago') return { key: 'cuenta' };
+    if (o?.status === 'listo') return { key: 'listo' };
+    if (o?.status === 'entregado') return { key: 'entregado' };
+    if (o && ['enviado_cocina', 'en_preparacion', 'nuevo'].includes(o.status)) return { key: 'preparando' };
+    if (t.status === 'ocupada' && !o) return { key: 'sentados' };
+    return { key: 'sentados' };
 }
 
 export default function Mesas() {
@@ -42,12 +44,12 @@ export default function Mesas() {
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
-    const [statusFilter, setStatusFilter] = useState('todos');
+    const [openTable, setOpenTable] = useState(null);
 
     const { generation } = useNotify();
     const { data: tables, refetch } = usePolling(
         () => api.get('/tables').then((r) => r.data),
-        12000,
+        8000,
         [generation]
     );
 
@@ -59,45 +61,68 @@ export default function Mesas() {
     const filtered = useMemo(() => {
         return (tables || []).filter((t) => {
             if (areaFilter !== 'todas' && t.area !== areaFilter) return false;
-            if (statusFilter !== 'todos' && t.status !== statusFilter) return false;
             if (search && !`${t.number} ${t.name}`.toLowerCase().includes(search.toLowerCase())) return false;
             return true;
         });
-    }, [tables, areaFilter, statusFilter, search]);
+    }, [tables, areaFilter, search]);
 
-    const openOrCreate = async (table) => {
-        if (table.active_order) {
-            navigate(`/pedidos/${table.active_order.id}`);
-            return;
-        }
-        if (table.status === 'pagada') {
-            if (!['admin', 'mozo'].includes(user.role)) return;
+    const canServe = ['admin', 'mozo', 'cocina'].includes(user.role);
+    const canTake = ['admin', 'mozo'].includes(user.role);
+
+    const openSheet = async (t) => {
+        setOpenTable({ table: t, order: null, loading: Boolean(t.active_order) });
+        if (t.active_order) {
             try {
-                await api.post(`/tables/${table.id}/release`);
-                toast.success(`Mesa ${table.number} libre`);
-                refetch();
-            } catch (e) {
-                toast.error(e.response?.data?.detail || 'No se pudo liberar');
+                const { data } = await api.get(`/orders/${t.active_order.id}`);
+                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+            } catch {
+                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
+        }
+    };
+
+    const closeSheet = () => setOpenTable(null);
+
+    const deliver = async (orderId) => {
+        try {
+            await api.post(`/orders/${orderId}/serve`);
+            toast.success('Pedido entregado');
+            closeSheet();
+            refetch();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo entregar');
+        }
+    };
+
+    const takeTable = async (t) => {
+        if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
+        if (t.status === 'ocupada') {
+            closeSheet();
+            navigate(`/pedidos/nuevo?mesa=${t.id}`);
             return;
         }
-        if (!['admin', 'mozo'].includes(user.role)) {
-            toast.info('Solo el mozo puede tomar la mesa');
-            return;
-        }
-        if (table.status === 'ocupada') {
-            navigate(`/pedidos/nuevo?mesa=${table.id}`);
-            return;
-        }
-        if (table.status !== 'disponible') {
+        if (t.status !== 'disponible') {
             toast.info('Esta mesa no está disponible');
             return;
         }
         try {
-            await api.post(`/tables/${table.id}/seat`);
-            navigate(`/pedidos/nuevo?mesa=${table.id}`);
+            await api.post(`/tables/${t.id}/seat`);
+            closeSheet();
+            navigate(`/pedidos/nuevo?mesa=${t.id}`);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo tomar la mesa');
+        }
+    };
+
+    const releaseTable = async (t) => {
+        if (!canTake) return;
+        try {
+            await api.post(`/tables/${t.id}/release`);
+            toast.success(`Mesa ${t.number} libre`);
+            closeSheet();
+            refetch();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo liberar');
         }
     };
 
@@ -107,25 +132,27 @@ export default function Mesas() {
                 <div>
                     <p className="page-kicker mb-1">Salón</p>
                     <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Grid2X2 className="h-6 w-6 text-primary" /> Mesas</h1>
-                    <p className="text-muted-foreground text-sm">Tocá una mesa libre para tomar el pedido. No se manda a cocina hasta que envíes.</p>
+                    <p className="text-muted-foreground text-sm">Tocá una mesa para ver el detalle y actuar.</p>
                 </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                    <div className="relative">
-                        <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                        <Input className="pl-9 h-10 w-48" placeholder="Buscar mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="mesas-search-input" />
-                    </div>
+                <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
+                    <Input className="pl-9 h-10 w-48" placeholder="Buscar mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="mesas-search-input" />
                 </div>
             </div>
 
             {/* Legend */}
-            <Card>
-                <CardContent className="p-3 flex flex-wrap gap-2 items-center">
-                    <span className="text-xs uppercase tracking-wide text-muted-foreground mr-2">Estados:</span>
-                    {['Libre', 'En mesa', 'Preparando', 'Listo para entregar', 'Cuenta solicitada'].map((s) => (
-                        <span key={s} className="text-xs px-2 py-1 rounded-sm border border-border">{s}</span>
-                    ))}
-                </CardContent>
-            </Card>
+            <div className="flex flex-wrap gap-2 items-center" data-testid="mesas-legend">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground mr-2">Estados:</span>
+                {LEGEND.map((k) => {
+                    const s = FLOOR_STYLE[k];
+                    return (
+                        <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
+                            <span className="h-2 w-2 rounded-full" style={{ background: s.dot }} />
+                            {s.label}
+                        </span>
+                    );
+                })}
+            </div>
 
             <div className="flex flex-wrap gap-2">
                 {areas.map((a) => (
@@ -141,52 +168,114 @@ export default function Mesas() {
             </div>
 
             {filtered.length === 0 ? (
-                <Card><CardContent className="py-16 text-center text-muted-foreground">No hay mesas con esos filtros.</CardContent></Card>
+                <div className="py-16 text-center text-muted-foreground border rounded-xl">No hay mesas con esos filtros.</div>
             ) : (
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                     {filtered.map((t) => {
                         const floor = floorState(t);
+                        const s = FLOOR_STYLE[floor.key];
                         return (
-                        <Card
-                            key={t.id}
-                            data-testid={`mesa-card-${t.number}`}
-                            onClick={() => openOrCreate(t)}
-                            className={`cursor-pointer overflow-hidden rounded-sm hover:border-primary/50 transition-colors active:scale-[0.99] ${floor.key === 'listo' ? 'ring-2 ring-primary' : ''}`}
-                        >
-                            <div className={`h-2 ${STATE_BAR[floor.key] || 'bg-muted'}`} />
-                            <CardContent className="p-4 flex flex-col gap-3 min-h-[148px]">
-                                <div>
-                                    <div className="font-display italic text-3xl font-bold leading-none">{t.number}</div>
-                                    <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
-                                        <Users className="h-3.5 w-3.5" /> {t.capacity} · {t.area}
-                                    </div>
+                            <button
+                                key={t.id}
+                                type="button"
+                                data-testid={`mesa-card-${t.number}`}
+                                onClick={() => openSheet(t)}
+                                className="cursor-pointer rounded-xl border-2 p-4 flex flex-col gap-2 text-left active:scale-[0.99] transition-transform"
+                                style={{ background: s.bg, borderColor: s.border }}
+                            >
+                                <div className="font-display italic text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
+                                    <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
                                 </div>
-                                <div className="text-sm font-semibold">{floor.label}</div>
-                                {t.active_order && (
-                                    <div className="text-xs space-y-1">
-                                        <div className="flex justify-between gap-2">
-                                            <span className="page-kicker">
-                                                {t.active_order.source === 'public' ? 'Carta web' : 'Salón'}
-                                            </span>
-                                            {t.active_order.total != null && (
-                                                <span className="font-mono font-semibold tabular-nums text-primary">{fmtMoney(t.active_order.total)}</span>
-                                            )}
-                                        </div>
-                                        <div className="text-muted-foreground truncate">
-                                            {t.active_order.item_count || 0} {(t.active_order.item_count || 0) === 1 ? 'plato' : 'platos'}
-                                            {t.active_order.customer_name ? ` · ${t.active_order.customer_name}` : ''}
-                                        </div>
-                                    </div>
+                                {t.active_order?.total != null && (
+                                    <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(t.active_order.total)}</div>
                                 )}
-                                <Button size="sm" className="mt-auto h-11 rounded-sm text-base" data-testid={`mesa-action-${t.number}`}>
-                                    {t.active_order ? (floor.key === 'listo' ? 'Entregar' : 'Ver pedido') : t.status === 'pagada' ? 'Liberar mesa' : t.status === 'disponible' ? <><Plus className="h-4 w-4 mr-1" /> Tomar mesa</> : t.status === 'ocupada' ? 'Tomar pedido' : 'Ver'}
-                                </Button>
-                            </CardContent>
-                        </Card>
+                            </button>
                         );
                     })}
                 </div>
             )}
+
+            <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
+                <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
+                    {openTable && (() => {
+                        const { table: t, order, loading } = openTable;
+                        const floor = floorState(t);
+                        const s = FLOOR_STYLE[floor.key];
+                        return (
+                            <>
+                                <div className="p-5 border-b" style={{ background: s.bg }}>
+                                    <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
+                                        <h2 className="font-display italic text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
+                                    </div>
+                                    <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
+                                        <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                                    {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
+                                    {order && (
+                                        <>
+                                            <div className="text-sm text-muted-foreground space-y-1">
+                                                <div>Pedido #{order.order_number} · {order.source === 'public' ? 'Carta web' : 'Salón'}</div>
+                                                {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
+                                                <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
+                                            </div>
+                                            <div className="border rounded-xl divide-y">
+                                                {(order.items || []).filter((i) => i.status !== 'cancelado').map((it) => (
+                                                    <div key={it.id} className="flex justify-between gap-2 py-2 px-3 text-sm">
+                                                        <span>{it.quantity}× {it.product_name}</span>
+                                                        <span className="font-mono tabular-nums shrink-0">{fmtMoney(it.subtotal)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="flex justify-between font-display text-lg font-bold">
+                                                <span>Total</span>
+                                                <span className="font-mono tabular-nums">{fmtMoney(order.total)}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                    {!t.active_order && (
+                                        <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>
+                                    )}
+                                </div>
+                                <div className="border-t p-4 space-y-2">
+                                    {t.active_order ? (
+                                        <>
+                                            {floor.key === 'listo' && canServe && (
+                                                <Button className="w-full h-12" onClick={() => deliver(t.active_order.id)} data-testid="mesa-sheet-entregar">Entregar</Button>
+                                            )}
+                                            <Button
+                                                variant={floor.key === 'listo' ? 'outline' : 'default'}
+                                                className="w-full h-12"
+                                                onClick={() => { closeSheet(); navigate(`/pedidos/${t.active_order.id}`); }}
+                                                data-testid="mesa-sheet-ver-pedido"
+                                            >
+                                                {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
+                                            </Button>
+                                        </>
+                                    ) : t.status === 'pagada' ? (
+                                        <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
+                                            Liberar mesa
+                                        </Button>
+                                    ) : t.status === 'disponible' ? (
+                                        <Button className="w-full h-12" onClick={() => takeTable(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
+                                            <Plus className="h-4 w-4 mr-1" /> Tomar mesa y pedir
+                                        </Button>
+                                    ) : t.status === 'ocupada' ? (
+                                        <Button className="w-full h-12" onClick={() => takeTable(t)} disabled={!canTake} data-testid="mesa-sheet-tomar-pedido">
+                                            Tomar pedido
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            </>
+                        );
+                    })()}
+                </SheetContent>
+            </Sheet>
         </div>
     );
 }

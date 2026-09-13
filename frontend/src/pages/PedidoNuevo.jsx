@@ -33,11 +33,10 @@ export default function PedidoNuevo() {
 
     const filteredProducts = useMemo(() => {
         return (products || []).filter((p) => {
-            if (!p.is_available) return false;
             if (categoryId !== 'all' && p.category_id !== categoryId) return false;
             if (search && !p.name.toLowerCase().includes(search.toLowerCase())) return false;
             return true;
-        });
+        }).sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1)));
     }, [products, search, categoryId]);
 
     const qtyOf = (productId) => cart.find((it) => it.product.id === productId)?.quantity || 0;
@@ -98,7 +97,7 @@ export default function PedidoNuevo() {
     };
 
     return (
-        <div className="space-y-4 pb-28" data-testid="pedido-nuevo-root">
+        <div className="space-y-4 pb-6" data-testid="pedido-nuevo-root">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" className="h-11 w-11" onClick={discard} data-testid="pedido-descartar-back">
@@ -159,16 +158,24 @@ export default function PedidoNuevo() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredProducts.map((p) => {
                     const q = qtyOf(p.id);
+                    const agotado = !p.is_available;
                     return (
-                        <Card key={p.id} data-testid={`producto-card-${p.id}`}>
+                        <Card key={p.id} data-testid={`producto-card-${p.id}`} className={agotado ? 'opacity-60' : ''}>
                             <CardContent className="p-4 flex flex-col gap-3">
                                 <div>
-                                    <div className="font-display italic text-lg font-semibold leading-tight">{p.name}</div>
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="font-display italic text-lg font-semibold leading-tight truncate">{p.name}</div>
+                                        {agotado && (
+                                            <span className="shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                                        )}
+                                    </div>
                                     {p.description && <div className="text-xs text-muted-foreground line-clamp-2 mt-1">{p.description}</div>}
                                 </div>
                                 <div className="flex items-center justify-between gap-3">
                                     <span className="font-mono font-bold tabular-nums text-primary">{fmtMoney(p.price)}</span>
-                                    {q === 0 ? (
+                                    {agotado ? (
+                                        <Button disabled variant="outline" className="h-11 rounded-full px-5" data-testid={`producto-add-${p.id}`}>Agotado</Button>
+                                    ) : q === 0 ? (
                                         <Button className="h-11 rounded-full px-5" onClick={() => addToCart(p)} data-testid={`producto-add-${p.id}`}>
                                             <Plus className="h-4 w-4" /> Agregar
                                         </Button>
@@ -188,11 +195,11 @@ export default function PedidoNuevo() {
 
             <Textarea placeholder="Observaciones (sin cebolla, término…)" value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} className="text-base" data-testid="pedido-notas" />
 
-            <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border md:static md:bg-transparent md:border-0 md:p-0">
+            <div className="sticky bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border mt-4">
                 <Button
                     onClick={submit}
                     disabled={loading || cart.length === 0 || !tableId}
-                    className="w-full h-14 rounded-full text-base"
+                    className="w-full h-14 rounded-full text-base md:max-w-2xl md:mx-auto"
                     data-testid="pedido-enviar-cocina"
                 >
                     {count} {count === 1 ? 'producto' : 'productos'} · {fmtMoney(subtotal)} · Enviar a cocina
