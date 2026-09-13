@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, MapPin, Phone, Clock } from 'lucide-react';
+import { Search, MapPin, Phone, Clock, Instagram, Facebook, MessageCircle } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import usePublicStream from '@/hooks/usePublicStream';
 
@@ -82,27 +82,14 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
-            <section className="relative overflow-hidden min-h-[70vh] flex items-end">
-                <div className="absolute inset-0">
-                    <img
-                        src={restaurant?.cover_url || "https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600"}
-                        alt=""
-                        className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/20" />
-                </div>
-                <div className="relative max-w-6xl mx-auto px-4 md:px-6 py-16 md:py-24 w-full">
-                    <p className="page-kicker text-primary mb-4">Cocina peruana de autor</p>
-                    <h1 className="font-display italic text-5xl md:text-7xl font-bold leading-[0.95] mb-5 max-w-3xl">
-                        {restaurant?.name || 'Sabor Peruano'}
-                    </h1>
-                    <p className="text-lg text-foreground/80 mb-6 max-w-xl leading-relaxed">{restaurant?.public_description}</p>
-                    <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted-foreground">
-                        {restaurant?.opening_hours && <div className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />{restaurant.opening_hours}</div>}
-                        {restaurant?.address && <div className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" />{restaurant.address}</div>}
-                        {restaurant?.phone && <div className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-primary" />{restaurant.phone}</div>}
+            <section className="border-b border-border bg-background">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 flex items-end justify-between gap-4 flex-wrap">
+                    <div>
+                        <h1 className="font-display italic text-3xl md:text-5xl font-bold leading-tight">
+                            {restaurant?.name || 'Sabor Peruano'}
+                        </h1>
                     </div>
-                    <Button onClick={() => firstTarget && scrollToCat(firstTarget)} disabled={!firstTarget} className="mt-8 h-12 px-8 rounded-sm text-base" data-testid="hero-ver-menu">
+                    <Button onClick={() => firstTarget && scrollToCat(firstTarget)} disabled={!firstTarget} className="h-11 px-7 rounded-sm" data-testid="hero-ver-menu">
                         Ver la carta
                     </Button>
                 </div>
@@ -178,6 +165,50 @@ export default function Landing() {
                     </div>
                 ))}
             </section>
+
+            <footer className="mt-12 border-t border-border bg-card/60" data-testid="landing-footer">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-10 grid gap-8 md:grid-cols-3">
+                    <div>
+                        <h3 className="font-display italic text-2xl font-bold mb-2">{restaurant?.name || 'Sabor Peruano'}</h3>
+                        {restaurant?.public_description && (
+                            <p className="text-sm text-muted-foreground max-w-md">{restaurant.public_description}</p>
+                        )}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                        <h4 className="page-kicker mb-2">Horario</h4>
+                        {restaurant?.opening_hours && (
+                            <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-primary shrink-0" />{restaurant.opening_hours}</div>
+                        )}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                        <h4 className="page-kicker mb-2">Encontranos</h4>
+                        {restaurant?.address && (
+                            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-primary shrink-0" />{restaurant.address}</div>
+                        )}
+                        {restaurant?.phone && (
+                            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-primary shrink-0" />{restaurant.phone}</div>
+                        )}
+                        {restaurant?.social_instagram && (
+                            <div className="flex items-center gap-2">
+                                <Instagram className="h-4 w-4 text-primary shrink-0" />
+                                <a href={`https://instagram.com/${restaurant.social_instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">{restaurant.social_instagram}</a>
+                            </div>
+                        )}
+                        {restaurant?.social_facebook && (
+                            <div className="flex items-center gap-2">
+                                <Facebook className="h-4 w-4 text-primary shrink-0" />
+                                <a href={restaurant.social_facebook.startsWith('http') ? restaurant.social_facebook : `https://facebook.com/${restaurant.social_facebook.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">Facebook</a>
+                            </div>
+                        )}
+                        {restaurant?.social_whatsapp && (
+                            <div className="flex items-center gap-2">
+                                <MessageCircle className="h-4 w-4 text-primary shrink-0" />
+                                <a href={`https://wa.me/${restaurant.social_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 }
