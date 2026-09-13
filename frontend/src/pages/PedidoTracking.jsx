@@ -5,7 +5,7 @@ import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
-import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone } from 'lucide-react';
+import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 
 const STATUS_STEPS = [
@@ -13,6 +13,22 @@ const STATUS_STEPS = [
     { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
     { key: 'listo', label: 'Listo', icon: Bell },
     { key: 'entregado', label: 'Entregado / En camino', icon: Truck },
+    { key: 'pagado', label: 'Completado', icon: CheckCircle2 },
+];
+
+const LOCAL_STEPS = [
+    { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
+    { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
+    { key: 'listo', label: 'Listo', icon: Bell },
+    { key: 'servido', label: 'Servido', icon: Utensils },
+    { key: 'pagado', label: 'Pagado', icon: CheckCircle2 },
+];
+
+const RECOJO_STEPS = [
+    { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
+    { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
+    { key: 'listo', label: 'Listo', icon: Bell },
+    { key: 'entregado', label: 'Recogido', icon: ShoppingBag },
     { key: 'pagado', label: 'Completado', icon: CheckCircle2 },
 ];
 
@@ -54,6 +70,7 @@ export default function PedidoTracking() {
 
     const idx = statusIndex(order.status);
     const cancelled = order.status === 'cancelado';
+    const steps = order.order_type === 'local' ? LOCAL_STEPS : (order.order_type === 'recojo' ? RECOJO_STEPS : STATUS_STEPS);
 
     const onFile = (e) => {
         const f = e.target.files?.[0]; if (!f) return;
@@ -93,7 +110,7 @@ export default function PedidoTracking() {
                         <div className="relative">
                             <div className="absolute left-7 top-7 bottom-7 w-0.5 bg-border" />
                             <div className="space-y-5">
-                                {STATUS_STEPS.map((step, i) => {
+                                {steps.map((step, i) => {
                                     const Icon = step.icon;
                                     const done = i <= idx;
                                     const current = i === idx;
@@ -104,7 +121,7 @@ export default function PedidoTracking() {
                                             </div>
                                             <div className="pt-3.5">
                                                 <div className={`font-semibold ${done ? '' : 'text-muted-foreground'}`}>{step.label}</div>
-                                                {current && <div className="text-xs text-primary mt-0.5">En curso</div>}
+                                                {current && <div className="text-xs text-primary mt-0.5">{order.status === 'pendiente_pago' ? 'Esperando tu pago' : 'En curso'}</div>}
                                             </div>
                                         </div>
                                     );

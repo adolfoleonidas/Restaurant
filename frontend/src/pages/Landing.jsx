@@ -58,6 +58,8 @@ export default function Landing() {
         return Object.values(map).filter((g) => g.items.length > 0);
     }, [products, categories, q]);
 
+    const firstTarget = combos.length > 0 ? 'combos' : (grouped.length > 0 ? grouped[0].category.id : null);
+
     const scrollToCat = (id) => {
         const el = sectionRefs.current[id];
         if (el) {
@@ -89,7 +91,7 @@ export default function Landing() {
                         {restaurant?.address && <div className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" />{restaurant.address}</div>}
                         {restaurant?.phone && <div className="flex items-center gap-1.5"><Phone className="h-4 w-4 text-primary" />{restaurant.phone}</div>}
                     </div>
-                    <Button onClick={() => scrollToCat(categories[0]?.id)} className="mt-8 h-12 px-8 rounded-sm text-base" data-testid="hero-ver-menu">
+                    <Button onClick={() => firstTarget && scrollToCat(firstTarget)} disabled={!firstTarget} className="mt-8 h-12 px-8 rounded-sm text-base" data-testid="hero-ver-menu">
                         Ver la carta
                     </Button>
                 </div>
@@ -127,7 +129,7 @@ export default function Landing() {
                     <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
                 )}
                 {combos.length > 0 && (
-                    <div ref={(el) => (sectionRefs.current.combos = el)} data-testid="landing-section-combos">
+                    <div ref={(el) => { sectionRefs.current.combos = el; }} data-testid="landing-section-combos">
                         <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
                             <div>
                                 <h2 className="font-display italic text-3xl md:text-4xl font-bold">Combos</h2>
@@ -149,7 +151,7 @@ export default function Landing() {
                     </div>
                 )}
                 {grouped.map((g) => (
-                    <div key={g.category.id} ref={(el) => (sectionRefs.current[g.category.id] = el)} data-testid={`landing-section-${g.category.id}`}>
+                    <div key={g.category.id} ref={(el) => { sectionRefs.current[g.category.id] = el; }} data-testid={`landing-section-${g.category.id}`}>
                         <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
                             <div>
                                 <h2 className="font-display italic text-3xl md:text-4xl font-bold">{g.category.name}</h2>
