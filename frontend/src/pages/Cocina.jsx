@@ -48,9 +48,14 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                 <div className="flex items-start justify-between gap-2">
                     <div>
                         <div className="font-display italic text-3xl font-bold leading-none">{place}</div>
-                        <div className="text-[11px] text-muted-foreground mt-1">
+                        <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                             #{order.order_number}
                             {order.source === 'public' ? ' · carta web' : ''}
+                            {order.order_type && order.order_type !== 'mesa' && (
+                                <span className="ml-1 shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5" data-testid={`cocina-tipo-${order.order_number}`}>
+                                    {ORDER_TYPE_LABELS[order.order_type] || order.order_type}
+                                </span>
+                            )}
                             {added ? ' · agregado' : ''}
                         </div>
                     </div>

@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { StateBadge } from '@/components/StateBadge';
-import { fmtMoney, fmtElapsed, fmtTime } from '@/lib/format';
+import { fmtMoney, fmtElapsed, fmtTime, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Plus, Receipt } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
@@ -67,7 +67,8 @@ export default function Pedidos() {
                                 <StateBadge status={o.status} type="order" />
                             </div>
                             <div className="mt-3 text-sm">
-                                <div className="text-muted-foreground">Mozo: <span className="text-foreground">{o.created_by_name}</span></div>
+                                <div className="text-muted-foreground">Tipo: <span className="text-foreground">{ORDER_TYPE_LABELS[o.order_type] || o.order_type}</span></div>
+                                <div className="text-muted-foreground">Mozo: <span className="text-foreground">{o.created_by_name || (o.source === 'public' ? 'Cliente web' : '—')}</span></div>
                                 <div className="text-muted-foreground">Items: <span className="text-foreground">{(o.items || []).length}</span></div>
                             </div>
                             <div className="mt-3 flex items-center justify-between">
