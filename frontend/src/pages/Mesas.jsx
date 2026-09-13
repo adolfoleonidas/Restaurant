@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
 import { Search, Grid2X2, Plus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -70,7 +70,7 @@ export default function Mesas() {
     const canTake = ['admin', 'mozo'].includes(user.role);
 
     const openSheet = async (t) => {
-        setOpenTable({ table: t, order: null, loading: Boolean(t.active_order) });
+        setOpenTable({ table: t, order: null, history: null, loading: Boolean(t.active_order) });
         if (t.active_order) {
             try {
                 const { data } = await api.get(`/orders/${t.active_order.id}`);
@@ -79,6 +79,11 @@ export default function Mesas() {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
         }
+        try {
+            const { data } = await api.get('/orders', { params: { table_id: t.id, limit: 50 } });
+            const past = (data || []).filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
+            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, history: past } : s));
+        } catch { /* historial opcional */ }
     };
 
     const closeSheet = () => setOpenTable(null);
@@ -200,7 +205,7 @@ export default function Mesas() {
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
                 <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
                     {openTable && (() => {
-                        const { table: t, order, loading } = openTable;
+                        const { table: t, order, history, loading } = openTable;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
                         return (
@@ -240,6 +245,22 @@ export default function Mesas() {
                                     )}
                                     {!t.active_order && (
                                         <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>
+                                    )}
+                                    {history && history.length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="page-kicker">Turnos anteriores</div>
+                                            <div className="border rounded-xl divide-y">
+                                                {history.map((o) => (
+                                                    <div key={o.id} className="py-2 px-3 flex items-center justify-between gap-2 text-sm">
+                                                        <div className="min-w-0">
+                                                            <div className="font-medium truncate">#{o.order_number} · {ORDER_STATUS_LABELS[o.status] || o.status}</div>
+                                                            <div className="text-xs text-muted-foreground">{fmtDateTime(o.created_at)}</div>
+                                                        </div>
+                                                        <span className="font-mono font-semibold tabular-nums shrink-0">{fmtMoney(o.total)}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                                 <div className="border-t p-4 space-y-2">
