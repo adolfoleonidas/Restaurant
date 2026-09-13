@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import uuid
 from pymongo.errors import DuplicateKeyError
@@ -120,12 +120,13 @@ async def list_orders(
 @router.get("/kitchen")
 async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
     """Orders relevant for kitchen board (no payment info)."""
+    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
     items = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
             "status": {"$nin": ["pagado", "cancelado", "pendiente_pago"]},
         },
-        {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
+        projection
     ).sort("created_at", 1).to_list(500)
     board = []
     for o in items:
@@ -133,6 +134,16 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
             continue
         if any(i.get("status") in ("pendiente", "en_preparacion", "listo", None) for i in (o.get("items") or [])):
             board.append(o)
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+    delivered = await db.orders.find(
+        {
+            "restaurant_id": user["restaurant_id"],
+            "status": "entregado",
+            "updated_at": {"$gte": cutoff},
+        },
+        projection
+    ).sort("updated_at", -1).to_list(100)
+    board.extend(delivered)
     return board
 
 

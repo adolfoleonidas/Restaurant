@@ -30,7 +30,7 @@ function timerClass(iso) {
 }
 
 const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
-    const when = waveTime(order, items);
+    const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
         ? order.table_number.replace(/^Mesa\s*/i, '')
         : (order.table_id ? '' : null);
@@ -41,8 +41,8 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
     return (
         <Card
             data-testid={`cocina-ticket-${order.order_number}-${stage}`}
-            className={`rounded-sm cursor-pointer active:scale-[0.99] ${stage === 'listo' ? '' : 'hover:border-primary/60'}`}
-            onClick={() => stage !== 'listo' && onBump(order, stage)}
+            className={`rounded-sm active:scale-[0.99] ${stage === 'retirado' ? 'opacity-60' : stage === 'listo' ? '' : 'cursor-pointer hover:border-primary/60'}`}
+            onClick={() => ['llegan', 'fuego'].includes(stage) && onBump(order, stage)}
         >
             <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -54,7 +54,9 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                             {added ? ' · agregado' : ''}
                         </div>
                     </div>
-                    <span className={`font-mono text-sm tabular-nums ${timerClass(when)}`}>{fmtElapsed(when)}</span>
+                    <span className={`font-mono text-sm tabular-nums ${stage === 'retirado' ? 'text-muted-foreground' : timerClass(when)}`}>
+                        {stage === 'retirado' ? `hace ${fmtElapsed(when)}` : fmtElapsed(when)}
+                    </span>
                 </div>
                 <div className="mt-3 space-y-2">
                     {items.map((it) => (
@@ -78,10 +80,10 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                         </div>
                     ))}
                 </div>
-                {order.notes && stage !== 'listo' && (
+                {order.notes && ['llegan', 'fuego'].includes(stage) && (
                     <div className="mt-3 text-sm text-primary">{order.notes}</div>
                 )}
-                {stage !== 'listo' && (
+                {['llegan', 'fuego'].includes(stage) && (
                     <div className="mt-3 text-[11px] text-muted-foreground">Tocá la tarjeta para avanzar</div>
                 )}
             </CardContent>
@@ -111,6 +113,7 @@ export default function Cocina() {
         const llegan = [];
         const fuego = [];
         const listos = [];
+        const retirados = [];
         for (const o of enriched) {
             const items = o.items || [];
             const a = items.filter((it) => itemStage(it) === 'llegan');
@@ -120,13 +123,16 @@ export default function Cocina() {
             if (a.length) llegan.push({ order: o, items: a, added: hasOlder, t: waveTime(o, a) });
             if (b.length) fuego.push({ order: o, items: b, added: false, t: waveTime(o, b) });
             if (c.length) listos.push({ order: o, items: c, added: false, t: waveTime(o, c) });
+            if (o.status === 'entregado') retirados.push({ order: o, items, added: false, t: o.updated_at || o.created_at });
         }
         const byAge = (x, y) => String(x.t || '').localeCompare(String(y.t || ''));
         const byAgeDesc = (x, y) => String(y.t || '').localeCompare(String(x.t || ''));
+        retirados.sort(byAgeDesc);
         return [
             { key: 'llegan', label: 'Llegan', cards: llegan.sort(byAgeDesc) },
             { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byAge) },
             { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byAge) },
+            { key: 'retirado', label: 'Retirado', cards: retirados },
         ];
     }, [enriched]);
 
@@ -161,7 +167,7 @@ export default function Cocina() {
                 </Button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_0.8fr] gap-3 md:gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr] gap-3 md:gap-4">
                 {columns.map((col) => (
                     <div key={col.key} className="rounded-sm border border-border bg-card/50 p-3" data-testid={`cocina-columna-${col.key}`}>
                         <div className="flex items-center justify-between mb-3">
@@ -176,7 +182,7 @@ export default function Cocina() {
                                     key={`${c.order.id}-${col.key}`}
                                     order={c.order}
                                     items={c.items}
-                                    stage={col.key === 'fuego' ? 'fuego' : col.key === 'listo' ? 'listo' : 'llegan'}
+                                    stage={col.key === 'retirado' ? 'retirado' : col.key === 'fuego' ? 'fuego' : col.key === 'listo' ? 'listo' : 'llegan'}
                                     added={c.added}
                                     onBump={bump}
                                     onItem={bumpItem}
