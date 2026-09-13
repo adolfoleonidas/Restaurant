@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ShoppingCart, MapPin, Phone, Clock } from 'lucide-react';
+import { ShoppingCart, MapPin, Phone, Clock, X } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
-import { fmtMoney } from '@/lib/format';
+import { useLiveOrder } from '@/contexts/LiveOrderContext';
+import { fmtMoney, ORDER_STATUS_LABELS } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
@@ -14,12 +15,19 @@ import { api } from '@/lib/api';
 
 export const PublicLayout = () => {
     const { count, subtotal } = useCart();
+    const { order: liveOrder, isActive, mode, clearMeta } = useLiveOrder();
     const [cartOpen, setCartOpen] = useState(false);
     const { data: restaurant } = usePolling(() => api.get('/public/restaurant').then((r) => r.data), 60000);
     const location = useLocation();
     const hideCartBtn = location.pathname.startsWith('/checkout') || location.pathname.startsWith('/pedido/');
     const showCart = !hideCartBtn;
-    const showDock = showCart && count > 0;
+
+    const cartMode = isActive && mode === 'cart';
+    const liveCount = isActive && liveOrder ? (liveOrder.items || []).filter((i) => i.status !== 'cancelado').reduce((s, i) => s + (i.quantity || 0), 0) : 0;
+    const displayCount = isActive && !cartMode ? liveCount : count;
+    const displayTotal = isActive && !cartMode && liveOrder ? liveOrder.total : subtotal;
+    const showDock = showCart && displayCount > 0;
+    const showOrderBar = isActive && !location.pathname.startsWith('/pedido/');
 
     const cartSheet = (
         <Sheet open={cartOpen} onOpenChange={setCartOpen}>
@@ -44,22 +52,45 @@ export const PublicLayout = () => {
                         {showCart && (
                             <Button data-testid="public-cart-button" className="h-11 rounded-full relative font-semibold px-3 sm:px-4" onClick={() => setCartOpen(true)}>
                                 <ShoppingCart className="h-4 w-4" />
-                                {count > 0 ? (
+                                {displayCount > 0 ? (
                                     <span className="hidden md:flex flex-col items-start leading-tight text-left">
-                                        <span className="font-mono text-sm tabular-nums" data-testid="public-cart-total">{fmtMoney(subtotal)}</span>
-                                        <span className="text-[10px] font-medium opacity-90">{count} {count === 1 ? 'plato' : 'platos'}</span>
+                                        <span className="font-mono text-sm tabular-nums" data-testid="public-cart-total">{fmtMoney(displayTotal)}</span>
+                                        <span className="text-[10px] font-medium opacity-90">{displayCount} {displayCount === 1 ? 'plato' : 'platos'}</span>
                                     </span>
                                 ) : (
-                                    <span className="hidden sm:inline">Pedido</span>
+                                    <span className="hidden sm:inline">{cartMode ? 'Para llevar' : (isActive ? 'Tu pedido' : 'Pedido')}</span>
                                 )}
-                                {count > 0 && (
-                                    <span className="md:hidden font-mono text-sm tabular-nums">{count}</span>
+                                {displayCount > 0 && (
+                                    <span className="md:hidden font-mono text-sm tabular-nums">{displayCount}</span>
                                 )}
                             </Button>
                         )}
                     </div>
                 </div>
             </header>
+
+            {showOrderBar && (
+                <div className="border-b border-border bg-secondary/40" data-testid="public-order-bar">
+                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center justify-between gap-3 text-sm">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+                            <span className="truncate">
+                                Tu pedido <span className="font-semibold">#{liveOrder.order_number}</span>
+                                <span className="text-muted-foreground"> · {ORDER_STATUS_LABELS[liveOrder.status] || liveOrder.status}</span>
+                            </span>
+                            <span className="font-mono tabular-nums text-primary font-semibold shrink-0">{fmtMoney(liveOrder.total)}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <Button asChild variant="outline" size="sm" className="h-8">
+                                <Link to={`/pedido/${liveOrder.tracking_code}`} data-testid="public-order-bar-track">Ver estado</Link>
+                            </Button>
+                            <button onClick={clearMeta} aria-label="Ocultar mi pedido" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="public-order-bar-dismiss">
+                                <X className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <main className="flex-1">
                 <Outlet />
@@ -97,8 +128,8 @@ export const PublicLayout = () => {
                         data-testid="public-cart-dock"
                         className="w-full h-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-between px-5"
                     >
-                        <span className="font-semibold">Ver pedido</span>
-                        <span className="font-mono tabular-nums font-semibold">{fmtMoney(subtotal)} · {count}</span>
+                        <span className="font-semibold">{cartMode ? 'Ver pedido' : 'Ver tu pedido'}</span>
+                        <span className="font-mono tabular-nums font-semibold">{fmtMoney(displayTotal)} · {displayCount}</span>
                     </button>
                 </div>
             )}

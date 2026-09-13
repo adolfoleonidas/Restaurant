@@ -36,14 +36,16 @@ def product_id(tokens):
     return items[0]["id"]
 
 
-def test_public_tables_lists_available_only():
+def test_public_tables_lists_orderable_tables():
     r = requests.get(f"{BASE}/public/tables", timeout=10)
     assert r.status_code == 200, r.text
     tables = r.json()
     assert isinstance(tables, list)
     for t in tables:
-        assert t["status"] == "disponible"
+        assert t["status"] in ("disponible", "ocupada", "esperando_pago"), t
         assert "id" in t and "number" in t
+        if t.get("active_order"):
+            assert isinstance(t["active_order"].get("order_number"), int)
 
 
 def test_public_local_order_requires_table(product_id):
@@ -89,3 +91,93 @@ def test_public_local_order_occupies_table(product_id, tokens, public_free_table
         json={"status": "cancelado", "reason": "cleanup bridge test"},
         timeout=10,
     )
+
+
+def test_public_second_order_on_occupied_table_rejected(product_id, tokens, public_free_table):
+    table = public_free_table
+    first = requests.post(f"{BASE}/public/orders", json={
+        "order_type": "local",
+        "table_id": table["id"],
+        "customer_name": "Primera Ronda",
+        "customer_phone": "999000111",
+        "items": [{"product_id": product_id, "quantity": 1}],
+        "payment_method": "efectivo",
+    }, timeout=10)
+    assert first.status_code in (200, 201), first.text
+    created = first.json()
+
+    second = requests.post(f"{BASE}/public/orders", json={
+        "order_type": "local",
+        "table_id": table["id"],
+        "customer_name": "Otra Persona",
+        "customer_phone": "999000222",
+        "items": [{"product_id": product_id, "quantity": 1}],
+        "payment_method": "efectivo",
+    }, timeout=10)
+    assert second.status_code == 400, second.text
+    assert "ocupada" in second.json().get("detail", "").lower()
+
+    tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
+    entry = next(t for t in tables if t["id"] == table["id"])
+    assert entry["status"] == "ocupada"
+    assert entry["active_order"]["order_number"] == created["order_number"]
+
+    requests.post(
+        f"{BASE}/orders/{created['id']}/status",
+        headers=headers(tokens["admin"]),
+        json={"status": "cancelado", "reason": "cleanup occupied table test"},
+        timeout=10,
+    )
+
+
+def test_public_live_items_add_update_remove(product_id, tokens, public_free_table):
+    table = public_free_table
+    first = requests.post(f"{BASE}/public/orders", json={
+        "order_type": "local",
+        "table_id": table["id"],
+        "customer_name": "Live Items",
+        "customer_phone": "999000222",
+        "items": [{"product_id": product_id, "quantity": 1}],
+        "payment_method": "efectivo",
+    }, timeout=10)
+    assert first.status_code in (200, 201), first.text
+    created = first.json()
+    code = created["tracking_code"]
+
+    add = requests.post(f"{BASE}/public/orders/{code}/items", json={
+        "items": [{"product_id": product_id, "quantity": 1}],
+    }, timeout=10)
+    assert add.status_code == 200, add.text
+    view = add.json()
+    lines = [i for i in view["items"] if i["product_id"] == product_id]
+    assert len(lines) == 2
+    unit = lines[0]["unit_price"]
+    assert view["total"] == round(unit * 2, 2)
+
+    target = lines[-1]
+    patch = requests.patch(
+        f"{BASE}/public/orders/{code}/items/{target['id']}",
+        json={"quantity": 3},
+        timeout=10,
+    )
+    assert patch.status_code == 200, patch.text
+    view = patch.json()
+    assert view["total"] == round(unit * 4, 2)
+
+    delete = requests.delete(f"{BASE}/public/orders/{code}/items/{target['id']}", timeout=10)
+    assert delete.status_code == 200, delete.text
+    view = delete.json()
+    assert view["total"] == round(unit, 2)
+    remaining = [i for i in view["items"] if i["product_id"] == product_id]
+    assert len(remaining) == 1
+
+    requests.post(
+        f"{BASE}/orders/{created['id']}/status",
+        headers=headers(tokens["admin"]),
+        json={"status": "cancelado", "reason": "cleanup live items test"},
+        timeout=10,
+    )
+    after_cancel = requests.post(f"{BASE}/public/orders/{code}/items", json={
+        "items": [{"product_id": product_id, "quantity": 1}],
+    }, timeout=10)
+    assert after_cancel.status_code == 400

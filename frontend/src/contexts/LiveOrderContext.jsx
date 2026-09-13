@@ -1,0 +1,126 @@
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { api } from '@/lib/api';
+import usePolling from '@/hooks/usePolling';
+
+const KEY = 'public_last_order_v1';
+const LiveOrderContext = createContext(null);
+
+function loadMeta() {
+    try {
+        const raw = localStorage.getItem(KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+export const LiveOrderProvider = ({ children }) => {
+    const [meta, setMetaState] = useState(loadMeta);
+    const [busy, setBusy] = useState({});
+    const [mode, setMode] = useState('live');
+
+    const setMeta = (m) => {
+        try { localStorage.setItem(KEY, JSON.stringify(m)); } catch { /* ignore */ }
+        setMetaState(m);
+        setMode('live');
+    };
+    const clearMeta = () => {
+        try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+        setMetaState(null);
+        setMode('cart');
+    };
+
+    const fetcher = useCallback(() => {
+        if (!meta?.tracking_code) return Promise.resolve(null);
+        return api.get(`/public/orders/${meta.tracking_code}`).then((r) => r.data).catch((e) => {
+            if (e.response?.status === 404) clearMeta();
+            return null;
+        });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [meta?.tracking_code]);
+
+    const { data: order, refetch } = usePolling(fetcher, 10000, [meta?.tracking_code]);
+
+    useEffect(() => {
+        if (order && ['pagado', 'cancelado'].includes(order.status)) clearMeta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [order?.status]);
+
+    const isActive = Boolean(order) && !['pagado', 'cancelado'].includes(order.status);
+
+    const productQty = (productId) => (order?.items || [])
+        .filter((i) => i.product_id === productId && i.status !== 'cancelado')
+        .reduce((s, i) => s + (i.quantity || 0), 0);
+
+    const statusCounts = (productId) => {
+        const counts = { pendiente: 0, en_preparacion: 0, listo: 0, entregado: 0 };
+        for (const i of order?.items || []) {
+            if (i.product_id === productId && i.status !== 'cancelado' && i.status in counts) {
+                counts[i.status] += (i.quantity || 0);
+            }
+        }
+        return counts;
+    };
+
+    const addProduct = async (product, qty = 1) => {
+        if (!order) return;
+        setBusy((b) => ({ ...b, [product.id]: true }));
+        try {
+            await api.post(`/public/orders/${order.tracking_code}/items`, {
+                items: [{ product_id: product.id, quantity: qty }],
+            });
+            await refetch();
+        } catch (e) {
+            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+        } finally {
+            setBusy((b) => ({ ...b, [product.id]: false }));
+        }
+    };
+
+    const decrementLine = async (line) => {
+        if (!order) return;
+        if (line.status !== 'pendiente' && line.status != null) {
+            throw new Error('Ese plato ya está en cocina. Consultá al mozo si querés quitarlo.');
+        }
+        setBusy((b) => ({ ...b, [line.product_id]: true }));
+        try {
+            if (line.quantity > 1) {
+                await api.patch(`/public/orders/${order.tracking_code}/items/${line.id}`, { quantity: line.quantity - 1 });
+            } else {
+                await api.delete(`/public/orders/${order.tracking_code}/items/${line.id}`);
+            }
+            await refetch();
+        } catch (e) {
+            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+        } finally {
+            setBusy((b) => ({ ...b, [line.product_id]: false }));
+        }
+    };
+
+    const decrementProduct = async (product) => {
+        if (!order) return;
+        const lines = (order.items || [])
+            .filter((i) => i.product_id === product.id && (i.status === 'pendiente' || !i.status))
+            .sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
+        const target = lines[0];
+        if (!target) throw new Error('Ese plato ya está en preparación. Pedí al mozo si querés quitarlo.');
+        return decrementLine(target);
+    };
+
+    return (
+        <LiveOrderContext.Provider value={{
+            meta, setMeta, clearMeta,
+            order, isActive, refetch,
+            mode, setMode,
+            productQty, statusCounts, addProduct, decrementProduct, decrementLine, busy,
+        }}>
+            {children}
+        </LiveOrderContext.Provider>
+    );
+};
+
+export const useLiveOrder = () => {
+    const ctx = useContext(LiveOrderContext);
+    if (!ctx) throw new Error('useLiveOrder must be used within LiveOrderProvider');
+    return ctx;
+};

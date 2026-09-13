@@ -14,8 +14,9 @@ def admin_headers():
 
 def ensure_free_public_table():
     tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
-    if tables:
-        return tables[0]
+    for t in tables:
+        if t.get("status") == "disponible" and not t.get("active_order"):
+            return t
     headers = admin_headers()
     orders = requests.get(f"{BASE}/orders", params={"active_only": "true"}, headers=headers, timeout=10).json()
     for o in orders:
@@ -29,8 +30,10 @@ def ensure_free_public_table():
         )
         break
     tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
-    assert tables, "could not free a table for tests"
-    return tables[0]
+    for t in tables:
+        if t.get("status") == "disponible" and not t.get("active_order"):
+            return t
+    assert False, "could not free a table for tests"
 
 
 @pytest.fixture

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
+import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,10 +23,15 @@ const METHOD_ICON = { efectivo: Banknote, yape: Smartphone, plin: Smartphone, ta
 
 export default function Checkout() {
     const { items, subtotal, clear } = useCart();
+    const { setMeta } = useLiveOrder();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [restaurant, setRestaurant] = useState(null);
     const [paymentCfg, setPaymentCfg] = useState(null);
-    const [orderType, setOrderType] = useState('local');
+    const [orderType, setOrderType] = useState(() => {
+        const t = searchParams.get('tipo');
+        return ['local', 'recojo', 'delivery'].includes(t) ? t : 'local';
+    });
     const [tableId, setTableId] = useState('');
     const [tables, setTables] = useState([]);
     const [customer, setCustomer] = useState({ name: '', phone: '', address: '', email: '' });
@@ -46,6 +52,10 @@ export default function Checkout() {
             if (enabled) setMethod(enabled);
         });
     }, []);
+
+    useEffect(() => {
+        if (confirmed) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }, [confirmed]);
 
     const deliveryFee = orderType === 'delivery' ? (restaurant?.delivery_fee || 0) : 0;
     const total = subtotal + deliveryFee;
@@ -115,6 +125,11 @@ export default function Checkout() {
             };
             const { data } = await api.post('/public/orders', payload);
             setConfirmed(data);
+            setMeta({
+                tracking_code: data.tracking_code,
+                order_number: data.order_number,
+                table_id: orderType === 'local' ? tableId : null,
+            });
             clear();
             toast.success(`Pedido #${data.order_number} confirmado`);
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
@@ -221,21 +236,33 @@ export default function Checkout() {
                         <Card><CardContent className="p-5">
                             <h2 className="font-display text-lg font-semibold mb-3">¿En qué mesa estás?</h2>
                             {tables.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No hay mesas libres ahora. Pedí recojo o avisá al mozo.</p>
+                                <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pedí recojo o avisá al mozo.</p>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                    {tables.map((t) => (
-                                        <button
-                                            key={t.id}
-                                            type="button"
-                                            onClick={() => setTableId(t.id)}
-                                            data-testid={`checkout-mesa-${t.number}`}
-                                            className={`rounded-sm border p-3 text-left ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
-                                        >
-                                            <div className="font-display italic text-xl font-semibold">{t.number}</div>
-                                            <div className="text-[11px] text-muted-foreground">{t.area}</div>
-                                        </button>
-                                    ))}
+                                    {tables.map((t) => {
+                                        const active = t.active_order;
+                                        const billPending = active?.status === 'pendiente_pago';
+                                        const blocked = billPending || t.status !== 'disponible';
+                                        return (
+                                            <button
+                                                key={t.id}
+                                                type="button"
+                                                onClick={() => setTableId(t.id)}
+                                                disabled={blocked}
+                                                data-testid={`checkout-mesa-${t.number}`}
+                                                className={`rounded-sm border p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
+                                            >
+                                                <div className="font-display italic text-xl font-semibold">{t.number}</div>
+                                                <div className="text-[11px] text-muted-foreground">{t.area}</div>
+                                                {billPending && (
+                                                    <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>
+                                                )}
+                                                {blocked && !billPending && (
+                                                    <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </CardContent></Card>

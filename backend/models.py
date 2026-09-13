@@ -193,6 +193,14 @@ class PublicProofUpload(BaseModel):
     payment_proof: str  # data URL (base64 image)
 
 
+class PublicItemsAdd(BaseModel):
+    items: List[OrderItemInput]
+
+
+class PublicItemUpdate(BaseModel):
+    quantity: int = Field(ge=1)
+
+
 class OrderItemUpdate(BaseModel):
     quantity: Optional[int] = None
     notes: Optional[str] = None

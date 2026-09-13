@@ -1,12 +1,100 @@
 import React from 'react';
 import { Plus, Minus } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useCart } from '@/contexts/CartContext';
+import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { fmtMoney } from '@/lib/format';
+
+const STATUS_CHIP = {
+    pendiente: { label: 'nuevo', cls: 'bg-secondary text-muted-foreground' },
+    en_preparacion: { label: 'en cocina', cls: 'bg-[#FFF6DB] text-[#6B4E00]' },
+    listo: { label: 'listo', cls: 'bg-[#E6F2FF] text-[#0B3A66]' },
+    entregado: { label: 'servido', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
+};
 
 export function ProductCard({ product, children }) {
     const { items, addProduct, updateQty } = useCart();
-    const qty = items.find((x) => x.product_id === product.id)?.quantity || 0;
+    const { order, isActive, mode, productQty, statusCounts, addProduct: addLive, decrementProduct: decLive, busy } = useLiveOrder();
+
+    const cartQty = items.find((x) => x.product_id === product.id)?.quantity || 0;
+    const liveMode = isActive && mode !== 'cart';
+
+    if (liveMode) {
+        const qty = productQty(product.id);
+        const counts = statusCounts(product.id);
+        const billPending = order.status === 'pendiente_pago';
+        const pending = busy[product.id] || false;
+        return (
+            <article
+                className={`snap-start shrink-0 w-56 md:w-64 rounded-xl border bg-card overflow-hidden flex flex-col ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
+                data-testid={`landing-product-${product.id}`}
+            >
+                {product.image_url ? (
+                    <img src={product.image_url} alt="" className="h-36 w-full object-cover" />
+                ) : (
+                    <div className="h-36 w-full bg-secondary" />
+                )}
+                <div className="p-3 flex flex-col gap-2 flex-1">
+                    {product.code && <div className="page-kicker text-primary">{product.code}</div>}
+                    <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
+                    {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
+                    {children}
+                    {qty > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                            {Object.entries(STATUS_CHIP).map(([k, chip]) => (
+                                counts[k] > 0 ? (
+                                    <span key={k} className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${chip.cls}`} data-testid={`landing-chip-${product.id}-${k}`}>
+                                        {counts[k]} {chip.label}
+                                    </span>
+                                ) : null
+                            ))}
+                        </div>
+                    )}
+                    {billPending && qty > 0 && (
+                        <div className="text-[10px] text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
+                    )}
+                    <div className="mt-auto pt-2">
+                        <div className="font-mono text-primary font-bold tabular-nums text-lg mb-2">{fmtMoney(product.price)}</div>
+                        {qty === 0 ? (
+                            <Button
+                                className="w-full h-10 rounded-full"
+                                onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
+                                disabled={pending || billPending}
+                                data-testid={`landing-add-${product.id}`}
+                            >
+                                <Plus className="h-4 w-4" /> Agregar
+                            </Button>
+                        ) : (
+                            <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-live-${product.id}`}>
+                                <button
+                                    type="button"
+                                    className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
+                                    onClick={() => decLive(product).catch((e) => toast.error(e.message))}
+                                    disabled={pending}
+                                    data-testid={`landing-livedec-${product.id}`}
+                                    aria-label="Quitar de mi pedido"
+                                >
+                                    <Minus className="h-4 w-4" />
+                                </button>
+                                <span className="flex-1 text-center font-mono font-semibold tabular-nums">{qty}</span>
+                                <button
+                                    type="button"
+                                    className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
+                                    onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
+                                    disabled={pending || billPending}
+                                    data-testid={`landing-liveinc-${product.id}`}
+                                    aria-label="Agregar a mi pedido"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </article>
+        );
+    }
 
     return (
         <article
@@ -25,7 +113,7 @@ export function ProductCard({ product, children }) {
                 {children}
                 <div className="mt-auto pt-2">
                     <div className="font-mono text-primary font-bold tabular-nums text-lg mb-2">{fmtMoney(product.price)}</div>
-                    {qty === 0 ? (
+                    {cartQty === 0 ? (
                         <Button
                             className="w-full h-10 rounded-full"
                             onClick={() => addProduct(product, 1, '')}
@@ -38,17 +126,17 @@ export function ProductCard({ product, children }) {
                             <button
                                 type="button"
                                 className="h-10 w-10 flex items-center justify-center text-primary"
-                                onClick={() => updateQty(product.id, qty - 1)}
+                                onClick={() => updateQty(product.id, cartQty - 1)}
                                 data-testid={`landing-dec-${product.id}`}
                                 aria-label="Quitar"
                             >
                                 <Minus className="h-4 w-4" />
                             </button>
-                            <span className="flex-1 text-center font-mono font-semibold tabular-nums">{qty}</span>
+                            <span className="flex-1 text-center font-mono font-semibold tabular-nums">{cartQty}</span>
                             <button
                                 type="button"
                                 className="h-10 w-10 flex items-center justify-center text-primary"
-                                onClick={() => updateQty(product.id, qty + 1)}
+                                onClick={() => updateQty(product.id, cartQty + 1)}
                                 data-testid={`landing-inc-${product.id}`}
                                 aria-label="Sumar"
                             >

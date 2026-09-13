@@ -5,7 +5,7 @@ import secrets
 import string
 from pymongo.errors import DuplicateKeyError
 from database import db
-from models import PublicOrderCreate, PublicProofUpload
+from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from routes.products import combo_components_for
 from notify import emit_order
 
@@ -19,6 +19,96 @@ def _now():
 def _gen_tracking() -> str:
     alphabet = string.ascii_uppercase + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(8))
+
+
+_ACTIVE_ORDER_STATUSES = [
+    "nuevo",
+    "enviado_cocina",
+    "en_preparacion",
+    "listo",
+    "entregado",
+    "pendiente_pago",
+]
+
+
+def _derive_kitchen_status(items: list, current: str) -> str:
+    if current in ("pagado", "cancelado", "pendiente_pago"):
+        return current
+    work = [i for i in items if i.get("status") not in ("entregado", "cancelado")]
+    if not work:
+        return current
+    if all(i.get("status") == "listo" for i in work):
+        return "listo"
+    if any(i.get("status") == "en_preparacion" for i in work):
+        return "en_preparacion"
+    return "enviado_cocina"
+
+
+async def _enrich_items(items, r):
+    enriched = []
+    subtotal = 0.0
+    for it in items:
+        prod = await db.products.find_one(
+            {"id": it.product_id, "restaurant_id": r["id"]},
+            {"_id": 0}
+        )
+        if not prod or not prod.get("is_available", True):
+            raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
+        line = prod["price"] * it.quantity
+        combo_components = await combo_components_for(prod, r["id"])
+        enriched.append({
+            "id": str(uuid.uuid4()),
+            "product_id": prod["id"],
+            "product_name": prod["name"],
+            "quantity": it.quantity,
+            "unit_price": prod["price"],
+            "subtotal": line,
+            "notes": it.notes,
+            "status": "pendiente",
+            "added_at": _now(),
+            "is_combo": bool(prod.get("is_combo")),
+            "combo_components": combo_components,
+        })
+        subtotal += line
+    return enriched, subtotal
+
+
+def _public_order_view(o: dict) -> dict:
+    return {
+        "id": o["id"],
+        "order_number": o["order_number"],
+        "tracking_code": o["tracking_code"],
+        "status": o["status"],
+        "order_type": o["order_type"],
+        "items": o.get("items", []),
+        "subtotal": o.get("subtotal", 0),
+        "delivery_fee": o.get("delivery_fee", 0),
+        "total": o.get("total", 0),
+        "customer_name": o.get("customer_name"),
+        "customer_phone": o.get("customer_phone"),
+        "customer_address": o.get("customer_address"),
+        "payment_method_choice": o.get("payment_method_choice"),
+        "payment_status": o.get("payment_status"),
+        "notes": o.get("notes"),
+        "created_at": o.get("created_at"),
+        "updated_at": o.get("updated_at"),
+        "has_proof": bool(o.get("payment_proof_url")),
+    }
+
+
+def _public_mutate_guard(o: dict):
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    if o["status"] == "pendiente_pago":
+        raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
+
+
+def _recompute(items: list, o: dict):
+    subtotal = round(sum(i["subtotal"] for i in items), 2)
+    total = round(subtotal + o.get("delivery_fee", 0.0) - o.get("discount", 0.0) + o.get("tip", 0.0), 2)
+    return subtotal, total
 
 
 async def _get_restaurant():
@@ -88,10 +178,35 @@ async def public_products():
 @router.get("/tables")
 async def public_tables():
     r = await _get_restaurant()
+    active_orders = await db.orders.find(
+        {
+            "restaurant_id": r["id"],
+            "table_id": {"$type": "string"},
+            "status": {"$in": _ACTIVE_ORDER_STATUSES},
+        },
+        {"_id": 0, "id": 1, "table_id": 1, "order_number": 1, "status": 1, "items": 1},
+    ).to_list(300)
+    by_table = {o["table_id"]: o for o in active_orders if o.get("table_id")}
+    active_ids = list(by_table.keys())
+    query = {"restaurant_id": r["id"]}
+    if active_ids:
+        query["$or"] = [
+            {"status": {"$in": ["disponible", "ocupada"]}},
+            {"id": {"$in": active_ids}},
+        ]
+    else:
+        query["status"] = {"$in": ["disponible", "ocupada"]}
     items = await db.tables.find(
-        {"restaurant_id": r["id"], "status": "disponible"},
+        query,
         {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "capacity": 1, "status": 1},
     ).sort("number", 1).to_list(200)
+    for t in items:
+        o = by_table.get(t["id"])
+        t["active_order"] = {
+            "order_number": o["order_number"],
+            "status": o["status"],
+            "item_count": sum(int(i.get("quantity") or 0) for i in (o.get("items") or [])),
+        } if o else None
     return items
 
 
@@ -136,40 +251,16 @@ async def public_create_order(data: PublicOrderCreate):
             raise HTTPException(status_code=400, detail="Elegí una mesa")
         table = await db.tables.find_one({"id": data.table_id, "restaurant_id": r["id"]}, {"_id": 0})
         if not table or table.get("status") != "disponible":
-            raise HTTPException(status_code=400, detail="Esa mesa no está disponible")
+            raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
         existing = await db.orders.find_one({
             "restaurant_id": r["id"],
             "table_id": data.table_id,
-            "status": {"$nin": ["pagado", "cancelado"]},
+            "status": {"$in": _ACTIVE_ORDER_STATUSES},
         })
         if existing:
-            raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+            raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
 
-    enriched = []
-    subtotal = 0.0
-    for it in data.items:
-        prod = await db.products.find_one(
-            {"id": it.product_id, "restaurant_id": r["id"]},
-            {"_id": 0}
-        )
-        if not prod or not prod.get("is_available", True):
-            raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
-        line = prod["price"] * it.quantity
-        combo_components = await combo_components_for(prod, r["id"])
-        enriched.append({
-            "id": str(uuid.uuid4()),
-            "product_id": prod["id"],
-            "product_name": prod["name"],
-            "quantity": it.quantity,
-            "unit_price": prod["price"],
-            "subtotal": line,
-            "notes": it.notes,
-            "status": "pendiente",
-            "added_at": _now(),
-            "is_combo": bool(prod.get("is_combo")),
-            "combo_components": combo_components,
-        })
-        subtotal += line
+    enriched, subtotal = await _enrich_items(data.items, r)
 
     delivery_fee = r.get("delivery_fee", 0.0) if data.order_type == "delivery" else 0.0
     total = subtotal + delivery_fee
@@ -250,26 +341,104 @@ async def public_get_order(tracking_code: str):
     )
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    return {
-        "id": o["id"],
-        "order_number": o["order_number"],
-        "tracking_code": o["tracking_code"],
-        "status": o["status"],
-        "order_type": o["order_type"],
-        "items": o.get("items", []),
-        "subtotal": o.get("subtotal", 0),
-        "delivery_fee": o.get("delivery_fee", 0),
-        "total": o.get("total", 0),
-        "customer_name": o.get("customer_name"),
-        "customer_phone": o.get("customer_phone"),
-        "customer_address": o.get("customer_address"),
-        "payment_method_choice": o.get("payment_method_choice"),
-        "payment_status": o.get("payment_status"),
-        "notes": o.get("notes"),
-        "created_at": o.get("created_at"),
-        "updated_at": o.get("updated_at"),
-        "has_proof": bool(o.get("payment_proof_url")),
-    }
+    return _public_order_view(o)
+
+
+@router.post("/orders/{tracking_code}/items")
+async def public_add_items(tracking_code: str, data: PublicItemsAdd):
+    r = await _get_restaurant()
+    o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
+    _public_mutate_guard(o)
+    enriched, _ = await _enrich_items(data.items, r)
+    combined = list(o.get("items") or []) + enriched
+    subtotal, total = _recompute(combined, o)
+    new_status = _derive_kitchen_status(combined, o["status"])
+    if o["status"] == "entregado":
+        new_status = "enviado_cocina"
+    await db.orders.update_one(
+        {"id": o["id"]},
+        {"$set": {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
+    )
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"))
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": r["id"],
+        "user_id": None,
+        "action": "public_items_added",
+        "entity": "order",
+        "entity_id": o["id"],
+        "details": {"order_number": o.get("order_number"), "tracking_code": o["tracking_code"], "items_added": len(enriched)},
+        "created_at": _now(),
+    })
+    updated = await db.orders.find_one({"id": o["id"]}, {"_id": 0})
+    return _public_order_view(updated)
+
+
+@router.patch("/orders/{tracking_code}/items/{item_id}")
+async def public_update_item(tracking_code: str, item_id: str, data: PublicItemUpdate):
+    r = await _get_restaurant()
+    o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
+    _public_mutate_guard(o)
+    items = o.get("items") or []
+    target = next((i for i in items if i["id"] == item_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    if target.get("status") not in ("pendiente", None):
+        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés modificarlo.")
+    target["quantity"] = data.quantity
+    target["subtotal"] = target["unit_price"] * data.quantity
+    subtotal, total = _recompute(items, o)
+    new_status = _derive_kitchen_status(items, o["status"])
+    await db.orders.update_one(
+        {"id": o["id"]},
+        {"$set": {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
+    )
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"))
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": r["id"],
+        "user_id": None,
+        "action": "public_item_updated",
+        "entity": "order",
+        "entity_id": o["id"],
+        "details": {"order_number": o.get("order_number"), "item_id": item_id, "quantity": data.quantity},
+        "created_at": _now(),
+    })
+    updated = await db.orders.find_one({"id": o["id"]}, {"_id": 0})
+    return _public_order_view(updated)
+
+
+@router.delete("/orders/{tracking_code}/items/{item_id}")
+async def public_remove_item(tracking_code: str, item_id: str):
+    r = await _get_restaurant()
+    o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
+    _public_mutate_guard(o)
+    items = o.get("items") or []
+    target = next((i for i in items if i["id"] == item_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    if target.get("status") not in ("pendiente", None):
+        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés quitarlo.")
+    items = [i for i in items if i["id"] != item_id]
+    subtotal, total = _recompute(items, o)
+    new_status = _derive_kitchen_status(items, o["status"])
+    await db.orders.update_one(
+        {"id": o["id"]},
+        {"$set": {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
+    )
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"))
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": r["id"],
+        "user_id": None,
+        "action": "public_item_removed",
+        "entity": "order",
+        "entity_id": o["id"],
+        "details": {"order_number": o.get("order_number"), "item_id": item_id},
+        "created_at": _now(),
+    })
+    updated = await db.orders.find_one({"id": o["id"]}, {"_id": 0})
+    return _public_order_view(updated)
 
 
 @router.post("/orders/{tracking_code}/proof")

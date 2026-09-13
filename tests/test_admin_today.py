@@ -115,7 +115,9 @@ def test_sold_out_blocks_new_send_keeps_accepted_order():
     still = requests.get(f"{BASE}/orders/{order['id']}", headers=admin, timeout=10)
     assert still.status_code == 200
     assert still.json()["status"] != "cancelado"
-    requests.post(f"{BASE}/products/{product['id']}/availability", headers=admin, json={"is_available": True}, timeout=10)
+    restore = requests.post(f"{BASE}/products/{product['id']}/availability", headers=admin, json={"is_available": True}, timeout=10)
+    assert restore.status_code == 200, restore.text
+    assert restore.json()["product"]["is_available"] is True
     requests.post(f"{BASE}/orders/{order['id']}/status", headers=admin, json={"status": "cancelado", "reason": "cleanup soldout"}, timeout=10)
 
 
