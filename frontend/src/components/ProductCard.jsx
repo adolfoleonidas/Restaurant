@@ -19,6 +19,7 @@ export function ProductCard({ product, children }) {
 
     const cartQty = items.find((x) => x.product_id === product.id)?.quantity || 0;
     const liveMode = isActive && mode !== 'cart';
+    const agotado = product.is_available === false;
 
     if (liveMode) {
         const qty = productQty(product.id);
@@ -27,7 +28,7 @@ export function ProductCard({ product, children }) {
         const pending = busy[product.id] || false;
         return (
             <article
-                className={`snap-start shrink-0 w-56 md:w-64 rounded-xl border bg-card overflow-hidden flex flex-col ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
+                className={`snap-start shrink-0 w-56 md:w-64 rounded-xl border bg-card overflow-hidden flex flex-col ${agotado ? 'opacity-60' : ''} ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
                 data-testid={`landing-product-${product.id}`}
             >
                 {product.image_url ? (
@@ -38,6 +39,9 @@ export function ProductCard({ product, children }) {
                 <div className="p-3 flex flex-col gap-2 flex-1">
                     {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                     <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
+                    {agotado && (
+                        <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                    )}
                     {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
                     {children}
                     {qty > 0 && (
@@ -60,10 +64,10 @@ export function ProductCard({ product, children }) {
                             <Button
                                 className="w-full h-10 rounded-full"
                                 onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
-                                disabled={pending || billPending}
+                                disabled={pending || billPending || agotado}
                                 data-testid={`landing-add-${product.id}`}
                             >
-                                <Plus className="h-4 w-4" /> Agregar
+                                {agotado ? 'Agotado' : (<><Plus className="h-4 w-4" /> Agregar</>)}
                             </Button>
                         ) : (
                             <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-live-${product.id}`}>
@@ -82,7 +86,7 @@ export function ProductCard({ product, children }) {
                                     type="button"
                                     className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
                                     onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
-                                    disabled={pending || billPending}
+                                    disabled={pending || billPending || agotado}
                                     data-testid={`landing-liveinc-${product.id}`}
                                     aria-label="Agregar a mi pedido"
                                 >
@@ -98,7 +102,7 @@ export function ProductCard({ product, children }) {
 
     return (
         <article
-            className="snap-start shrink-0 w-56 md:w-64 rounded-xl border border-border bg-card overflow-hidden flex flex-col"
+            className={`snap-start shrink-0 w-56 md:w-64 rounded-xl border border-border bg-card overflow-hidden flex flex-col ${agotado ? 'opacity-60' : ''}`}
             data-testid={`landing-product-${product.id}`}
         >
             {product.image_url ? (
@@ -109,6 +113,9 @@ export function ProductCard({ product, children }) {
             <div className="p-3 flex flex-col gap-2 flex-1">
                 {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                 <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
+                {agotado && (
+                    <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                )}
                 {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
                 {children}
                 <div className="mt-auto pt-2">
@@ -117,9 +124,10 @@ export function ProductCard({ product, children }) {
                         <Button
                             className="w-full h-10 rounded-full"
                             onClick={() => addProduct(product, 1, '')}
+                            disabled={agotado}
                             data-testid={`landing-add-${product.id}`}
                         >
-                            <Plus className="h-4 w-4" /> Agregar
+                            {agotado ? 'Agotado' : (<><Plus className="h-4 w-4" /> Agregar</>)}
                         </Button>
                     ) : (
                         <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-qty-${product.id}`}>
@@ -135,8 +143,9 @@ export function ProductCard({ product, children }) {
                             <span className="flex-1 text-center font-mono font-semibold tabular-nums">{cartQty}</span>
                             <button
                                 type="button"
-                                className="h-10 w-10 flex items-center justify-center text-primary"
+                                className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
                                 onClick={() => updateQty(product.id, cartQty + 1)}
+                                disabled={agotado}
                                 data-testid={`landing-inc-${product.id}`}
                                 aria-label="Sumar"
                             >

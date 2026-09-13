@@ -36,6 +36,18 @@ def product_id(tokens):
     return items[0]["id"]
 
 
+def test_public_products_include_sold_out(product_id, tokens):
+    admin = headers(tokens["admin"])
+    mark = requests.post(f"{BASE}/products/{product_id}/availability", headers=admin, json={"is_available": False}, timeout=10)
+    assert mark.status_code == 200, mark.text
+    try:
+        again = requests.get(f"{BASE}/public/products", timeout=10).json()
+        row = next(p for p in again if p["id"] == product_id)
+        assert row["is_available"] is False
+    finally:
+        requests.post(f"{BASE}/products/{product_id}/availability", headers=admin, json={"is_available": True}, timeout=10)
+
+
 def test_public_tables_lists_orderable_tables():
     r = requests.get(f"{BASE}/public/tables", timeout=10)
     assert r.status_code == 200, r.text

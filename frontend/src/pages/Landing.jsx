@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, MapPin, Phone, Clock } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import usePublicStream from '@/hooks/usePublicStream';
 
 export default function Landing() {
     const [restaurant, setRestaurant] = useState(null);
@@ -12,6 +13,7 @@ export default function Landing() {
     const [search, setSearch] = useState('');
     const [activeCat, setActiveCat] = useState(null);
     const sectionRefs = useRef({});
+    const { generation } = usePublicStream({ restaurantId: restaurant?.id });
 
     useEffect(() => {
         Promise.all([
@@ -24,6 +26,12 @@ export default function Landing() {
             else if (c.length) setActiveCat(c[0].id);
         });
     }, []);
+
+    useEffect(() => {
+        if (!generation || !restaurant?.id) return;
+        api.get('/public/products').then((r) => setProducts(r.data));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [generation]);
 
     const q = search.toLowerCase();
     const matchesSearch = (p) =>
@@ -38,7 +46,7 @@ export default function Landing() {
             || p.name.toLowerCase().includes(q)
             || (p.description || '').toLowerCase().includes(q)
             || (p.code || '').toLowerCase().includes(q)
-        )),
+        )).sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1))),
         [products, q]
     );
 
@@ -55,6 +63,9 @@ export default function Landing() {
             map[c.id] = { category: c, items: [] };
         }
         for (const p of filtered) { if (map[p.category_id]) map[p.category_id].items.push(p); }
+        for (const g of Object.values(map)) {
+            g.items.sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1)));
+        }
         return Object.values(map).filter((g) => g.items.length > 0);
     }, [products, categories, q]);
 

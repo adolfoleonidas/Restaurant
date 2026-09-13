@@ -7,7 +7,7 @@ from database import db
 from auth import get_current_user, require_roles
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
 from routes.products import combo_components_for
-from notify import emit_order
+from notify import emit_order, emit_notice
 
 router = APIRouter()
 
@@ -207,6 +207,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
             {"id": data.table_id},
             {"$set": {"status": "ocupada", "updated_at": _now()}}
         )
+        emit_notice(user["restaurant_id"], "table", table_id=data.table_id, status="ocupada")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no)
     return {k: v for k, v in o.items() if k != "_id"}
@@ -250,6 +251,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         {"id": order_id},
         {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
     )
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -279,6 +281,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
         {"id": order_id},
         {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
     )
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -466,6 +469,7 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
                 {"id": o["table_id"]},
                 {"$set": {"status": "disponible", "updated_at": _now()}}
             )
+            emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="disponible")
     if new_status == "entregado":
         items = o.get("items") or []
         for it in items:
@@ -477,6 +481,7 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
             {"id": o["table_id"]},
             {"$set": {"status": "esperando_pago", "updated_at": _now()}}
         )
+        emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="esperando_pago")
 
     await db.orders.update_one({"id": order_id}, {"$set": update})
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})

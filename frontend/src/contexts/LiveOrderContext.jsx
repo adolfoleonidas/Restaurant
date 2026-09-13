@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import usePolling from '@/hooks/usePolling';
+import usePublicStream from '@/hooks/usePublicStream';
 
 const KEY = 'public_last_order_v1';
 const LiveOrderContext = createContext(null);
@@ -39,7 +40,9 @@ export const LiveOrderProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [meta?.tracking_code]);
 
-    const { data: order, refetch } = usePolling(fetcher, 10000, [meta?.tracking_code]);
+    const { generation: streamGen } = usePublicStream({ trackingCode: meta?.tracking_code });
+
+    const { data: order, refetch } = usePolling(fetcher, 10000, [meta?.tracking_code, streamGen]);
 
     useEffect(() => {
         if (order && ['pagado', 'cancelado'].includes(order.status)) clearMeta();

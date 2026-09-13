@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import usePolling from '@/hooks/usePolling';
+import usePublicStream from '@/hooks/usePublicStream';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
@@ -44,13 +45,14 @@ const statusIndex = (s) => {
 export default function PedidoTracking() {
     const { code } = useParams();
     const [restaurant, setRestaurant] = useState(null);
+    const { generation } = usePublicStream({ trackingCode: code });
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data)).catch(() => {});
     }, []);
     const { data: order, loading, error, refetch } = usePolling(
         () => api.get(`/public/orders/${code}`).then((r) => r.data),
         5000,
-        [code]
+        [code, generation]
     );
     const [proof, setProof] = useState(null);
     const [uploading, setUploading] = useState(false);

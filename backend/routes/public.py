@@ -1,5 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
+import asyncio
+import json
 import uuid
 import secrets
 import string
@@ -7,7 +10,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from routes.products import combo_components_for
-from notify import emit_order
+from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
 router = APIRouter()
 
@@ -166,7 +169,7 @@ async def public_categories():
 async def public_products():
     r = await _get_restaurant()
     items = await db.products.find(
-        {"restaurant_id": r["id"], "is_available": True},
+        {"restaurant_id": r["id"]},
         {"_id": 0}
     ).sort("name", 1).to_list(500)
     for item in items:
@@ -312,6 +315,7 @@ async def public_create_order(data: PublicOrderCreate):
             {"id": order["table_id"]},
             {"$set": {"status": "ocupada", "updated_at": _now()}},
         )
+        emit_notice(r["id"], "table", table_id=order["table_id"], status="ocupada")
     emit_order(r["id"], order_id, order["status"], source="public", order_number=order_no)
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -439,6 +443,50 @@ async def public_remove_item(tracking_code: str, item_id: str):
     })
     updated = await db.orders.find_one({"id": o["id"]}, {"_id": 0})
     return _public_order_view(updated)
+
+
+@router.get("/stream")
+async def public_stream(restaurant_id: str = None, tracking: str = None):
+    if not restaurant_id and not tracking:
+        raise HTTPException(status_code=400, detail="Se requiere restaurant_id o tracking")
+    rid = restaurant_id
+    order_id = None
+    if tracking:
+        o = await db.orders.find_one(
+            {"tracking_code": tracking.upper()},
+            {"_id": 0, "id": 1, "restaurant_id": 1},
+        )
+        if not o:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        rid = o["restaurant_id"]
+        order_id = o["id"]
+
+    queue = subscribe()
+
+    async def gen():
+        try:
+            yield f"data: {json.dumps({'type': 'hello'})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                if not public_allowed(event, rid, order_id):
+                    continue
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            unsubscribe(queue)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/orders/{tracking_code}/proof")

@@ -38,10 +38,11 @@ def catalog(tokens):
 def test_local_order_allows_anonymous_guest(public_free_table):
     tables = [public_free_table]
     products = requests.get(f"{BASE}/public/products", timeout=10).json()
+    product = next((p for p in products if p.get("is_available", True)), products[0])
     body = {
         "order_type": "local",
         "table_id": tables[0]["id"],
-        "items": [{"product_id": products[0]["id"], "quantity": 1}],
+        "items": [{"product_id": product["id"], "quantity": 1}],
         "payment_method": "efectivo",
     }
     r = requests.post(f"{BASE}/public/orders", json=body, timeout=10)

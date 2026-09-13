@@ -40,3 +40,11 @@ def emit_notice(restaurant_id: str, kind: str, **extra) -> None:
     payload = {"type": kind, "restaurant_id": restaurant_id}
     payload.update(extra)
     publish(payload)
+
+
+def public_allowed(event: Dict[str, Any], rid: str, order_id: str = None) -> bool:
+    if not rid or event.get("restaurant_id") != rid:
+        return False
+    if order_id:
+        return event.get("type") == "order" and event.get("order_id") == order_id
+    return event.get("type") in ("product", "table")

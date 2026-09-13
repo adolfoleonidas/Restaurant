@@ -9,6 +9,7 @@ import { fmtMoney } from '@/lib/format';
 import { Plus, Minus, Search, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
+import { useNotify } from '@/contexts/NotifyContext';
 
 export default function PedidoNuevo() {
     const navigate = useNavigate();
@@ -20,10 +21,11 @@ export default function PedidoNuevo() {
     const [cart, setCart] = useState([]);
     const [orderNotes, setOrderNotes] = useState('');
     const [loading, setLoading] = useState(false);
+    const { generation } = useNotify();
 
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000);
+    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
     const { data: categories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
-    const { data: products } = usePolling(() => api.get('/products').then((r) => r.data), 60000);
+    const { data: products } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
 
     useEffect(() => {
         if (lockedTableId) setTableId(lockedTableId);

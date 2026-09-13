@@ -12,6 +12,7 @@ import { fmtMoney } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useNotify } from '@/contexts/NotifyContext';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -225,7 +226,9 @@ export default function Productos({ section = 'platos' }) {
         const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
         setProducts(p.data); setCategories(c.data);
     };
+    const { generation } = useNotify();
     useEffect(() => { load(); }, []);
+    useEffect(() => { if (generation) load(); }, [generation]);
     useEffect(() => { setTab(section); }, [section]);
 
     const simples = useMemo(() => products.filter((p) => !p.is_combo), [products]);

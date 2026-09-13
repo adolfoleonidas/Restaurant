@@ -5,6 +5,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import CashOpen, CashClose, CashMovement
+from notify import emit_notice
 
 LIMA = ZoneInfo("America/Lima")
 
@@ -159,6 +160,7 @@ async def open_register(data: CashOpen, user: dict = Depends(require_roles(["adm
         "notes": data.notes,
     }
     await db.cash_registers.insert_one(reg)
+    emit_notice(user["restaurant_id"], "cash", status="open", register_id=reg_id)
     return {k: v for k, v in reg.items() if k != "_id"}
 
 
@@ -190,6 +192,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
             "close_notes": data.notes,
         }}
     )
+    emit_notice(user["restaurant_id"], "cash", status="closed", register_id=reg["id"])
     return await db.cash_registers.find_one({"id": reg["id"]}, {"_id": 0})
 
 
@@ -210,4 +213,5 @@ async def add_movement(data: CashMovement, user: dict = Depends(require_roles(["
         "created_at": _now(),
     }
     await db.cash_movements.insert_one(m)
+    emit_notice(user["restaurant_id"], "cash", status="movement", register_id=reg["id"])
     return {k: v for k, v in m.items() if k != "_id"}

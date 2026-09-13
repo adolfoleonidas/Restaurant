@@ -4,6 +4,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import TableCreate, TableUpdate
+from notify import emit_notice
 
 router = APIRouter()
 
@@ -92,6 +93,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
         {"id": table_id},
         {"$set": {"status": "ocupada", "updated_at": _now()}},
     )
+    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada")
     t = await db.tables.find_one({"id": table_id}, {"_id": 0})
     t["active_order"] = None
     return t
@@ -113,6 +115,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
         {"id": table_id},
         {"$set": {"status": "disponible", "updated_at": _now()}},
     )
+    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible")
     t = await db.tables.find_one({"id": table_id}, {"_id": 0})
     t["active_order"] = None
     return t

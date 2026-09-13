@@ -7,7 +7,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate, PaymentVoid
-from notify import emit_order
+from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
@@ -210,15 +210,15 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         order_set["paid_at"] = _now()
     await db.orders.update_one({"id": data.order_id}, {"$set": order_set})
 
-    if fully_paid:
-        emit_order(user["restaurant_id"], data.order_id, "pagado", source=order.get("source"))
-        if order.get("table_id"):
-            r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
-            new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
-            await db.tables.update_one(
-                {"id": order["table_id"]},
-                {"$set": {"status": new_status, "updated_at": _now()}},
-            )
+    emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
+    if fully_paid and order.get("table_id"):
+        r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
+        new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
+        await db.tables.update_one(
+            {"id": order["table_id"]},
+            {"$set": {"status": new_status, "updated_at": _now()}},
+        )
+        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status=new_status)
 
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -293,6 +293,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         "voided_at": _now(),
     }})
     await db.orders.update_one({"id": order["id"]}, {"$set": order_set})
+    emit_order(user["restaurant_id"], order["id"], order_set.get("status", order.get("status")), source=order.get("source"), payment_status="voided" if kind == "void" else "refunded")
     if reopened and order.get("table_id"):
         table = await db.tables.find_one({"id": order["table_id"]})
         if table and table.get("status") == "pagada":
@@ -300,6 +301,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
                 {"id": table["id"]},
                 {"$set": {"status": "ocupada", "updated_at": _now()}},
             )
+            emit_notice(user["restaurant_id"], "table", table_id=table["id"], status="ocupada")
 
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
