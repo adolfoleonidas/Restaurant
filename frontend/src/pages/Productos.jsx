@@ -9,7 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fmtMoney } from '@/lib/format';
-import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const emptyProduct = {
@@ -210,6 +211,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
 }
 
 export default function Productos({ section = 'platos' }) {
+    const navigate = useNavigate();
     const [tab, setTab] = useState(section);
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
@@ -319,9 +321,14 @@ export default function Productos({ section = 'platos' }) {
                 </div>
                 <div className="flex items-center gap-2">
                     {tab === 'platos' && (
-                        <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="producto-importar-button">
-                            <Upload className="h-4 w-4 mr-2" /> Importar
-                        </Button>
+                        <>
+                            <Button variant="outline" onClick={() => navigate('/categorias')} data-testid="producto-categorias-button">
+                                <Tags className="h-4 w-4 mr-2" /> Categorías
+                            </Button>
+                            <Button variant="outline" onClick={() => setImportOpen(true)} data-testid="producto-importar-button">
+                                <Upload className="h-4 w-4 mr-2" /> Importar
+                            </Button>
+                        </>
                     )}
                     <Button onClick={openNew} data-testid={tab === 'combos' ? 'combo-nuevo-button' : 'producto-nuevo-button'}>
                         <Plus className="h-4 w-4 mr-2" /> {tab === 'combos' ? 'Nuevo combo' : 'Nuevo producto'}
