@@ -146,12 +146,12 @@ export default function Mesas() {
             </div>
 
             {/* Legend */}
-            <div className="flex flex-wrap gap-2 items-center" data-testid="mesas-legend">
-                <span className="text-xs uppercase tracking-wide text-muted-foreground mr-2">Estados:</span>
+            <div className="flex gap-2 items-center overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="mesas-legend">
+                <span className="text-xs uppercase tracking-wide text-muted-foreground mr-2 shrink-0">Estados:</span>
                 {LEGEND.map((k) => {
                     const s = FLOOR_STYLE[k];
                     return (
-                        <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
+                        <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5 shrink-0" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
                             <span className="h-2 w-2 rounded-full" style={{ background: s.dot }} />
                             {s.label}
                         </span>
@@ -159,13 +159,13 @@ export default function Mesas() {
                 })}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
                 {areas.map((a) => (
                     <button
                         key={a}
                         onClick={() => setAreaFilter(a)}
                         data-testid={`mesas-area-${a}`}
-                        className={`px-3 py-1.5 rounded-sm text-sm font-medium transition-colors border ${areaFilter === a ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                        className={`shrink-0 px-3 py-1.5 rounded-sm text-sm font-medium transition-colors border ${areaFilter === a ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                     >
                         {a === 'todas' ? 'Todas las zonas' : a}
                     </button>
