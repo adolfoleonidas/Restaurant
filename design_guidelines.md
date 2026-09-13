@@ -20,21 +20,24 @@
   "typography": {
     "google_fonts": {
       "heading": {
-        "family": "Space Grotesk",
-        "weights": [500, 600, 700]
+        "family": "Fraunces",
+        "weights": [500, 700],
+        "note": "Variable, con optical sizes e itálicas reales. Identidad de carta de restaurante (menú público, números de mesa, tickets)."
       },
       "body": {
         "family": "Inter",
-        "weights": [400, 500, 600]
+        "weights": [400, 500, 600, 700],
+        "note": "UI operativa y datos densos (caja, cocina, formularios). No usar Montserrat/Outfit para datos: demasiado anchas/geométricas."
       },
       "numbers": {
-        "family": "Inter",
-        "note": "Usar tabular-nums para montos y timers"
+        "family": "IBM Plex Mono",
+        "weights": [500, 600],
+        "note": "Montos, timers y tickets: look de comprobante. Usar tabular-nums."
       }
     },
     "tailwind_defaults": {
       "apply": "font-sans",
-      "recommended": "Configurar Tailwind fontFamily: { sans: ['Inter', 'system-ui', ...], display: ['Space Grotesk', 'Inter', ...] }"
+      "recommended": "Configurar Tailwind fontFamily: { sans: ['Inter', ...], display: ['Fraunces', ...], mono: ['IBM Plex Mono', ...] }"
     },
     "scale": {
       "h1": "text-4xl sm:text-5xl lg:text-6xl font-display font-semibold tracking-tight",
@@ -55,24 +58,24 @@
       "Texto siempre en charcoal (no negro puro) para reducir fatiga visual."
     ],
     "palette_hex": {
-      "bg": "#FBF6F0",
-      "bg_alt": "#F6EFE7",
-      "surface": "#FFFFFF",
-      "surface_warm": "#FFF7EF",
-      "border": "#E7DED5",
-      "text": "#1F1D1B",
-      "text_muted": "#6F6258",
-      "primary_teal": "#1F6F66",
-      "primary_teal_hover": "#165A53",
-      "primary_teal_soft": "#D7EFEC",
-      "accent_terracotta": "#C65A3D",
+      "bg": "#F9F4EC",
+      "bg_alt": "#F3ECE2",
+      "surface": "#FFFDF7",
+      "surface_warm": "#FBF6EE",
+      "border": "#E4DACB",
+      "text": "#2A2218",
+      "text_muted": "#6F6255",
+      "primary_amber": "#9E6D1A",
+      "primary_amber_hover": "#855A14",
+      "primary_amber_soft": "#F3E6D4",
+      "accent_terracotta": "#B43822",
       "accent_terracotta_soft": "#F6D7CE",
-      "focus_ring": "#2A8C80",
+      "focus_ring": "#9E6D1A",
       "shadow": "rgba(17, 24, 39, 0.08)"
     },
     "semantic_states": {
-      "mesa_disponible": {
-        "label": "Disponible",
+      "mesa_libre": {
+        "label": "Libre",
         "bg": "#E7F6EE",
         "fg": "#0F5132",
         "border": "#BFE7D0",
@@ -80,9 +83,9 @@
       },
       "mesa_ocupada": {
         "label": "Ocupada",
-        "bg": "#FDECEC",
-        "fg": "#7A1F1F",
-        "border": "#F7C7C7",
+        "bg": "#FDE3E3",
+        "fg": "#8C1D1D",
+        "border": "#F5B5B5",
         "dot": "#EF4444"
       },
       "mesa_preparando": {
@@ -92,19 +95,47 @@
         "border": "#F3E2A6",
         "dot": "#F59E0B"
       },
-      "mesa_lista": {
+      "mesa_listo": {
         "label": "Listo",
-        "bg": "#E6F2FF",
+        "bg": "#E0EEFF",
         "fg": "#0B3A66",
-        "border": "#B9DAFF",
+        "border": "#A9CFF5",
         "dot": "#3B82F6"
       },
-      "mesa_cancelada": {
-        "label": "Cancelada",
+      "mesa_cuenta": {
+        "label": "Cuenta solicitada",
+        "bg": "#FFE0CC",
+        "fg": "#8C3A12",
+        "border": "#F5B488",
+        "dot": "#E07A5F"
+      },
+      "mesa_entregado": {
+        "label": "Entregado",
+        "bg": "#EAF6F5",
+        "fg": "#0F4F49",
+        "border": "#BFE5E0",
+        "dot": "#14B8A6"
+      },
+      "mesa_pagada": {
+        "label": "Cuenta pagada",
         "bg": "#F2F2F2",
         "fg": "#3F3F46",
         "border": "#D4D4D8",
         "dot": "#71717A"
+      },
+      "mesa_reservada": {
+        "label": "Reservada",
+        "bg": "#F3F0FF",
+        "fg": "#3B2A66",
+        "border": "#D9D2F0",
+        "dot": "#7C6BC4"
+      },
+      "mesa_inactiva": {
+        "label": "Inactiva",
+        "bg": "#EFEFEF",
+        "fg": "#71717A",
+        "border": "#D4D4D8",
+        "dot": "#A1A1AA"
       }
     },
     "payment_methods": {

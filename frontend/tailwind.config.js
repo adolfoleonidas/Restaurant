@@ -8,7 +8,7 @@ module.exports = {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Outfit', 'system-ui', 'sans-serif'],
+                sans: ['Inter', 'system-ui', 'sans-serif'],
                 display: ['Fraunces', 'Georgia', 'serif'],
                 mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
             },
