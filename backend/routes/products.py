@@ -44,11 +44,16 @@ async def combo_components_for(prod: dict, restaurant_id: str):
             continue
         child = await db.products.find_one(
             {"id": pid, "restaurant_id": restaurant_id},
-            {"_id": 0, "id": 1, "name": 1, "is_combo": 1},
+            {"_id": 0, "id": 1, "name": 1, "is_combo": 1, "is_available": 1},
         )
         if not child or child.get("is_combo"):
             continue
-        comps.append({"product_id": child["id"], "product_name": child["name"], "quantity": qty})
+        comps.append({
+            "product_id": child["id"],
+            "product_name": child["name"],
+            "quantity": qty,
+            "is_available": bool(child.get("is_available", True)),
+        })
     return comps
 
 
@@ -82,10 +87,16 @@ def _now():
 
 @router.get("")
 async def list_products(user: dict = Depends(get_current_user)):
-    return await db.products.find(
+    items = await db.products.find(
         {"restaurant_id": user["restaurant_id"]},
         {"_id": 0}
     ).sort("name", 1).to_list(1000)
+    for item in items:
+        if item.get("is_combo"):
+            comps = await combo_components_for(item, user["restaurant_id"])
+            item["combo_components"] = comps
+            item["components_available"] = len(comps) > 0 and all(c.get("is_available", True) for c in comps)
+    return items
 
 
 @router.post("")

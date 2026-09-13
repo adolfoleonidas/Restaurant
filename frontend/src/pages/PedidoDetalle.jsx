@@ -223,7 +223,7 @@ export default function PedidoDetalle() {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {filteredProducts.map((p) => (
-                            p.is_available ? (
+                            (p.is_available && !(p.is_combo && p.components_available === false)) ? (
                                 <button key={p.id} type="button" onClick={() => addItem(p)} className="text-left border rounded-xl p-4 h-16 flex items-center justify-between" data-testid={`agregar-producto-${p.id}`}>
                                     <span className="font-medium truncate pr-2">{p.name}</span>
                                     <span className="flex items-center gap-2 shrink-0 font-mono text-sm">{fmtMoney(p.price)} <Plus className="h-4 w-4 text-primary" /></span>

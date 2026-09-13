@@ -67,6 +67,8 @@ async def _compute_total(items: list, restaurant_id: str):
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
         line_subtotal = prod["price"] * it["quantity"]
         combo_components = await combo_components_for(prod, restaurant_id)
+        if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
+            raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
         enriched.append({
             "id": it.get("id") or str(uuid.uuid4()),
             "product_id": prod["id"],

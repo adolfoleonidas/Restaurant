@@ -160,7 +160,7 @@ export default function PedidoNuevo() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredProducts.map((p) => {
                     const q = qtyOf(p.id);
-                    const agotado = !p.is_available;
+                    const agotado = !p.is_available || (p.is_combo && p.components_available === false);
                     return (
                         <Card key={p.id} data-testid={`producto-card-${p.id}`} className={agotado ? 'opacity-60' : ''}>
                             <CardContent className="p-4 flex flex-col gap-3">

@@ -19,7 +19,7 @@ export function ProductCard({ product, children }) {
 
     const cartQty = items.find((x) => x.product_id === product.id)?.quantity || 0;
     const liveMode = isActive && mode !== 'cart';
-    const agotado = product.is_available === false;
+    const agotado = product.is_available === false || (product.is_combo && product.components_available === false);
 
     if (liveMode) {
         const qty = productQty(product.id);

@@ -59,6 +59,8 @@ async def _enrich_items(items, r):
             raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
         line = prod["price"] * it.quantity
         combo_components = await combo_components_for(prod, r["id"])
+        if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
+            raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
         enriched.append({
             "id": str(uuid.uuid4()),
             "product_id": prod["id"],
@@ -174,7 +176,9 @@ async def public_products():
     ).sort("name", 1).to_list(500)
     for item in items:
         if item.get("is_combo"):
-            item["combo_components"] = await combo_components_for(item, r["id"])
+            comps = await combo_components_for(item, r["id"])
+            item["combo_components"] = comps
+            item["components_available"] = len(comps) > 0 and all(c.get("is_available", True) for c in comps)
     return items
 
 

@@ -67,6 +67,72 @@ def test_recojo_requires_customer(catalog):
     assert "nombre" in r.json().get("detail", "").lower() or "celular" in r.json().get("detail", "").lower()
 
 
+def test_combo_blocked_when_component_sold_out(tokens, catalog, public_free_table):
+    a, b = catalog["products"][0], catalog["products"][1]
+    created = requests.post(
+        f"{BASE}/products",
+        headers=headers(tokens["admin"]),
+        json={
+            "category_id": catalog["category_id"],
+            "name": "Combo test bloqueado",
+            "description": "Test combo blocked",
+            "price": 24.9,
+            "is_combo": True,
+            "combo_items": [
+                {"product_id": a["id"], "quantity": 1},
+                {"product_id": b["id"], "quantity": 1},
+            ],
+        },
+        timeout=10,
+    )
+    assert created.status_code in (200, 201), created.text
+    combo = created.json()
+    mark = requests.post(
+        f"{BASE}/products/{a['id']}/availability",
+        headers=headers(tokens["admin"]),
+        json={"is_available": False},
+        timeout=10,
+    )
+    assert mark.status_code == 200, mark.text
+    try:
+        pub = requests.get(f"{BASE}/public/products", timeout=10).json()
+        row = next(p for p in pub if p["id"] == combo["id"])
+        assert row["components_available"] is False
+
+        order = requests.post(
+            f"{BASE}/public/orders",
+            json={
+                "order_type": "local",
+                "table_id": public_free_table["id"],
+                "items": [{"product_id": combo["id"], "quantity": 1}],
+                "payment_method": "efectivo",
+            },
+            timeout=10,
+        )
+        assert order.status_code == 400, order.text
+        assert "agotado" in order.json().get("detail", "").lower()
+
+        staff_order = requests.post(
+            f"{BASE}/orders",
+            headers=headers(tokens["admin"]),
+            json={
+                "table_id": public_free_table["id"],
+                "order_type": "mesa",
+                "items": [{"product_id": combo["id"], "quantity": 1}],
+            },
+            timeout=10,
+        )
+        assert staff_order.status_code == 400, staff_order.text
+    finally:
+        requests.post(
+            f"{BASE}/products/{a['id']}/availability",
+            headers=headers(tokens["admin"]),
+            json={"is_available": True},
+            timeout=10,
+        )
+        requests.delete(f"{BASE}/products/{combo['id']}", headers=headers(tokens["admin"]), timeout=10)
+
+
 def test_combo_appears_on_kitchen_ticket(tokens, catalog, public_free_table):
     a, b = catalog["products"][0], catalog["products"][1]
     created = requests.post(
