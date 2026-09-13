@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timezone
 import uuid
 
@@ -148,11 +149,19 @@ async def run_seed():
     })
 
     # Users
+    seed_passwords = {
+        "admin": os.environ.get("SEED_ADMIN_PASSWORD", "admin123"),
+        "cajero": os.environ.get("SEED_CAJERO_PASSWORD", "cajero123"),
+        "mozo": os.environ.get("SEED_MOZO_PASSWORD", "mozo123"),
+        "cocina": os.environ.get("SEED_COCINA_PASSWORD", "cocina123"),
+    }
+    if any(k not in os.environ for k in ("SEED_ADMIN_PASSWORD", "SEED_CAJERO_PASSWORD", "SEED_MOZO_PASSWORD", "SEED_COCINA_PASSWORD")):
+        logger.warning("Seed usando contraseñas por defecto. Definí SEED_*_PASSWORD o cambialas desde Usuarios.")
     users = [
-        {"email": "admin@resto.com", "password": "admin123", "full_name": "Carlos Administrador", "role": "admin"},
-        {"email": "cajero@resto.com", "password": "cajero123", "full_name": "María Cajera", "role": "cajero"},
-        {"email": "mozo@resto.com", "password": "mozo123", "full_name": "Juan Mozo", "role": "mozo"},
-        {"email": "cocina@resto.com", "password": "cocina123", "full_name": "Pedro Cocinero", "role": "cocina"},
+        {"email": "admin@resto.com", "password": seed_passwords["admin"], "full_name": "Carlos Administrador", "role": "admin"},
+        {"email": "cajero@resto.com", "password": seed_passwords["cajero"], "full_name": "María Cajera", "role": "cajero"},
+        {"email": "mozo@resto.com", "password": seed_passwords["mozo"], "full_name": "Juan Mozo", "role": "mozo"},
+        {"email": "cocina@resto.com", "password": seed_passwords["cocina"], "full_name": "Pedro Cocinero", "role": "cocina"},
     ]
     for u in users:
         await db.users.insert_one({

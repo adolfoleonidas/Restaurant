@@ -54,7 +54,8 @@ async def dashboard(user: dict = Depends(get_current_user)):
             {"restaurant_id": rid, "created_at": {"$gte": start}},
             {"_id": 0}
         ).to_list(10000)
-        total_sales = sum(p["total"] for p in payments)
+        payments = [p for p in payments if p.get("status") in (None, "completed")]
+        total_sales = sum(float(p.get("amount") or 0) for p in payments)
         orders_paid = len(payments)
         avg_ticket = (total_sales / orders_paid) if orders_paid else 0
         result.update({
@@ -112,8 +113,9 @@ async def sales_report(
         {"restaurant_id": rid, "created_at": {"$gte": start, "$lte": end}},
         {"_id": 0}
     ).to_list(20000)
+    payments = [p for p in payments if p.get("status") in (None, "completed")]
 
-    total_sales = sum(p["total"] for p in payments)
+    total_sales = sum(float(p.get("amount") or 0) for p in payments)
     by_method = {}
     for p in payments:
         if p["method"] == "mixto":
@@ -121,7 +123,7 @@ async def sales_report(
                 m = s.get("method")
                 by_method[m] = by_method.get(m, 0) + s.get("amount", 0)
         else:
-            by_method[p["method"]] = by_method.get(p["method"], 0) + p["total"]
+            by_method[p["method"]] = by_method.get(p["method"], 0) + float(p.get("amount") or 0)
 
     # Top products in period
     pipeline = [
@@ -145,7 +147,7 @@ async def sales_report(
             d = datetime.fromisoformat(p["created_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d")
         except Exception:
             d = p["created_at"][:10]
-        sales_by_day[d] = sales_by_day.get(d, 0) + p["total"]
+        sales_by_day[d] = sales_by_day.get(d, 0) + float(p.get("amount") or 0)
 
     # Cancelled orders count
     cancelled = await db.orders.count_documents({

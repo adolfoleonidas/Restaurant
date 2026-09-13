@@ -124,8 +124,8 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const acct = live || order;
     if (!acct) return null;
     const subtotal = acct.subtotal || 0;
-    const d = canDiscount ? Number(discount || 0) : 0;
-    const t = Number(tip || 0);
+    const d = Number(discount || acct.discount || 0);
+    const t = Number(tip || acct.tip || 0);
     const total = Math.max(0, subtotal - d) + t;
     const paid = Number(acct.amount_paid || 0);
     const remaining = Math.max(0, round2(total - paid));
@@ -149,7 +149,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     const submit = async () => {
         if (loading) return;
-        if (d > 0 && (discountReason || '').trim().length < 5) {
+        if (Number(discount || 0) > 0 && (discountReason || '').trim().length < 5) {
             toast.error('El descuento requiere un motivo (mínimo 5 caracteres).');
             return;
         }
@@ -161,9 +161,9 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 order_id: acct.id,
                 method,
                 amount: chargeAmount,
-                discount: d,
-                discount_reason: d > 0 ? discountReason.trim() : undefined,
-                tip: t,
+                discount: Number(discount || 0),
+                discount_reason: Number(discount || 0) > 0 ? discountReason.trim() : undefined,
+                tip: Number(tip || 0),
                 idempotency_key: idempotencyRef.current,
                 expected_updated_at: acct.updated_at,
                 expected_total: acct.total,

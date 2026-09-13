@@ -94,13 +94,17 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         })
 
     subtotal = float(order.get("subtotal", 0.0))
-    discount = data.discount or 0.0
+    discount = float(data.discount or 0.0)
     if discount > 0.009:
         if not user.get("can_discount"):
             raise HTTPException(status_code=403, detail="No tenés permiso para aplicar descuentos")
         if len((data.discount_reason or "").strip()) < 5:
             raise HTTPException(status_code=400, detail="El descuento requiere un motivo")
-    tip = data.tip or 0.0
+    elif float(order.get("amount_paid") or 0) > 0:
+        discount = float(order.get("discount") or 0.0)
+    tip = float(data.tip or 0.0)
+    if tip <= 0.009 and float(order.get("amount_paid") or 0) > 0:
+        tip = float(order.get("tip") or 0.0)
     bill_total = max(0.0, subtotal - discount) + tip
     prior = await db.payments.find({"order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
     paid_so_far = round(sum(float(p.get("amount") or 0) for p in prior), 2)

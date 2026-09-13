@@ -228,7 +228,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     subtotal = sum(i["subtotal"] for i in combined)
     total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
     new_status = _derive_kitchen_status(combined, o["status"])
-    if o["status"] == "entregado":
+    if o["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
     patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now(), "status": new_status}
     await db.orders.update_one({"id": order_id}, {"$set": patch})
@@ -426,6 +426,10 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     role = user["role"]
     new_status = data.status
+
+    # Statuses that must never be set manually through this endpoint
+    if new_status in ("pagado", "nuevo", "enviado_cocina"):
+        raise HTTPException(status_code=400, detail="Este estado no se puede fijar manualmente")
 
     # Permission rules per status
     if new_status in ("en_preparacion", "listo") and role not in ("admin", "cocina"):
