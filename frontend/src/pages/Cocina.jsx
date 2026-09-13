@@ -122,8 +122,9 @@ export default function Cocina() {
             if (c.length) listos.push({ order: o, items: c, added: false, t: waveTime(o, c) });
         }
         const byAge = (x, y) => String(x.t || '').localeCompare(String(y.t || ''));
+        const byAgeDesc = (x, y) => String(y.t || '').localeCompare(String(x.t || ''));
         return [
-            { key: 'llegan', label: 'Llegan', cards: llegan.sort(byAge) },
+            { key: 'llegan', label: 'Llegan', cards: llegan.sort(byAgeDesc) },
             { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byAge) },
             { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byAge) },
         ];
