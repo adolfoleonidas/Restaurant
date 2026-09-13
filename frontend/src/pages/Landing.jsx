@@ -1,9 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import usePublicStream from '@/hooks/usePublicStream';
+
+const PREVIEW = 8;
 
 const match = (p, q) =>
     !q
@@ -28,8 +32,8 @@ export default function Landing() {
             api.get('/public/products').then((r) => r.data),
         ]).then(([r, c, p]) => {
             setRestaurant(r); setCategories(c); setProducts(p);
-            if ((p || []).some((x) => x.is_combo)) setActiveCat('combos');
-            else if (c.length) setActiveCat(c[0].id);
+            if (c.length) setActiveCat(c[0].id);
+            else if ((p || []).some((x) => x.is_combo)) setActiveCat('combos');
         });
     }, []);
 
@@ -80,34 +84,45 @@ export default function Landing() {
 
     const activeGroup = q ? null : (activeCat === 'combos' ? null : grouped.find((g) => g.category.id === activeCat));
 
-    const renderSection = (title, subtitle, items, testId, renderComboChildren) => (
-        <div data-testid={testId}>
-            <div className="flex items-end justify-between mb-5 border-b border-border pb-3">
-                <div>
-                    <h2 className="font-display italic text-2xl md:text-3xl font-bold">{title}</h2>
-                    {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
+    const renderSection = (title, subtitle, items, testId, renderComboChildren, moreHref) => {
+        const showAll = moreHref && items.length > PREVIEW;
+        const visible = showAll ? items.slice(0, PREVIEW) : items;
+        return (
+            <div data-testid={testId}>
+                <div className="flex items-end justify-between mb-5 border-b border-border pb-3">
+                    <div>
+                        <h2 className="font-display italic text-2xl md:text-3xl font-bold">{title}</h2>
+                        {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
+                    </div>
+                    <span className="page-kicker">{items.length}</span>
                 </div>
-                <span className="page-kicker">{items.length}</span>
+                {items.length === 0 ? (
+                    <div className="py-16 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
+                ) : (
+                    <>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                            {visible.map((p) => (
+                                <ProductCard key={p.id} product={p}>
+                                    {renderComboChildren && (
+                                        <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                                            {(p.combo_components || []).map((c) => (
+                                                <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </ProductCard>
+                            ))}
+                        </div>
+                        {showAll && (
+                            <Button asChild variant="outline" className="w-full h-11 rounded-sm mt-4" data-testid="landing-ver-todos">
+                                <Link to={moreHref}>Ver todos los {items.length}</Link>
+                            </Button>
+                        )}
+                    </>
+                )}
             </div>
-            {items.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
-            ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-                    {items.map((p) => (
-                        <ProductCard key={p.id} product={p}>
-                            {renderComboChildren && (
-                                <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                                    {(p.combo_components || []).map((c) => (
-                                        <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
-                                    ))}
-                                </ul>
-                            )}
-                        </ProductCard>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+        );
+    };
 
     return (
         <div data-testid="public-landing-root">
@@ -134,9 +149,9 @@ export default function Landing() {
                 {q ? (
                     renderSection('Resultados', `Buscando “${search}”`, searchResults, 'landing-section-search')
                 ) : activeGroup ? (
-                    renderSection(activeGroup.category.name, activeGroup.category.description, activeGroup.items, `landing-section-${activeGroup.category.id}`)
+                    renderSection(activeGroup.category.name, activeGroup.category.description, activeGroup.items, `landing-section-${activeGroup.category.id}`, false, `/menu/categoria/${activeGroup.category.id}`)
                 ) : combos.length > 0 ? (
-                    renderSection('Combos', 'Menús armados de la casa', combos, 'landing-section-combos', true)
+                    renderSection('Combos', 'Menús armados de la casa', combos, 'landing-section-combos', true, '/menu/categoria/combos')
                 ) : (
                     <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
                 )}

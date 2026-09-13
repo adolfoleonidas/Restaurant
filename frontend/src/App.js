@@ -26,6 +26,7 @@ import Disponibilidad from '@/pages/Disponibilidad';
 import Servicio from '@/pages/Servicio';
 import Unauthorized from '@/pages/Unauthorized';
 import Landing from '@/pages/Landing';
+import CategoriaPage from '@/pages/CategoriaPage';
 import Checkout from '@/pages/Checkout';
 import PedidoTracking from '@/pages/PedidoTracking';
 
@@ -50,6 +51,7 @@ function App() {
                                 <Route element={<PublicLayout />}>
                                     <Route index element={<Landing />} />
                                     <Route path="/menu" element={<Landing />} />
+                                    <Route path="/menu/categoria/:id" element={<CategoriaPage />} />
                                     <Route path="/checkout" element={<Checkout />} />
                                     <Route path="/pedido/:code" element={<PedidoTracking />} />
                                 </Route>
