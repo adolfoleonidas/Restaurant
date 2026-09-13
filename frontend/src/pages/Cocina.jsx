@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -100,21 +100,31 @@ export default function Cocina() {
         [generation]
     );
     const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+    const [zone, setZone] = useState('todas');
+
+    const tableMap = useMemo(() => Object.fromEntries((tables || []).map((t) => [t.id, t])), [tables]);
+    const zones = useMemo(() => [...new Set((tables || []).map((t) => t.area).filter(Boolean))].sort(), [tables]);
 
     const enriched = useMemo(() => {
-        const tableMap = Object.fromEntries((tables || []).map((t) => [t.id, t]));
         return (orders || []).map((o) => ({
             ...o,
             table_number: tableMap[o.table_id]?.name || tableMap[o.table_id]?.number || (o.table_id ? '—' : 'P/llevar'),
+            table_area: tableMap[o.table_id]?.area || null,
         }));
-    }, [orders, tables]);
+    }, [orders, tableMap]);
+
+    const scoped = useMemo(() => {
+        if (zone === 'todas') return enriched;
+        if (zone === 'llevar') return enriched.filter((o) => !o.table_id);
+        return enriched.filter((o) => o.table_area === zone);
+    }, [enriched, zone]);
 
     const columns = useMemo(() => {
         const llegan = [];
         const fuego = [];
         const listos = [];
         const retirados = [];
-        for (const o of enriched) {
+        for (const o of scoped) {
             const items = o.items || [];
             const a = items.filter((it) => itemStage(it) === 'llegan');
             const b = items.filter((it) => itemStage(it) === 'fuego');
@@ -130,11 +140,11 @@ export default function Cocina() {
         retirados.sort(byAgeDesc);
         return [
             { key: 'llegan', label: 'Llegan', cards: llegan.sort(byAgeDesc) },
-            { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byAge) },
+            { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byAgeDesc) },
             { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byAge) },
             { key: 'retirado', label: 'Retirado', cards: retirados },
         ];
-    }, [enriched]);
+    }, [scoped]);
 
     const bump = async (order, stage) => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
@@ -166,6 +176,22 @@ export default function Cocina() {
                     <Link to="/disponibilidad">Agotar plato</Link>
                 </Button>
             </div>
+
+            {(zones.length > 0 || enriched.some((o) => !o.table_id)) && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {['todas', ...zones, 'llevar'].map((z) => (
+                        <button
+                            key={z}
+                            type="button"
+                            onClick={() => setZone(z)}
+                            data-testid={`cocina-zona-${z}`}
+                            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${zone === z ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
+                        >
+                            {z === 'todas' ? 'Todas' : z === 'llevar' ? 'Para llevar' : z}
+                        </button>
+                    ))}
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr] gap-3 md:gap-4">
                 {columns.map((col) => (
