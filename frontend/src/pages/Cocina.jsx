@@ -198,9 +198,9 @@ export default function Cocina() {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr] gap-3 md:gap-4">
+            <div className="flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory pb-2 md:grid md:grid-cols-2 md:overflow-visible md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
                 {columns.map((col) => (
-                    <div key={col.key} className="rounded-sm border border-border bg-card/50 p-3" data-testid={`cocina-columna-${col.key}`}>
+                    <div key={col.key} className="rounded-sm border border-border bg-card/50 p-3 shrink-0 w-[86vw] max-w-[340px] snap-start md:w-auto md:max-w-none md:shrink" data-testid={`cocina-columna-${col.key}`}>
                         <div className="flex items-center justify-between mb-3">
                             <h2 className="font-display text-lg font-semibold">{col.label}</h2>
                             <span className="text-sm tabular-nums text-muted-foreground">{col.cards.length}</span>
