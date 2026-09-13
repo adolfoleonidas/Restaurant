@@ -111,9 +111,15 @@ export const PublicLayout = () => {
                     <div className="text-sm">
                         <div className="page-kicker mb-3">Redes</div>
                         <div className="flex flex-col gap-1 text-muted-foreground">
-                            {restaurant?.social_instagram && <span>{restaurant.social_instagram}</span>}
-                            {restaurant?.social_facebook && <span>{restaurant.social_facebook}</span>}
-                            {restaurant?.social_whatsapp && <span>WhatsApp {restaurant.social_whatsapp}</span>}
+                            {restaurant?.social_instagram && (
+                                <a href={`https://instagram.com/${restaurant.social_instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">{restaurant.social_instagram}</a>
+                            )}
+                            {restaurant?.social_facebook && (
+                                <a href={restaurant.social_facebook.startsWith('http') ? restaurant.social_facebook : `https://facebook.com/${restaurant.social_facebook.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">Facebook</a>
+                            )}
+                            {restaurant?.social_whatsapp && (
+                                <a href={`https://wa.me/${restaurant.social_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
+                            )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-6">© {new Date().getFullYear()} {restaurant?.name}</div>
                     </div>

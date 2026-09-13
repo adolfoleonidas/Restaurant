@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Search, MapPin, Phone, Clock, Instagram, Facebook, MessageCircle } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import usePublicStream from '@/hooks/usePublicStream';
 
@@ -69,7 +68,10 @@ export default function Landing() {
         return Object.values(map).filter((g) => g.items.length > 0);
     }, [products, categories, q]);
 
-    const firstTarget = combos.length > 0 ? 'combos' : (grouped.length > 0 ? grouped[0].category.id : null);
+    const comboAfter = useMemo(() => {
+        const idx = grouped.findIndex((g) => /bebida/i.test(g.category?.name || ''));
+        return idx === -1 ? grouped.length - 1 : idx;
+    }, [grouped]);
 
     const scrollToCat = (id) => {
         const el = sectionRefs.current[id];
@@ -82,19 +84,6 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
-            <section className="border-b border-border bg-background">
-                <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 md:py-8 flex items-end justify-between gap-4 flex-wrap">
-                    <div>
-                        <h1 className="font-display italic text-3xl md:text-5xl font-bold leading-tight">
-                            {restaurant?.name || 'Sabor Peruano'}
-                        </h1>
-                    </div>
-                    <Button onClick={() => firstTarget && scrollToCat(firstTarget)} disabled={!firstTarget} className="h-11 px-7 rounded-sm" data-testid="hero-ver-menu">
-                        Ver la carta
-                    </Button>
-                </div>
-            </section>
-
             <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 overflow-x-auto">
                     <div className="relative shrink-0">
@@ -126,7 +115,47 @@ export default function Landing() {
                 {grouped.length === 0 && combos.length === 0 && (
                     <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
                 )}
-                {combos.length > 0 && (
+                {grouped.map((g, i) => (
+                    <React.Fragment key={g.category.id}>
+                        <div ref={(el) => { sectionRefs.current[g.category.id] = el; }} data-testid={`landing-section-${g.category.id}`}>
+                            <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
+                                <div>
+                                    <h2 className="font-display italic text-3xl md:text-4xl font-bold">{g.category.name}</h2>
+                                    {g.category.description && <p className="text-muted-foreground text-sm mt-1">{g.category.description}</p>}
+                                </div>
+                                <span className="page-kicker">{g.items.length} platos</span>
+                            </div>
+                            <div className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory -mx-4 px-4 md:-mx-6 md:px-6">
+                                {g.items.map((p) => (
+                                    <ProductCard key={p.id} product={p} />
+                                ))}
+                            </div>
+                        </div>
+                        {i === comboAfter && combos.length > 0 && (
+                            <div ref={(el) => { sectionRefs.current.combos = el; }} data-testid="landing-section-combos">
+                                <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
+                                    <div>
+                                        <h2 className="font-display italic text-3xl md:text-4xl font-bold">Combos</h2>
+                                        <p className="text-muted-foreground text-sm mt-1">Menús armados de la casa</p>
+                                    </div>
+                                    <span className="page-kicker">{combos.length} combos</span>
+                                </div>
+                                <div className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory -mx-4 px-4 md:-mx-6 md:px-6">
+                                    {combos.map((p) => (
+                                        <ProductCard key={p.id} product={p}>
+                                            <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                                                {(p.combo_components || []).map((c) => (
+                                                    <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
+                                                ))}
+                                            </ul>
+                                        </ProductCard>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </React.Fragment>
+                ))}
+                {grouped.length === 0 && combos.length > 0 && (
                     <div ref={(el) => { sectionRefs.current.combos = el; }} data-testid="landing-section-combos">
                         <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
                             <div>
@@ -148,67 +177,7 @@ export default function Landing() {
                         </div>
                     </div>
                 )}
-                {grouped.map((g) => (
-                    <div key={g.category.id} ref={(el) => { sectionRefs.current[g.category.id] = el; }} data-testid={`landing-section-${g.category.id}`}>
-                        <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
-                            <div>
-                                <h2 className="font-display italic text-3xl md:text-4xl font-bold">{g.category.name}</h2>
-                                {g.category.description && <p className="text-muted-foreground text-sm mt-1">{g.category.description}</p>}
-                            </div>
-                            <span className="page-kicker">{g.items.length} platos</span>
-                        </div>
-                        <div className="flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory -mx-4 px-4 md:-mx-6 md:px-6">
-                            {g.items.map((p) => (
-                                <ProductCard key={p.id} product={p} />
-                            ))}
-                        </div>
-                    </div>
-                ))}
             </section>
-
-            <footer className="mt-12 border-t border-border bg-card/60" data-testid="landing-footer">
-                <div className="max-w-6xl mx-auto px-4 md:px-6 py-10 grid gap-8 md:grid-cols-3">
-                    <div>
-                        <h3 className="font-display italic text-2xl font-bold mb-2">{restaurant?.name || 'Sabor Peruano'}</h3>
-                        {restaurant?.public_description && (
-                            <p className="text-sm text-muted-foreground max-w-md">{restaurant.public_description}</p>
-                        )}
-                    </div>
-                    <div className="space-y-2 text-sm">
-                        <h4 className="page-kicker mb-2">Horario</h4>
-                        {restaurant?.opening_hours && (
-                            <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-primary shrink-0" />{restaurant.opening_hours}</div>
-                        )}
-                    </div>
-                    <div className="space-y-2 text-sm">
-                        <h4 className="page-kicker mb-2">Encontranos</h4>
-                        {restaurant?.address && (
-                            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-primary shrink-0" />{restaurant.address}</div>
-                        )}
-                        {restaurant?.phone && (
-                            <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-primary shrink-0" />{restaurant.phone}</div>
-                        )}
-                        {restaurant?.social_instagram && (
-                            <div className="flex items-center gap-2">
-                                <Instagram className="h-4 w-4 text-primary shrink-0" />
-                                <a href={`https://instagram.com/${restaurant.social_instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">{restaurant.social_instagram}</a>
-                            </div>
-                        )}
-                        {restaurant?.social_facebook && (
-                            <div className="flex items-center gap-2">
-                                <Facebook className="h-4 w-4 text-primary shrink-0" />
-                                <a href={restaurant.social_facebook.startsWith('http') ? restaurant.social_facebook : `https://facebook.com/${restaurant.social_facebook.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">Facebook</a>
-                            </div>
-                        )}
-                        {restaurant?.social_whatsapp && (
-                            <div className="flex items-center gap-2">
-                                <MessageCircle className="h-4 w-4 text-primary shrink-0" />
-                                <a href={`https://wa.me/${restaurant.social_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </footer>
         </div>
     );
 }
