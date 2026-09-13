@@ -30,7 +30,7 @@ export const CartPanel = ({ onClose }) => {
                 data-testid="cart-tab-live"
                 className={`h-8 rounded-sm text-sm font-medium transition-colors ${showLive ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
-                En tu mesa
+                {(order && !['mesa', 'local'].includes(order.order_type)) ? 'Tu pedido' : 'En tu mesa'}
             </button>
             <button
                 type="button"

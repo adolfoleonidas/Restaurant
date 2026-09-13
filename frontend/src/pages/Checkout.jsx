@@ -23,7 +23,7 @@ const METHOD_ICON = { efectivo: Banknote, yape: Smartphone, plin: Smartphone, ta
 
 export default function Checkout() {
     const { items, subtotal, clear } = useCart();
-    const { setMeta } = useLiveOrder();
+    const { setMeta, isActive } = useLiveOrder();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [restaurant, setRestaurant] = useState(null);
@@ -125,11 +125,13 @@ export default function Checkout() {
             };
             const { data } = await api.post('/public/orders', payload);
             setConfirmed(data);
-            setMeta({
-                tracking_code: data.tracking_code,
-                order_number: data.order_number,
-                table_id: orderType === 'local' ? tableId : null,
-            });
+            if (!isActive) {
+                setMeta({
+                    tracking_code: data.tracking_code,
+                    order_number: data.order_number,
+                    table_id: orderType === 'local' ? tableId : null,
+                });
+            }
             clear();
             toast.success(`Pedido #${data.order_number} confirmado`);
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
@@ -153,6 +155,9 @@ export default function Checkout() {
                             <span className="text-xs text-muted-foreground">Código seguimiento: <span className="font-mono" data-testid="checkout-tracking-code">{confirmed.tracking_code}</span></span>
                         </div>
                         <div className="mt-4 font-display text-2xl font-bold tabular-nums">Total: {fmtMoney(confirmed.total)}</div>
+                        <Button asChild variant="outline" className="mt-4">
+                            <Link to={`/pedido/${confirmed.tracking_code}`} data-testid="checkout-ver-estado">Ver estado del pedido</Link>
+                        </Button>
                     </CardContent>
                 </Card>
 
