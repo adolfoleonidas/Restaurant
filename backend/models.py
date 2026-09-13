@@ -110,6 +110,17 @@ class TableUpdate(BaseModel):
     status: Optional[TableStatus] = None
 
 
+# ============== ZONE ==============
+class ZoneCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    sort_order: int = 0
+
+
+class ZoneUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    sort_order: Optional[int] = None
+
+
 # ============== CATEGORY ==============
 class CategoryCreate(BaseModel):
     name: str

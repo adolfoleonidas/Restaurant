@@ -1,0 +1,83 @@
+from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime, timezone
+import uuid
+from database import db
+from auth import get_current_user, require_roles
+from models import ZoneCreate, ZoneUpdate
+
+router = APIRouter()
+
+
+def _now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+@router.get("")
+async def list_zones(user: dict = Depends(get_current_user)):
+    return await db.zones.find(
+        {"restaurant_id": user["restaurant_id"]},
+        {"_id": 0}
+    ).sort("sort_order", 1).sort("name", 1).to_list(1000)
+
+
+@router.post("")
+async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["admin"]))):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="El nombre de la zona es obligatorio")
+    exists = await db.zones.find_one({"restaurant_id": user["restaurant_id"], "name": name})
+    if exists:
+        raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
+    z = {
+        "id": str(uuid.uuid4()),
+        "restaurant_id": user["restaurant_id"],
+        "name": name,
+        "sort_order": data.sort_order,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    await db.zones.insert_one(z)
+    return {k: v for k, v in z.items() if k != "_id"}
+
+
+@router.patch("/{zone_id}")
+async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(require_roles(["admin"]))):
+    z = await db.zones.find_one({"id": zone_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    if not z:
+        raise HTTPException(status_code=404, detail="Zona no encontrada")
+
+    update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    if "name" in update:
+        new_name = update["name"].strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="El nombre de la zona es obligatorio")
+        if new_name != z["name"]:
+            clash = await db.zones.find_one(
+                {"restaurant_id": user["restaurant_id"], "name": new_name, "id": {"$ne": zone_id}}
+            )
+            if clash:
+                raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
+        update["name"] = new_name
+    update["updated_at"] = _now()
+    await db.zones.update_one(
+        {"id": zone_id, "restaurant_id": user["restaurant_id"]},
+        {"$set": update}
+    )
+    if "name" in update and update["name"] != z["name"]:
+        await db.tables.update_many(
+            {"restaurant_id": user["restaurant_id"], "area": z["name"]},
+            {"$set": {"area": update["name"], "updated_at": _now()}}
+        )
+    return await db.zones.find_one({"id": zone_id}, {"_id": 0})
+
+
+@router.delete("/{zone_id}")
+async def delete_zone(zone_id: str, user: dict = Depends(require_roles(["admin"]))):
+    z = await db.zones.find_one({"id": zone_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    if not z:
+        raise HTTPException(status_code=404, detail="Zona no encontrada")
+    in_use = await db.tables.find_one({"restaurant_id": user["restaurant_id"], "area": z["name"]})
+    if in_use:
+        raise HTTPException(status_code=400, detail="La zona está en uso por mesas")
+    await db.zones.delete_one({"id": zone_id})
+    return {"ok": True}

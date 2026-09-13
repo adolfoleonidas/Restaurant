@@ -12,6 +12,7 @@ from .public import router as public_router
 from .payment_config import router as payment_config_router
 from .notifications import router as notifications_router
 from .approvals import router as approvals_router
+from .zones import router as zones_router
 
 __all__ = [
     "auth_router",
@@ -28,4 +29,5 @@ __all__ = [
     "payment_config_router",
     "notifications_router",
     "approvals_router",
+    "zones_router",
 ]

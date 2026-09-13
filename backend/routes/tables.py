@@ -12,6 +12,16 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _validate_area(restaurant_id: str, area: str):
+    if not area or not area.strip():
+        raise HTTPException(status_code=400, detail="La zona es obligatoria")
+    area = area.strip()
+    zones = await db.zones.find({"restaurant_id": restaurant_id}).to_list(1000)
+    if zones and not any(z.get("name") == area for z in zones):
+        raise HTTPException(status_code=400, detail="La zona no existe")
+    return area
+
+
 @router.get("")
 async def list_tables(user: dict = Depends(get_current_user)):
     items = await db.tables.find(
@@ -53,7 +63,7 @@ async def create_table(data: TableCreate, user: dict = Depends(require_roles(["a
         "number": data.number,
         "name": data.name or f"Mesa {data.number}",
         "capacity": data.capacity,
-        "area": data.area,
+        "area": await _validate_area(user["restaurant_id"], data.area),
         "status": "disponible",
         "created_at": _now(),
         "updated_at": _now(),
@@ -111,6 +121,8 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
 @router.patch("/{table_id}")
 async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(require_roles(["admin"]))):
     update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    if "area" in update:
+        update["area"] = await _validate_area(user["restaurant_id"], update["area"])
     update["updated_at"] = _now()
     res = await db.tables.update_one(
         {"id": table_id, "restaurant_id": user["restaurant_id"]},

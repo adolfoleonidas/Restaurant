@@ -68,6 +68,27 @@ async def _ensure_new_fields():
                 "updated_at": _now(),
             })
 
+        zones = await db.zones.find({"restaurant_id": rid}).to_list(1000)
+        if not zones:
+            areas = [t.get("area") for t in await db.tables.find(
+                {"restaurant_id": rid, "area": {"$ne": None}}, {"area": 1}
+            ).to_list(1000)]
+            seen = []
+            for a in areas:
+                if a and a not in seen:
+                    seen.append(a)
+            if not seen:
+                seen = ["Salón"]
+            for i, name in enumerate(seen):
+                await db.zones.insert_one({
+                    "id": _id(),
+                    "restaurant_id": rid,
+                    "name": name,
+                    "sort_order": i,
+                    "created_at": _now(),
+                    "updated_at": _now(),
+                })
+
 
 async def run_seed():
     # Always ensure new fields/payment_config exist for existing data
@@ -204,6 +225,18 @@ async def run_seed():
             "updated_at": _now(),
         })
 
+    # Zones
+    zone_specs = ["Salón", "Terraza", "Segundo piso"]
+    for i, name in enumerate(zone_specs):
+        await db.zones.insert_one({
+            "id": _id(),
+            "restaurant_id": restaurant_id,
+            "name": name,
+            "sort_order": i,
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
+
     # Tables
     table_specs = [
         (1, "Salón", 4), (2, "Salón", 4), (3, "Salón", 2), (4, "Salón", 6),
@@ -223,4 +256,4 @@ async def run_seed():
             "updated_at": _now(),
         })
 
-    logger.info("Seed completed: 1 restaurant, 4 users, 5 categories, 14 products, 12 tables")
+    logger.info("Seed completed: 1 restaurant, 4 users, 5 categories, 14 products, 3 zones, 12 tables")

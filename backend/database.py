@@ -51,6 +51,7 @@ async def ensure_indexes():
         name="uniq_open_cash_register",
     )
     await db.audit_logs.create_index([("created_at", -1)])
+    await db.zones.create_index([("restaurant_id", 1), ("name", 1)], unique=True)
 
 
 def strip_id(doc):
