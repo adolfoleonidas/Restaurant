@@ -69,6 +69,16 @@ export default function Mesas() {
     const canServe = ['admin', 'mozo', 'cocina'].includes(user.role);
     const canTake = ['admin', 'mozo'].includes(user.role);
 
+    const openOrderId = openTable?.order?.id || null;
+    const { data: liveOrderData } = usePolling(
+        () => (openOrderId ? api.get(`/orders/${openOrderId}`).then((r) => r.data) : Promise.resolve(null)),
+        10000,
+        [openOrderId]
+    );
+    const sheetOrder = openTable?.order && liveOrderData && liveOrderData.id === openTable.order.id
+        ? liveOrderData
+        : (openTable?.order || null);
+
     const openSheet = async (t) => {
         setOpenTable({ table: t, order: null, history: null, loading: Boolean(t.active_order) });
         if (t.active_order) {
@@ -205,7 +215,8 @@ export default function Mesas() {
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
                 <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
                     {openTable && (() => {
-                        const { table: t, order, history, loading } = openTable;
+                        const { table: t, history, loading } = openTable;
+                        const order = sheetOrder;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
                         return (
@@ -239,7 +250,7 @@ export default function Mesas() {
                                             </div>
                                             <div className="flex justify-between font-display text-lg font-bold">
                                                 <span>Total</span>
-                                                <span className="font-mono tabular-nums">{fmtMoney(order.total)}</span>
+                                                <span className="font-mono tabular-nums">{order.total != null ? fmtMoney(order.total) : '—'}</span>
                                             </div>
                                         </>
                                     )}
