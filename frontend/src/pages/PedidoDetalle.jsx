@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { fmtMoney } from '@/lib/format';
-import { Plus, ChevronLeft, CreditCard, Ban, Search } from 'lucide-react';
+import { Plus, ChevronLeft, CreditCard, Ban, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,6 +53,8 @@ export default function PedidoDetalle() {
 
     const locked = ['pagado', 'cancelado'].includes(order.status);
     const canEdit = !locked && ['admin', 'mozo'].includes(user.role);
+    const canServe = !locked && hasFn(user, 'preparacion', 'atencion', 'administracion');
+    const canCharge = !locked && hasFn(user, 'cobro', 'administracion') && Number(order.amount_paid || 0) < Number(order.total || 0);
     const pending = (order.items || []).filter(itemOpen);
     const ready = (order.items || []).filter((it) => it.status === 'listo');
     const delivered = (order.items || []).filter((it) => it.status === 'entregado');
@@ -62,6 +64,22 @@ export default function PedidoDetalle() {
             await api.post(`/orders/${order.id}/items`, [{ product_id: product.id, quantity: 1 }]);
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error al agregar'); }
+    };
+
+    const sendToKitchen = async () => {
+        try {
+            await api.post(`/orders/${order.id}/send-to-kitchen`);
+            toast.success('Enviado a cocina');
+            await refetch();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+    };
+
+    const removeItem = async (it) => {
+        try {
+            await api.delete(`/orders/${order.id}/items/${it.id}`);
+            toast.success(`${it.product_name} quitado`);
+            await refetch();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
     const serve = async () => {
@@ -77,14 +95,6 @@ export default function PedidoDetalle() {
             await api.post(`/orders/${order.id}/status`, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
             navigate('/mesas');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
-    };
-
-    const markDelivered = async () => {
-        try {
-            await api.post(`/orders/${order.id}/status`, { status: 'entregado' });
-            toast.success('Pedido entregado');
-            await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
@@ -155,7 +165,20 @@ export default function PedidoDetalle() {
                         {pending.map((it) => (
                             <div key={it.id} className="flex justify-between gap-3 text-sm">
                                 <span>{it.quantity}× {it.product_name} · {it.status === 'en_preparacion' ? 'en preparación' : 'pendiente'}</span>
-                                <span className="font-mono tabular-nums">{fmtMoney(it.subtotal)}</span>
+                                <span className="flex items-center gap-2 shrink-0">
+                                    {canEdit && it.status === 'pendiente' && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeItem(it)}
+                                            className="text-muted-foreground hover:text-destructive"
+                                            aria-label={`Cancelar ${it.product_name}`}
+                                            data-testid={`pedido-item-cancel-${it.id}`}
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    )}
+                                    <span className="font-mono tabular-nums">{fmtMoney(it.subtotal)}</span>
+                                </span>
                             </div>
                         ))}
                     </CardContent>
@@ -219,27 +242,58 @@ export default function PedidoDetalle() {
             <div className="text-right font-mono text-lg font-bold tabular-nums" data-testid="pedido-total">{fmtMoney(order.total)}</div>
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
-                {!locked && hasFn(user, 'preparacion', 'atencion', 'administracion') && order.status !== 'entregado' && (
-                    <Button onClick={serve} className="w-full h-14 rounded-full text-base" data-testid="pedido-servir-button">Servir</Button>
-                )}
-                {!locked && hasFn(user, 'cobro', 'administracion') && Number(order.amount_paid || 0) < Number(order.total || 0) && (
-                    <Button onClick={() => navigate(`/caja?order=${order.id}`)} className="w-full h-14 rounded-full text-base" data-testid="pedido-cobrar-button">
-                        <CreditCard className="h-4 w-4 mr-2" /> Cobrar
+                {order.status === 'nuevo' && ['admin', 'mozo'].includes(user.role) && (
+                    <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
+                        Enviar a cocina
                     </Button>
                 )}
-                {order.status === 'listo' && canEdit && (
-                    <Button onClick={markDelivered} className="w-full h-14 rounded-full text-base" variant="outline" data-testid="pedido-entregado-button">Marcar entregado</Button>
+                {['enviado_cocina', 'en_preparacion'].includes(order.status) && (
+                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/cocina')} data-testid="pedido-ver-cocina">
+                        Ver cocina
+                    </Button>
+                )}
+                {order.status === 'listo' && canServe && (
+                    <Button onClick={serve} className="w-full h-14 rounded-full text-base" data-testid="pedido-servir-button">
+                        Entregar pedido
+                    </Button>
                 )}
                 {['entregado', 'listo'].includes(order.status) && canEdit && (
-                    <Button onClick={requestBill} className="w-full h-14 rounded-full text-base" variant="outline" data-testid="pedido-solicitar-cuenta-button">
+                    <Button
+                        onClick={requestBill}
+                        variant={order.status === 'listo' ? 'outline' : 'default'}
+                        className={`w-full ${order.status === 'listo' ? 'h-12' : 'h-14 rounded-full text-base'}`}
+                        data-testid="pedido-solicitar-cuenta-button"
+                    >
                         Solicitar cuenta
                     </Button>
                 )}
-                {order.status === 'pendiente_pago' && (
-                    <Button className="w-full h-14 rounded-full text-base" variant="outline" onClick={() => navigate('/servicio')}>Cuenta solicitada</Button>
+                {['listo', 'entregado', 'pendiente_pago'].includes(order.status) && canCharge && (
+                    <Button
+                        onClick={() => navigate(`/caja?order=${order.id}`)}
+                        variant={order.status === 'pendiente_pago' ? 'default' : 'outline'}
+                        className={`w-full ${order.status === 'pendiente_pago' ? 'h-14 rounded-full text-base' : 'h-12'}`}
+                        data-testid="pedido-cobrar-button"
+                    >
+                        <CreditCard className="h-4 w-4 mr-2" /> Cobrar
+                    </Button>
+                )}
+                {order.status === 'pendiente_pago' && !canCharge && (
+                    <div className="text-center text-sm text-muted-foreground py-2">Cuenta solicitada · se paga en caja</div>
+                )}
+                {order.status === 'pagado' && (
+                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/caja')} data-testid="pedido-ver-caja">
+                        Ver en caja
+                    </Button>
+                )}
+                {order.status === 'cancelado' && (
+                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/mesas')}>
+                        Volver a mesas
+                    </Button>
                 )}
                 {!locked && ['admin', 'cajero'].includes(user.role) && (
-                    <Button variant="outline" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button"><Ban className="h-4 w-4 mr-2" />Anular con motivo</Button>
+                    <Button variant="ghost" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button">
+                        <Ban className="h-4 w-4 mr-2" />Anular pedido
+                    </Button>
                 )}
             </div>
 
