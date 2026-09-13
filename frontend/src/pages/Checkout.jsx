@@ -209,7 +209,7 @@ export default function Checkout() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto px-4 py-8" data-testid="checkout-root">
+        <div className="max-w-5xl mx-auto px-4 py-8 pb-32" data-testid="checkout-root">
             <div className="mb-5">
                 <Button asChild variant="ghost" size="sm"><Link to="/"><ChevronLeft className="h-4 w-4 mr-1" /> Seguir comprando</Link></Button>
             </div>
@@ -374,11 +374,16 @@ export default function Checkout() {
                                 {deliveryFee > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Envío</span><span className="tabular-nums">{fmtMoney(deliveryFee)}</span></div>}
                                 <div className="flex justify-between font-display text-xl font-bold pt-2 border-t mt-2"><span>Total</span><span className="tabular-nums" data-testid="checkout-total">{fmtMoney(total)}</span></div>
                             </div>
-                            <Button onClick={submit} disabled={submitting || enabledMethods.length === 0} className="w-full h-12 mt-4" data-testid="checkout-confirmar-button">
-                                {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
-                            </Button>
                         </CardContent>
                     </Card>
+                </div>
+            </div>
+
+            <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
+                <div className="max-w-5xl mx-auto">
+                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0} className="w-full h-12" data-testid="checkout-confirmar-button">
+                        {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
+                    </Button>
                 </div>
             </div>
         </div>
