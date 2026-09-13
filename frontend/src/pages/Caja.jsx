@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
-import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, CheckCircle2, Printer } from 'lucide-react';
+import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, CheckCircle2, Printer, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -866,6 +866,15 @@ export default function Caja() {
         }));
     }, [pending, tables]);
 
+    const requestedBills = useMemo(() => cobrables.filter((o) => o.status === 'pendiente_pago'), [cobrables]);
+    const otherBills = useMemo(() => cobrables.filter((o) => o.status !== 'pendiente_pago'), [cobrables]);
+
+    const matchQ = (o) => {
+        const q = query.trim().toLowerCase();
+        if (!q) return true;
+        return `${o.order_number} ${o.customer_name || ''} ${o.table_id || ''} ${accountLabel(o)}`.toLowerCase().includes(q);
+    };
+
     const webPending = useMemo(() =>
         (pending || []).filter((o) =>
             o.source === 'public'
@@ -892,12 +901,27 @@ export default function Caja() {
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
             <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
-            {cobrables.length > 0 && (
-                <p className="text-sm text-muted-foreground">
-                    Hay {cobrables.length} cuenta{cobrables.length === 1 ? '' : 's'} activa{cobrables.length === 1 ? '' : 's'}. Abrí turno para cobrar.
-                </p>
-            )}
             <OpenCajaCard onOpened={refetchReg} />
+            {cobrables.length > 0 && (
+                <Card data-testid="caja-cuentas-cerradas">
+                    <CardContent className="p-4">
+                        <h2 className="font-display text-lg font-semibold mb-1">Cuentas esperando tu turno ({cobrables.length})</h2>
+                        <p className="text-xs text-muted-foreground mb-3">Abrí la caja para cobrarlas.</p>
+                        <div className="divide-y opacity-70">
+                            {cobrables.slice(0, 8).map((o) => (
+                                <div key={o.id} className="py-2 flex items-center justify-between gap-3 text-sm">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="font-display font-bold truncate">{accountLabel(o)}</span>
+                                        {o.status === 'pendiente_pago' && <span className="text-xs text-primary shrink-0">Cuenta solicitada</span>}
+                                    </div>
+                                    <span className="font-mono font-semibold tabular-nums shrink-0">{fmtMoney(o.total)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        {cobrables.length > 8 && <div className="text-xs text-muted-foreground mt-2">y {cobrables.length - 8} más…</div>}
+                    </CardContent>
+                </Card>
+            )}
             <CashHistory refreshKey="closed" />
         </div>
     );
@@ -936,29 +960,48 @@ export default function Caja() {
                 </CardContent></Card>
             )}
 
-            <Card><CardContent className="p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                    <h2 className="font-display text-lg font-semibold">Cuentas ({cobrables.length})</h2>
-                    <Input className="h-11 sm:max-w-xs" placeholder="Buscar mesa, cliente o #pedido" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="caja-buscar" />
+            {cobrables.length > 0 && (
+                <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-3.5 text-muted-foreground" />
+                    <Input className="pl-9 h-11 sm:max-w-xs" placeholder="Buscar mesa, cliente o #pedido" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="caja-buscar" />
                 </div>
-                {cobrables.length === 0 ? (
-                    <div className="py-10 text-center text-sm text-muted-foreground">No hay cuentas activas</div>
-                ) : (
+            )}
+
+            {requestedBills.length > 0 && (
+                <Card className="border-primary/40"><CardContent className="p-4">
+                    <h2 className="font-display text-lg font-semibold mb-3">Cuentas solicitadas ({requestedBills.length})</h2>
                     <div className="divide-y">
-                        {cobrables.filter((o) => {
-                            const q = query.trim().toLowerCase();
-                            if (!q) return true;
-                            return `${o.order_number} ${o.customer_name || ''} ${o.table_id || ''} ${accountLabel(o)}`.toLowerCase().includes(q);
-                        }).map((o) => (
+                        {requestedBills.filter(matchQ).map((o) => (
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
-                                <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="font-display text-lg font-bold">{accountLabel(o)}</span>
-                                        {o.status === 'pendiente_pago' && <span className="text-xs text-primary">Cuenta solicitada</span>}
-                                    </div>
+                                <div className="min-w-0">
+                                    <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
                                     <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {(o.items || []).length} ítems</div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-right shrink-0">
+                                    <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
+                                    <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent></Card>
+            )}
+
+            <Card><CardContent className="p-4">
+                <h2 className="font-display text-lg font-semibold mb-3">Otras cuentas ({otherBills.length})</h2>
+                {cobrables.length === 0 || otherBills.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                        {cobrables.length === 0 ? 'No hay cuentas activas' : 'No hay otras cuentas. ¡Todo al día!'}
+                    </div>
+                ) : (
+                    <div className="divide-y">
+                        {otherBills.filter(matchQ).map((o) => (
+                            <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
+                                <div className="min-w-0">
+                                    <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {(o.items || []).length} ítems</div>
+                                </div>
+                                <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
                                     <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>
                                 </div>
