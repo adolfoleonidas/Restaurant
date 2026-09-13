@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fmtMoney } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
 const emptyProduct = {
@@ -219,6 +219,7 @@ export default function Productos({ section = 'platos' }) {
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(emptyProduct);
     const [importOpen, setImportOpen] = useState(false);
+    const [pendingAvail, setPendingAvail] = useState(null);
 
     const load = async () => {
         const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
@@ -294,8 +295,17 @@ export default function Productos({ section = 'platos' }) {
     };
 
     const toggleAvail = async (p) => {
-        try { await api.patch(`/products/${p.id}`, { is_available: !p.is_available }); await load(); }
-        catch (e) { toast.error('Error'); }
+        try {
+            const { data } = await api.post(`/products/${p.id}/availability`, { is_available: !p.is_available });
+            if (!data.product.is_available) {
+                setPendingAvail({ name: data.product.name, orders: data.pending_orders || [] });
+                toast.success(`${data.product.name} agotado. Los pedidos ya aceptados siguen.`);
+            } else {
+                setPendingAvail(null);
+                toast.success(`${data.product.name} vuelve a la carta`);
+            }
+            await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo actualizar'); }
     };
 
     const setComboLine = (idx, patch) => {
@@ -353,6 +363,23 @@ export default function Productos({ section = 'platos' }) {
                     Combos ({combos.length})
                 </button>
             </div>
+
+            {pendingAvail && (
+                <Card>
+                    <CardContent className="p-4 text-sm space-y-2">
+                        <div className="font-medium">{pendingAvail.name} — Agotado</div>
+                        <div>Salón: actualizado. Carta web: el menú público deja de ofrecer el plato.</div>
+                        {(pendingAvail.orders || []).length > 0 && (
+                            <div>
+                                <div className="text-muted-foreground mb-1">Consumos pendientes a revisar:</div>
+                                {pendingAvail.orders.map((o) => (
+                                    <Link key={o.id} to={`/pedidos/${o.id}`} className="block underline">Pedido #{o.order_number} · {o.quantity} u.</Link>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {visible.length === 0 ? (
                 <Card><CardContent className="py-14 text-center text-muted-foreground">
