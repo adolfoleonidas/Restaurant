@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Input } from '@/components/ui/input';
@@ -9,20 +9,20 @@ import usePublicStream from '@/hooks/usePublicStream';
 
 const PREVIEW = 8;
 
+const byAvailable = (a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1));
+
 const match = (p, q) =>
     !q
     || p.name.toLowerCase().includes(q)
     || (p.description || '').toLowerCase().includes(q)
     || (p.code || '').toLowerCase().includes(q);
 
-const byAvailable = (a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1));
-
 export default function Landing() {
     const [restaurant, setRestaurant] = useState(null);
     const [categories, setCategories] = useState([]);
     const [products, setProducts] = useState([]);
     const [search, setSearch] = useState('');
-    const [activeCat, setActiveCat] = useState(null);
+    const sectionRefs = useRef({});
     const { generation } = usePublicStream({ restaurantId: restaurant?.id });
 
     useEffect(() => {
@@ -32,8 +32,6 @@ export default function Landing() {
             api.get('/public/products').then((r) => r.data),
         ]).then(([r, c, p]) => {
             setRestaurant(r); setCategories(c); setProducts(p);
-            if (c.length) setActiveCat(c[0].id);
-            else if ((p || []).some((x) => x.is_combo)) setActiveCat('combos');
         });
     }, []);
 
@@ -68,27 +66,24 @@ export default function Landing() {
         [products, q]
     );
 
-    const tabs = useMemo(() => {
-        const list = grouped.map((g) => ({ id: g.category.id, name: g.category.name }));
-        if (combos.length > 0) {
-            const idx = list.findIndex((t) => /bebida/i.test(t.name || ''));
-            list.splice(idx === -1 ? list.length : idx + 1, 0, { id: 'combos', name: 'Combos' });
-        }
-        return list;
-    }, [grouped, combos]);
+    const comboAfter = useMemo(() => {
+        const idx = grouped.findIndex((g) => /bebida/i.test(g.category?.name || ''));
+        return idx === -1 ? grouped.length - 1 : idx;
+    }, [grouped]);
 
-    const selectTab = (id) => {
-        setSearch('');
-        setActiveCat(id);
+    const scrollToCat = (id) => {
+        const el = sectionRefs.current[id];
+        if (el) {
+            const y = el.getBoundingClientRect().top + window.pageYOffset - 130;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+        }
     };
 
-    const activeGroup = q ? null : (activeCat === 'combos' ? null : grouped.find((g) => g.category.id === activeCat));
-
-    const renderSection = (title, subtitle, items, testId, renderComboChildren, moreHref) => {
+    const renderSection = (title, subtitle, items, testId, renderComboChildren, moreHref, sectionId) => {
         const showAll = moreHref && items.length > PREVIEW;
         const visible = showAll ? items.slice(0, PREVIEW) : items;
         return (
-            <div data-testid={testId}>
+            <div ref={(el) => { if (sectionId) sectionRefs.current[sectionId] = el; }} data-testid={testId}>
                 <div className="flex items-end justify-between mb-5 border-b border-border pb-3">
                     <div>
                         <h2 className="font-display italic text-2xl md:text-3xl font-bold">{title}</h2>
@@ -96,29 +91,23 @@ export default function Landing() {
                     </div>
                     <span className="page-kicker">{items.length}</span>
                 </div>
-                {items.length === 0 ? (
-                    <div className="py-16 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
-                ) : (
-                    <>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-                            {visible.map((p) => (
-                                <ProductCard key={p.id} product={p}>
-                                    {renderComboChildren && (
-                                        <ul className="text-[11px] text-muted-foreground space-y-0.5">
-                                            {(p.combo_components || []).map((c) => (
-                                                <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </ProductCard>
-                            ))}
-                        </div>
-                        {showAll && (
-                            <Button asChild variant="outline" className="w-full h-11 rounded-sm mt-4" data-testid="landing-ver-todos">
-                                <Link to={moreHref}>Ver todos los {items.length}</Link>
-                            </Button>
-                        )}
-                    </>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                    {visible.map((p) => (
+                        <ProductCard key={p.id} product={p}>
+                            {renderComboChildren && (
+                                <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                                    {(p.combo_components || []).map((c) => (
+                                        <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
+                                    ))}
+                                </ul>
+                            )}
+                        </ProductCard>
+                    ))}
+                </div>
+                {showAll && (
+                    <Button asChild variant="outline" className="w-full h-11 rounded-sm mt-4" data-testid="landing-ver-todos">
+                        <Link to={moreHref}>Ver todos los {items.length}</Link>
+                    </Button>
                 )}
             </div>
         );
@@ -132,28 +121,56 @@ export default function Landing() {
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
                         <Input className="pl-9 h-10 w-52 rounded-sm bg-card" placeholder="Buscar en la carta" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="landing-search" />
                     </div>
-                    {tabs.map((t) => (
-                        <button
-                            key={t.id}
-                            onClick={() => selectTab(t.id)}
-                            data-testid={`landing-cat-${t.id}`}
-                            className={`shrink-0 rounded-sm px-4 py-2 text-sm font-medium border transition-colors ${!q && activeCat === t.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
-                        >
-                            {t.name}
-                        </button>
+                    {grouped.map((g, i) => (
+                        <React.Fragment key={g.category.id}>
+                            <button
+                                onClick={() => scrollToCat(g.category.id)}
+                                data-testid={`landing-cat-${g.category.id}`}
+                                className="shrink-0 rounded-sm px-4 py-2 text-sm font-medium border transition-colors bg-transparent hover:bg-secondary border-border"
+                            >
+                                {g.category.name}
+                            </button>
+                            {i === comboAfter && combos.length > 0 && (
+                                <button
+                                    onClick={() => scrollToCat('combos')}
+                                    className="shrink-0 rounded-sm px-4 py-2 text-sm font-medium border transition-colors bg-transparent hover:bg-secondary border-border"
+                                >
+                                    Combos
+                                </button>
+                            )}
+                        </React.Fragment>
                     ))}
                 </div>
             </div>
 
-            <section className="max-w-6xl mx-auto px-4 md:px-6 py-10">
+            <section className="max-w-6xl mx-auto px-4 md:px-6 py-10 space-y-14">
                 {q ? (
                     renderSection('Resultados', `Buscando “${search}”`, searchResults, 'landing-section-search')
-                ) : activeGroup ? (
-                    renderSection(activeGroup.category.name, activeGroup.category.description, activeGroup.items, `landing-section-${activeGroup.category.id}`, false, `/menu/categoria/${activeGroup.category.id}`)
-                ) : combos.length > 0 ? (
-                    renderSection('Combos', 'Menús armados de la casa', combos, 'landing-section-combos', true, '/menu/categoria/combos')
                 ) : (
-                    <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
+                    <>
+                        {grouped.length === 0 && combos.length === 0 && (
+                            <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
+                        )}
+                        {grouped.map((g, i) => (
+                            <React.Fragment key={g.category.id}>
+                                {renderSection(
+                                    g.category.name,
+                                    g.category.description,
+                                    g.items,
+                                    `landing-section-${g.category.id}`,
+                                    false,
+                                    `/menu/categoria/${g.category.id}`,
+                                    g.category.id
+                                )}
+                                {i === comboAfter && combos.length > 0 && (
+                                    renderSection('Combos', 'Menús armados de la casa', combos, 'landing-section-combos', true, '/menu/categoria/combos', 'combos')
+                                )}
+                            </React.Fragment>
+                        ))}
+                        {grouped.length === 0 && combos.length > 0 && (
+                            renderSection('Combos', 'Menús armados de la casa', combos, 'landing-section-combos', true, '/menu/categoria/combos', 'combos')
+                        )}
+                    </>
                 )}
             </section>
         </div>
