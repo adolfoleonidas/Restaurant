@@ -20,14 +20,11 @@ jobs:
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
-        env:
-          CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: root
           key_path: /home/runner/.ssh/vps_key
           command_timeout: 20m
-          envs: CORS_ORIGINS
           script: |
             set -eu
             cd /docker/restaurant
@@ -69,6 +66,10 @@ jobs:
             else
               echo "jwt kept len=${#current_jwt}"
             fi
+            cors=$(grep '^CORS_ORIGINS=' .env | head -1 | cut -d= -f2-)
+            export CORS_ORIGINS="$cors"
+            export APP_ENV=production
+            unset SEED_DEMO || true
             docker compose up -d --build
             ok=0
             for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
