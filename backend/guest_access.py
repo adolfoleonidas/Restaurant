@@ -7,27 +7,28 @@ from hashlib import sha256
 from security_config import jwt_secret
 
 
-def sign_table(table_id: str, ttl_seconds: int = 12 * 60 * 60) -> str:
+def sign_table(table_id: str, nonce: str, ttl_seconds: int = 10 * 365 * 24 * 60 * 60) -> str:
     expires = int(time.time()) + ttl_seconds
-    payload = f"{table_id}|{expires}"
+    payload = f"{table_id}|{nonce}|{expires}"
     signature = hmac.new(jwt_secret().encode(), payload.encode(), sha256).hexdigest()[:32]
     raw = f"{payload}|{signature}".encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def read_table_token(token: str) -> str:
+def read_table_token(token: str) -> tuple[str, str]:
     padded = token + "=" * (-len(token) % 4)
     try:
         raw = base64.urlsafe_b64decode(padded.encode()).decode()
-        table_id, expires, signature = raw.rsplit("|", 2)
+        body, signature = raw.rsplit("|", 1)
+        table_id, nonce, expires = body.split("|")
         expires_at = int(expires)
     except (ValueError, UnicodeError):
         raise ValueError("invalid table token")
-    payload = f"{table_id}|{expires_at}"
+    payload = f"{table_id}|{nonce}|{expires_at}"
     expected = hmac.new(jwt_secret().encode(), payload.encode(), sha256).hexdigest()[:32]
     if not hmac.compare_digest(signature, expected) or expires_at < int(time.time()):
         raise ValueError("invalid table token")
-    return table_id
+    return table_id, nonce
 
 
 class RateLimiter:

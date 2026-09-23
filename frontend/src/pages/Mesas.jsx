@@ -119,6 +119,28 @@ export default function Mesas() {
         }
     };
 
+    const rotateQr = async (table) => {
+        try {
+            const { data } = await api.post(`/tables/${table.id}/qr/rotate`);
+            await navigator.clipboard.writeText(`${window.location.origin}${data.path}`);
+            toast.success(`QR nuevo de la mesa ${data.table_number} copiado`);
+            refetch();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo regenerar el QR');
+        }
+    };
+
+    const revokeQr = async (table) => {
+        if (!window.confirm(`¿Revocar el QR de la mesa ${table.number}? El impreso dejará de funcionar.`)) return;
+        try {
+            await api.post(`/tables/${table.id}/qr/revoke`);
+            toast.success(`QR de la mesa ${table.number} revocado`);
+            refetch();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo revocar el QR');
+        }
+    };
+
     const takeTable = async (t) => {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
         if (t.status === 'ocupada') {
@@ -285,14 +307,41 @@ export default function Mesas() {
                                     )}
                                 </div>
                                 <div className="border-t p-4 space-y-2">
+                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                                        <span>
+                                            QR: {t.qr_status === 'active' ? 'activo' : t.qr_status === 'revoked' ? 'revocado' : 'sin generar'}
+                                        </span>
+                                    </div>
                                     <Button
                                         variant="outline"
                                         className="w-full h-11"
                                         onClick={() => copyGuestLink(t)}
+                                        disabled={t.qr_status === 'revoked'}
                                         data-testid="mesa-sheet-qr"
                                     >
                                         Copiar QR de la mesa
                                     </Button>
+                                    {user.role === 'admin' && (
+                                        <div className="flex gap-2">
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 h-10"
+                                                onClick={() => rotateQr(t)}
+                                                data-testid="mesa-sheet-qr-rotate"
+                                            >
+                                                Regenerar QR
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="flex-1 h-10 text-destructive"
+                                                onClick={() => revokeQr(t)}
+                                                disabled={t.qr_status === 'revoked'}
+                                                data-testid="mesa-sheet-qr-revoke"
+                                            >
+                                                Revocar
+                                            </Button>
+                                        </div>
+                                    )}
                                     {t.active_order ? (
                                         <>
                                             {floor.key === 'listo' && canServe && (

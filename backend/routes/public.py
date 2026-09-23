@@ -232,16 +232,20 @@ async def public_tables():
 @router.get("/tables/resolve")
 async def resolve_public_table(token: str):
     try:
-        table_id = read_table_token(token)
+        table_id, nonce = read_table_token(token)
     except ValueError:
         raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
     restaurant = await _get_restaurant()
     table = await db.tables.find_one(
         {"id": table_id, "restaurant_id": restaurant["id"]},
-        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1},
+        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "qr_nonce": 1, "qr_revoked": 1},
     )
     if not table:
         raise HTTPException(status_code=404, detail="Esa mesa no existe")
+    if table.get("qr_revoked") or table.get("qr_nonce") != nonce:
+        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+    table.pop("qr_nonce", None)
+    table.pop("qr_revoked", None)
     return table
 
 
@@ -287,18 +291,21 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     if data.order_type == "local":
         if data.table_token:
             try:
-                table_id = read_table_token(data.table_token)
+                table_id, table_nonce = read_table_token(data.table_token)
             except ValueError:
                 raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         elif r.get("require_table_qr"):
             raise HTTPException(status_code=400, detail="Escaneá el QR de tu mesa")
         elif data.table_id:
             table_id = data.table_id
+            table_nonce = None
         else:
             raise HTTPException(status_code=400, detail="Elegí una mesa")
         table = await db.tables.find_one({"id": table_id, "restaurant_id": r["id"]}, {"_id": 0})
         if not table:
             raise HTTPException(status_code=400, detail="Esa mesa no existe")
+        if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
+            raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         if table.get("status") != "disponible":
             raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
         existing = await db.orders.find_one({

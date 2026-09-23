@@ -42,7 +42,10 @@ def _bind(db):
 def _world():
     db = _DB()
     db.restaurants.docs.append({"id": "rest-1", "name": "Sabor", "delivery_fee": 0})
-    db.tables.docs.append({"id": "mesa-1", "restaurant_id": "rest-1", "number": 4, "status": "disponible", "area": "Salon"})
+    db.tables.docs.append({
+        "id": "mesa-1", "restaurant_id": "rest-1", "number": 4, "status": "disponible", "area": "Salon",
+        "qr_nonce": "nonce-1", "qr_revoked": False,
+    })
     db.products.docs.append({
         "id": "prod-1",
         "restaurant_id": "rest-1",
@@ -105,7 +108,7 @@ def test_signed_table_qr_selects_that_table_when_the_local_turns_it_on():
             missing = None
         except HTTPException as exc:
             missing = exc
-        token = sign_table("mesa-1")
+        token = sign_table("mesa-1", "nonce-1")
         created = await public_create_order(_body(table_token=token), _Request("10.0.0.9"))
         stored = await db.orders.find_one({"id": created["id"]})
         board = await kitchen_orders(_cashier())
@@ -141,4 +144,35 @@ def test_public_orders_are_rate_limited_per_client():
     first, blocked = asyncio.run(run())
     assert first["order_number"]
     assert blocked is not None and blocked.status_code == 429
-    assert read_table_token(sign_table("mesa-1")) == "mesa-1"
+    assert read_table_token(sign_table("mesa-1", "nonce-1")) == ("mesa-1", "nonce-1")
+
+
+def test_revoked_or_rotated_qr_is_rejected():
+    async def run():
+        db = _world()
+        db.restaurants.docs[0]["require_table_qr"] = True
+        _bind(db)
+        public_order_limiter.reset()
+        good = sign_table("mesa-1", "nonce-1")
+        created = await public_create_order(_body(table_token=good), _Request("10.0.0.11"))
+        db.tables.docs[0]["qr_revoked"] = True
+        public_order_limiter.reset()
+        try:
+            await public_create_order(_body(table_token=good), _Request("10.0.0.12"))
+            revoked = None
+        except HTTPException as exc:
+            revoked = exc
+        db.tables.docs[0]["qr_revoked"] = False
+        db.tables.docs[0]["qr_nonce"] = "nonce-2"
+        public_order_limiter.reset()
+        try:
+            await public_create_order(_body(table_token=good), _Request("10.0.0.13"))
+            rotated = None
+        except HTTPException as exc:
+            rotated = exc
+        return created, revoked, rotated
+
+    created, revoked, rotated = asyncio.run(run())
+    assert created["id"]
+    assert revoked is not None and revoked.status_code == 400
+    assert rotated is not None and rotated.status_code == 400

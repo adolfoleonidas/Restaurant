@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
+import secrets
 import uuid
 from database import db
 from auth import get_current_user, require_roles
@@ -51,6 +52,13 @@ async def list_tables(user: dict = Depends(get_current_user)):
             raw_items = active.pop("items", None) or []
             active["item_count"] = sum(int(i.get("quantity") or 0) for i in raw_items)
         t["active_order"] = active
+        nonce = t.pop("qr_nonce", None)
+        if t.pop("qr_revoked", False):
+            t["qr_status"] = "revoked"
+        elif nonce:
+            t["qr_status"] = "active"
+        else:
+            t["qr_status"] = "none"
     return items
 
 
@@ -74,13 +82,60 @@ async def create_table(data: TableCreate, user: dict = Depends(require_roles(["a
     return {k: v for k, v in t.items() if k != "_id"}
 
 
+def _qr_payload(table: dict, nonce: str) -> dict:
+    token = sign_table(table["id"], nonce)
+    return {
+        "token": token,
+        "path": f"/checkout?mesa={token}",
+        "table_number": table.get("number"),
+    }
+
+
 @router.get("/{table_id}/guest-link")
 async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    table = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "id": 1, "number": 1})
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]},
+        {"_id": 0, "id": 1, "number": 1, "qr_nonce": 1, "qr_revoked": 1},
+    )
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
-    token = sign_table(table["id"])
-    return {"token": token, "path": f"/checkout?mesa={token}", "table_number": table.get("number")}
+    if table.get("qr_revoked"):
+        raise HTTPException(status_code=400, detail="El QR está revocado. Regeneralo desde el panel.")
+    nonce = table.get("qr_nonce")
+    if not nonce:
+        nonce = secrets.token_urlsafe(16)
+        await db.tables.update_one(
+            {"id": table_id, "restaurant_id": user["restaurant_id"]},
+            {"$set": {"qr_nonce": nonce, "updated_at": _now()}},
+        )
+    return _qr_payload(table, nonce)
+
+
+@router.post("/{table_id}/qr/rotate")
+async def rotate_qr(table_id: str, user: dict = Depends(require_roles(["admin"]))):
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]},
+        {"_id": 0, "id": 1, "number": 1},
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    nonce = secrets.token_urlsafe(16)
+    await db.tables.update_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]},
+        {"$set": {"qr_nonce": nonce, "qr_revoked": False, "updated_at": _now()}},
+    )
+    return _qr_payload(table, nonce)
+
+
+@router.post("/{table_id}/qr/revoke")
+async def revoke_qr(table_id: str, user: dict = Depends(require_roles(["admin"]))):
+    res = await db.tables.update_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]},
+        {"$set": {"qr_revoked": True, "updated_at": _now()}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    return {"ok": True, "qr_status": "revoked"}
 
 
 @router.post("/{table_id}/seat")
