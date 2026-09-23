@@ -62,7 +62,7 @@ class RestaurantUpdate(BaseModel):
     currency: Optional[str] = None
     timezone: Optional[str] = None
     opening_hours: Optional[str] = None
-    delivery_fee: Optional[float] = None
+    delivery_fee: Optional[float] = Field(default=None, ge=0)
     public_description: Optional[str] = None
     social_facebook: Optional[str] = None
     social_instagram: Optional[str] = None
@@ -138,14 +138,14 @@ class CategoryUpdate(BaseModel):
 # ============== PRODUCT ==============
 class ComboComponent(BaseModel):
     product_id: str
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1)
 
 
 class ProductCreate(BaseModel):
     category_id: str
     name: str
     description: Optional[str] = None
-    price: float
+    price: float = Field(ge=0)
     image_url: Optional[str] = None
     is_available: bool = True
     preparation_time: int = 15  # minutes
@@ -158,7 +158,7 @@ class ProductUpdate(BaseModel):
     category_id: Optional[str] = None
     name: Optional[str] = None
     description: Optional[str] = None
-    price: Optional[float] = None
+    price: Optional[float] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
     preparation_time: Optional[int] = None
@@ -214,7 +214,7 @@ class PublicItemUpdate(BaseModel):
 
 
 class OrderItemUpdate(BaseModel):
-    quantity: Optional[int] = None
+    quantity: Optional[int] = Field(default=None, ge=1)
     notes: Optional[str] = None
 
 
@@ -237,7 +237,7 @@ PaymentMethod = Literal["efectivo", "yape", "plin", "tarjeta", "transferencia", 
 
 class PaymentSplit(BaseModel):
     method: PaymentMethod
-    amount: float
+    amount: float = Field(gt=0)
 
 
 class PaymentLine(BaseModel):
@@ -248,10 +248,10 @@ class PaymentLine(BaseModel):
 class PaymentCreate(BaseModel):
     order_id: str
     method: PaymentMethod
-    amount: float
-    received_amount: Optional[float] = None  # for cash to calculate change
-    discount: float = 0.0
-    tip: float = 0.0
+    amount: float = Field(ge=0)
+    received_amount: Optional[float] = Field(default=None, ge=0)
+    discount: float = Field(default=0.0, ge=0)
+    tip: float = Field(default=0.0, ge=0)
     splits: Optional[List[PaymentSplit]] = None  # for mixto
     lines: Optional[List[PaymentLine]] = None
     notes: Optional[str] = None
@@ -303,16 +303,16 @@ class OrderReassign(BaseModel):
 
 # ============== CASH REGISTER ==============
 class CashOpen(BaseModel):
-    opening_amount: float
+    opening_amount: float = Field(ge=0)
     notes: Optional[str] = None
 
 
 class CashClose(BaseModel):
-    closing_amount: float
+    closing_amount: float = Field(ge=0)
     notes: Optional[str] = None
 
 
 class CashMovement(BaseModel):
     type: Literal["ingreso", "egreso"]
-    amount: float
+    amount: float = Field(gt=0)
     description: str

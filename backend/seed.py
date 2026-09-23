@@ -5,6 +5,7 @@ import uuid
 
 from database import db
 from auth import hash_password
+from security_config import resolve_seed_passwords
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ async def run_seed():
     if existing:
         return
 
+    resolved = resolve_seed_passwords()
     logger.info("Seeding initial data...")
     restaurant_id = _id()
     restaurant = {
@@ -148,15 +150,14 @@ async def run_seed():
         "updated_at": _now(),
     })
 
-    # Users
     seed_passwords = {
-        "admin": os.environ.get("SEED_ADMIN_PASSWORD", "admin123"),
-        "cajero": os.environ.get("SEED_CAJERO_PASSWORD", "cajero123"),
-        "mozo": os.environ.get("SEED_MOZO_PASSWORD", "mozo123"),
-        "cocina": os.environ.get("SEED_COCINA_PASSWORD", "cocina123"),
+        "admin": resolved["SEED_ADMIN_PASSWORD"],
+        "cajero": resolved["SEED_CAJERO_PASSWORD"],
+        "mozo": resolved["SEED_MOZO_PASSWORD"],
+        "cocina": resolved["SEED_COCINA_PASSWORD"],
     }
-    if any(k not in os.environ for k in ("SEED_ADMIN_PASSWORD", "SEED_CAJERO_PASSWORD", "SEED_MOZO_PASSWORD", "SEED_COCINA_PASSWORD")):
-        logger.warning("Seed usando contraseñas por defecto. Definí SEED_*_PASSWORD o cambialas desde Usuarios.")
+    if any(not os.environ.get(key) for key in resolved):
+        logger.warning("Seed de desarrollo con contraseñas de demo. No uses este modo en un deploy real.")
     users = [
         {"email": "admin@resto.com", "password": seed_passwords["admin"], "full_name": "Carlos Administrador", "role": "admin"},
         {"email": "cajero@resto.com", "password": seed_passwords["cajero"], "full_name": "María Cajera", "role": "cajero"},

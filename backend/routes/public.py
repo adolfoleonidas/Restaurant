@@ -9,6 +9,7 @@ import string
 from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
+from billing import BillError, guarded_totals
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
@@ -110,10 +111,11 @@ def _public_mutate_guard(o: dict):
         raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
 
 
-def _recompute(items: list, o: dict):
-    subtotal = round(sum(i["subtotal"] for i in items), 2)
-    total = round(subtotal + o.get("delivery_fee", 0.0) - o.get("discount", 0.0) + o.get("tip", 0.0), 2)
-    return subtotal, total
+def _money_totals(order: dict, items: list, removed_item: dict = None):
+    try:
+        return guarded_totals(order, items, removed_item=removed_item)
+    except BillError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
 
 
 async def _get_restaurant():
@@ -359,7 +361,7 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd):
     _public_mutate_guard(o)
     enriched, _ = await _enrich_items(data.items, r)
     combined = list(o.get("items") or []) + enriched
-    subtotal, total = _recompute(combined, o)
+    subtotal, total = _money_totals(o, combined)
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
@@ -395,7 +397,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
         raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés modificarlo.")
     target["quantity"] = data.quantity
     target["subtotal"] = target["unit_price"] * data.quantity
-    subtotal, total = _recompute(items, o)
+    subtotal, total = _money_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     await db.orders.update_one(
         {"id": o["id"]},
@@ -428,7 +430,7 @@ async def public_remove_item(tracking_code: str, item_id: str):
     if target.get("status") not in ("pendiente", None):
         raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés quitarlo.")
     items = [i for i in items if i["id"] != item_id]
-    subtotal, total = _recompute(items, o)
+    subtotal, total = _money_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
     await db.orders.update_one(
         {"id": o["id"]},

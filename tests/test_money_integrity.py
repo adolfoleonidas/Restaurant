@@ -1,0 +1,537 @@
+"""Money integrity: invalid amounts, delivery fee, paid orders, concurrent charges, shift refunds."""
+import asyncio
+import copy
+import os
+import sys
+from pathlib import Path
+
+import pytest
+from pymongo.errors import DuplicateKeyError
+
+os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
+os.environ.setdefault("DB_NAME", "restaurant_db_unit")
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+
+from fastapi import HTTPException
+from pydantic import ValidationError
+
+from models import CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentSplit, ProductCreate
+from routes.cash import _shift_totals
+from routes.orders import add_items, change_status, remove_item, update_item
+from routes.payments import apply_void_payment, create_payment
+from routes.reports import sales_report
+import routes.cash as cash_routes
+import routes.orders as order_routes
+import routes.payments as payment_routes
+import routes.reports as report_routes
+
+
+RID = "rest-1"
+STAMP = "2026-09-11T12:00:00+00:00"
+
+
+class _Result:
+    def __init__(self, n):
+        self.modified_count = n
+        self.matched_count = n
+
+
+def _match(doc, filt):
+    for key, expected in (filt or {}).items():
+        if key == "$or":
+            if not any(_match(doc, clause) for clause in expected):
+                return False
+            continue
+        if key == "$and":
+            if not all(_match(doc, clause) for clause in expected):
+                return False
+            continue
+        if isinstance(expected, dict):
+            if "$nin" in expected:
+                if doc.get(key) in expected["$nin"]:
+                    return False
+                continue
+            if "$exists" in expected:
+                if (key in doc) != bool(expected["$exists"]):
+                    return False
+                continue
+            if "$in" in expected:
+                if doc.get(key) not in expected["$in"]:
+                    return False
+                continue
+            bounds = ("$gte", "$gt", "$lte", "$lt")
+            if any(op in expected for op in bounds):
+                value = doc.get(key)
+                if value is None:
+                    return False
+                if "$gte" in expected and value < expected["$gte"]:
+                    return False
+                if "$gt" in expected and value <= expected["$gt"]:
+                    return False
+                if "$lte" in expected and value > expected["$lte"]:
+                    return False
+                if "$lt" in expected and value >= expected["$lt"]:
+                    return False
+                continue
+        if doc.get(key) != expected:
+            return False
+    return True
+
+
+class _Cursor:
+    def __init__(self, docs):
+        self.docs = docs
+
+    def sort(self, *args, **kwargs):
+        return self
+
+    def limit(self, n):
+        self.docs = self.docs[:n]
+        return self
+
+    async def to_list(self, n):
+        await asyncio.sleep(0)
+        return [copy.deepcopy(d) for d in self.docs[:n]]
+
+
+class _Collection:
+    def __init__(self):
+        self.docs = []
+        self._lock = asyncio.Lock()
+
+    async def find_one(self, filt, proj=None):
+        await asyncio.sleep(0)
+        async with self._lock:
+            for doc in self.docs:
+                if _match(doc, filt):
+                    return copy.deepcopy(doc)
+        return None
+
+    def find(self, filt, proj=None):
+        return _Cursor([copy.deepcopy(d) for d in self.docs if _match(d, filt)])
+
+    async def insert_one(self, doc):
+        await asyncio.sleep(0)
+        async with self._lock:
+            key = doc.get("idempotency_key")
+            if key and any(d.get("idempotency_key") == key for d in self.docs):
+                raise DuplicateKeyError("duplicate idempotency key")
+            self.docs.append(copy.deepcopy(doc))
+
+    async def update_one(self, filt, update):
+        await asyncio.sleep(0)
+        async with self._lock:
+            for doc in self.docs:
+                if _match(doc, filt):
+                    for key, value in (update.get("$set") or {}).items():
+                        doc[key] = copy.deepcopy(value)
+                    for key in (update.get("$unset") or {}):
+                        doc.pop(key, None)
+                    return _Result(1)
+        return _Result(0)
+
+    async def count_documents(self, filt):
+        await asyncio.sleep(0)
+        return sum(1 for doc in self.docs if _match(doc, filt))
+
+    def aggregate(self, pipeline):
+        class _Agg:
+            async def to_list(self, n):
+                return []
+
+        return _Agg()
+
+
+class _DB:
+    def __init__(self):
+        self.orders = _Collection()
+        self.payments = _Collection()
+        self.cash_registers = _Collection()
+        self.cash_movements = _Collection()
+        self.audit_logs = _Collection()
+        self.restaurants = _Collection()
+        self.tables = _Collection()
+        self.products = _Collection()
+
+
+def _bind(db):
+    payment_routes.db = db
+    order_routes.db = db
+    cash_routes.db = db
+    report_routes.db = db
+
+
+def _cashier():
+    return {
+        "id": "cashier-1",
+        "restaurant_id": RID,
+        "role": "admin",
+        "full_name": "Ada",
+        "can_discount": True,
+        "can_void": True,
+    }
+
+
+def _mozo():
+    return {**_cashier(), "id": "mozo-1", "role": "mozo", "full_name": "Mozo"}
+
+
+def _order(**extra):
+    doc = {
+        "id": "order-1",
+        "restaurant_id": RID,
+        "order_number": 12,
+        "status": "entregado",
+        "order_type": "delivery",
+        "subtotal": 20.0,
+        "discount": 0.0,
+        "tip": 0.0,
+        "delivery_fee": 0.0,
+        "total": 20.0,
+        "amount_paid": 0.0,
+        "updated_at": STAMP,
+        "items": [{
+            "id": "item-1",
+            "product_id": "prod-1",
+            "product_name": "Lomo",
+            "quantity": 1,
+            "unit_price": 20.0,
+            "subtotal": 20.0,
+            "paid_qty": 0,
+            "status": "entregado",
+        }],
+    }
+    doc.update(extra)
+    return doc
+
+
+def _open_register(reg_id="reg-open"):
+    return {
+        "id": reg_id,
+        "restaurant_id": RID,
+        "status": "open",
+        "opening_amount": 100.0,
+        "opened_at": "2026-09-11T08:00:00+00:00",
+        "total_sales": 0.0,
+    }
+
+
+def _payment_body(**extra):
+    body = {
+        "order_id": "order-1",
+        "method": "efectivo",
+        "amount": 20,
+        "received_amount": 20,
+        "idempotency_key": "key-a",
+    }
+    body.update(extra)
+    return PaymentCreate(**body)
+
+
+def test_models_reject_negative_money_and_quantities():
+    with pytest.raises(ValidationError):
+        ProductCreate(category_id="c", name="Sopa", price=-1)
+    with pytest.raises(ValidationError):
+        PaymentCreate(order_id="o", method="efectivo", amount=-5)
+    with pytest.raises(ValidationError):
+        PaymentCreate(order_id="o", method="efectivo", amount=10, tip=-1)
+    with pytest.raises(ValidationError):
+        PaymentSplit(method="efectivo", amount=-3)
+    with pytest.raises(ValidationError):
+        CashOpen(opening_amount=-10)
+    with pytest.raises(ValidationError):
+        CashMovement(type="egreso", amount=-4, description="salida")
+    with pytest.raises(ValidationError):
+        OrderItemUpdate(quantity=-2)
+
+
+def test_charge_keeps_delivery_fee_in_the_bill():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(delivery_fee=5.0, total=25.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(_payment_body(amount=25, received_amount=25), _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return paid, stored
+
+    paid, stored = asyncio.run(run())
+    assert paid["amount"] == 25
+    assert paid["fully_paid"] is True
+    assert stored["total"] == 25
+    assert stored["amount_paid"] == 25
+
+
+def test_payment_is_tied_to_the_open_register():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        return await create_payment(_payment_body(), _cashier())
+
+    paid = asyncio.run(run())
+    assert paid["cash_register_id"] == "reg-open"
+
+
+def test_same_idempotency_key_returns_the_original_payment():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = _payment_body(idempotency_key="same-key")
+        first = await create_payment(body, _cashier())
+        second = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return first, second, stored, len(db.payments.docs)
+
+    first, second, stored, count = asyncio.run(run())
+    assert first["id"] == second["id"]
+    assert count == 1
+    assert stored["amount_paid"] == 20
+    assert stored["status"] == "pagado"
+
+
+def test_two_cashiers_cannot_charge_the_same_balance():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(total=20.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        first = create_payment(_payment_body(idempotency_key="key-a"), _cashier())
+        second = create_payment(_payment_body(idempotency_key="key-b", method="yape", amount=20), _cashier())
+        results = await asyncio.gather(first, second, return_exceptions=True)
+        stored = await db.orders.find_one({"id": "order-1"})
+        return results, db.payments.docs, stored
+
+    results, payments, stored = asyncio.run(run())
+    successes = [r for r in results if not isinstance(r, Exception)]
+    conflicts = [r for r in results if isinstance(r, HTTPException)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert conflicts[0].status_code == 409
+    assert len(payments) == 1
+    assert stored["amount_paid"] == 20
+    assert stored["status"] == "pagado"
+
+
+def test_second_partial_payment_still_closes_the_bill():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        first = await create_payment(_payment_body(amount=8, received_amount=8, idempotency_key="half"), _cashier())
+        second = await create_payment(_payment_body(amount=12, received_amount=12, idempotency_key="rest"), _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return first, second, stored, len(db.payments.docs)
+
+    first, second, stored, count = asyncio.run(run())
+    assert first["fully_paid"] is False
+    assert second["fully_paid"] is True
+    assert stored["amount_paid"] == 20
+    assert count == 2
+
+
+def _partially_paid_order():
+    order = _order(amount_paid=40.0, total=50.0, subtotal=50.0, status="pendiente_pago")
+    order["items"] = [
+        {
+            "id": "item-1",
+            "product_id": "prod-1",
+            "product_name": "Lomo",
+            "quantity": 2,
+            "unit_price": 20.0,
+            "subtotal": 40.0,
+            "paid_qty": 2,
+            "status": "entregado",
+        },
+        {
+            "id": "item-2",
+            "product_id": "prod-2",
+            "product_name": "Agua",
+            "quantity": 1,
+            "unit_price": 10.0,
+            "subtotal": 10.0,
+            "paid_qty": 0,
+            "status": "pendiente",
+        },
+    ]
+    return order
+
+
+def test_cannot_remove_an_already_paid_item():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_partially_paid_order())
+        _bind(db)
+        await remove_item("order-1", "item-1", _mozo())
+
+    with pytest.raises(HTTPException) as removed:
+        asyncio.run(run())
+    assert removed.value.status_code == 400
+
+
+def test_cannot_shrink_an_item_below_what_was_paid():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_partially_paid_order())
+        _bind(db)
+        await update_item("order-1", "item-1", OrderItemUpdate(quantity=1), _mozo())
+
+    with pytest.raises(HTTPException) as shrunk:
+        asyncio.run(run())
+    assert shrunk.value.status_code == 400
+
+
+def test_can_remove_an_unpaid_item_while_another_is_paid():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_partially_paid_order())
+        _bind(db)
+        return await remove_item("order-1", "item-2", _mozo())
+
+    updated = asyncio.run(run())
+    assert [item["id"] for item in updated["items"]] == ["item-1"]
+    assert updated["total"] == 40
+    assert updated["amount_paid"] == 40
+
+
+def test_cannot_cancel_while_money_was_collected():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(amount_paid=8.0, status="pendiente_pago"))
+        _bind(db)
+        await change_status("order-1", type("S", (), {"status": "cancelado", "reason": "se fue el cliente"})(), _cashier())
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(run())
+    assert caught.value.status_code == 400
+
+
+def test_editing_items_keeps_the_delivery_fee():
+    async def run():
+        db = _DB()
+        db.products.docs.append({
+            "id": "prod-2",
+            "restaurant_id": RID,
+            "name": "Agua",
+            "price": 10.0,
+            "is_available": True,
+            "is_combo": False,
+        })
+        db.orders.docs.append(_order(delivery_fee=5.0, total=25.0))
+        _bind(db)
+        from models import OrderItemInput
+        updated = await add_items("order-1", [OrderItemInput(product_id="prod-2", quantity=1)], _mozo())
+        return updated
+
+    updated = asyncio.run(run())
+    assert updated["subtotal"] == 30
+    assert updated["total"] == 35
+
+
+def test_shift_totals_ignore_other_registers():
+    async def run():
+        db = _DB()
+        reg = _open_register("reg-a")
+        db.cash_registers.docs.append(reg)
+        db.payments.docs.extend([
+            {"id": "p1", "restaurant_id": RID, "cash_register_id": "reg-a", "status": "completed", "method": "efectivo", "amount": 10, "created_at": "2026-09-11T10:00:00+00:00"},
+            {"id": "p2", "restaurant_id": RID, "cash_register_id": "reg-b", "status": "completed", "method": "efectivo", "amount": 99, "created_at": "2026-09-11T10:05:00+00:00"},
+        ])
+        _bind(db)
+        return await _shift_totals(reg)
+
+    totals = asyncio.run(run())
+    assert totals["total_sales"] == 10
+    assert totals["cash_sales"] == 10
+
+
+def test_refund_after_close_does_not_rewrite_the_closed_shift():
+    async def run():
+        db = _DB()
+        closed = {
+            "id": "reg-old",
+            "restaurant_id": RID,
+            "status": "closed",
+            "opened_at": "2026-09-10T08:00:00+00:00",
+            "closed_at": "2026-09-10T23:00:00+00:00",
+            "total_sales": 40.0,
+            "cash_sales": 40.0,
+            "opening_amount": 100.0,
+        }
+        db.cash_registers.docs.extend([closed, _open_register("reg-today")])
+        db.orders.docs.append(_order(amount_paid=40.0, subtotal=40.0, total=40.0, status="pagado"))
+        db.orders.docs[0]["items"][0]["unit_price"] = 40.0
+        db.orders.docs[0]["items"][0]["subtotal"] = 40.0
+        db.orders.docs[0]["items"][0]["paid_qty"] = 1
+        db.payments.docs.append({
+            "id": "pay-1",
+            "restaurant_id": RID,
+            "order_id": "order-1",
+            "cash_register_id": "reg-old",
+            "status": "completed",
+            "method": "efectivo",
+            "amount": 40.0,
+            "created_at": "2026-09-10T13:00:00+00:00",
+        })
+        _bind(db)
+        original_now = payment_routes._now
+        payment_routes._now = lambda: "2026-09-23T15:00:00+00:00"
+        try:
+            await apply_void_payment("pay-1", _cashier(), "cliente devolvió el plato", "refund")
+        finally:
+            payment_routes._now = original_now
+        closed_again = await db.cash_registers.find_one({"id": "reg-old"})
+        yesterday = await sales_report(
+            _cashier(),
+            period="day",
+            date_from="2026-09-10T00:00:00+00:00",
+            date_to="2026-09-10T23:59:59+00:00",
+        )
+        today = await sales_report(
+            _cashier(),
+            period="day",
+            date_from="2026-09-23T00:00:00+00:00",
+            date_to="2026-09-23T23:59:59+00:00",
+        )
+        return closed_again, db.cash_movements.docs, yesterday, today
+
+    closed_again, movements, yesterday, today = asyncio.run(run())
+    assert closed_again["total_sales"] == 40
+    assert closed_again["status"] == "closed"
+    assert len(movements) == 1
+    assert movements[0]["type"] == "egreso"
+    assert movements[0]["amount"] == 40
+    assert movements[0]["cash_register_id"] == "reg-today"
+    assert yesterday["total_sales"] == 40
+    assert today["total_sales"] == -40
+
+
+def test_void_inside_the_open_shift_does_not_add_a_second_deduction():
+    async def run():
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        db.orders.docs.append(_order(amount_paid=20.0, status="pagado"))
+        db.orders.docs[0]["items"][0]["paid_qty"] = 1
+        db.payments.docs.append({
+            "id": "pay-1",
+            "restaurant_id": RID,
+            "order_id": "order-1",
+            "cash_register_id": "reg-open",
+            "status": "completed",
+            "method": "efectivo",
+            "amount": 20.0,
+            "created_at": "2026-09-11T13:00:00+00:00",
+        })
+        _bind(db)
+        await apply_void_payment("pay-1", _cashier(), "cobré de más sin querer", "void")
+        totals = await _shift_totals(db.cash_registers.docs[0])
+        return db.cash_movements.docs, totals
+
+    movements, totals = asyncio.run(run())
+    assert movements == []
+    assert totals["total_sales"] == 0
+    assert totals["cash_sales"] == 0

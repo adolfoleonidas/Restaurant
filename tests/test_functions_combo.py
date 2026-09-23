@@ -103,9 +103,18 @@ def test_serve_does_not_mark_paid():
     )
     assert created.status_code == 200, created.text
     order = created.json()
+    early = requests.post(f"{BASE}/orders/{order['id']}/serve", headers=mozo, timeout=10)
+    assert early.status_code == 400, early.text
+    cocina, _ = headers_for("cocina@resto.com", "cocina123")
+    sent = requests.post(f"{BASE}/orders/{order['id']}/send-to-kitchen", headers=mozo, timeout=10)
+    assert sent.status_code == 200, sent.text
+    requests.post(f"{BASE}/orders/{order['id']}/bump", headers=cocina, json={"from_status": "pendiente"}, timeout=10)
+    ready = requests.post(f"{BASE}/orders/{order['id']}/bump", headers=cocina, json={"from_status": "en_preparacion"}, timeout=10)
+    assert ready.status_code == 200, ready.text
     served = requests.post(f"{BASE}/orders/{order['id']}/serve", headers=mozo, timeout=10)
     assert served.status_code == 200, served.text
     body = served.json()
+    assert body["status"] == "entregado"
     assert body["status"] != "pagado"
     assert all(it.get("status") == "entregado" for it in body["items"])
     requests.post(f"{BASE}/orders/{order['id']}/status", headers=admin, json={"status": "cancelado", "reason": "cleanup serve"}, timeout=10)

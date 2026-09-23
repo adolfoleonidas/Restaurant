@@ -129,6 +129,12 @@ def test_add_items_to_bill_requested_goes_to_kitchen():
     mozo, admin, cajero = _staff()
     oid, table_id, _subtotal, _total = _new_order(mozo, admin)
     try:
+        sent = requests.post(f"{BASE}/orders/{oid}/send-to-kitchen", headers=mozo, timeout=10)
+        assert sent.status_code == 200, sent.text
+        cocina = headers_for("cocina@resto.com", "cocina123")
+        requests.post(f"{BASE}/orders/{oid}/bump", headers=cocina, json={"from_status": "pendiente"}, timeout=10)
+        ready = requests.post(f"{BASE}/orders/{oid}/bump", headers=cocina, json={"from_status": "en_preparacion"}, timeout=10)
+        assert ready.status_code == 200, ready.text
         r = requests.post(f"{BASE}/orders/{oid}/status", headers=mozo, json={"status": "pendiente_pago"}, timeout=10)
         assert r.status_code == 200, r.text
         products = [p for p in requests.get(f"{BASE}/products", headers=admin, timeout=10).json() if not p.get("is_combo") and p.get("is_available", True)]

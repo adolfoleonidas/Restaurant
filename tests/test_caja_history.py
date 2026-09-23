@@ -126,6 +126,12 @@ def test_sold_dishes_count_paid_qty_not_unpaid_remainder():
     row = next(p for p in after.json()["products"] if p["product_id"] == product_id)
     assert row["quantity"] == prev["quantity"] + 1
     requests.post(
+        f"{BASE}/payments/{pay.json()['id']}/void",
+        headers=admin,
+        json={"reason": "cleanup sold dishes", "kind": "void"},
+        timeout=10,
+    )
+    requests.post(
         f"{BASE}/orders/{order['id']}/status",
         headers=admin,
         json={"status": "cancelado", "reason": "cleanup sold dishes"},

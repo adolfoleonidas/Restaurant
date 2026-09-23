@@ -115,8 +115,14 @@ def test_partial_cash_expected_uses_payment_amount_not_bill_total():
     assert round(float(body["expected_amount"]), 2) == round(200 + unit, 2)
     assert round(float(body["cash_sales"]), 2) == unit
     assert round(float(body["difference"]), 2) == 0.0
-    requests.post(f"{BASE}/orders/{order['id']}/status", headers=admin, json={"status": "cancelado", "reason": "cleanup close"}, timeout=10)
     reopen_demo(cajero)
+    requests.post(
+        f"{BASE}/payments/{pay.json()['id']}/void",
+        headers=admin,
+        json={"reason": "cleanup close", "kind": "void"},
+        timeout=10,
+    )
+    requests.post(f"{BASE}/orders/{order['id']}/status", headers=admin, json={"status": "cancelado", "reason": "cleanup close"}, timeout=10)
 
 
 def test_yape_does_not_increase_expected_cash():

@@ -6,6 +6,15 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
+from billing import BillError, assert_can_cancel, guarded_totals
+from order_flow import (
+    FlowError,
+    assert_can_serve,
+    assert_item_transition,
+    assert_items_ready_to_finish,
+    assert_kitchen_open,
+    assert_order_transition,
+)
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
 
@@ -85,6 +94,13 @@ async def _compute_total(items: list, restaurant_id: str):
         })
         subtotal += line_subtotal
     return enriched, subtotal
+
+
+def _apply_bill(order: dict, items: list, removed_item: dict = None):
+    try:
+        return guarded_totals(order, items, removed_item=removed_item)
+    except BillError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
 
 
 def _derive_kitchen_status(items: list, current: str) -> str:
@@ -228,8 +244,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
         it["status"] = "pendiente"
         it["added_at"] = _now()
     combined = (o.get("items") or []) + enriched_new
-    subtotal = sum(i["subtotal"] for i in combined)
-    total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
+    subtotal, total = _apply_bill(o, combined)
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
@@ -246,9 +261,9 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    target = next((i for i in (o.get("items") or []) if i["id"] == item_id), None)
     items = [i for i in (o.get("items") or []) if i["id"] != item_id]
-    subtotal = sum(i["subtotal"] for i in items)
-    total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
+    subtotal, total = _apply_bill(o, items, removed_item=target)
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
@@ -277,8 +292,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
             break
     if not found:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
-    subtotal = sum(i["subtotal"] for i in items)
-    total = subtotal - o.get("discount", 0.0) + o.get("tip", 0.0)
+    subtotal, total = _apply_bill(o, items)
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
@@ -315,6 +329,10 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
     o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    try:
+        assert_kitchen_open(o)
+    except FlowError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
     to_status = "en_preparacion" if from_status == "pendiente" else "listo"
     items = o.get("items") or []
     moved = 0
@@ -345,10 +363,18 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
     o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    try:
+        assert_kitchen_open(o)
+    except FlowError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
     found = False
     items = o.get("items") or []
     for it in items:
         if it["id"] == item_id:
+            try:
+                assert_item_transition(it.get("status"), data.status)
+            except FlowError as exc:
+                raise HTTPException(status_code=400, detail=exc.detail)
             it["status"] = data.status
             if data.status == "en_preparacion":
                 it["started_at"] = it.get("started_at") or _now()
@@ -372,8 +398,10 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
     o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    if o.get("status") in ("pagado", "cancelado"):
-        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    try:
+        assert_can_serve(o)
+    except FlowError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
     items = o.get("items") or []
     for it in items:
         if it.get("status") != "cancelado":
@@ -447,22 +475,41 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
         raise HTTPException(status_code=403, detail="Solo admin/cajero puede cancelar")
     if new_status == "cancelado" and not data.reason:
         raise HTTPException(status_code=400, detail="Se requiere motivo de cancelación")
-    if o["status"] == "pagado":
-        raise HTTPException(status_code=400, detail="El pedido ya está pagado")
+    if new_status == "cancelado":
+        try:
+            assert_can_cancel(o)
+        except BillError as exc:
+            raise HTTPException(status_code=400, detail=exc.detail)
+    try:
+        assert_order_transition(o["status"], new_status)
+    except FlowError as exc:
+        raise HTTPException(status_code=400, detail=exc.detail)
+    if new_status == "listo":
+        try:
+            assert_items_ready_to_finish(o)
+        except FlowError as exc:
+            raise HTTPException(status_code=400, detail=exc.detail)
+    if new_status == "entregado":
+        try:
+            assert_can_serve(o)
+        except FlowError as exc:
+            raise HTTPException(status_code=400, detail=exc.detail)
 
     update = {"status": new_status, "updated_at": _now()}
     if new_status == "listo":
         update["ready_at"] = _now()
         items = o.get("items") or []
         for it in items:
-            if it.get("status") not in ("entregado", "cancelado"):
+            if it.get("status") == "en_preparacion":
                 it["status"] = "listo"
                 it["ready_at"] = _now()
         update["items"] = items
     if new_status == "en_preparacion":
         items = o.get("items") or []
         for it in items:
-            it["status"] = "en_preparacion"
+            if (it.get("status") or "pendiente") in ("pendiente", "nuevo"):
+                it["status"] = "en_preparacion"
+                it["started_at"] = it.get("started_at") or _now()
         update["items"] = items
     if new_status == "cancelado":
         update["cancellation_reason"] = data.reason

@@ -9,6 +9,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from database import db, ensure_indexes
+from security_config import assert_runtime_config
 from routes import (
     auth_router,
     users_router,
@@ -67,7 +68,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[origin.strip() for origin in os.environ.get('CORS_ORIGINS', '').split(',') if origin.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -81,6 +82,7 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def startup():
+    assert_runtime_config()
     await ensure_indexes()
     await run_seed()
     logger.info("Backend startup complete - DB seeded if empty")

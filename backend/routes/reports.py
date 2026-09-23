@@ -4,6 +4,9 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 from database import db
 from auth import require_roles, get_current_user
+from billing import rank_products, summarize_payments
+
+_OPEN_END = "9999-12-31T23:59:59+00:00"
 
 LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
@@ -51,12 +54,15 @@ async def dashboard(user: dict = Depends(get_current_user)):
     # Financial KPIs only for admin/cajero
     if user["role"] in ("admin", "cajero"):
         payments = await db.payments.find(
-            {"restaurant_id": rid, "created_at": {"$gte": start}},
+            {"restaurant_id": rid, "$or": [
+                {"created_at": {"$gte": start}},
+                {"voided_at": {"$gte": start}},
+            ]},
             {"_id": 0}
         ).to_list(10000)
-        payments = [p for p in payments if p.get("status") in (None, "completed")]
-        total_sales = sum(float(p.get("amount") or 0) for p in payments)
-        orders_paid = len(payments)
+        summary = summarize_payments(payments, start, _OPEN_END)
+        total_sales = summary["total_sales"]
+        orders_paid = summary["orders_count"]
         avg_ticket = (total_sales / orders_paid) if orders_paid else 0
         result.update({
             "daily_sales": round(total_sales, 2),
@@ -64,25 +70,15 @@ async def dashboard(user: dict = Depends(get_current_user)):
             "avg_ticket": round(avg_ticket, 2),
         })
 
-    # Top products today (admin only)
     if user["role"] == "admin":
-        pipeline = [
-            {"$match": {"restaurant_id": rid, "created_at": {"$gte": start}, "status": "pagado"}},
-            {"$unwind": "$items"},
-            {"$group": {
-                "_id": "$items.product_id",
-                "name": {"$first": "$items.product_name"},
-                "quantity": {"$sum": "$items.quantity"},
-                "revenue": {"$sum": "$items.subtotal"},
-            }},
-            {"$sort": {"quantity": -1}},
-            {"$limit": 5},
-        ]
-        top = await db.orders.aggregate(pipeline).to_list(10)
-        result["top_products"] = [
-            {"product_id": t["_id"], "name": t["name"], "quantity": t["quantity"], "revenue": round(t["revenue"], 2)}
-            for t in top
-        ]
+        ranked = await db.payments.find(
+            {"restaurant_id": rid, "$or": [
+                {"created_at": {"$gte": start}},
+                {"voided_at": {"$gte": start}},
+            ]},
+            {"_id": 0, "sold_lines": 1, "status": 1, "created_at": 1, "voided_at": 1},
+        ).to_list(10000)
+        result["top_products"] = rank_products(ranked, start, _OPEN_END, limit=5)
 
     return result
 
@@ -110,44 +106,20 @@ async def sales_report(
         start, end = s.isoformat(), now.isoformat()
 
     payments = await db.payments.find(
-        {"restaurant_id": rid, "created_at": {"$gte": start, "$lte": end}},
+        {"restaurant_id": rid, "$or": [
+            {"created_at": {"$gte": start, "$lte": end}},
+            {"voided_at": {"$gte": start, "$lte": end}},
+        ]},
         {"_id": 0}
     ).to_list(20000)
-    payments = [p for p in payments if p.get("status") in (None, "completed")]
+    summary = summarize_payments(payments, start, end)
+    total_sales = summary["total_sales"]
+    by_method = summary["by_method"]
 
-    total_sales = sum(float(p.get("amount") or 0) for p in payments)
-    by_method = {}
-    for p in payments:
-        if p["method"] == "mixto":
-            for s in p.get("splits", []):
-                m = s.get("method")
-                by_method[m] = by_method.get(m, 0) + s.get("amount", 0)
-        else:
-            by_method[p["method"]] = by_method.get(p["method"], 0) + float(p.get("amount") or 0)
-
-    # Top products in period
-    pipeline = [
-        {"$match": {"restaurant_id": rid, "created_at": {"$gte": start, "$lte": end}, "status": "pagado"}},
-        {"$unwind": "$items"},
-        {"$group": {
-            "_id": "$items.product_id",
-            "name": {"$first": "$items.product_name"},
-            "quantity": {"$sum": "$items.quantity"},
-            "revenue": {"$sum": "$items.subtotal"},
-        }},
-        {"$sort": {"quantity": -1}},
-        {"$limit": 10},
-    ]
-    top_products = await db.orders.aggregate(pipeline).to_list(20)
+    top_products = rank_products(payments, start, end, limit=10)
 
     # Sales by hour (group by date+hour string)
-    sales_by_day = {}
-    for p in payments:
-        try:
-            d = datetime.fromisoformat(p["created_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d")
-        except Exception:
-            d = p["created_at"][:10]
-        sales_by_day[d] = sales_by_day.get(d, 0) + float(p.get("amount") or 0)
+    sales_by_day = summary["sales_by_day"]
 
     # Cancelled orders count
     cancelled = await db.orders.count_documents({
@@ -161,13 +133,10 @@ async def sales_report(
         "date_from": start,
         "date_to": end,
         "total_sales": round(total_sales, 2),
-        "orders_count": len(payments),
-        "avg_ticket": round(total_sales / len(payments), 2) if payments else 0,
+        "orders_count": summary["orders_count"],
+        "avg_ticket": round(total_sales / summary["orders_count"], 2) if summary["orders_count"] else 0,
         "by_method": [{"method": k, "amount": round(v, 2)} for k, v in by_method.items()],
-        "top_products": [
-            {"product_id": t["_id"], "name": t["name"], "quantity": t["quantity"], "revenue": round(t["revenue"], 2)}
-            for t in top_products
-        ],
+        "top_products": top_products,
         "sales_by_day": [{"date": k, "amount": round(v, 2)} for k, v in sorted(sales_by_day.items())],
         "cancelled_orders": cancelled,
     }
@@ -180,41 +149,14 @@ async def product_sales(
 ):
     rid = user["restaurant_id"]
     start = _lima_period_start(period)
-    orders = await db.orders.find(
-        {
-            "restaurant_id": rid,
-            "$or": [
-                {"created_at": {"$gte": start}},
-                {"paid_at": {"$gte": start}},
-                {"updated_at": {"$gte": start}},
-            ],
-        },
-        {"_id": 0, "items": 1, "status": 1},
-    ).to_list(8000)
-    grouped = {}
-    for order in orders:
-        for item in order.get("items") or []:
-            paid_qty = int(item.get("paid_qty") or 0)
-            qty = int(item.get("quantity") or 0)
-            if paid_qty > 0:
-                sold = paid_qty
-            elif order.get("status") == "pagado":
-                sold = qty
-            else:
-                sold = 0
-            if sold <= 0:
-                continue
-            pid = item.get("product_id") or item.get("id")
-            unit = float(item.get("unit_price") or 0)
-            row = grouped.setdefault(pid, {
-                "product_id": pid,
-                "name": item.get("product_name") or "Ítem",
-                "quantity": 0,
-                "revenue": 0.0,
-            })
-            row["quantity"] += sold
-            row["revenue"] = round(row["revenue"] + sold * unit, 2)
-    products = sorted(grouped.values(), key=lambda r: (-r["quantity"], r["name"]))
+    payments = await db.payments.find(
+        {"restaurant_id": rid, "$or": [
+            {"created_at": {"$gte": start}},
+            {"voided_at": {"$gte": start}},
+        ]},
+        {"_id": 0, "sold_lines": 1, "status": 1, "created_at": 1, "voided_at": 1},
+    ).to_list(20000)
+    products = rank_products(payments, start, _OPEN_END)
     return {
         "period": period,
         "from": start,

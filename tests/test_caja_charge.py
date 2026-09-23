@@ -122,6 +122,12 @@ def test_pay_one_unit_of_line_marks_paid_qty():
     assert again["status"] != "pagado"
     assert round(float(again["amount_paid"]), 2) == round(unit, 2)
     requests.post(
+        f"{BASE}/payments/{pay.json()['id']}/void",
+        headers=admin,
+        json={"reason": "cleanup item split", "kind": "void"},
+        timeout=10,
+    )
+    requests.post(
         f"{BASE}/orders/{oid}/status",
         headers=admin,
         json={"status": "cancelado", "reason": "cleanup item split"},

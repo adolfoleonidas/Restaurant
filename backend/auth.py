@@ -1,4 +1,3 @@
-import os
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -7,8 +6,9 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List, Optional
 
 from database import db, strip_id
+from security_config import jwt_secret
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "change-this-secret-in-production-restaurant-app")
+JWT_SECRET = jwt_secret()
 JWT_ALG = "HS256"
 JWT_EXP_HOURS = 24 * 7  # 7 days
 

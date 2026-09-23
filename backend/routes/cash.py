@@ -5,6 +5,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import CashOpen, CashClose, CashMovement
+from billing import method_amounts, shift_payment_filter
 from notify import emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -30,35 +31,11 @@ def _now():
 
 
 def _method_amounts(payment: dict) -> dict:
-    amount = round(float(payment.get("amount") or 0), 2)
-    method = payment.get("method")
-    if method != "mixto":
-        key = method if method in DRAWER_METHODS else "efectivo"
-        return {key: amount}
-    out = {m: 0.0 for m in DRAWER_METHODS}
-    left = amount
-    for split in payment.get("splits") or []:
-        if left <= 0:
-            break
-        take = min(round(float(split.get("amount") or 0), 2), left)
-        if take <= 0:
-            continue
-        key = split.get("method") if split.get("method") in DRAWER_METHODS else "efectivo"
-        out[key] = round(out[key] + take, 2)
-        left = round(left - take, 2)
-    if left > 0:
-        out["efectivo"] = round(out["efectivo"] + left, 2)
-    return {k: v for k, v in out.items() if v}
+    return method_amounts(payment)
 
 
 async def _shift_totals(reg: dict) -> dict:
-    payments = await db.payments.find(
-        {
-            "restaurant_id": reg["restaurant_id"],
-            "created_at": {"$gte": reg["opened_at"]},
-        },
-        {"_id": 0},
-    ).to_list(5000)
+    payments = await db.payments.find(shift_payment_filter(reg), {"_id": 0}).to_list(5000)
     by_method = {m: 0.0 for m in DRAWER_METHODS}
     total_sales = 0.0
     for payment in payments:

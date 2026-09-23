@@ -37,6 +37,7 @@ async def ensure_indexes():
     except Exception:
         pass
     await db.payments.create_index("order_id")
+    await db.payments.create_index([("cash_register_id", 1), ("created_at", -1)])
     await db.payments.create_index(
         "idempotency_key",
         unique=True,

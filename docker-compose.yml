@@ -13,8 +13,10 @@ services:
     environment:
       MONGO_URL: mongodb://mongo:27017
       DB_NAME: ${DB_NAME:-restaurant_db}
-      JWT_SECRET: ${JWT_SECRET:-change-this-secret}
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      APP_ENV: ${APP_ENV:-production}
+      SEED_DEMO: ${SEED_DEMO:-}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a unique value of at least 32 characters}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to the public site origin}
 
   frontend:
     build:

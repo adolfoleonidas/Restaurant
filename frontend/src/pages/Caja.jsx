@@ -124,9 +124,10 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const acct = live || order;
     if (!acct) return null;
     const subtotal = acct.subtotal || 0;
+    const fee = Number(acct.delivery_fee || 0);
     const d = Number(discount || acct.discount || 0);
     const t = Number(tip || acct.tip || 0);
-    const total = Math.max(0, subtotal - d) + t;
+    const total = round2(Math.max(0, subtotal + fee - d) + t);
     const paid = Number(acct.amount_paid || 0);
     const remaining = Math.max(0, round2(total - paid));
     const unpaidItems = (acct.items || []).map((it) => ({
@@ -315,6 +316,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                         )}
                         <div className="rounded-xl bg-secondary/40 p-3">
                             <div className="flex justify-between text-sm"><span>Subtotal</span><span className="tabular-nums">{fmtMoney(subtotal)}</span></div>
+                            {fee > 0 && <div className="flex justify-between text-sm"><span>Envío</span><span className="tabular-nums">{fmtMoney(fee)}</span></div>}
                             <div className="flex justify-between text-sm"><span>Descuento</span><span className="tabular-nums">- {fmtMoney(d)}</span></div>
                             <div className="flex justify-between text-sm"><span>Propina</span><span className="tabular-nums">+ {fmtMoney(t)}</span></div>
                             <div className="border-t mt-2 pt-2 flex justify-between font-display text-xl font-bold"><span>Total</span><span className="tabular-nums" data-testid="caja-total">{fmtMoney(total)}</span></div>

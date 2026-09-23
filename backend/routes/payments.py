@@ -2,11 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
+import copy
 import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate, PaymentVoid
+from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -105,7 +107,12 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     tip = float(data.tip or 0.0)
     if tip <= 0.009 and float(order.get("amount_paid") or 0) > 0:
         tip = float(order.get("tip") or 0.0)
-    bill_total = max(0.0, subtotal - discount) + tip
+    bill_total = account_total(
+        subtotal=subtotal,
+        delivery_fee=order.get("delivery_fee") or 0,
+        discount=discount,
+        tip=tip,
+    )
     prior = await db.payments.find({"order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
     paid_so_far = round(sum(float(p.get("amount") or 0) for p in prior), 2)
     remaining = round(bill_total - paid_so_far, 2)
@@ -151,12 +158,66 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         change = 0.0
 
     amount = round(amount, 2)
+    now = _now()
+    new_paid = round(paid_so_far + amount, 2)
+    fully_paid = new_paid >= bill_total - 0.009
+    previous_items = copy.deepcopy(order.get("items") or [])
+    sold_lines = build_sold_lines(previous_items, line_payload, fully_paid)
+    items = copy.deepcopy(previous_items)
+    if line_payload:
+        by_pay = {line["item_id"]: line["quantity"] for line in line_payload}
+        for it in items:
+            extra = by_pay.get(it["id"], 0)
+            if extra:
+                it["paid_qty"] = int(it.get("paid_qty") or 0) + extra
+
+    order_set = {
+        "discount": discount,
+        "tip": tip,
+        "total": bill_total,
+        "amount_paid": new_paid,
+        "updated_at": now,
+        "items": items,
+    }
+    if fully_paid:
+        for it in items:
+            it["paid_qty"] = int(it.get("quantity") or 0)
+        order_set["items"] = items
+        order_set["status"] = "pagado"
+        order_set["paid_at"] = now
+
+    claim = await db.orders.update_one(
+        {
+            "id": data.order_id,
+            "restaurant_id": user["restaurant_id"],
+            "status": {"$nin": ["pagado", "cancelado"]},
+            "updated_at": order.get("updated_at"),
+        },
+        {"$set": order_set},
+    )
+    if claim.modified_count != 1:
+        if data.idempotency_key:
+            existing = await db.payments.find_one(
+                {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
+                {"_id": 0},
+            )
+            if existing:
+                return existing
+        raise HTTPException(status_code=409, detail={
+            "code": "account_changed",
+            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "previous_total": data.expected_total,
+            "new_total": order.get("total"),
+            "updated_at": order.get("updated_at"),
+        })
+
     payment_id = str(uuid.uuid4())
     payment = {
         "id": payment_id,
         "restaurant_id": user["restaurant_id"],
         "order_id": data.order_id,
         "order_number": order.get("order_number"),
+        "cash_register_id": open_reg["id"],
         "method": data.method,
         "amount": amount,
         "received_amount": received,
@@ -166,17 +227,34 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "total": bill_total,
         "splits": [s.model_dump() for s in (data.splits or [])],
         "lines": line_payload,
+        "sold_lines": sold_lines,
         "status": "completed",
         "paid_by": user["id"],
         "paid_by_name": user["full_name"],
         "notes": data.notes,
         "discount_reason": (data.discount_reason or "").strip() or None,
         "idempotency_key": data.idempotency_key,
-        "created_at": _now(),
+        "created_at": now,
     }
+    async def _release_claim():
+        await db.orders.update_one(
+            {"id": data.order_id, "updated_at": now},
+            {"$set": {
+                "discount": order.get("discount", 0.0),
+                "tip": order.get("tip", 0.0),
+                "total": order.get("total"),
+                "amount_paid": order.get("amount_paid", 0.0),
+                "updated_at": order.get("updated_at"),
+                "items": previous_items,
+                "status": order.get("status"),
+                "paid_at": order.get("paid_at"),
+            }},
+        )
+
     try:
         await db.payments.insert_one(payment)
     except DuplicateKeyError:
+        await _release_claim()
         existing = await db.payments.find_one(
             {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
             {"_id": 0},
@@ -184,31 +262,9 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         if existing:
             return existing
         raise HTTPException(status_code=400, detail="No se pudo registrar el pago")
-
-    if line_payload:
-        by_pay = {l["item_id"]: l["quantity"] for l in line_payload}
-        for it in items:
-            extra = by_pay.get(it["id"], 0)
-            if extra:
-                it["paid_qty"] = int(it.get("paid_qty") or 0) + extra
-
-    new_paid = round(paid_so_far + amount, 2)
-    fully_paid = new_paid >= bill_total - 0.009
-    order_set = {
-        "discount": discount,
-        "tip": tip,
-        "total": bill_total,
-        "amount_paid": new_paid,
-        "updated_at": _now(),
-        "items": items,
-    }
-    if fully_paid:
-        for it in items:
-            it["paid_qty"] = int(it.get("quantity") or 0)
-        order_set["items"] = items
-        order_set["status"] = "pagado"
-        order_set["paid_at"] = _now()
-    await db.orders.update_one({"id": data.order_id}, {"$set": order_set})
+    except Exception:
+        await _release_claim()
+        raise
 
     emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
     if fully_paid and order.get("table_id"):
@@ -284,6 +340,21 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         order_set["paid_at"] = None
 
     status_label = "refunded" if kind == "refund" else "voided"
+    owned = None
+    if pay.get("cash_register_id"):
+        owned = await db.cash_registers.find_one(
+            {"id": pay["cash_register_id"], "restaurant_id": user["restaurant_id"]},
+            {"_id": 0},
+        )
+    open_reg = await db.cash_registers.find_one(
+        {"restaurant_id": user["restaurant_id"], "status": "open"},
+        {"_id": 0},
+    )
+    cash_out = cash_portion(pay)
+    record_refund = (not reversal_is_inside_open_shift(pay, owned, open_reg)) and cash_out > 0.009
+    if record_refund and not open_reg:
+        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+
     await db.payments.update_one({"id": payment_id}, {"$set": {
         "status": status_label,
         "void_kind": kind,
@@ -293,6 +364,20 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         "voided_at": _now(),
     }})
     await db.orders.update_one({"id": order["id"]}, {"$set": order_set})
+    if record_refund:
+        await db.cash_movements.insert_one({
+            "id": str(uuid.uuid4()),
+            "cash_register_id": open_reg["id"],
+            "restaurant_id": user["restaurant_id"],
+            "type": "egreso",
+            "amount": cash_out,
+            "description": f"Devolución pedido {pay.get('order_number') or pay.get('order_id')}",
+            "source_payment_id": payment_id,
+            "created_by": user["id"],
+            "created_by_name": user.get("full_name"),
+            "created_at": _now(),
+        })
+        emit_notice(user["restaurant_id"], "cash", status="movement", register_id=open_reg["id"])
     emit_order(user["restaurant_id"], order["id"], order_set.get("status", order.get("status")), source=order.get("source"), payment_status="voided" if kind == "void" else "refunded")
     if reopened and order.get("table_id"):
         table = await db.tables.find_one({"id": order["table_id"]})
