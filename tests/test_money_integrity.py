@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models import CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentSplit, ProductCreate
+from models import CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from routes.cash import _shift_totals
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment
@@ -580,3 +580,121 @@ def test_paying_the_bill_does_not_pull_food_out_of_the_kitchen():
     assert served["fulfillment_status"] == "entregado"
     assert closed["payment_status"] == "pagado"
     assert table_after["status"] == "pagada"
+
+
+def test_partial_mixto_does_not_mark_selected_dishes_paid():
+    async def run():
+        db = _DB()
+        order = _order(subtotal=40.0, total=40.0, status="entregado")
+        order["items"][0]["quantity"] = 2
+        order["items"][0]["unit_price"] = 20.0
+        order["items"][0]["subtotal"] = 40.0
+        db.orders.docs.append(order)
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        try:
+            await create_payment(
+                PaymentCreate(
+                    order_id="order-1",
+                    method="mixto",
+                    amount=10,
+                    splits=[
+                        PaymentSplit(method="efectivo", amount=6),
+                        PaymentSplit(method="yape", amount=4),
+                    ],
+                    lines=[PaymentLine(item_id="item-1", quantity=2)],
+                    idempotency_key="mixto-short",
+                ),
+                _cashier(),
+            )
+            paid = None
+        except HTTPException as exc:
+            paid = exc
+        stored = await db.orders.find_one({"id": "order-1"})
+        return paid, stored, list(db.payments.docs)
+
+    error, stored, payments = asyncio.run(run())
+    assert isinstance(error, HTTPException)
+    assert error.status_code == 400
+    assert int(stored["items"][0].get("paid_qty") or 0) == 0
+    assert payments == []
+
+
+def test_mixto_covering_one_line_marks_only_that_line():
+    async def run():
+        db = _DB()
+        order = _order(subtotal=40.0, total=40.0, status="entregado")
+        order["items"][0]["quantity"] = 2
+        order["items"][0]["unit_price"] = 20.0
+        order["items"][0]["subtotal"] = 40.0
+        db.orders.docs.append(order)
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(
+            PaymentCreate(
+                order_id="order-1",
+                method="mixto",
+                amount=20,
+                splits=[
+                    PaymentSplit(method="efectivo", amount=10),
+                    PaymentSplit(method="yape", amount=10),
+                ],
+                lines=[PaymentLine(item_id="item-1", quantity=1)],
+                idempotency_key="mixto-one",
+            ),
+            _cashier(),
+        )
+        stored = await db.orders.find_one({"id": "order-1"})
+        return paid, stored
+
+    paid, stored = asyncio.run(run())
+    assert paid["amount"] == 20
+    assert paid["fully_paid"] is False
+    assert stored["items"][0]["paid_qty"] == 1
+    assert stored["status"] != "pagado"
+
+
+def test_two_refunds_of_the_same_payment_record_one_cash_out():
+    async def run():
+        db = _DB()
+        closed = {
+            "id": "reg-old",
+            "restaurant_id": RID,
+            "status": "closed",
+            "opened_at": "2026-09-10T08:00:00+00:00",
+            "closed_at": "2026-09-10T23:00:00+00:00",
+            "total_sales": 40.0,
+            "opening_amount": 100.0,
+        }
+        db.cash_registers.docs.extend([closed, _open_register("reg-today")])
+        db.orders.docs.append(_order(amount_paid=40.0, subtotal=40.0, total=40.0, status="pagado", fulfillment_status="entregado"))
+        db.orders.docs[0]["items"][0]["paid_qty"] = 1
+        db.payments.docs.append({
+            "id": "pay-1",
+            "restaurant_id": RID,
+            "order_id": "order-1",
+            "order_number": 12,
+            "cash_register_id": "reg-old",
+            "status": "completed",
+            "method": "efectivo",
+            "amount": 40.0,
+            "created_at": "2026-09-10T13:00:00+00:00",
+        })
+        _bind(db)
+        results = await asyncio.gather(
+            apply_void_payment("pay-1", _cashier(), "cliente devolvió el plato", "refund"),
+            apply_void_payment("pay-1", _cashier(), "cliente devolvió el plato", "refund"),
+            return_exceptions=True,
+        )
+        stored = await db.orders.find_one({"id": "order-1"})
+        return results, db.cash_movements.docs, stored
+
+    results, movements, stored = asyncio.run(run())
+    successes = [row for row in results if not isinstance(row, Exception)]
+    conflicts = [row for row in results if isinstance(row, HTTPException)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert conflicts[0].status_code == 400
+    assert len(movements) == 1
+    assert movements[0]["amount"] == 40
+    assert stored["amount_paid"] == 0

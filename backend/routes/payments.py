@@ -121,6 +121,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
 
     line_payload = []
+    line_total = 0.0
     items = order.get("items") or []
     if data.lines:
         by_id = {i["id"]: i for i in items}
@@ -162,6 +163,8 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     now = _now()
     new_paid = round(paid_so_far + amount, 2)
     fully_paid = new_paid >= bill_total - 0.009
+    if line_payload and not fully_paid and round(line_total, 2) > amount + 0.009:
+        raise HTTPException(status_code=400, detail="El pago no cubre los platos seleccionados")
     previous_items = copy.deepcopy(order.get("items") or [])
     sold_lines = build_sold_lines(previous_items, line_payload, fully_paid)
     items = copy.deepcopy(previous_items)
@@ -368,14 +371,19 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if record_refund and not open_reg:
         raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
 
-    await db.payments.update_one({"id": payment_id}, {"$set": {
-        "status": status_label,
-        "void_kind": kind,
-        "void_reason": reason,
-        "voided_by": user["id"],
-        "voided_by_name": user.get("full_name"),
-        "voided_at": _now(),
-    }})
+    claimed = await db.payments.update_one(
+        {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": "completed"},
+        {"$set": {
+            "status": status_label,
+            "void_kind": kind,
+            "void_reason": reason,
+            "voided_by": user["id"],
+            "voided_by_name": user.get("full_name"),
+            "voided_at": _now(),
+        }},
+    )
+    if claimed.modified_count != 1:
+        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
     await db.orders.update_one({"id": order["id"]}, {"$set": order_set})
     if record_refund:
         await db.cash_movements.insert_one({
