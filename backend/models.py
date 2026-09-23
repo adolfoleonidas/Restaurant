@@ -63,6 +63,7 @@ class RestaurantUpdate(BaseModel):
     timezone: Optional[str] = None
     opening_hours: Optional[str] = None
     delivery_fee: Optional[float] = Field(default=None, ge=0)
+    require_table_qr: Optional[bool] = None
     public_description: Optional[str] = None
     social_facebook: Optional[str] = None
     social_instagram: Optional[str] = None
@@ -192,6 +193,7 @@ class OrderCreate(BaseModel):
 class PublicOrderCreate(BaseModel):
     order_type: Literal["local", "recojo", "delivery"]
     table_id: Optional[str] = None
+    table_token: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None

@@ -19,7 +19,17 @@ export function buildRoleNotifications(role, orders = []) {
         const body = dishes(o) || who(o);
         const detailHref = role === 'cocina' ? '/cocina' : `/pedidos/${o.id}`;
 
-        if (['cocina', 'admin'].includes(role) && (o.status === 'enviado_cocina' || (o.items || []).some((it) => (it.status || 'pendiente') === 'pendiente'))) {
+        if (['mozo', 'admin'].includes(role) && o.source === 'public' && o.acceptance_status === 'pendiente') {
+            items.push({
+                id: `aceptar-${o.id}`,
+                type: 'web_pending',
+                title: `Pedido web #${n} espera aceptación`,
+                body,
+                href: detailHref,
+                at: o.created_at,
+            });
+        }
+        if (['cocina', 'admin'].includes(role) && o.acceptance_status !== 'pendiente' && (o.status === 'enviado_cocina' || (o.items || []).some((it) => (it.status || 'pendiente') === 'pendiente'))) {
             const mesa = o.table_number || (o.table_id ? 'mesa' : null);
             items.push({
                 id: `pase-${o.id}`,

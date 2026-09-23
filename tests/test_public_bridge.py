@@ -56,8 +56,6 @@ def test_public_tables_lists_orderable_tables():
     for t in tables:
         assert t["status"] in ("disponible", "ocupada", "esperando_pago"), t
         assert "id" in t and "number" in t
-        if t.get("active_order"):
-            assert isinstance(t["active_order"].get("order_number"), int)
 
 
 def test_public_local_order_requires_table(product_id):
@@ -74,10 +72,12 @@ def test_public_local_order_requires_table(product_id):
 
 
 def test_public_local_order_occupies_table(product_id, tokens, public_free_table):
+    from conftest import guest_table_token
     table = public_free_table
+    token = guest_table_token(table["id"], headers(tokens["mozo"]))
     body = {
         "order_type": "local",
-        "table_id": table["id"],
+        "table_token": token,
         "customer_name": "Lucia Local",
         "customer_phone": "999222333",
         "items": [{"product_id": product_id, "quantity": 1}],
@@ -106,10 +106,12 @@ def test_public_local_order_occupies_table(product_id, tokens, public_free_table
 
 
 def test_public_second_order_on_occupied_table_rejected(product_id, tokens, public_free_table):
+    from conftest import guest_table_token
     table = public_free_table
+    token = guest_table_token(table["id"], headers(tokens["mozo"]))
     first = requests.post(f"{BASE}/public/orders", json={
         "order_type": "local",
-        "table_id": table["id"],
+        "table_token": token,
         "customer_name": "Primera Ronda",
         "customer_phone": "999000111",
         "items": [{"product_id": product_id, "quantity": 1}],
@@ -120,7 +122,7 @@ def test_public_second_order_on_occupied_table_rejected(product_id, tokens, publ
 
     second = requests.post(f"{BASE}/public/orders", json={
         "order_type": "local",
-        "table_id": table["id"],
+        "table_token": token,
         "customer_name": "Otra Persona",
         "customer_phone": "999000222",
         "items": [{"product_id": product_id, "quantity": 1}],
@@ -129,7 +131,7 @@ def test_public_second_order_on_occupied_table_rejected(product_id, tokens, publ
     assert second.status_code == 400, second.text
     assert "ocupada" in second.json().get("detail", "").lower()
 
-    tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
+    tables = requests.get(f"{BASE}/tables", headers=headers(tokens["mozo"]), timeout=10).json()
     entry = next(t for t in tables if t["id"] == table["id"])
     assert entry["status"] == "ocupada"
     assert entry["active_order"]["order_number"] == created["order_number"]
@@ -143,10 +145,12 @@ def test_public_second_order_on_occupied_table_rejected(product_id, tokens, publ
 
 
 def test_public_live_items_add_update_remove(product_id, tokens, public_free_table):
+    from conftest import guest_table_token
     table = public_free_table
+    token = guest_table_token(table["id"], headers(tokens["mozo"]))
     first = requests.post(f"{BASE}/public/orders", json={
         "order_type": "local",
-        "table_id": table["id"],
+        "table_token": token,
         "customer_name": "Live Items",
         "customer_phone": "999000222",
         "items": [{"product_id": product_id, "quantity": 1}],

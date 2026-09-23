@@ -78,7 +78,7 @@ def test_cocina_order_list_hides_payment_fields(tokens):
 
 
 def test_public_order_appears_on_kitchen_board(product_id, tokens):
-    """A public web order must show up on the kitchen board without staff sending it."""
+    """A public web order shows up on the kitchen board without a per-table QR."""
     body = {
         "order_type": "recojo",
         "customer_name": "Ana Test",

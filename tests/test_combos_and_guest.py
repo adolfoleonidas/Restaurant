@@ -36,12 +36,14 @@ def catalog(tokens):
 
 
 def test_local_order_allows_anonymous_guest(public_free_table):
+    from conftest import guest_table_token
     tables = [public_free_table]
+    token = guest_table_token(tables[0]["id"], headers(login("mozo@resto.com", "mozo123")))
     products = requests.get(f"{BASE}/public/products", timeout=10).json()
     product = next((p for p in products if p.get("is_available", True)), products[0])
     body = {
         "order_type": "local",
-        "table_id": tables[0]["id"],
+        "table_token": token,
         "items": [{"product_id": product["id"], "quantity": 1}],
         "payment_method": "efectivo",
     }
@@ -99,11 +101,13 @@ def test_combo_blocked_when_component_sold_out(tokens, catalog, public_free_tabl
         row = next(p for p in pub if p["id"] == combo["id"])
         assert row["components_available"] is False
 
+        from conftest import guest_table_token
+        token = guest_table_token(public_free_table["id"], headers(tokens["mozo"]))
         order = requests.post(
             f"{BASE}/public/orders",
             json={
                 "order_type": "local",
-                "table_id": public_free_table["id"],
+                "table_token": token,
                 "items": [{"product_id": combo["id"], "quantity": 1}],
                 "payment_method": "efectivo",
             },
@@ -153,12 +157,14 @@ def test_combo_appears_on_kitchen_ticket(tokens, catalog, public_free_table):
     )
     assert created.status_code in (200, 201), created.text
     combo = created.json()
+    from conftest import guest_table_token
     tables = [public_free_table]
+    token = guest_table_token(tables[0]["id"], headers(tokens["mozo"]))
     order = requests.post(
         f"{BASE}/public/orders",
         json={
             "order_type": "local",
-            "table_id": tables[0]["id"],
+            "table_token": token,
             "items": [{"product_id": combo["id"], "quantity": 1}],
             "payment_method": "efectivo",
         },

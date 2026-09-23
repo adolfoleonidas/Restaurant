@@ -109,6 +109,16 @@ export default function Mesas() {
         }
     };
 
+    const copyGuestLink = async (table) => {
+        try {
+            const { data } = await api.get(`/tables/${table.id}/guest-link`);
+            await navigator.clipboard.writeText(`${window.location.origin}${data.path}`);
+            toast.success(`QR de la mesa ${data.table_number} copiado`);
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo copiar el QR');
+        }
+    };
+
     const takeTable = async (t) => {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
         if (t.status === 'ocupada') {
@@ -275,6 +285,14 @@ export default function Mesas() {
                                     )}
                                 </div>
                                 <div className="border-t p-4 space-y-2">
+                                    <Button
+                                        variant="outline"
+                                        className="w-full h-11"
+                                        onClick={() => copyGuestLink(t)}
+                                        data-testid="mesa-sheet-qr"
+                                    >
+                                        Copiar QR de la mesa
+                                    </Button>
                                     {t.active_order ? (
                                         <>
                                             {floor.key === 'listo' && canServe && (

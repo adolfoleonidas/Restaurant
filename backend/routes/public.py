@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
 import asyncio
@@ -11,6 +11,7 @@ from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
 from order_flow import VersionError, claim_order, version_conflict
+from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
@@ -160,6 +161,7 @@ async def public_restaurant():
         "currency": r.get("currency", "PEN"),
         "currency_symbol": r.get("currency_symbol", "S/"),
         "delivery_fee": r.get("delivery_fee", 0.0),
+        "require_table_qr": bool(r.get("require_table_qr")),
         "public_description": r.get("public_description"),
         "social_facebook": r.get("social_facebook"),
         "social_instagram": r.get("social_instagram"),
@@ -194,18 +196,18 @@ async def public_products():
 
 @router.get("/tables")
 async def public_tables():
-    r = await _get_restaurant()
+    restaurant = await _get_restaurant()
     active_orders = await db.orders.find(
         {
-            "restaurant_id": r["id"],
+            "restaurant_id": restaurant["id"],
             "table_id": {"$type": "string"},
             "status": {"$in": _ACTIVE_ORDER_STATUSES},
         },
         {"_id": 0, "id": 1, "table_id": 1, "order_number": 1, "status": 1, "items": 1},
     ).to_list(300)
-    by_table = {o["table_id"]: o for o in active_orders if o.get("table_id")}
+    by_table = {order["table_id"]: order for order in active_orders if order.get("table_id")}
     active_ids = list(by_table.keys())
-    query = {"restaurant_id": r["id"]}
+    query = {"restaurant_id": restaurant["id"]}
     if active_ids:
         query["$or"] = [
             {"status": {"$in": ["disponible", "ocupada"]}},
@@ -217,14 +219,30 @@ async def public_tables():
         query,
         {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "capacity": 1, "status": 1},
     ).sort("number", 1).to_list(200)
-    for t in items:
-        o = by_table.get(t["id"])
-        t["active_order"] = {
-            "order_number": o["order_number"],
-            "status": o["status"],
-            "item_count": sum(int(i.get("quantity") or 0) for i in (o.get("items") or [])),
-        } if o else None
+    for table in items:
+        order = by_table.get(table["id"])
+        table["active_order"] = {
+            "order_number": order["order_number"],
+            "status": order["status"],
+            "item_count": sum(int(item.get("quantity") or 0) for item in (order.get("items") or [])),
+        } if order else None
     return items
+
+
+@router.get("/tables/resolve")
+async def resolve_public_table(token: str):
+    try:
+        table_id = read_table_token(token)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+    restaurant = await _get_restaurant()
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": restaurant["id"]},
+        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1},
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Esa mesa no existe")
+    return table
 
 
 @router.get("/payment-config")
@@ -253,7 +271,9 @@ async def public_payment_config():
 
 
 @router.post("/orders")
-async def public_create_order(data: PublicOrderCreate):
+async def public_create_order(data: PublicOrderCreate, request: Request):
+    if not public_order_limiter.allow(client_host(request)):
+        raise HTTPException(status_code=429, detail="Demasiados pedidos desde esta conexión. Esperá un momento.")
     r = await _get_restaurant()
     if not data.items:
         raise HTTPException(status_code=400, detail="Agrega al menos un producto")
@@ -263,15 +283,27 @@ async def public_create_order(data: PublicOrderCreate):
     if data.order_type == "delivery" and not (data.customer_address or '').strip():
         raise HTTPException(status_code=400, detail="La dirección es requerida para delivery")
     table = None
+    table_id = None
     if data.order_type == "local":
-        if not data.table_id:
+        if data.table_token:
+            try:
+                table_id = read_table_token(data.table_token)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+        elif r.get("require_table_qr"):
+            raise HTTPException(status_code=400, detail="Escaneá el QR de tu mesa")
+        elif data.table_id:
+            table_id = data.table_id
+        else:
             raise HTTPException(status_code=400, detail="Elegí una mesa")
-        table = await db.tables.find_one({"id": data.table_id, "restaurant_id": r["id"]}, {"_id": 0})
-        if not table or table.get("status") != "disponible":
+        table = await db.tables.find_one({"id": table_id, "restaurant_id": r["id"]}, {"_id": 0})
+        if not table:
+            raise HTTPException(status_code=400, detail="Esa mesa no existe")
+        if table.get("status") != "disponible":
             raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
         existing = await db.orders.find_one({
             "restaurant_id": r["id"],
-            "table_id": data.table_id,
+            "table_id": table_id,
             "status": {"$in": _ACTIVE_ORDER_STATUSES},
         })
         if existing:
@@ -293,11 +325,13 @@ async def public_create_order(data: PublicOrderCreate):
         "order_number": order_no,
         "tracking_code": tracking_code,
         "restaurant_id": r["id"],
-        "table_id": data.table_id if data.order_type == "local" else None,
+        "table_id": table_id,
         "created_by": None,
         "created_by_name": "Cliente público",
         "source": "public",
         "status": "enviado_cocina",
+        "fulfillment_status": "enviado_cocina",
+        "acceptance_status": "aceptado",
         "order_type": data.order_type,
         "items": enriched,
         "subtotal": round(subtotal, 2),

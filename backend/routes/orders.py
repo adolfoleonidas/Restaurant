@@ -171,7 +171,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     ).sort("created_at", 1).to_list(500)
     board = []
     for o in items:
-        if o.get("status") == "entregado":
+        if o.get("status") == "entregado" or o.get("acceptance_status") == "pendiente":
             continue
         if any(i.get("status") in ("pendiente", "en_preparacion", "listo", None) for i in (o.get("items") or [])):
             board.append(o)
@@ -345,7 +345,14 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
         it["status"] = "pendiente"
         it.setdefault("added_at", _now())
     now = _now()
-    await _save_order(o, {"status": "enviado_cocina", "fulfillment_status": "enviado_cocina", "sent_to_kitchen_at": now, "items": items, "updated_at": now})
+    await _save_order(o, {
+        "status": "enviado_cocina",
+        "fulfillment_status": "enviado_cocina",
+        "acceptance_status": "aceptado",
+        "sent_to_kitchen_at": now,
+        "items": items,
+        "updated_at": now,
+    })
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
     emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})

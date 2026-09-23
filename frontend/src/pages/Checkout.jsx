@@ -32,6 +32,8 @@ export default function Checkout() {
         const t = searchParams.get('tipo');
         return ['local', 'recojo', 'delivery'].includes(t) ? t : 'local';
     });
+    const [tableToken] = useState(() => searchParams.get('mesa') || '');
+    const [tableInfo, setTableInfo] = useState(null);
     const [tableId, setTableId] = useState('');
     const [tables, setTables] = useState([]);
     const [customer, setCustomer] = useState({ name: '', phone: '', address: '', email: '' });
@@ -45,13 +47,23 @@ export default function Checkout() {
 
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data));
-        api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
         api.get('/public/payment-config').then((r) => {
             setPaymentCfg(r.data);
             const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => r.data[`enable_${m}`]);
             if (enabled) setMethod(enabled);
         });
     }, []);
+
+    useEffect(() => {
+        if (tableToken) {
+            api.get('/public/tables/resolve', { params: { token: tableToken } })
+                .then((r) => setTableInfo(r.data))
+                .catch(() => setTableInfo(null));
+            return;
+        }
+        if (restaurant?.require_table_qr) return;
+        api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
+    }, [tableToken, restaurant]);
 
     useEffect(() => {
         if (confirmed) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -107,8 +119,11 @@ export default function Checkout() {
         if (orderType === 'delivery' && !customer.address.trim()) {
             toast.error('Indica la dirección para delivery'); return;
         }
-        if (orderType === 'local' && !tableId) {
-            toast.error('Elegí tu mesa'); return;
+        if (orderType === 'local' && tableToken && !tableInfo) {
+            toast.error('Escaneá el QR de tu mesa'); return;
+        }
+        if (orderType === 'local' && !tableToken && !tableId) {
+            toast.error(restaurant?.require_table_qr ? 'Escaneá el QR de tu mesa' : 'Elegí tu mesa'); return;
         }
         setSubmitting(true);
         try {
@@ -121,7 +136,8 @@ export default function Checkout() {
                 items: items.map((it) => ({ product_id: it.product_id, quantity: it.quantity, notes: it.notes || null })),
                 notes: notes.trim() || null,
                 payment_method: method,
-                table_id: orderType === 'local' ? tableId : null,
+                table_token: orderType === 'local' && tableToken ? tableToken : null,
+                table_id: orderType === 'local' && !tableToken ? tableId : null,
             };
             const { data } = await api.post('/public/orders', payload);
             setConfirmed(data);
@@ -129,7 +145,7 @@ export default function Checkout() {
                 setMeta({
                     tracking_code: data.tracking_code,
                     order_number: data.order_number,
-                    table_id: orderType === 'local' ? tableId : null,
+                    table_id: orderType === 'local' ? tableInfo?.id : null,
                 });
             }
             clear();
@@ -239,8 +255,12 @@ export default function Checkout() {
 
                     {orderType === 'local' && (
                         <Card><CardContent className="p-5">
-                            <h2 className="font-display text-lg font-semibold mb-3">¿En qué mesa estás?</h2>
-                            {tables.length === 0 ? (
+                            <h2 className="font-display text-lg font-semibold mb-3">{tableInfo ? 'Tu mesa' : '¿En qué mesa estás?'}</h2>
+                            {tableInfo ? (
+                                <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{tableInfo.number}</span>{tableInfo.area ? ` · ${tableInfo.area}` : ''}</p>
+                            ) : restaurant?.require_table_qr ? (
+                                <p className="text-sm text-muted-foreground">Escaneá el QR de tu mesa para pedir en el local.</p>
+                            ) : tables.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pedí recojo o avisá al mozo.</p>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -259,12 +279,8 @@ export default function Checkout() {
                                             >
                                                 <div className="font-display italic text-xl font-semibold">{t.number}</div>
                                                 <div className="text-[11px] text-muted-foreground">{t.area}</div>
-                                                {billPending && (
-                                                    <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>
-                                                )}
-                                                {blocked && !billPending && (
-                                                    <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>
-                                                )}
+                                                {billPending && <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>}
+                                                {blocked && !billPending && <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>}
                                             </button>
                                         );
                                     })}

@@ -5,6 +5,7 @@ from database import db
 from auth import get_current_user, require_roles
 from models import TableCreate, TableUpdate
 from notify import emit_notice
+from guest_access import sign_table
 
 router = APIRouter()
 
@@ -71,6 +72,15 @@ async def create_table(data: TableCreate, user: dict = Depends(require_roles(["a
     }
     await db.tables.insert_one(t)
     return {k: v for k, v in t.items() if k != "_id"}
+
+
+@router.get("/{table_id}/guest-link")
+async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    table = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "id": 1, "number": 1})
+    if not table:
+        raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    token = sign_table(table["id"])
+    return {"token": token, "path": f"/checkout?mesa={token}", "table_number": table.get("number")}
 
 
 @router.post("/{table_id}/seat")

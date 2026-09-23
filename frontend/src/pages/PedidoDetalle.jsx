@@ -244,7 +244,7 @@ export default function PedidoDetalle() {
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
                 {order.status === 'nuevo' && ['admin', 'mozo'].includes(user.role) && (
                     <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
-                        Enviar a cocina
+                        {order.acceptance_status === 'pendiente' ? 'Aceptar y enviar a cocina' : 'Enviar a cocina'}
                     </Button>
                 )}
                 {['enviado_cocina', 'en_preparacion'].includes(order.status) && (

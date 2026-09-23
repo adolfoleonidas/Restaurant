@@ -13,11 +13,15 @@ def admin_headers():
 
 
 def ensure_free_public_table():
-    tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
-    for t in tables:
-        if t.get("status") == "disponible" and not t.get("active_order"):
-            return t
     headers = admin_headers()
+
+    def free_tables():
+        tables = requests.get(f"{BASE}/tables", headers=headers, timeout=10).json()
+        return [t for t in tables if t.get("status") == "disponible" and not t.get("active_order")]
+
+    found = free_tables()
+    if found:
+        return found[0]
     orders = requests.get(f"{BASE}/orders", params={"active_only": "true"}, headers=headers, timeout=10).json()
     for o in orders:
         if not o.get("table_id"):
@@ -29,11 +33,15 @@ def ensure_free_public_table():
             timeout=10,
         )
         break
-    tables = requests.get(f"{BASE}/public/tables", timeout=10).json()
-    for t in tables:
-        if t.get("status") == "disponible" and not t.get("active_order"):
-            return t
-    assert False, "could not free a table for tests"
+    found = free_tables()
+    assert found, "could not free a table for tests"
+    return found[0]
+
+
+def guest_table_token(table_id, headers):
+    link = requests.get(f"{BASE}/tables/{table_id}/guest-link", headers=headers, timeout=10)
+    link.raise_for_status()
+    return link.json()["token"]
 
 
 @pytest.fixture
