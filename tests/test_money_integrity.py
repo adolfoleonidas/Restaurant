@@ -698,3 +698,57 @@ def test_two_refunds_of_the_same_payment_record_one_cash_out():
     assert len(movements) == 1
     assert movements[0]["amount"] == 40
     assert stored["amount_paid"] == 0
+
+
+def test_stale_kitchen_update_cannot_overwrite_a_payment():
+    async def run():
+        db = _DB()
+        cooking = _order(status="enviado_cocina", subtotal=20.0, total=20.0)
+        cooking["items"][0]["status"] = "pendiente"
+        cooking["items"][0]["paid_qty"] = 0
+        db.orders.docs.append(cooking)
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        reads = 0
+        release = asyncio.Event()
+        real_find = db.orders.find_one
+        real_update = db.orders.update_one
+
+        async def find_one(filt, proj=None):
+            nonlocal reads
+            doc = await real_find(filt, proj)
+            if doc and doc.get("id") == "order-1":
+                reads += 1
+                if reads >= 2:
+                    release.set()
+            return doc
+
+        async def update_one(filt, update):
+            if filt.get("id") == "order-1":
+                await release.wait()
+            return await real_update(filt, update)
+
+        db.orders.find_one = find_one
+        db.orders.update_one = update_one
+        results = await asyncio.gather(
+            create_payment(_payment_body(), _cashier()),
+            change_status("order-1", _flow("en_preparacion"), _cocina()),
+            return_exceptions=True,
+        )
+        stored = await db.orders.find_one({"id": "order-1"})
+        return results, stored, list(db.payments.docs)
+
+    results, stored, payments = asyncio.run(run())
+    successes = [row for row in results if not isinstance(row, Exception)]
+    conflicts = [row for row in results if isinstance(row, HTTPException)]
+    assert len(successes) == 1
+    assert len(conflicts) == 1
+    assert conflicts[0].status_code == 409
+    paid_qty = int(stored["items"][0].get("paid_qty") or 0)
+    if payments:
+        assert stored["amount_paid"] == 20
+        assert paid_qty == 1
+    else:
+        assert stored["status"] == "en_preparacion"
+        assert paid_qty == 0
+        assert stored["amount_paid"] == 0

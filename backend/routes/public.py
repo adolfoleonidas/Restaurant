@@ -10,6 +10,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
+from order_flow import VersionError, claim_order, version_conflict
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
@@ -109,6 +110,13 @@ def _public_mutate_guard(o: dict):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if o["status"] == "pendiente_pago":
         raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
+
+
+async def _save_public_order(order: dict, fields: dict):
+    try:
+        await claim_order(db.orders, order, fields)
+    except VersionError:
+        raise HTTPException(status_code=409, detail=version_conflict(order))
 
 
 def _money_totals(order: dict, items: list, removed_item: dict = None):
@@ -365,10 +373,7 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd):
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
-    await db.orders.update_one(
-        {"id": o["id"]},
-        {"$set": {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
-    )
+    await _save_public_order(o, {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -399,10 +404,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     target["subtotal"] = target["unit_price"] * data.quantity
     subtotal, total = _money_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
-    await db.orders.update_one(
-        {"id": o["id"]},
-        {"$set": {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
-    )
+    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -432,10 +434,7 @@ async def public_remove_item(tracking_code: str, item_id: str):
     items = [i for i in items if i["id"] != item_id]
     subtotal, total = _money_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
-    await db.orders.update_one(
-        {"id": o["id"]},
-        {"$set": {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "updated_at": _now()}}
-    )
+    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -504,13 +503,10 @@ async def upload_proof(tracking_code: str, data: PublicProofUpload):
         raise HTTPException(status_code=400, detail="Imagen inválida")
     if len(data.payment_proof) > 2_500_000:
         raise HTTPException(status_code=400, detail="La imagen es muy grande (max ~1.8MB)")
-    await db.orders.update_one(
-        {"id": o["id"]},
-        {"$set": {
-            "payment_proof_url": data.payment_proof,
-            "payment_status": "comprobante_subido",
-            "updated_at": _now(),
-        }}
-    )
+    await _save_public_order(o, {
+        "payment_proof_url": data.payment_proof,
+        "payment_status": "comprobante_subido",
+        "updated_at": _now(),
+    })
     emit_order(o["restaurant_id"], o["id"], o.get("status"), source="public", payment_status="comprobante_subido")
     return {"ok": True}

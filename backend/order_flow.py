@@ -7,6 +7,33 @@ class FlowError(Exception):
         self.detail = detail
 
 
+class VersionError(Exception):
+    def __init__(self):
+        super().__init__("El pedido cambió. Volvé a cargarlo.")
+        self.detail = "El pedido cambió. Volvé a cargarlo."
+
+
+def version_conflict(order: dict) -> dict:
+    return {
+        "code": "account_changed",
+        "message": "El pedido cambió. Volvé a cargarlo.",
+        "updated_at": order.get("updated_at"),
+    }
+
+
+async def claim_order(orders, order: dict, fields: dict):
+    """Write the order only if nobody else changed it since it was read."""
+    stamp = order.get("updated_at")
+    filt = {"id": order["id"], "restaurant_id": order.get("restaurant_id")}
+    if stamp is None:
+        filt["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
+    else:
+        filt["updated_at"] = stamp
+    result = await orders.update_one(filt, {"$set": fields})
+    if getattr(result, "modified_count", 0) != 1:
+        raise VersionError()
+
+
 _ORDER_NEXT = {
     "nuevo": {"cancelado"},
     "enviado_cocina": {"en_preparacion", "cancelado"},

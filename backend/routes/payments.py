@@ -9,7 +9,7 @@ from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate, PaymentVoid
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
-from order_flow import ticket_fields
+from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -384,7 +384,20 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     )
     if claimed.modified_count != 1:
         raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
-    await db.orders.update_one({"id": order["id"]}, {"$set": order_set})
+    try:
+        await claim_order(db.orders, order, order_set)
+    except VersionError:
+        await db.payments.update_one(
+            {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": status_label},
+            {"$set": {"status": "completed"}, "$unset": {
+                "void_kind": "",
+                "void_reason": "",
+                "voided_by": "",
+                "voided_by_name": "",
+                "voided_at": "",
+            }},
+        )
+        raise HTTPException(status_code=409, detail=version_conflict(order))
     if record_refund:
         await db.cash_movements.insert_one({
             "id": str(uuid.uuid4()),
