@@ -20,12 +20,67 @@ jobs:
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: root
           key_path: /home/runner/.ssh/vps_key
           command_timeout: 20m
+          envs: CORS_ORIGINS
           script: |
+            set -eu
             cd /docker/restaurant
             git pull
+            touch .env
+            cors="${CORS_ORIGINS:-http://93.127.214.26:8081}"
+            current_cors=""
+            if grep -q '^CORS_ORIGINS=' .env; then
+              current_cors=$(grep '^CORS_ORIGINS=' .env | head -1 | cut -d= -f2-)
+            fi
+            if [ -z "$current_cors" ] || [ "$current_cors" = "*" ]; then
+              grep -v '^CORS_ORIGINS=' .env > .env.tmp || true
+              echo "CORS_ORIGINS=${cors}" >> .env.tmp
+              mv .env.tmp .env
+            fi
+            grep -v '^APP_ENV=' .env > .env.tmp || true
+            echo "APP_ENV=production" >> .env.tmp
+            mv .env.tmp .env
+            current_jwt=""
+            if grep -q '^JWT_SECRET=' .env; then
+              current_jwt=$(grep '^JWT_SECRET=' .env | head -1 | cut -d= -f2-)
+            fi
+            weak=0
+            if [ "${#current_jwt}" -lt 32 ]; then
+              weak=1
+            fi
+            case "$current_jwt" in
+              ""|change-this-secret|change-this-secret-in-production-restaurant-app|dev-secret-local-restaurant|dev-only-not-for-production)
+                weak=1
+                ;;
+            esac
+            if [ "$weak" = 1 ]; then
+              new_jwt=$(openssl rand -base64 48 | tr -d '\n=+/')
+              new_jwt=$(printf '%s' "$new_jwt" | cut -c1-48)
+              grep -v '^JWT_SECRET=' .env > .env.tmp || true
+              echo "JWT_SECRET=${new_jwt}" >> .env.tmp
+              mv .env.tmp .env
+              echo "jwt rotated len=${#new_jwt}"
+            else
+              echo "jwt kept len=${#current_jwt}"
+            fi
             docker compose up -d --build
+            ok=0
+            for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if curl -sf http://127.0.0.1:8081/api/health; then
+                echo
+                ok=1
+                break
+              fi
+              sleep 5
+            done
+            if [ "$ok" != 1 ]; then
+              docker compose ps
+              docker compose logs --tail 40 backend
+              exit 1
+            fi
