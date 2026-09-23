@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from models import CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentSplit, ProductCreate
 from routes.cash import _shift_totals
-from routes.orders import add_items, change_status, remove_item, update_item
+from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment
 from routes.reports import sales_report
 import routes.cash as cash_routes
@@ -174,6 +174,14 @@ def _cashier():
 
 def _mozo():
     return {**_cashier(), "id": "mozo-1", "role": "mozo", "full_name": "Mozo"}
+
+
+def _cocina():
+    return {**_cashier(), "id": "cocina-1", "role": "cocina", "full_name": "Cocina"}
+
+
+def _flow(name):
+    return type("S", (), {"status": name, "reason": None})()
 
 
 def _order(**extra):
@@ -535,3 +543,40 @@ def test_void_inside_the_open_shift_does_not_add_a_second_deduction():
     assert movements == []
     assert totals["total_sales"] == 0
     assert totals["cash_sales"] == 0
+
+
+def test_paying_the_bill_does_not_pull_food_out_of_the_kitchen():
+    async def run():
+        db = _DB()
+        cooking = _order(status="enviado_cocina")
+        cooking["items"][0]["status"] = "pendiente"
+        cooking["table_id"] = "mesa-1"
+        db.orders.docs.append(cooking)
+        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "status": "ocupada"})
+        db.restaurants.docs.append({"id": RID, "auto_release_table": False})
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(_payment_body(), _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        board = await kitchen_orders(_cocina())
+        table = await db.tables.find_one({"id": "mesa-1"})
+        ready = await change_status("order-1", _flow("en_preparacion"), _cocina())
+        finished = await change_status("order-1", _flow("listo"), _cocina())
+        served = await serve_order("order-1", _mozo())
+        closed = await db.orders.find_one({"id": "order-1"})
+        table_after = await db.tables.find_one({"id": "mesa-1"})
+        return paid, stored, board, table, ready, finished, served, closed, table_after
+
+    paid, stored, board, table, ready, finished, served, closed, table_after = asyncio.run(run())
+    assert paid["fully_paid"] is True
+    assert stored["status"] == "enviado_cocina"
+    assert stored["fulfillment_status"] == "enviado_cocina"
+    assert stored["payment_status"] == "pagado"
+    assert any(row["id"] == "order-1" for row in board)
+    assert table["status"] == "ocupada"
+    assert ready["status"] == "en_preparacion"
+    assert finished["fulfillment_status"] == "listo"
+    assert served["status"] == "pagado"
+    assert served["fulfillment_status"] == "entregado"
+    assert closed["payment_status"] == "pagado"
+    assert table_after["status"] == "pagada"

@@ -82,11 +82,24 @@ def test_mozo_with_cobro_can_charge():
     assert pay.status_code == 200, pay.text
     assert pay.json().get("fully_paid") is True
     again = requests.get(f"{BASE}/orders/{order['id']}", headers=mozo, timeout=10).json()
-    assert again["status"] == "pagado"
+    assert again["status"] == "nuevo"
+    assert again["fulfillment_status"] == "nuevo"
+    assert again["payment_status"] == "pagado"
     tables = requests.get(f"{BASE}/tables", headers=mozo, timeout=10).json()
     row = next(t for t in tables if t["id"] == order["table_id"])
-    assert row["status"] == "pagada"
-    requests.post(f"{BASE}/tables/{order['table_id']}/release", headers=mozo, timeout=10)
+    assert row["status"] == "ocupada"
+    requests.post(
+        f"{BASE}/payments/{pay.json()['id']}/void",
+        headers=admin,
+        json={"reason": "cleanup prepaid before kitchen", "kind": "void"},
+        timeout=10,
+    )
+    requests.post(
+        f"{BASE}/orders/{order['id']}/status",
+        headers=admin,
+        json={"status": "cancelado", "reason": "cleanup prepaid before kitchen"},
+        timeout=10,
+    )
     requests.patch(f"{BASE}/users/{mid}", headers=admin, json={"functions": ["atencion"]}, timeout=10)
 
 

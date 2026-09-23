@@ -14,6 +14,7 @@ from order_flow import (
     assert_items_ready_to_finish,
     assert_kitchen_open,
     assert_order_transition,
+    ticket_fields,
 )
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
@@ -94,6 +95,18 @@ async def _compute_total(items: list, restaurant_id: str):
         })
         subtotal += line_subtotal
     return enriched, subtotal
+
+
+async def _release_paid_table(order: dict, status: str):
+    if status != "pagado" or not order.get("table_id"):
+        return
+    restaurant = await db.restaurants.find_one({"id": order["restaurant_id"]}, {"_id": 0})
+    table_status = "disponible" if (restaurant or {}).get("auto_release_table") else "pagada"
+    await db.tables.update_one(
+        {"id": order["table_id"]},
+        {"$set": {"status": table_status, "updated_at": _now()}},
+    )
+    emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status=table_status)
 
 
 def _apply_bill(order: dict, items: list, removed_item: dict = None):
@@ -248,7 +261,8 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
-    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now(), "status": new_status}
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await db.orders.update_one({"id": order_id}, {"$set": patch})
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -266,7 +280,13 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
     subtotal, total = _apply_bill(o, items, removed_item=target)
     await db.orders.update_one(
         {"id": order_id},
-        {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
+        {"$set": {
+            "items": items,
+            "subtotal": subtotal,
+            "total": total,
+            "updated_at": _now(),
+            **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
+        }}
     )
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -295,7 +315,13 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
     subtotal, total = _apply_bill(o, items)
     await db.orders.update_one(
         {"id": order_id},
-        {"$set": {"items": items, "subtotal": subtotal, "total": total, "updated_at": _now()}}
+        {"$set": {
+            "items": items,
+            "subtotal": subtotal,
+            "total": total,
+            "updated_at": _now(),
+            **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
+        }}
     )
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
@@ -348,7 +374,7 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
     if moved == 0:
         raise HTTPException(status_code=400, detail="Nada para avanzar")
     new_status = _derive_kitchen_status(items, o["status"])
-    patch = {"items": items, "status": new_status, "updated_at": _now()}
+    patch = {"items": items, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()}
     if new_status == "listo":
         patch["ready_at"] = _now()
     await db.orders.update_one({"id": order_id}, {"$set": patch})
@@ -385,7 +411,7 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
     if not found:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
     new_status = _derive_kitchen_status(items, o["status"])
-    patch = {"items": items, "status": new_status, "updated_at": _now()}
+    patch = {"items": items, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()}
     if new_status == "listo":
         patch["ready_at"] = _now()
     await db.orders.update_one({"id": order_id}, {"$set": patch})
@@ -406,10 +432,12 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
     for it in items:
         if it.get("status") != "cancelado":
             it["status"] = "entregado"
-    patch = {"items": items, "status": "entregado", "updated_at": _now()}
+    patch = {"items": items, "updated_at": _now()}
+    patch.update(ticket_fields(o, "entregado", o.get("amount_paid"), o.get("total")))
     await db.orders.update_one({"id": order_id}, {"$set": patch})
+    await _release_paid_table(o, patch["status"])
     await _audit(user["restaurant_id"], user["id"], "serve", "order", order_id)
-    emit_order(user["restaurant_id"], order_id, "entregado", source=o.get("source"), extra="serve")
+    emit_order(user["restaurant_id"], order_id, patch["status"], source=o.get("source"), extra="serve")
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
@@ -525,7 +553,10 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
             if it.get("status") == "listo":
                 it["status"] = "entregado"
         update["items"] = items
-    if new_status == "pendiente_pago" and o.get("table_id"):
+    update.update(ticket_fields(o, new_status, o.get("amount_paid"), o.get("total")))
+    if update["status"] == "pagado":
+        update["paid_at"] = o.get("paid_at") or _now()
+    if update["status"] == "pendiente_pago" and o.get("table_id"):
         await db.tables.update_one(
             {"id": o["table_id"]},
             {"$set": {"status": "esperando_pago", "updated_at": _now()}}
@@ -533,6 +564,7 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
         emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="esperando_pago")
 
     await db.orders.update_one({"id": order_id}, {"$set": update})
+    await _release_paid_table(o, update["status"])
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})
-    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"))
+    emit_order(user["restaurant_id"], order_id, update["status"], source=o.get("source"))
     return await db.orders.find_one({"id": order_id}, {"_id": 0})

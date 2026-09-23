@@ -67,6 +67,41 @@ def assert_items_ready_to_finish(order: dict):
             raise FlowError("Todavía hay productos sin preparar")
 
 
+_PROOF_STATES = {"comprobante_subido", "confirmado"}
+_FOOD_OUT = {"entregado", "pendiente_pago"}
+
+
+def ticket_fields(order: dict, fulfillment: str, amount_paid, total) -> dict:
+    """Keep the money state independent from how far the food has gone."""
+    paid = round(float(amount_paid or 0), 2)
+    bill = round(float(total or 0), 2)
+    current_payment = order.get("payment_status")
+    if paid <= 0.009 and current_payment in _PROOF_STATES:
+        payment = current_payment
+    elif paid <= 0.009:
+        payment = "pendiente"
+    elif paid + 0.009 >= bill:
+        payment = "pagado"
+    else:
+        payment = "parcial"
+
+    food = fulfillment or order.get("fulfillment_status") or order.get("status") or "nuevo"
+    if food == "pagado":
+        food = order.get("fulfillment_status") or "entregado"
+    if food == "cancelado":
+        return {
+            "fulfillment_status": "cancelado",
+            "payment_status": current_payment or payment,
+            "status": "cancelado",
+        }
+    closed = payment == "pagado" and food in _FOOD_OUT
+    return {
+        "fulfillment_status": food,
+        "payment_status": payment,
+        "status": "pagado" if closed else food,
+    }
+
+
 def assert_can_serve(order: dict):
     status = order.get("status")
     if status in ("pagado", "cancelado"):

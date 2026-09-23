@@ -981,7 +981,7 @@ export default function Caja() {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                 </div>
                             </div>
                         ))}
@@ -1005,7 +1005,7 @@ export default function Caja() {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                 </div>
                             </div>
                         ))}

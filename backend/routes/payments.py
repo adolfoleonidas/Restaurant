@@ -9,6 +9,7 @@ from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate, PaymentVoid
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
+from order_flow import ticket_fields
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -183,7 +184,13 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         for it in items:
             it["paid_qty"] = int(it.get("quantity") or 0)
         order_set["items"] = items
-        order_set["status"] = "pagado"
+    order_set.update(ticket_fields(
+        order,
+        order.get("fulfillment_status") or order.get("status"),
+        new_paid,
+        bill_total,
+    ))
+    if order_set["status"] == "pagado":
         order_set["paid_at"] = now
 
     claim = await db.orders.update_one(
@@ -267,7 +274,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise
 
     emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
-    if fully_paid and order.get("table_id"):
+    if order_set.get("status") == "pagado" and order.get("table_id"):
         r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
         new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
         await db.tables.update_one(
@@ -329,14 +336,20 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
 
     new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - float(pay.get("amount") or 0)), 2)
     bill = float(order.get("total") or 0)
+    was_closed = order.get("status") == "pagado"
     order_set = {
         "amount_paid": new_paid,
         "items": items,
         "updated_at": _now(),
     }
+    order_set.update(ticket_fields(
+        order,
+        order.get("fulfillment_status") or order.get("status"),
+        new_paid,
+        bill,
+    ))
     reopened = new_paid < bill - 0.009
-    if reopened and order.get("status") == "pagado":
-        order_set["status"] = "pendiente_pago"
+    if reopened:
         order_set["paid_at"] = None
 
     status_label = "refunded" if kind == "refund" else "voided"
@@ -379,7 +392,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         })
         emit_notice(user["restaurant_id"], "cash", status="movement", register_id=open_reg["id"])
     emit_order(user["restaurant_id"], order["id"], order_set.get("status", order.get("status")), source=order.get("source"), payment_status="voided" if kind == "void" else "refunded")
-    if reopened and order.get("table_id"):
+    if reopened and was_closed and order.get("table_id"):
         table = await db.tables.find_one({"id": order["table_id"]})
         if table and table.get("status") == "pagada":
             await db.tables.update_one(
