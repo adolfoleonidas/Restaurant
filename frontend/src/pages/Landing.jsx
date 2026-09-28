@@ -22,6 +22,7 @@ export default function Landing() {
     const [categories, setCategories] = useState([]);
     const [products, setProducts] = useState([]);
     const [search, setSearch] = useState('');
+    const [activeCategory, setActiveCategory] = useState('');
     const sectionRefs = useRef({});
     const { generation } = usePublicStream({ restaurantId: restaurant?.id });
 
@@ -91,7 +92,7 @@ export default function Landing() {
                     </div>
                     <span className="page-kicker">{items.length}</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
                     {visible.map((p) => (
                         <ProductCard key={p.id} product={p}>
                             {renderComboChildren && (
@@ -115,7 +116,7 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
-            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border">
+            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border shadow-sm" role="navigation" aria-label="Categorías del menú">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 overflow-x-auto">
                     <div className="relative shrink-0">
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
@@ -124,16 +125,19 @@ export default function Landing() {
                     {grouped.map((g, i) => (
                         <React.Fragment key={g.category.id}>
                             <button
-                                onClick={() => scrollToCat(g.category.id)}
-                                data-testid={`landing-cat-${g.category.id}`}
-                                className="shrink-0 rounded-sm px-4 py-2 text-sm font-medium border transition-colors bg-transparent hover:bg-secondary border-border"
+                                type="button"
+                                onClick={() => { setActiveCategory(g.category.id); scrollToCat(g.category.id); }}
+                                data-testid={`landing-cat-${g.category.id}`} aria-current={activeCategory === g.category.id ? 'location' : undefined}
+                                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium border transition-colors ${activeCategory === g.category.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                             >
                                 {g.category.name}
                             </button>
                             {i === comboAfter && combos.length > 0 && (
                                 <button
-                                    onClick={() => scrollToCat('combos')}
-                                    className="shrink-0 rounded-sm px-4 py-2 text-sm font-medium border transition-colors bg-transparent hover:bg-secondary border-border"
+                                    type="button"
+                                    onClick={() => { setActiveCategory('combos'); scrollToCat('combos'); }}
+                                    aria-current={activeCategory === 'combos' ? 'location' : undefined}
+                                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium border transition-colors ${activeCategory === 'combos' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                                 >
                                     Combos
                                 </button>
