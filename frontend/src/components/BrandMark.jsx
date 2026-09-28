@@ -3,9 +3,12 @@ import React, { useState } from 'react';
 export function getSafeLogoUrl(value) {
     if (typeof value !== 'string') return null;
     const url = value.trim();
-    if (!url || url.startsWith('//')) return null;
-    if (url.startsWith('/')) return url;
+    if (!url) return null;
     try {
+        if (url.startsWith('/')) {
+            const parsed = new URL(url, 'https://restaurant.invalid');
+            return parsed.origin === 'https://restaurant.invalid' ? url : null;
+        }
         const parsed = new URL(url);
         return ['http:', 'https:'].includes(parsed.protocol) ? url : null;
     } catch {

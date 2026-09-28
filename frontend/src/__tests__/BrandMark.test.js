@@ -12,6 +12,12 @@ describe('getSafeLogoUrl', () => {
         expect(getSafeLogoUrl('javascript:alert(1)')).toBeNull();
         expect(getSafeLogoUrl('//cdn.example.com/mark.png')).toBeNull();
     });
+
+    it('rejects root-relative paths that normalize to another origin', () => {
+        const path = String.raw`/\evil.example/logo.png`;
+        expect(new URL(path, 'https://restaurant.example/').origin).toBe('https://evil.example');
+        expect(getSafeLogoUrl(path)).toBeNull();
+    });
 });
 
 describe('BrandMark', () => {
