@@ -41,8 +41,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
     return (
         <Card
             data-testid={`cocina-ticket-${order.order_number}-${stage}`}
-            className={`rounded-sm active:scale-[0.99] ${stage === 'retirado' ? 'opacity-60' : stage === 'listo' ? '' : 'cursor-pointer hover:border-primary/60'}`}
-            onClick={() => ['llegan', 'fuego'].includes(stage) && onBump(order, stage)}
+            className={`rounded-sm ${stage === 'retirado' ? 'opacity-70' : stage === 'listo' ? '' : 'border-primary/30'}`}
         >
             <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -56,7 +55,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                                     {ORDER_TYPE_LABELS[order.order_type] || order.order_type}
                                 </span>
                             )}
-                            {added ? ' · agregado' : ''}
+                            {added ? ' · AGREGADO' : ''}
                         </div>
                     </div>
                     <span className={`font-mono text-sm tabular-nums ${stage === 'retirado' ? 'text-muted-foreground' : timerClass(when)}`}>
@@ -76,7 +75,8 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                             {stage === 'fuego' && (
                                 <button
                                     type="button"
-                                    className="shrink-0 text-xs font-semibold px-2 py-1 rounded-sm border border-primary text-primary"
+                                    className="min-h-10 shrink-0 text-sm font-semibold px-3 py-2 rounded-sm border border-primary text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    aria-label={`Marcar ${it.product_name} listo`}
                                     onClick={(e) => { e.stopPropagation(); onItem(order, it); }}
                                 >
                                     Listo
@@ -89,7 +89,9 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                     <div className="mt-3 text-sm text-primary">{order.notes}</div>
                 )}
                 {['llegan', 'fuego'].includes(stage) && (
-                    <div className="mt-3 text-[11px] text-muted-foreground">Tocá la tarjeta para avanzar</div>
+                    <button type="button" className="mt-4 min-h-11 w-full rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onBump(order, stage)}>
+                        {stage === 'llegan' ? 'Pasar a fuego' : 'Avanzar pedido'}
+                    </button>
                 )}
             </CardContent>
         </Card>
@@ -106,6 +108,7 @@ export default function Cocina() {
     );
     const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
     const [zone, setZone] = useState('todas');
+    const [selectedStage, setSelectedStage] = useState('llegan');
 
     const tableMap = useMemo(() => Object.fromEntries((tables || []).map((t) => [t.id, t])), [tables]);
     const zones = useMemo(() => [...new Set((tables || []).map((t) => t.area).filter(Boolean))].sort(), [tables]);
@@ -198,14 +201,30 @@ export default function Cocina() {
                 </div>
             )}
 
-            <div className="flex gap-3 md:gap-4 overflow-x-auto snap-x snap-mandatory pb-2 md:grid md:grid-cols-2 md:overflow-visible md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
+            <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
+                <div role="tablist" aria-label="Tandas por estado" className="mb-4 grid grid-cols-2 gap-2 md:hidden">
+                    {columns.map((col) => (
+                        <button key={col.key} id={`cocina-tab-${col.key}`} type="button" role="tab" aria-selected={selectedStage === col.key} aria-controls={`cocina-panel-${col.key}`} tabIndex={selectedStage === col.key ? 0 : -1} onClick={() => setSelectedStage(col.key)} onKeyDown={(event) => {
+                            if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                            event.preventDefault();
+                            const index = columns.findIndex((item) => item.key === col.key);
+                            const offset = event.key === 'ArrowRight' ? 1 : -1;
+                            const nextStage = columns[(index + offset + columns.length) % columns.length].key;
+                            setSelectedStage(nextStage);
+                            document.getElementById(`cocina-tab-${nextStage}`)?.focus();
+                        }} className={`flex min-h-12 items-center justify-between gap-2 rounded-sm border px-3 text-left text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selectedStage === col.key ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:border-primary/60'}`}>
+                            <span>{col.label}</span><span className="rounded-full bg-background/20 px-2 py-0.5 text-xs tabular-nums">{col.cards.length}</span>
+                        </button>
+                    ))}
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
                 {columns.map((col) => (
-                    <div key={col.key} className="rounded-sm border border-border bg-card/50 p-3 shrink-0 w-[86vw] max-w-[340px] snap-start md:w-auto md:max-w-none md:shrink" data-testid={`cocina-columna-${col.key}`}>
+                    <section key={col.key} id={`cocina-panel-${col.key}`} role="tabpanel" aria-labelledby={`cocina-tab-${col.key}`} className={`${selectedStage === col.key ? 'block' : 'hidden'} min-w-0 rounded-sm border border-border bg-card p-3 md:block md:p-4`} data-testid={`cocina-columna-${col.key}`}>
                         <div className="flex items-center justify-between mb-3">
-                            <h2 className="font-display text-lg font-semibold">{col.label}</h2>
-                            <span className="text-sm tabular-nums text-muted-foreground">{col.cards.length}</span>
+                            <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
+                            <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
                         </div>
-                        <div className="space-y-3 max-h-[calc(100vh-200px)] overflow-y-auto">
+                        <div className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 md:max-h-[calc(100vh-230px)]">
                             {col.cards.length === 0 ? (
                                 <div className="text-center text-sm text-muted-foreground py-10">Vacío</div>
                             ) : col.cards.map((c) => (
@@ -220,8 +239,9 @@ export default function Cocina() {
                                 />
                             ))}
                         </div>
-                    </div>
+                    </section>
                 ))}
+                </div>
             </div>
         </div>
     );
