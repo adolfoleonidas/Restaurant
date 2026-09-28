@@ -18,8 +18,13 @@ function itemStage(it) {
 }
 
 function waveTime(order, items) {
-    const times = items.map((it) => it.added_at || it.ready_at).filter(Boolean);
-    return times[0] || order.sent_to_kitchen_at || order.created_at;
+    const earliest = items
+        .map((it) => it.added_at || it.ready_at)
+        .filter(Boolean)
+        .map((value) => ({ value, timestamp: Date.parse(value) }))
+        .filter(({ timestamp }) => Number.isFinite(timestamp))
+        .sort((a, b) => a.timestamp - b.timestamp)[0];
+    return earliest?.value || order.sent_to_kitchen_at || order.created_at;
 }
 
 function timerClass(iso) {

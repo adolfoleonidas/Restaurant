@@ -20,8 +20,8 @@ const mockOrders = [
         id: 'order-23', order_number: 23, order_type: 'mesa', table_id: 'table-5',
         status: 'pendiente', created_at: '2026-09-28T10:00:00Z',
         items: [
-            { id: 'item-old-potatoes', status: 'pendiente', quantity: 1, product_name: 'Papas doradas', added_at: '2026-09-28T10:02:00Z' },
-            { id: 'item-old-salad', status: 'pendiente', quantity: 1, product_name: 'Ensalada', added_at: '2026-09-28T10:03:00Z' },
+            { id: 'item-old-potatoes', status: 'pendiente', quantity: 1, product_name: 'Papas doradas', added_at: '2026-09-28T10:12:00Z' },
+            { id: 'item-old-salad', status: 'pendiente', quantity: 1, product_name: 'Ensalada', added_at: '2026-09-28T10:02:00Z' },
             { id: 'item-old-fire', status: 'en_preparacion', quantity: 1, product_name: 'Arroz con pollo', added_at: '2026-09-28T10:04:00Z' },
         ],
     },
