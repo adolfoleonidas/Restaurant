@@ -221,7 +221,7 @@ export default function Cocina() {
                 {columns.map((col) => (
                     <section key={col.key} id={`cocina-panel-${col.key}`} role="tabpanel" aria-labelledby={`cocina-tab-${col.key}`} className={`${selectedStage === col.key ? 'block' : 'hidden'} min-w-0 rounded-sm border border-border bg-card p-3 md:block md:p-4`} data-testid={`cocina-columna-${col.key}`}>
                         <div className="flex items-center justify-between mb-3">
-                            <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
+                            <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más recientes primero'}</p></div>
                             <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
                         </div>
                         <div className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 md:max-h-[calc(100vh-230px)]">
