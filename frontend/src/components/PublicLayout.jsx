@@ -42,7 +42,7 @@ export const PublicLayout = () => {
             <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur-md">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-3">
                     <Link to="/" className="min-w-0">
-                        <BrandMark name={restaurant?.name || 'Sabor Peruano'} kicker="Carta · Barranco" compact />
+                        <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Carta · Barranco" compact />
                     </Link>
                     <div className="flex items-center gap-3">
                         <ThemeToggle />
@@ -99,7 +99,7 @@ export const PublicLayout = () => {
             <footer className="border-t border-border mt-16">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div>
-                        <BrandMark name={restaurant?.name} kicker="Cocina peruana de autor" />
+                        <BrandMark name={restaurant?.name} logoUrl={restaurant?.logo_url} kicker="Cocina peruana de autor" />
                         <p className="text-sm text-muted-foreground mt-4 leading-relaxed">{restaurant?.public_description}</p>
                     </div>
                     <div className="space-y-2 text-sm">

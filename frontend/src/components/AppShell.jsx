@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
@@ -15,6 +15,7 @@ import {
     Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
+import { api } from '@/lib/api';
 
 const ALL_NAV = [
     { to: '/dashboard', label: 'Hoy', icon: LayoutDashboard, roles: ['admin'], group: 'main' },
@@ -55,7 +56,7 @@ const NavItems = ({ items, onNav }) => items.map((it) => (
     </NavLink>
 ));
 
-const SidebarContent = ({ user, onNav }) => {
+const SidebarContent = ({ user, onNav, restaurant }) => {
     const combo = hasFn(user, 'atencion') && (hasFn(user, 'preparacion') || hasFn(user, 'cobro'));
     let items = ALL_NAV.filter((n) => n.roles.includes(user.role) || (n.roles.includes('admin') && hasFn(user, 'administracion')) || (n.roles.includes('cajero') && hasFn(user, 'cobro')) || (n.roles.includes('mozo') && hasFn(user, 'atencion')) || (n.roles.includes('cocina') && hasFn(user, 'preparacion')));
     if (combo) {
@@ -79,7 +80,7 @@ const SidebarContent = ({ user, onNav }) => {
     return (
         <div className="flex h-full flex-col bg-card">
             <div className="px-5 py-5 border-b border-border">
-                <BrandMark kicker="Servicio de salón" compact />
+                <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
                 <NavItems items={main} onNav={onNav} />
@@ -101,6 +102,15 @@ const SidebarContent = ({ user, onNav }) => {
 
 export const AppShell = () => {
     const { user, logout } = useAuth();
+    const [restaurant, setRestaurant] = useState(null);
+
+    useEffect(() => {
+        let active = true;
+        api.get('/restaurants/current').then(({ data }) => {
+            if (active) setRestaurant(data);
+        }).catch(() => {});
+        return () => { active = false; };
+    }, []);
     const [open, setOpen] = useState(false);
     const navigate = useNavigate();
 
@@ -110,7 +120,7 @@ export const AppShell = () => {
         <NotifyProvider>
         <div className="min-h-screen flex bg-background">
             <aside className="hidden md:flex w-64 shrink-0 border-r border-border">
-                <SidebarContent user={user} />
+                <SidebarContent user={user} restaurant={restaurant} />
             </aside>
 
             <div className="flex-1 flex flex-col min-w-0">
@@ -122,7 +132,7 @@ export const AppShell = () => {
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" className="p-0 w-72 border-border">
-                            <SidebarContent user={user} onNav={() => setOpen(false)} />
+                            <SidebarContent user={user} restaurant={restaurant} onNav={() => setOpen(false)} />
                         </SheetContent>
                     </Sheet>
 
