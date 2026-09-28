@@ -22,6 +22,7 @@ const mockOrders = [
         items: [
             { id: 'item-old-potatoes', status: 'pendiente', quantity: 1, product_name: 'Papas doradas', added_at: '2026-09-28T10:02:00Z' },
             { id: 'item-old-salad', status: 'pendiente', quantity: 1, product_name: 'Ensalada', added_at: '2026-09-28T10:03:00Z' },
+            { id: 'item-old-fire', status: 'en_preparacion', quantity: 1, product_name: 'Arroz con pollo', added_at: '2026-09-28T10:04:00Z' },
         ],
     },
     {
@@ -39,7 +40,7 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a> }));
 
 describe('Cocina priority board', () => {
-    it('orders multiple incoming tickets newest first while preserving mixed item stages and accessible priorities', () => {
+    it('orders multiple incoming tickets oldest first while preserving mixed item stages and accessible priorities', () => {
         const markup = renderToStaticMarkup(<Cocina />);
         expect(markup).toContain('role="tablist"');
         expect(markup).toContain('aria-label="Tandas por estado"');
@@ -59,8 +60,13 @@ describe('Cocina priority board', () => {
         const newerIncoming = markup.indexOf('data-testid="cocina-ticket-22-llegan"');
         expect(oldestIncoming).toBeGreaterThan(-1);
         expect(newerIncoming).toBeGreaterThan(-1);
-        expect(newerIncoming).toBeLessThan(oldestIncoming);
-        expect(markup).toContain('Más recientes primero');
+        expect(oldestIncoming).toBeLessThan(newerIncoming);
+        expect(markup).toContain('data-testid="cocina-ticket-23-fuego"');
+        expect(markup).toContain('Arroz con pollo');
+        const olderFire = markup.indexOf('data-testid="cocina-ticket-23-fuego"');
+        const newerFire = markup.indexOf('data-testid="cocina-ticket-22-fuego"');
+        expect(olderFire).toBeLessThan(newerFire);
+        expect(markup).toContain('Más antiguas primero');
         expect(markup).toContain('data-testid="cocina-ticket-22-fuego"');
         expect(markup).toContain('data-testid="cocina-ticket-22-listo"');
         expect(markup).toContain('data-testid="cocina-ticket-21-retirado"');
@@ -96,7 +102,7 @@ describe('Cocina priority board', () => {
         await act(async () => root.render(<Cocina />));
 
         await act(async () => {
-            container.querySelector('#cocina-panel-llegan button:last-child').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            container.querySelector('[data-testid="cocina-ticket-22-llegan"] button:last-child').dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
         expect(api.post).toHaveBeenNthCalledWith(1, '/orders/order-22/bump', { from_status: 'pendiente' });
 
