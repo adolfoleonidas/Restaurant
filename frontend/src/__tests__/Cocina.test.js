@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Cocina from '../pages/Cocina';
+import { api } from '@/lib/api';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -34,6 +35,9 @@ describe('Cocina priority board', () => {
         const markup = renderToStaticMarkup(<Cocina />);
         expect(markup).toContain('role="tablist"');
         expect(markup).toContain('aria-label="Tandas por estado"');
+        expect(markup).toContain('md:hidden');
+        expect(markup).toContain('md:grid-cols-2');
+        expect(markup).toContain('md:block');
         expect(markup).toContain('aria-selected="true"');
         expect(markup).toContain('data-testid="cocina-columna-llegan"');
         expect(markup).toContain('data-testid="cocina-columna-fuego"');
@@ -66,9 +70,28 @@ describe('Cocina priority board', () => {
         await act(async () => root.unmount());
         container.remove();
     });
+
+    it('runs the existing order and per-item kitchen transitions from explicit controls', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        api.post.mockClear();
+        await act(async () => root.render(<Cocina />));
+
+        await act(async () => {
+            container.querySelector('#cocina-panel-llegan button:last-child').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(api.post).toHaveBeenNthCalledWith(1, '/orders/order-22/bump', { from_status: 'pendiente' });
+
+        await act(async () => {
+            container.querySelector('#cocina-tab-fuego').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        await act(async () => {
+            container.querySelector('[aria-label="Marcar Lomo listo"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(api.post).toHaveBeenNthCalledWith(2, '/orders/order-22/items/item-fire/status', { status: 'listo' });
+
+        await act(async () => root.unmount());
+        container.remove();
+    });
 });
-
-
-
-
-
