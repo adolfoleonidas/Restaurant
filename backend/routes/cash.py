@@ -147,6 +147,16 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
     if not reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta")
 
+    unresolved = await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"],
+        "$or": [
+            {"status": {"$nin": ["pagado", "cancelado"]}},
+            {"payment_status": {"$in": ["comprobante_subido", "confirmado"]}},
+        ],
+    }, {"_id": 0, "id": 1})
+    if unresolved:
+        raise HTTPException(status_code=400, detail="No se puede cerrar caja: hay pedidos o pagos pendientes")
+
     totals = await _shift_totals(reg)
     expected = totals["expected_amount"]
     difference = round(float(data.closing_amount) - expected, 2)

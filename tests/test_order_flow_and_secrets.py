@@ -181,7 +181,9 @@ def test_ready_ticket_can_still_be_served():
     served, prepared = asyncio.run(run())
     assert served["status"] == "entregado"
     assert served["items"][0]["status"] == "entregado"
-    assert prepared["status"] == "pendiente_pago"
+    assert prepared["status"] == "entregado"
+    assert prepared["fulfillment_status"] == "entregado"
+    assert prepared["payment_requested"] is True
 
 
 def test_item_advances_one_step_at_a_time():
