@@ -152,6 +152,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
         "$or": [
             {"status": {"$nin": ["pagado", "cancelado"]}},
             {"payment_status": {"$in": ["comprobante_subido", "confirmado"]}},
+            {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
         ],
     }, {"_id": 0, "id": 1})
     if unresolved:

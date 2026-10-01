@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
 import asyncio
+import hashlib
 import json
 import uuid
 import secrets
@@ -11,6 +12,7 @@ from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
 from order_flow import VersionError, claim_order, version_conflict
+from attention import AttentionBlocked, open_table_attention
 from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
@@ -102,6 +104,68 @@ def _public_order_view(o: dict) -> dict:
         "updated_at": o.get("updated_at"),
         "has_proof": bool(o.get("payment_proof_url")),
     }
+
+
+def _public_order_fingerprint(data: PublicOrderCreate, restaurant_id: str, table_id: str | None) -> str:
+    payload = {
+        "restaurant_id": restaurant_id,
+        "table_id": table_id,
+        "request": data.model_dump(exclude={"request_id"}),
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _public_order_response(order: dict) -> dict:
+    return {
+        "id": order["id"],
+        "order_number": order["order_number"],
+        "tracking_code": order["tracking_code"],
+        "status": order["status"],
+        "total": order["total"],
+        "payment_method": order["payment_method_choice"],
+    }
+
+
+async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
+    if order.get("attention_id") and order.get("attention_state") in ("opening", "open"):
+        try:
+            await open_table_attention(db, order=order, user={"id": None}, now=_now())
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá el mismo pedido. {exc.detail}")
+    event_id = None
+    if order.get("request_id"):
+        event_id = f"public-order-create:{order['restaurant_id']}:{order['request_id']}"
+    existing_audit = await db.audit_logs.find_one({"event_id": event_id}) if event_id else None
+    if existing_audit and (
+        existing_audit.get("restaurant_id") != order["restaurant_id"]
+        or existing_audit.get("entity_id") != order["id"]
+        or existing_audit.get("action") != "public_order_create"
+    ):
+        raise HTTPException(status_code=409, detail="La solicitud requiere conciliación")
+    if not existing_audit:
+        if order.get("table_id"):
+            emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status="ocupada")
+        emit_order(order["restaurant_id"], order["id"], order["status"], source="public", order_number=order["order_number"])
+        audit = {
+            "id": str(uuid.uuid4()),
+            "restaurant_id": order["restaurant_id"],
+            "user_id": None,
+            "action": "public_order_create",
+            "entity": "order",
+            "entity_id": order["id"],
+            "details": {"order_number": order["order_number"], "tracking_code": order["tracking_code"], "customer": data.customer_name},
+            "created_at": _now(),
+        }
+        if event_id:
+            audit["event_id"] = event_id
+        try:
+            await db.audit_logs.insert_one(audit)
+        except Exception:
+            persisted = await db.audit_logs.find_one({"event_id": event_id}) if event_id else None
+            if not persisted or persisted.get("entity_id") != order["id"] or persisted.get("restaurant_id") != order["restaurant_id"]:
+                raise HTTPException(status_code=503, detail="El pedido quedó guardado; reintentá la misma solicitud")
+    return _public_order_response(order)
 
 
 def _public_mutate_guard(o: dict):
@@ -276,6 +340,9 @@ async def public_payment_config():
 
 @router.post("/orders")
 async def public_create_order(data: PublicOrderCreate, request: Request):
+    request_id = getattr(data, "request_id", None)
+    if data.order_type == "local" and (data.table_token or data.table_id) and not request_id:
+        raise HTTPException(status_code=400, detail="Actualiza el menú para enviar tu pedido en mesa de forma segura")
     if not public_order_limiter.allow(client_host(request)):
         raise HTTPException(status_code=429, detail="Demasiados pedidos desde esta conexión. Esperá un momento.")
     r = await _get_restaurant()
@@ -304,9 +371,18 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         table = await db.tables.find_one({"id": table_id, "restaurant_id": r["id"]}, {"_id": 0})
         if not table:
             raise HTTPException(status_code=400, detail="Esa mesa no existe")
+        request_fingerprint = _public_order_fingerprint(data, r["id"], table_id) if request_id else None
+        if request_id:
+            previous = await db.orders.find_one({
+                "restaurant_id": r["id"], "request_id": request_id,
+            }, {"_id": 0})
+            if previous:
+                if previous.get("request_fingerprint") != request_fingerprint or previous.get("table_id") != table_id:
+                    raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
+                return await _finish_public_order(previous, data)
         if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
             raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
-        if table.get("status") != "disponible":
+        if table.get("active_attention_id") or table.get("status") != "disponible":
             raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
         existing = await db.orders.find_one({
             "restaurant_id": r["id"],
@@ -315,6 +391,15 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         })
         if existing:
             raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
+    request_fingerprint = _public_order_fingerprint(data, r["id"], table_id) if request_id else None
+    if request_id and data.order_type != "local":
+        previous = await db.orders.find_one({
+            "restaurant_id": r["id"], "request_id": request_id,
+        }, {"_id": 0})
+        if previous:
+            if previous.get("request_fingerprint") != request_fingerprint:
+                raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
+            return await _finish_public_order(previous, data)
 
     enriched, subtotal = await _enrich_items(data.items, r)
 
@@ -332,6 +417,8 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "order_number": order_no,
         "tracking_code": tracking_code,
         "restaurant_id": r["id"],
+        "request_id": request_id,
+        "request_fingerprint": request_fingerprint,
         "table_id": table_id,
         "created_by": None,
         "created_by_name": "Cliente público",
@@ -361,35 +448,21 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "created_at": _now(),
         "updated_at": _now(),
     }
+    if table_id:
+        order.update({"attention_id": str(uuid.uuid4()), "attention_state": "opening", "attention_open": False})
     try:
         await db.orders.insert_one(order)
     except DuplicateKeyError:
+        if request_id:
+            previous = await db.orders.find_one({
+                "restaurant_id": r["id"], "request_id": request_id,
+            }, {"_id": 0})
+            if previous and previous.get("request_fingerprint") == request_fingerprint:
+                return await _finish_public_order(previous, data)
+            if previous:
+                raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
-    if order.get("table_id"):
-        await db.tables.update_one(
-            {"id": order["table_id"]},
-            {"$set": {"status": "ocupada", "updated_at": _now()}},
-        )
-        emit_notice(r["id"], "table", table_id=order["table_id"], status="ocupada")
-    emit_order(r["id"], order_id, order["status"], source="public", order_number=order_no)
-    await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()),
-        "restaurant_id": r["id"],
-        "user_id": None,
-        "action": "public_order_create",
-        "entity": "order",
-        "entity_id": order_id,
-        "details": {"order_number": order_no, "tracking_code": tracking_code, "customer": data.customer_name},
-        "created_at": _now(),
-    })
-    return {
-        "id": order_id,
-        "order_number": order_no,
-        "tracking_code": tracking_code,
-        "status": order["status"],
-        "total": order["total"],
-        "payment_method": data.payment_method,
-    }
+    return await _finish_public_order(order, data)
 
 
 @router.get("/orders/{tracking_code}")

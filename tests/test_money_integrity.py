@@ -113,6 +113,14 @@ class _Collection:
     async def insert_one(self, doc):
         await asyncio.sleep(0)
         async with self._lock:
+            if doc.get("event_id") and any(d.get("event_id") == doc.get("event_id") for d in self.docs):
+                raise DuplicateKeyError("duplicate audit event id")
+            if doc.get("request_id") and any(
+                d.get("restaurant_id") == doc.get("restaurant_id")
+                and d.get("request_id") == doc.get("request_id")
+                for d in self.docs
+            ):
+                raise DuplicateKeyError("duplicate public request id")
             key = doc.get("idempotency_key")
             if key and any(d.get("idempotency_key") == key for d in self.docs):
                 raise DuplicateKeyError("duplicate idempotency key")
@@ -151,6 +159,7 @@ class _DB:
         self.audit_logs = _Collection()
         self.restaurants = _Collection()
         self.tables = _Collection()
+        self.attentions = _Collection()
         self.products = _Collection()
 
 

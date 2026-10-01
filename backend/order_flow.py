@@ -24,7 +24,11 @@ def version_conflict(order: dict) -> dict:
 async def claim_order(orders, order: dict, fields: dict):
     """Write the order only if nobody else changed it since it was read."""
     stamp = order.get("updated_at")
-    filt = {"id": order["id"], "restaurant_id": order.get("restaurant_id")}
+    filt = {
+        "id": order["id"],
+        "restaurant_id": order.get("restaurant_id"),
+        "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
+    }
     if stamp is None:
         filt["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
     else:
@@ -33,6 +37,36 @@ async def claim_order(orders, order: dict, fields: dict):
     if getattr(result, "modified_count", 0) != 1:
         raise VersionError()
 
+
+async def claim_attention_mutation(orders, order: dict, token: str, fields: dict = None):
+    """Claim the order document before changing an associated payment ledger row."""
+    stamp = order.get("updated_at")
+    filt = {
+        "id": order["id"], "restaurant_id": order["restaurant_id"],
+        "attention_id": order["attention_id"], "attention_state": "open",
+    }
+    if stamp is None:
+        filt["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
+    else:
+        filt["updated_at"] = stamp
+    patch = dict(fields or {})
+    patch.update({"attention_state": "mutating", "attention_mutation_token": token})
+    result = await orders.update_one(filt, {"$set": patch})
+    if getattr(result, "matched_count", 0) != 1:
+        raise VersionError()
+
+
+async def finish_attention_mutation(orders, order: dict, token: str, fields: dict = None):
+    """Release a payment mutation only after its order and ledger writes reconcile."""
+    patch = dict(fields or {})
+    patch.update({"attention_state": "open", "attention_open": True})
+    result = await orders.update_one({
+        "id": order["id"], "restaurant_id": order["restaurant_id"],
+        "attention_id": order["attention_id"], "attention_state": "mutating",
+        "attention_mutation_token": token,
+    }, {"$set": patch, "$unset": {"attention_mutation_token": ""}})
+    if getattr(result, "matched_count", 0) != 1:
+        raise VersionError()
 
 _ORDER_NEXT = {
     "nuevo": {"cancelado"},
