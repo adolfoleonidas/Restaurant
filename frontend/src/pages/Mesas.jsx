@@ -19,17 +19,19 @@ const FLOOR_STYLE = {
     cuenta: { label: 'Cuenta', bg: '#FFE0CC', fg: '#8C3A12', border: '#F5B488', dot: '#E07A5F' },
     entregado: { label: 'Entregado', bg: '#EAF6F5', fg: '#0F4F49', border: '#BFE5E0', dot: '#14B8A6' },
     pagada: { label: 'Cuenta pagada', bg: '#F2F2F2', fg: '#3F3F46', border: '#D4D4D8', dot: '#71717A' },
+    atencion: { label: 'Atención abierta', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
     reservada: { label: 'Reservada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
     inactiva: { label: 'Inactiva', bg: '#EFEFEF', fg: '#71717A', border: '#D4D4D8', dot: '#A1A1AA' },
 };
 
-const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'reservada'];
+const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'atencion', 'reservada'];
 
 function floorState(t) {
     const o = t.active_order;
     if (t.status === 'inactiva') return { key: 'inactiva' };
     if (t.status === 'reservada' && !o) return { key: 'reservada' };
-    if (t.status === 'pagada' && !o) return { key: 'pagada' };
+    if (o?.status === 'cancelado') return { key: 'atencion' };
+    if (o?.status === 'pagado' || (t.status === 'pagada' && !o)) return { key: 'pagada' };
     if (t.status === 'disponible' && !o) return { key: 'libre' };
     if (o?.status === 'pendiente_pago' || t.status === 'esperando_pago') return { key: 'cuenta' };
     if (o?.status === 'listo') return { key: 'listo' };
@@ -288,6 +290,9 @@ export default function Mesas() {
                                     )}
                                     {!t.active_order && (
                                         <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>
+                                    )}
+                                    {t.active_attention_id && order && (
+                                        <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalizala en Servicio cuando el cobro y la entrega estén completos.</p>
                                     )}
                                     {history && history.length > 0 && (
                                         <div className="space-y-2">

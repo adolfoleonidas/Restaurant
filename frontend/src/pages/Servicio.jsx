@@ -8,6 +8,7 @@ import { fmtMoney } from '@/lib/format';
 import { useNotify } from '@/contexts/NotifyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
+import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { ChefHat, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,8 +24,10 @@ export default function Servicio() {
     const { generation } = useNotify();
     const canCharge = hasFn(user, 'cobro', 'administracion');
     const canServe = hasFn(user, 'preparacion', 'atencion', 'administracion');
+    const canClose = ['admin', 'mozo', 'cajero'].includes(user?.role);
     const [delivering, setDelivering] = useState(null);
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
+    const [closing, setClosing] = useState(null);
+    const { data: tables, refetch: refetchTables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
     const { data: orders, refetch } = usePolling(
         () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
         8000,
@@ -34,21 +37,38 @@ export default function Servicio() {
     const cards = useMemo(() => {
         const byTable = Object.fromEntries((orders || []).filter((o) => o.table_id).map((o) => [o.table_id, o]));
         return (tables || [])
-            .filter((t) => t.status !== 'inactiva' && (t.status !== 'disponible' || byTable[t.id]))
+            .filter((t) => t.status !== 'inactiva' && (t.status !== 'disponible' || byTable[t.id] || t.active_attention_id))
             .map((t) => {
-                const o = byTable[t.id] || t.active_order;
+                const attentionOrder = activeAttentionOrder(t, orders || []);
+                const o = t.active_attention_id ? attentionOrder : byTable[t.id] || t.active_order;
                 const items = o?.items || [];
                 const pendingPrep = items.filter((it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
                 const ready = items.filter((it) => it.status === 'listo');
-                const due = o ? remaining(o) : 0;
+                const due = o && o.status !== 'cancelado' ? remaining(o) : 0;
                 return { table: t, order: o, pendingPrep, ready, due };
             })
-            .filter((c) => c.order || c.table.status === 'pagada');
+            .filter((c) => c.order || c.table.active_attention_id || c.table.status === 'pagada');
     }, [tables, orders]);
 
     const toPrep = cards.reduce((s, c) => s + c.pendingPrep.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toReady = cards.reduce((s, c) => s + c.ready.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toPay = cards.filter((c) => c.due > 0).length;
+
+    const refreshService = async () => Promise.allSettled([refetch(), refetchTables()]);
+
+    const closeAttention = async (order) => {
+        setClosing(order.id);
+        try {
+            await api.post(`/orders/${order.id}/attention/close`);
+            toast.success('Atención cerrada');
+            await refreshService();
+        } catch (e) {
+            await refreshService();
+            toast.error(e.response?.data?.detail || 'No se pudo cerrar la atención. Puedes reintentar.');
+        } finally {
+            setClosing(null);
+        }
+    };
 
     const deliver = async (order) => {
         setDelivering(order.id);
@@ -82,8 +102,8 @@ export default function Servicio() {
 
             <div className="grid gap-3 sm:grid-cols-2">
                 {cards.map(({ table, order, pendingPrep, ready, due }) => {
-                    const billRequested = order?.status === 'pendiente_pago';
-                    const allReady = order?.status === 'listo';
+                    const billRequested = Boolean(order?.payment_requested) || order?.status === 'pendiente_pago';
+                    const allReady = ready.length > 0;
                     return (
                         <Card
                             key={table.id}
@@ -114,14 +134,23 @@ export default function Servicio() {
                                 {due > 0 && (
                                     <div className="text-sm">Pendiente de pago: <span className="font-mono font-semibold">{fmtMoney(due)}</span></div>
                                 )}
-                                {table.status === 'pagada' && due <= 0 && (
+                                {table.status === 'pagada' && due <= 0 && !table.active_attention_id && (
                                     <div className="text-sm text-muted-foreground">Cuenta pagada · liberá la mesa en Mesas</div>
+                                )}
+                                {table.active_attention_id && !order && (
+                                    <div className="text-sm text-muted-foreground">Visita activa · actualizando pedido</div>
+                                )}
+                                {table.active_attention_id && order?.status === 'pagado' && ready.length === 0 && (
+                                    <div className="text-sm text-muted-foreground">Cuenta pagada · cierra la atención para liberar la mesa</div>
+                                )}
+                                {table.active_attention_id && order && order.status !== 'pagado' && order.status !== 'cancelado' && (
+                                    <div className="text-sm text-muted-foreground">Cierra la atención después de cobrar y entregar los productos</div>
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     {order && (
                                         <Button className="h-11" onClick={() => navigate(`/pedidos/${order.id}`)}>Abrir mesa</Button>
                                     )}
-                                    {order && allReady && canServe && (
+                                    {order && ready.length > 0 && canServe && (
                                         <Button
                                             variant="secondary"
                                             className="h-11"
@@ -130,6 +159,17 @@ export default function Servicio() {
                                             data-testid={`servicio-entregar-${table.number}`}
                                         >
                                             <CheckCheck className="h-4 w-4 mr-1" /> Entregar
+                                        </Button>
+                                    )}
+                                    {canClose && canCloseAttention(table, order) && (
+                                        <Button
+                                            variant="outline"
+                                            className="h-11"
+                                            onClick={() => closeAttention(order)}
+                                            disabled={closing === order.id}
+                                            data-testid={`servicio-cerrar-${table.number}`}
+                                        >
+                                            {closing === order.id ? 'Cerrando…' : 'Finalizar mesa'}
                                         </Button>
                                     )}
                                     {canCharge && order && due > 0 && (

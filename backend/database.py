@@ -12,6 +12,12 @@ async def ensure_indexes():
     await db.orders.create_index([("restaurant_id", 1), ("status", 1), ("created_at", -1)])
     await db.orders.create_index("tracking_code", sparse=True)
     await db.orders.create_index(
+        [("restaurant_id", 1), ("request_id", 1)],
+        unique=True,
+        partialFilterExpression={"request_id": {"$type": "string"}},
+        name="uniq_public_order_request",
+    )
+    await db.orders.create_index(
         [("restaurant_id", 1), ("table_id", 1)],
         unique=True,
         partialFilterExpression={
@@ -51,6 +57,13 @@ async def ensure_indexes():
         partialFilterExpression={"status": "open"},
         name="uniq_open_cash_register",
     )
+    await db.attentions.create_index("id", unique=True, name="uniq_attention_id")
+    await db.attentions.create_index(
+        [("restaurant_id", 1), ("table_id", 1)], unique=True,
+        partialFilterExpression={"status": {"$in": ["opening", "open", "closing"]}},
+        name="uniq_open_attention_per_table",
+    )
+    await db.audit_logs.create_index("event_id", unique=True, sparse=True, name="uniq_audit_event_id")
     await db.audit_logs.create_index([("created_at", -1)])
     await db.zones.create_index([("restaurant_id", 1), ("name", 1)], unique=True)
 

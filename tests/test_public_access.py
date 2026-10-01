@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from models import PublicOrderCreate, OrderItemInput
+from attention import AttentionBlocked
 from routes.orders import kitchen_orders
 from routes.public import public_create_order, public_tables
 from guest_access import read_table_token, sign_table, public_order_limiter
@@ -61,6 +62,7 @@ def _body(**extra):
     data = {
         "order_type": "local",
         "table_id": "mesa-1",
+        "request_id": "6b44c60b-e4b0-4cfe-83ed-956242f2fc2c",
         "customer_name": "Ana",
         "customer_phone": "999",
         "items": [OrderItemInput(product_id="prod-1", quantity=1)],
@@ -109,7 +111,7 @@ def test_signed_table_qr_selects_that_table_when_the_local_turns_it_on():
         except HTTPException as exc:
             missing = exc
         token = sign_table("mesa-1", "nonce-1")
-        created = await public_create_order(_body(table_token=token), _Request("10.0.0.9"))
+        created = await public_create_order(_body(table_token=token, request_id="2e070dd1-69a5-42ef-afc9-e7247b8a86a9"), _Request("10.0.0.9"))
         stored = await db.orders.find_one({"id": created["id"]})
         board = await kitchen_orders(_cashier())
         return missing, stored, board
@@ -129,10 +131,10 @@ def test_public_orders_are_rate_limited_per_client():
         public_order_limiter.limit = 2
         request = _Request("10.1.1.1")
         try:
-            first = await public_create_order(_body(order_type="recojo", table_token=None, table_id=None), request)
-            await public_create_order(_body(order_type="recojo", table_token=None, table_id=None), request)
+            first = await public_create_order(_body(order_type="recojo", table_token=None, table_id=None, request_id=None), request)
+            await public_create_order(_body(order_type="recojo", table_token=None, table_id=None, request_id=None), request)
             try:
-                await public_create_order(_body(order_type="recojo", table_token=None, table_id=None), request)
+                await public_create_order(_body(order_type="recojo", table_token=None, table_id=None, request_id=None), request)
                 blocked = None
             except HTTPException as exc:
                 blocked = exc
@@ -154,11 +156,11 @@ def test_revoked_or_rotated_qr_is_rejected():
         _bind(db)
         public_order_limiter.reset()
         good = sign_table("mesa-1", "nonce-1")
-        created = await public_create_order(_body(table_token=good), _Request("10.0.0.11"))
+        created = await public_create_order(_body(table_token=good, request_id="0c43a31c-a8d4-4bf0-9fb2-22c438344ef3"), _Request("10.0.0.11"))
         db.tables.docs[0]["qr_revoked"] = True
         public_order_limiter.reset()
         try:
-            await public_create_order(_body(table_token=good), _Request("10.0.0.12"))
+            await public_create_order(_body(table_token=good, request_id="11d1749b-b186-4f4d-a8fa-05a84e97a668"), _Request("10.0.0.12"))
             revoked = None
         except HTTPException as exc:
             revoked = exc
@@ -166,7 +168,7 @@ def test_revoked_or_rotated_qr_is_rejected():
         db.tables.docs[0]["qr_nonce"] = "nonce-2"
         public_order_limiter.reset()
         try:
-            await public_create_order(_body(table_token=good), _Request("10.0.0.13"))
+            await public_create_order(_body(table_token=good, request_id="4f05a9a6-5bf5-4080-90f4-644bd671b60f"), _Request("10.0.0.13"))
             rotated = None
         except HTTPException as exc:
             rotated = exc
@@ -176,3 +178,143 @@ def test_revoked_or_rotated_qr_is_rejected():
     assert created["id"]
     assert revoked is not None and revoked.status_code == 400
     assert rotated is not None and rotated.status_code == 400
+
+
+def test_public_table_order_retry_recovers_only_its_own_opening():
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        body = _body(request_id="3a5a8d12-0f30-4f43-a05e-b329f1d6c4a1")
+        # A response/opening failure can be retried using the client-owned capability.
+        opener = public_routes.open_table_attention
+        failed_once = False
+
+        async def fail_once(*args, **kwargs):
+            nonlocal failed_once
+            if not failed_once:
+                failed_once = True
+                raise AttentionBlocked("injected opening failure")
+            return await opener(*args, **kwargs)
+
+        public_routes.open_table_attention = fail_once
+        try:
+            await public_create_order(body, _Request("10.0.0.18"))
+        except HTTPException as exc:
+            first = exc
+        finally:
+            public_routes.open_table_attention = opener
+        public_order_limiter.reset()
+        recovered = await public_create_order(body, _Request("10.0.0.18"))
+        own = await db.orders.find_one({"id": recovered["id"]})
+        attention = await db.attentions.find_one({"id": own["attention_id"]})
+        audits = [row for row in db.audit_logs.docs if row.get("action") == "public_order_create"]
+        return first, recovered, own, attention, audits, db
+
+    first, recovered, own, attention, audits, db = asyncio.run(run())
+    assert first.status_code == 409
+    assert recovered["id"] == own["id"]
+    assert own["request_id"] == "3a5a8d12-0f30-4f43-a05e-b329f1d6c4a1"
+    assert attention["status"] == "open"
+    assert len(db.orders.docs) == 1
+    assert len(audits) == 1
+
+
+def test_public_order_nonce_rejects_changed_payload_and_other_table_owner():
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        nonce = "6c64c1d0-17af-465e-bb4a-31e85c494914"
+        own = await public_create_order(_body(request_id=nonce), _Request("10.0.0.19"))
+        public_order_limiter.reset()
+        try:
+            await public_create_order(_body(request_id=nonce, notes="different"), _Request("10.0.0.19"))
+            changed = None
+        except HTTPException as exc:
+            changed = exc
+        public_order_limiter.reset()
+        try:
+            await public_create_order(_body(request_id="b3f3dd04-c3a2-4a34-ae32-0b3c7e8f8aba"), _Request("10.0.0.20"))
+            stranger = None
+        except HTTPException as exc:
+            stranger = exc
+        return own, changed, stranger, db
+
+    own, changed, stranger, db = asyncio.run(run())
+    assert changed is not None and changed.status_code == 409
+    assert stranger is not None and stranger.status_code in (400, 409)
+    assert own["tracking_code"] not in str(stranger.detail)
+    assert len(db.orders.docs) == 1
+
+
+def test_public_order_request_nonce_is_restaurant_scoped():
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        nonce = "db0c89d6-a4d4-402c-87e6-fd0f9cd9fdf7"
+        first = await public_create_order(_body(order_type="recojo", request_id=nonce), _Request("10.0.0.21"))
+        db.restaurants.docs[0]["id"] = "rest-2"
+        db.products.docs[0]["restaurant_id"] = "rest-2"
+        public_order_limiter.reset()
+        second = await public_create_order(_body(order_type="recojo", request_id=nonce), _Request("10.0.0.21"))
+        return first, second, db
+
+    first, second, db = asyncio.run(run())
+    assert second["id"] != first["id"]
+    assert len(db.orders.docs) == 2
+
+
+def test_public_request_nonce_must_be_a_canonical_uuid():
+    with pytest.raises(Exception):
+        _body(request_id="predictable")
+
+
+@pytest.mark.parametrize("use_qr", [False, True], ids=["table-selection", "qr-token"])
+def test_new_dine_in_orders_without_request_id_fail_before_writes(use_qr):
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        before_table = dict(db.tables.docs[0])
+        extra = {"request_id": None}
+        if use_qr:
+            extra["table_token"] = sign_table("mesa-1", "nonce-1")
+        try:
+            await public_create_order(_body(**extra), _Request("10.0.0.24"))
+            error = None
+        except HTTPException as exc:
+            error = exc
+        return db, error, before_table
+
+    db, error, before_table = asyncio.run(run())
+    assert error is not None and error.status_code == 400
+    assert "actualiza" in error.detail.lower()
+    assert db.orders.docs == []
+    assert db.attentions.docs == []
+    assert db.tables.docs[0] == before_table
+
+
+def test_concurrent_public_retries_with_same_request_id_create_one_order():
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        body = _body(request_id="fd00f07f-7007-45dd-b22f-0d0d02ad2fff")
+        return await asyncio.gather(
+            public_create_order(body, _Request("10.0.0.22")),
+            public_create_order(body, _Request("10.0.0.23")),
+        ), db
+
+    responses, db = asyncio.run(run())
+    assert responses[0]["id"] == responses[1]["id"]
+    assert len(db.orders.docs) == 1
+    assert len([row for row in db.audit_logs.docs if row.get("action") == "public_order_create"]) == 1
+
+
+def test_public_order_request_id_accepts_uuid_v4_but_rejects_v1():
+    valid = "a8098c1a-f86e-41d8-b102-1b6f7c5f3a21"
+    assert _body(request_id=valid).request_id == valid
+    with pytest.raises(Exception):
+        _body(request_id="a8098c1a-f86e-11d8-b102-1b6f7c5f3a21")

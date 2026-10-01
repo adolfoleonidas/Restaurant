@@ -9,7 +9,7 @@ from database import db
 from auth import get_current_user, require_roles
 from models import PaymentCreate, PaymentVoid
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
-from order_flow import VersionError, claim_order, ticket_fields, version_conflict
+from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -86,6 +86,8 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
+        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
 
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={
@@ -202,6 +204,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
             "restaurant_id": user["restaurant_id"],
             "status": {"$nin": ["pagado", "cancelado"]},
             "updated_at": order.get("updated_at"),
+            "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
         },
         {"$set": order_set},
     )
@@ -277,7 +280,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise
 
     emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
-    if order_set.get("status") == "pagado" and order.get("table_id"):
+    if order_set.get("status") == "pagado" and order.get("table_id") and not order.get("attention_id"):
         r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
         new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
         await db.tables.update_one(
@@ -303,53 +306,295 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     return {k: v for k, v in payment.items() if k != "_id"}
 
 
+async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str, kind: str,
+                                register: dict | None, record_refund: bool) -> dict:
+    items = copy.deepcopy(order.get("items") or [])
+    if pay.get("lines"):
+        by_payment = {line.get("item_id"): int(line.get("quantity") or 0) for line in pay["lines"]}
+        for item in items:
+            quantity = by_payment.get(item.get("id"), 0)
+            if quantity:
+                item["paid_qty"] = max(0, int(item.get("paid_qty") or 0) - quantity)
+    else:
+        other_payments = await db.payments.count_documents({
+            "order_id": pay["order_id"], "status": "completed", "id": {"$ne": pay["id"]},
+        })
+        if other_payments == 0:
+            for item in items:
+                item["paid_qty"] = 0
+
+    amount = float(pay.get("amount") or 0)
+    new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - amount), 2)
+    timestamp = _now()
+    order_patch = {"amount_paid": new_paid, "items": items, "updated_at": timestamp}
+    order_patch.update(ticket_fields(
+        order, order.get("fulfillment_status") or order.get("status"),
+        new_paid, float(order.get("total") or 0),
+    ))
+    if new_paid < float(order.get("total") or 0) - 0.009:
+        order_patch["paid_at"] = None
+    order_patch["voided_payment_ids"] = sorted(set(order.get("voided_payment_ids") or []) | {pay["id"]})
+
+    movement = None
+    cash_amount = cash_portion(pay)
+    if record_refund and cash_amount > 0.009:
+        movement = {
+            "_id": f"payment-refund:{pay['id']}",
+            "id": f"payment-refund:{pay['id']}",
+            "cash_register_id": register["id"],
+            "restaurant_id": order["restaurant_id"],
+            "type": "egreso", "amount": cash_amount,
+            "description": f"Devolución pedido {pay.get('order_number') or pay.get('order_id')}",
+            "source_payment_id": pay["id"],
+            "created_by": user["id"], "created_by_name": user.get("full_name"),
+            "created_at": timestamp,
+        }
+    status_label = "refunded" if kind == "refund" else "voided"
+    event_id = f"payment-void:{pay['id']}"
+    audit = {
+        "id": event_id, "event_id": event_id,
+        "restaurant_id": order["restaurant_id"], "user_id": user["id"],
+        "action": "payment_refund" if kind == "refund" else "payment_void",
+        "entity": "payment", "entity_id": pay["id"],
+        "details": {"order_id": order["id"], "kind": kind,
+                    "reason": reason, "amount": pay.get("amount")},
+        "created_at": timestamp,
+    }
+    return {
+        "id": event_id, "payment_id": pay["id"], "restaurant_id": order["restaurant_id"],
+        "kind": kind, "reason": reason, "actor_id": user["id"],
+        "actor_name": user.get("full_name"), "status": status_label,
+        "order_patch": order_patch, "movement": movement, "audit": audit,
+        "created_at": timestamp,
+    }
+
+
+async def _ensure_void_audit(intent: dict) -> None:
+    expected = intent["audit"]
+    existing = await db.audit_logs.find_one({"event_id": expected["event_id"]}, {"_id": 0})
+    if existing:
+        for key in ("restaurant_id", "user_id", "action", "entity", "entity_id", "details"):
+            if existing.get(key) != expected.get(key):
+                raise HTTPException(status_code=409, detail="El registro de devolución existente no coincide")
+        return
+    try:
+        await db.audit_logs.insert_one(expected)
+    except DuplicateKeyError:
+        existing = await db.audit_logs.find_one({"event_id": expected["event_id"]}, {"_id": 0})
+        if not existing or any(existing.get(key) != expected.get(key) for key in (
+            "restaurant_id", "user_id", "action", "entity", "entity_id", "details"
+        )):
+            raise
+
+
+async def _ensure_refund_movement(intent: dict) -> None:
+    expected = intent.get("movement")
+    if not expected:
+        return
+    existing = await db.cash_movements.find_one({"_id": expected["_id"]})
+    keys = ("cash_register_id", "restaurant_id", "type", "amount", "source_payment_id",
+            "created_by", "created_by_name", "description")
+    if existing:
+        if any(existing.get(key) != expected.get(key) for key in keys):
+            raise HTTPException(status_code=409, detail="El movimiento de devolución existente no coincide")
+        return
+    try:
+        await db.cash_movements.insert_one(expected)
+    except DuplicateKeyError:
+        existing = await db.cash_movements.find_one({"_id": expected["_id"]})
+        if not existing or any(existing.get(key) != expected.get(key) for key in keys):
+            raise
+
+
+async def _stage_attention_void(payment: dict, intent: dict) -> None:
+    if payment.get("void_intent_id") == intent["id"]:
+        if payment.get("void_intent") != intent or payment.get("status") not in ("voiding", intent["status"]):
+            raise HTTPException(status_code=409, detail="El estado del cobro no coincide con su intención")
+        return
+    if payment.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="El cobro ya tiene otra resolución")
+    result = await db.payments.update_one({
+        "id": payment["id"], "restaurant_id": intent["restaurant_id"],
+        "status": "completed",
+    }, {"$set": {
+        "status": "voiding", "void_intent_id": intent["id"], "void_intent": intent,
+        "void_kind": intent["kind"], "void_reason": intent["reason"],
+        "voided_by": intent["actor_id"], "voided_by_name": intent["actor_name"],
+        "voided_at": intent["created_at"],
+    }})
+    if getattr(result, "matched_count", 0) != 1:
+        current = await db.payments.find_one({"id": payment["id"], "restaurant_id": intent["restaurant_id"]})
+        if not current or current.get("void_intent_id") != intent["id"]:
+            raise HTTPException(status_code=409, detail="El cobro cambió antes de guardar la resolución")
+
+
+async def _resume_attention_void(order: dict, payment: dict, intent: dict) -> dict:
+    token = f"void:{payment['id']}"
+    await _stage_attention_void(payment, intent)
+    patch = copy.deepcopy(intent["order_patch"])
+    projected = await db.orders.update_one({
+        "id": order["id"], "restaurant_id": order["restaurant_id"],
+        "attention_id": order["attention_id"], "attention_state": "mutating",
+        "attention_mutation_token": token,
+    }, {"$set": patch})
+    if getattr(projected, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La cuenta no pudo reconciliar la intención de devolución")
+    await _ensure_refund_movement(intent)
+    await _ensure_void_audit(intent)
+
+    current_payment = await db.payments.find_one({"id": payment["id"], "restaurant_id": intent["restaurant_id"]})
+    if current_payment.get("status") == "voiding":
+        result = await db.payments.update_one({
+            "id": payment["id"], "restaurant_id": intent["restaurant_id"],
+            "status": "voiding", "void_intent_id": intent["id"],
+        }, {"$set": {"status": intent["status"]}})
+        if getattr(result, "matched_count", 0) != 1:
+            current_payment = await db.payments.find_one({"id": payment["id"], "restaurant_id": intent["restaurant_id"]})
+            if not current_payment or current_payment.get("status") != intent["status"]:
+                raise HTTPException(status_code=409, detail="El estado final del cobro quedó pendiente")
+    elif current_payment.get("status") != intent["status"]:
+        raise HTTPException(status_code=409, detail="El cobro quedó en un estado inesperado")
+
+    released = await db.orders.update_one({
+        "id": order["id"], "restaurant_id": order["restaurant_id"],
+        "attention_id": order["attention_id"], "attention_state": "mutating",
+        "attention_mutation_token": token,
+    }, {"$set": {"attention_state": "open", "attention_open": True},
+        "$unset": {"attention_mutation_token": "", "attention_mutation": ""}})
+    if getattr(released, "matched_count", 0) != 1:
+        latest = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
+        if not latest or latest.get("attention_state") != "open" or payment["id"] not in latest.get("voided_payment_ids", []):
+            raise HTTPException(status_code=409, detail="La devolución quedó pendiente; reintentá la misma operación")
+
+    if intent.get("movement"):
+        emit_notice(intent["restaurant_id"], "cash", status="movement",
+                    register_id=intent["movement"]["cash_register_id"])
+    emit_order(intent["restaurant_id"], order["id"], intent["order_patch"].get("status"),
+               source=order.get("source"), payment_status=intent["status"])
+    return await db.payments.find_one({"id": payment["id"], "restaurant_id": intent["restaurant_id"]}, {"_id": 0})
+
+
+async def _verify_attention_void(order: dict, payment: dict) -> dict:
+    intent = payment.get("void_intent")
+    if not intent or payment.get("void_intent_id") != intent.get("id"):
+        raise HTTPException(status_code=409, detail="El cobro tiene una resolución antigua que requiere conciliación")
+    if payment.get("status") != intent.get("status") or payment["id"] not in order.get("voided_payment_ids", []):
+        raise HTTPException(status_code=409, detail="La devolución no tiene todas sus proyecciones confirmadas")
+    if intent.get("movement"):
+        expected = intent["movement"]
+        movement = await db.cash_movements.find_one({"_id": expected["_id"]})
+        keys = ("cash_register_id", "restaurant_id", "type", "amount", "source_payment_id",
+                "created_by", "created_by_name", "description")
+        if not movement or any(movement.get(key) != expected.get(key) for key in keys):
+            raise HTTPException(status_code=409, detail="Falta o no coincide el movimiento de devolución")
+    expected_audit = intent["audit"]
+    audit = await db.audit_logs.find_one({"event_id": expected_audit["event_id"]}, {"_id": 0})
+    keys = ("restaurant_id", "user_id", "action", "entity", "entity_id", "details")
+    if not audit or any(audit.get(key) != expected_audit.get(key) for key in keys):
+        raise HTTPException(status_code=409, detail="Falta o no coincide el registro de auditoría de la devolución")
+    return payment
+
+
+async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: str, kind: str) -> dict:
+    payment_id = payment["id"]
+    token = f"void:{payment_id}"
+    intent = order.get("attention_mutation")
+    if order.get("attention_state") == "mutating":
+        if order.get("attention_mutation_token") != token or not intent or intent.get("payment_id") != payment_id:
+            raise HTTPException(status_code=409, detail="Otra actualización de la visita requiere recuperación")
+        return await _resume_attention_void(order, payment, intent)
+    if order.get("attention_state") != "open":
+        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+    if payment.get("status") in ("voided", "refunded"):
+        return await _verify_attention_void(order, payment)
+    if payment.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
+    if order.get("status") == "cancelado":
+        raise HTTPException(status_code=400, detail="El pedido está cancelado")
+
+    owned = None
+    if payment.get("cash_register_id"):
+        owned = await db.cash_registers.find_one({
+            "id": payment["cash_register_id"], "restaurant_id": user["restaurant_id"]
+        }, {"_id": 0})
+    register = await db.cash_registers.find_one({
+        "restaurant_id": user["restaurant_id"], "status": "open"
+    }, {"_id": 0})
+    cash_amount = cash_portion(payment)
+    record_refund = (not reversal_is_inside_open_shift(payment, owned, register)) and cash_amount > 0.009
+    if record_refund and not register:
+        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+    intent = await _attention_void_intent(payment, order, user, reason, kind, register, record_refund)
+    try:
+        await claim_attention_mutation(db.orders, order, token, {"attention_mutation": intent})
+    except VersionError:
+        current = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
+        if current and current.get("attention_state") == "mutating" and current.get("attention_mutation_token") == token:
+            return await _resume_attention_void(current, payment, current.get("attention_mutation"))
+        raise HTTPException(status_code=409, detail=version_conflict(order))
+    claimed = {**order, "attention_state": "mutating", "attention_mutation_token": token,
+               "attention_mutation": intent}
+    return await _resume_attention_void(claimed, payment, intent)
+
+
 async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str = "void"):
     reason = (reason or "").strip()
     if len(reason) < 5:
         raise HTTPException(status_code=400, detail="La anulación requiere un motivo")
     kind = kind if kind in ("void", "refund") else "void"
-    pay = await db.payments.find_one({"id": payment_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    pay = await db.payments.find_one(
+        {"id": payment_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    )
     if not pay:
         raise HTTPException(status_code=404, detail="Pago no encontrado")
-    if pay.get("status") != "completed":
-        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
-
-    order = await db.orders.find_one({"id": pay["order_id"], "restaurant_id": user["restaurant_id"]})
+    order = await db.orders.find_one(
+        {"id": pay["order_id"], "restaurant_id": user["restaurant_id"]}
+    )
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order.get("attention_id"):
+        return await _apply_attention_void(payment=pay, order=order, user=user, reason=reason, kind=kind)
+
+    token = f"void:{payment_id}"
+    recovering = bool(
+        order.get("attention_id")
+        and order.get("attention_state") == "mutating"
+        and order.get("attention_mutation_token") == token
+        and pay.get("status") in ("voided", "refunded")
+    )
+    if pay.get("status") != "completed" and not recovering:
+        if pay.get("status") in ("voided", "refunded") and order.get("attention_id") and order.get("attention_state") == "open":
+            return pay
+        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
     if order.get("status") == "cancelado":
         raise HTTPException(status_code=400, detail="El pedido está cancelado")
+    if order.get("attention_state") in ("opening", "mutating", "closing", "closed") and not recovering:
+        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+    if recovering:
+        kind = pay.get("void_kind") or "void"
+        reason = pay.get("void_reason") or reason
 
     items = order.get("items") or []
     if pay.get("lines"):
-        by_pay = {l.get("item_id"): int(l.get("quantity") or 0) for l in pay["lines"]}
-        for it in items:
-            cut = by_pay.get(it.get("id"), 0)
+        by_pay = {line.get("item_id"): int(line.get("quantity") or 0) for line in pay["lines"]}
+        for item in items:
+            cut = by_pay.get(item.get("id"), 0)
             if cut:
-                it["paid_qty"] = max(0, int(it.get("paid_qty") or 0) - cut)
+                item["paid_qty"] = max(0, int(item.get("paid_qty") or 0) - cut)
     else:
         others = await db.payments.count_documents({
-            "order_id": pay["order_id"],
-            "status": "completed",
-            "id": {"$ne": pay["id"]},
+            "order_id": pay["order_id"], "status": "completed", "id": {"$ne": pay["id"]},
         })
         if others == 0:
-            for it in items:
-                it["paid_qty"] = 0
+            for item in items:
+                item["paid_qty"] = 0
 
     new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - float(pay.get("amount") or 0)), 2)
     bill = float(order.get("total") or 0)
     was_closed = order.get("status") == "pagado"
-    order_set = {
-        "amount_paid": new_paid,
-        "items": items,
-        "updated_at": _now(),
-    }
+    order_set = {"amount_paid": new_paid, "items": items, "updated_at": _now()}
     order_set.update(ticket_fields(
-        order,
-        order.get("fulfillment_status") or order.get("status"),
-        new_paid,
-        bill,
+        order, order.get("fulfillment_status") or order.get("status"), new_paid, bill,
     ))
     reopened = new_paid < bill - 0.009
     if reopened:
@@ -359,81 +604,85 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     owned = None
     if pay.get("cash_register_id"):
         owned = await db.cash_registers.find_one(
-            {"id": pay["cash_register_id"], "restaurant_id": user["restaurant_id"]},
-            {"_id": 0},
+            {"id": pay["cash_register_id"], "restaurant_id": user["restaurant_id"]}, {"_id": 0}
         )
     open_reg = await db.cash_registers.find_one(
-        {"restaurant_id": user["restaurant_id"], "status": "open"},
-        {"_id": 0},
+        {"restaurant_id": user["restaurant_id"], "status": "open"}, {"_id": 0}
     )
     cash_out = cash_portion(pay)
     record_refund = (not reversal_is_inside_open_shift(pay, owned, open_reg)) and cash_out > 0.009
     if record_refund and not open_reg:
         raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
 
-    claimed = await db.payments.update_one(
-        {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": "completed"},
-        {"$set": {
-            "status": status_label,
-            "void_kind": kind,
-            "void_reason": reason,
-            "voided_by": user["id"],
-            "voided_by_name": user.get("full_name"),
-            "voided_at": _now(),
-        }},
-    )
-    if claimed.modified_count != 1:
-        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
-    try:
-        await claim_order(db.orders, order, order_set)
-    except VersionError:
-        await db.payments.update_one(
-            {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": status_label},
-            {"$set": {"status": "completed"}, "$unset": {
-                "void_kind": "",
-                "void_reason": "",
-                "voided_by": "",
-                "voided_by_name": "",
-                "voided_at": "",
+    mutation_claimed = False
+    if order.get("attention_id") and not recovering:
+        try:
+            await claim_attention_mutation(db.orders, order, token)
+        except VersionError:
+            raise HTTPException(status_code=409, detail=version_conflict(order))
+        mutation_claimed = True
+        order = {**order, "attention_state": "mutating", "attention_mutation_token": token}
+
+    if not recovering:
+        payment_claim = await db.payments.update_one(
+            {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": "completed"},
+            {"$set": {
+                "status": status_label, "void_kind": kind, "void_reason": reason,
+                "voided_by": user["id"], "voided_by_name": user.get("full_name"), "voided_at": _now(),
             }},
         )
+        if payment_claim.modified_count != 1:
+            if mutation_claimed:
+                await finish_attention_mutation(db.orders, order, token)
+            raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
+
+    try:
+        if order.get("attention_id"):
+            await finish_attention_mutation(db.orders, order, token, order_set)
+        else:
+            await claim_order(db.orders, order, order_set)
+    except VersionError:
+        if not recovering:
+            await db.payments.update_one(
+                {"id": payment_id, "restaurant_id": user["restaurant_id"], "status": status_label},
+                {"$set": {"status": "completed"}, "$unset": {
+                    "void_kind": "", "void_reason": "", "voided_by": "",
+                    "voided_by_name": "", "voided_at": "",
+                }},
+            )
+        if mutation_claimed:
+            await finish_attention_mutation(db.orders, order, token)
         raise HTTPException(status_code=409, detail=version_conflict(order))
+
     if record_refund:
         await db.cash_movements.insert_one({
-            "id": str(uuid.uuid4()),
-            "cash_register_id": open_reg["id"],
-            "restaurant_id": user["restaurant_id"],
-            "type": "egreso",
-            "amount": cash_out,
+            "id": str(uuid.uuid4()), "cash_register_id": open_reg["id"],
+            "restaurant_id": user["restaurant_id"], "type": "egreso", "amount": cash_out,
             "description": f"Devolución pedido {pay.get('order_number') or pay.get('order_id')}",
-            "source_payment_id": payment_id,
-            "created_by": user["id"],
-            "created_by_name": user.get("full_name"),
-            "created_at": _now(),
+            "source_payment_id": payment_id, "created_by": user["id"],
+            "created_by_name": user.get("full_name"), "created_at": _now(),
         })
         emit_notice(user["restaurant_id"], "cash", status="movement", register_id=open_reg["id"])
-    emit_order(user["restaurant_id"], order["id"], order_set.get("status", order.get("status")), source=order.get("source"), payment_status="voided" if kind == "void" else "refunded")
-    if reopened and was_closed and order.get("table_id"):
+    emit_order(
+        user["restaurant_id"], order["id"], order_set.get("status", order.get("status")),
+        source=order.get("source"), payment_status="voided" if kind == "void" else "refunded",
+    )
+    if reopened and was_closed and order.get("table_id") and not order.get("attention_id"):
         table = await db.tables.find_one({"id": order["table_id"]})
         if table and table.get("status") == "pagada":
             await db.tables.update_one(
-                {"id": table["id"]},
-                {"$set": {"status": "ocupada", "updated_at": _now()}},
+                {"id": table["id"]}, {"$set": {"status": "ocupada", "updated_at": _now()}}
             )
             emit_notice(user["restaurant_id"], "table", table_id=table["id"], status="ocupada")
 
     await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()),
-        "restaurant_id": user["restaurant_id"],
-        "user_id": user["id"],
+        "id": str(uuid.uuid4()), "restaurant_id": user["restaurant_id"], "user_id": user["id"],
         "action": "payment_void" if kind == "void" else "payment_refund",
-        "entity": "payment",
-        "entity_id": payment_id,
+        "entity": "payment", "entity_id": payment_id,
         "details": {"order_id": pay["order_id"], "kind": kind, "reason": reason, "amount": pay.get("amount")},
         "created_at": _now(),
     })
     return await db.payments.find_one({"id": payment_id}, {"_id": 0})
-
 
 @router.post("/{payment_id}/void")
 async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(require_roles(["admin", "cajero"]))):

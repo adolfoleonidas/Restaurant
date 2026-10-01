@@ -35,13 +35,17 @@ async def list_tables(user: dict = Depends(get_current_user)):
     proj = {
         "_id": 0, "id": 1, "table_id": 1, "created_at": 1,
         "source": 1, "order_type": 1, "customer_name": 1, "status": 1, "items": 1,
+        "attention_id": 1, "attention_state": 1,
     }
     if user.get("role") != "cocina":
         proj["total"] = 1
     active_orders = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
-            "status": {"$nin": ["pagado", "cancelado"]}
+            "$or": [
+                {"status": {"$nin": ["pagado", "cancelado"]}},
+                {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
+            ]
         },
         proj,
     ).to_list(1000)
@@ -140,66 +144,74 @@ async def revoke_qr(table_id: str, user: dict = Depends(require_roles(["admin"])
 
 @router.post("/{table_id}/seat")
 async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    t = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
-    if not t:
+    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    table = await db.tables.find_one(scope, {"_id": 0})
+    if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    if table.get("active_attention_id"):
+        raise HTTPException(status_code=400, detail="La mesa tiene una visita abierta")
     active = await db.orders.find_one({
-        "restaurant_id": user["restaurant_id"],
-        "table_id": table_id,
+        "restaurant_id": user["restaurant_id"], "table_id": table_id,
         "status": {"$nin": ["pagado", "cancelado"]},
     })
     if active:
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
-    if t.get("status") == "pagada":
+    if table.get("status") == "pagada":
         raise HTTPException(status_code=400, detail="Liberá la mesa pagada antes de tomarla")
-    if t.get("status") not in ("disponible", "ocupada"):
+    if table.get("status") not in ("disponible", "ocupada"):
         raise HTTPException(status_code=400, detail="Esta mesa no se puede tomar")
-    await db.tables.update_one(
-        {"id": table_id},
-        {"$set": {"status": "ocupada", "updated_at": _now()}},
-    )
+    claim = await db.tables.update_one({**scope, "active_attention_id": {"$exists": False}},
+        {"$set": {"status": "ocupada", "updated_at": _now()}})
+    if getattr(claim, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada")
-    t = await db.tables.find_one({"id": table_id}, {"_id": 0})
-    t["active_order"] = None
-    return t
+    result = await db.tables.find_one(scope, {"_id": 0})
+    result["active_order"] = None
+    return result
 
 
 @router.post("/{table_id}/release")
 async def release_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    t = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
-    if not t:
+    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    table = await db.tables.find_one(scope, {"_id": 0})
+    if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    if table.get("active_attention_id"):
+        raise HTTPException(status_code=400, detail="La mesa tiene una visita abierta")
     active = await db.orders.find_one({
-        "restaurant_id": user["restaurant_id"],
-        "table_id": table_id,
+        "restaurant_id": user["restaurant_id"], "table_id": table_id,
         "status": {"$nin": ["pagado", "cancelado"]},
     })
     if active:
         raise HTTPException(status_code=400, detail="Hay un pedido enviado. No se puede liberar como borrador.")
-    await db.tables.update_one(
-        {"id": table_id},
-        {"$set": {"status": "disponible", "updated_at": _now()}},
-    )
+    claim = await db.tables.update_one({**scope, "active_attention_id": {"$exists": False}},
+        {"$set": {"status": "disponible", "updated_at": _now()}})
+    if getattr(claim, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible")
-    t = await db.tables.find_one({"id": table_id}, {"_id": 0})
-    t["active_order"] = None
-    return t
-
-
+    result = await db.tables.find_one(scope, {"_id": 0})
+    result["active_order"] = None
+    return result
 @router.patch("/{table_id}")
 async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(require_roles(["admin"]))):
     update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
     if "area" in update:
         update["area"] = await _validate_area(user["restaurant_id"], update["area"])
+    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    if "status" in update:
+        table = await db.tables.find_one(scope, {"_id": 0})
+        if not table:
+            raise HTTPException(status_code=404, detail="Mesa no encontrada")
+        if table.get("active_attention_id"):
+            raise HTTPException(status_code=409, detail="Cerrá la visita antes de cambiar el estado de la mesa")
+        scope["active_attention_id"] = {"$exists": False}
     update["updated_at"] = _now()
-    res = await db.tables.update_one(
-        {"id": table_id, "restaurant_id": user["restaurant_id"]},
-        {"$set": update}
-    )
+    res = await db.tables.update_one(scope, {"$set": update})
     if res.matched_count == 0:
+        if "status" in update:
+            raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
-    t = await db.tables.find_one({"id": table_id}, {"_id": 0})
-    return t
+    return await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
 
 
 @router.delete("/{table_id}")

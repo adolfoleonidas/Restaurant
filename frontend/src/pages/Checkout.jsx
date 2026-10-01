@@ -3,6 +3,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { api } from '@/lib/api';
+import { submitPublicOrder } from '@/lib/orderRequest';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -139,17 +140,25 @@ export default function Checkout() {
                 table_token: orderType === 'local' && tableToken ? tableToken : null,
                 table_id: orderType === 'local' && !tableToken ? tableId : null,
             };
-            const { data } = await api.post('/public/orders', payload);
-            setConfirmed(data);
-            if (!isActive) {
-                setMeta({
-                    tracking_code: data.tracking_code,
-                    order_number: data.order_number,
-                    table_id: orderType === 'local' ? tableInfo?.id : null,
-                });
-            }
-            clear();
-            toast.success(`Pedido #${data.order_number} confirmado`);
+            await submitPublicOrder({
+                storage: window.sessionStorage,
+                cryptoSource: window.crypto,
+                fingerprint: JSON.stringify(payload),
+                payload,
+                post: (requestPayload) => api.post('/public/orders', requestPayload),
+                onConfirmed: (data) => {
+                    setConfirmed(data);
+                    if (!isActive) {
+                        setMeta({
+                            tracking_code: data.tracking_code,
+                            order_number: data.order_number,
+                            table_id: orderType === 'local' ? tableInfo?.id : null,
+                        });
+                    }
+                    clear();
+                    toast.success(`Pedido #${data.order_number} confirmado`);
+                },
+            });
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
         finally { setSubmitting(false); }
     };
