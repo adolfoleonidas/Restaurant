@@ -64,7 +64,10 @@
     "testMatch": [
       "**/__tests__/**/*.{js,jsx,ts,tsx}",
       "**/*.{spec,test}.{js,jsx,ts,tsx}"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
   },
   "scripts": {
     "start": "craco start",
