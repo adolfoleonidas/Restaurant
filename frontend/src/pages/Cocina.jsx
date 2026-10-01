@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
+import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 
 function itemStage(it) {
     const st = it.status || 'pendiente';
@@ -132,12 +133,17 @@ export default function Cocina() {
         return enriched.filter((o) => o.table_area === zone);
     }, [enriched, zone]);
 
+    const { live: liveOrders, prior: priorPickups } = useMemo(
+        () => partitionPriorPickupOrders(scoped),
+        [scoped]
+    );
+
     const columns = useMemo(() => {
         const llegan = [];
         const fuego = [];
         const listos = [];
         const retirados = [];
-        for (const o of scoped) {
+        for (const o of liveOrders) {
             const items = o.items || [];
             const a = items.filter((it) => itemStage(it) === 'llegan');
             const b = items.filter((it) => itemStage(it) === 'fuego');
@@ -157,7 +163,7 @@ export default function Cocina() {
             { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byAge) },
             { key: 'retirado', label: 'Retirado', cards: retirados },
         ];
-    }, [scoped]);
+    }, [liveOrders]);
 
     const bump = async (order, stage) => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
@@ -248,6 +254,23 @@ export default function Cocina() {
                 ))}
                 </div>
             </div>
+
+            {priorPickups.length > 0 && (
+                <details className="rounded-md border border-border bg-card/50 p-3" data-testid="cocina-dias-anteriores">
+                    <summary className="cursor-pointer font-semibold">
+                        Días anteriores · {priorPickups.length} recojo(s) listos
+                    </summary>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {priorPickups.map((order) => (
+                            <div key={order.id} className="rounded-sm border border-border p-3" data-testid={`cocina-recojo-anterior-${order.id}`}>
+                                <p className="font-semibold">Pedido #{order.order_number}</p>
+                                <p className="text-sm text-muted-foreground">Listo para recojo</p>
+                                <Link className="mt-2 inline-block text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>
+                            </div>
+                        ))}
+                    </div>
+                </details>
+            )}
         </div>
     );
 }
