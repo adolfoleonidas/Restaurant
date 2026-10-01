@@ -28,15 +28,15 @@ export function ProductCard({ product, children }) {
         const pending = busy[product.id] || false;
         return (
             <article
-                className={`w-full rounded-xl border bg-card overflow-hidden flex flex-col ${agotado ? 'opacity-60' : ''} ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
+                className={`w-full rounded-xl border bg-card overflow-hidden flex flex-row ${agotado ? 'opacity-60' : ''} ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
                 data-testid={`landing-product-${product.id}`}
             >
                 {product.image_url ? (
-                    <img src={product.image_url} alt="" className="h-36 w-full object-cover" />
+                    <img src={product.image_url} alt="" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
                 ) : (
-                    <div className="h-36 w-full bg-secondary" />
+                    <div className="h-28 w-24 sm:h-32 sm:w-32 bg-secondary shrink-0" aria-hidden="true" />
                 )}
-                <div className="p-3 flex flex-col gap-2 flex-1">
+                <div className="min-w-0 p-3 sm:p-4 flex flex-col gap-2 flex-1">
                     {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                     <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
                     {agotado && (
@@ -58,16 +58,17 @@ export function ProductCard({ product, children }) {
                     {billPending && qty > 0 && (
                         <div className="text-[10px] text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
                     )}
-                    <div className="mt-auto pt-2">
-                        <div className="font-mono text-primary font-bold tabular-nums text-lg mb-2">{fmtMoney(product.price)}</div>
+                    <div className="mt-auto pt-2 flex items-center justify-between gap-3">
+                        <div className="font-mono text-primary font-bold tabular-nums text-lg">{fmtMoney(product.price)}</div>
                         {qty === 0 ? (
                             <Button
-                                className="w-full h-10 rounded-full"
+                                className="h-10 w-10 shrink-0 rounded-full p-0"
                                 onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
                                 disabled={pending || billPending || agotado}
                                 data-testid={`landing-add-${product.id}`}
+                            aria-label={`Agregar ${product.name} al pedido`}
                             >
-                                {agotado ? 'Agotado' : (<><Plus className="h-4 w-4" /> Agregar</>)}
+                                {agotado ? <span className="sr-only">Agotado</span> : <Plus className="h-4 w-4" />}
                             </Button>
                         ) : (
                             <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-live-${product.id}`}>
@@ -102,15 +103,15 @@ export function ProductCard({ product, children }) {
 
     return (
         <article
-            className={`w-full rounded-xl border border-border bg-card overflow-hidden flex flex-col ${agotado ? 'opacity-60' : ''}`}
+            className={`w-full rounded-xl border border-border bg-card overflow-hidden flex flex-row ${agotado ? 'opacity-60' : ''}`}
             data-testid={`landing-product-${product.id}`}
         >
             {product.image_url ? (
-                <img src={product.image_url} alt="" className="h-36 w-full object-cover" />
+                <img src={product.image_url} alt="" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
             ) : (
-                <div className="h-36 w-full bg-secondary" />
+                <div className="h-28 w-24 sm:h-32 sm:w-32 bg-secondary shrink-0" aria-hidden="true" />
             )}
-            <div className="p-3 flex flex-col gap-2 flex-1">
+            <div className="min-w-0 p-3 sm:p-4 flex flex-col gap-2 flex-1">
                 {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                 <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
                 {agotado && (
@@ -118,16 +119,17 @@ export function ProductCard({ product, children }) {
                 )}
                 {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
                 {children}
-                <div className="mt-auto pt-2">
-                    <div className="font-mono text-primary font-bold tabular-nums text-lg mb-2">{fmtMoney(product.price)}</div>
+                <div className="mt-auto pt-2 flex items-center justify-between gap-3">
+                    <div className="font-mono text-primary font-bold tabular-nums text-lg">{fmtMoney(product.price)}</div>
                     {cartQty === 0 ? (
                         <Button
-                            className="w-full h-10 rounded-full"
+                            className="h-10 w-10 shrink-0 rounded-full p-0"
                             onClick={() => addProduct(product, 1, '')}
                             disabled={agotado}
                             data-testid={`landing-add-${product.id}`}
+                            aria-label={`Agregar ${product.name} al pedido`}
                         >
-                            {agotado ? 'Agotado' : (<><Plus className="h-4 w-4" /> Agregar</>)}
+                            {agotado ? <span className="sr-only">Agotado</span> : <Plus className="h-4 w-4" />}
                         </Button>
                     ) : (
                         <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-qty-${product.id}`}>
