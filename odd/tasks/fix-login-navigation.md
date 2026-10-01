@@ -9,12 +9,12 @@ Fix the five defects reproduced in the deployed UI without changing restaurant o
 - Existing Spanish UI copy remains neutral Spanish; code, tests and documentation English.
 
 ## Tasks
-- [ ] T01 Fix the five confirmed navigation defects with component-level regression tests.
+- [x] T01 Fix the five confirmed navigation defects with component-level regression tests.
   - Route: delegated writer; preparation and 2+ non-trivial source files trigger delegation.
   - Acceptance: login renders; mobile staff link remains visible; cart has accessible name; accent-free query finds accented product; zero matches explain recovery with clear-search action.
   - Checks: RED observed before fixes (4 tests failed: login threw `ReferenceError: useEffect is not defined`; mobile staff link remained `hidden`; accent-free search returned zero; zero-result recovery copy/action were absent). Focused regression GREEN: 1 suite, 4 tests passed. Full frontend suite: 4 suites, 14 tests passed. Production build passed independently with approved filesystem access; the first EPERM was sandbox-only.
   - Rollback: only Login, Landing, PublicLayout and their regression tests.
-  - Commit: pending parent confirmation; no commit created.
+  - Commit: 858db7b680ba21217e6091c85f52639855a8cbfc (fix(ui): restore login and public navigation).
 - [ ] T02 Verify the corrected browser entry and record remaining internal-audit limitations.
   - Route: parent browser checks and delegated execution for preview server if needed.
   - Acceptance: corrected local login opens without the prior ReferenceError; safe public flows work; authenticated screens are not claimed verified without authorized usable session.
@@ -45,10 +45,10 @@ Fix the five defects reproduced in the deployed UI without changing restaurant o
 - Build command: `npm run build` — initial sandbox EPERM; independent approved-access rerun exit 0, compiled successfully.
 - Runtime harness: N/A; no browser/auth runtime boundary exercised by T01.
 - Rollback boundary: the four paths above only.
-- Native review, browser follow-up T02, and commit remain pending parent ownership.
+- Native assessment: medium, 174 changed lines, review_due=false, under_budget; no approval or receipt claimed. Browser follow-up T02 remains partial.
 
 ## Next step
-Complete the production build check and parent-owned commit for T01; then perform the browser smoke check for T02.
+Authorize remote delivery separately, then continue authenticated-role and data-backed browser checks using an explicitly authorized account/session.
 
 ## Independent verification and browser evidence
 - Independent full suite: 4 suites, 14/14 tests, exit 0; production build: exit 0; git diff --check: exit 0. Only deprecation/line-ending notices.
@@ -60,3 +60,4 @@ Complete the production build check and parent-owned commit for T01; then perfor
 - Screenshot: local login-fixed.jpg in the calling chat visualization directory.
 - Runtime harness: actual local browser form render passed; local data-backed menu smoke partial (404); authenticated-role audit pending.
 - Engram mirror still pending because runtime registration is unavailable.
+- T01 closure: tests/build independently verified, parent local-login browser smoke passed, commit recorded. T02 remains pending for authenticated/data-backed coverage; no production changes published.
