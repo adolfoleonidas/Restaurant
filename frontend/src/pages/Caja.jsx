@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, CheckCircle2, Printer, Search } from 'lucide-react';
@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
+import PaymentProofCapture from '@/components/PaymentProofCapture';
 
 const PAYMENT_METHODS = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto'];
 
@@ -92,6 +93,8 @@ function accountLabel(order) {
 function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const { user } = useAuth();
     const canDiscount = user?.role === 'admin' || !!user?.can_discount;
+    const canSubmitProof = user?.role === 'admin' || user?.role === 'cajero'
+        || user?.functions?.includes('cobro') || user?.functions?.includes('administracion');
     const [method, setMethod] = useState('efectivo');
     const [received, setReceived] = useState('');
     const [discount, setDiscount] = useState('');
@@ -106,20 +109,49 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const [people, setPeople] = useState('2');
     const [picked, setPicked] = useState({});
     const [live, setLive] = useState(order);
+    const [collectionConfig, setCollectionConfig] = useState(null);
+    const [collectionConfigError, setCollectionConfigError] = useState(false);
+    const [selectedProof, setSelectedProof] = useState('');
+    const [proofIntent, setProofIntent] = useState(null);
+    const [proofSending, setProofSending] = useState(false);
+    const [proofSent, setProofSent] = useState(false);
+    const [proofError, setProofError] = useState('');
+    const [proofRefreshPending, setProofRefreshPending] = useState(false);
+    const [proofRefreshError, setProofRefreshError] = useState('');
     const idempotencyRef = React.useRef(null);
+    const dialogEpochRef = React.useRef(0);
 
     React.useEffect(() => {
         if (open) {
-            setMethod('efectivo'); setReceived(''); setDiscount(''); setDiscountReason(''); setTip('');
+            dialogEpochRef.current += 1;
+            const pendingMethod = order?.payment_status === 'comprobante_subido'
+                && ['yape', 'plin'].includes(order.payment_proof_method)
+                ? order.payment_proof_method : 'efectivo';
+            setMethod(pendingMethod); setReceived(''); setDiscount(''); setDiscountReason(''); setTip('');
             setSplits([{ method: 'efectivo', amount: '' }, { method: 'yape', amount: '' }]);
             setResult(null); setStale(null); setNetError(false);
             setPayMode('todo'); setPeople('2'); setPicked({});
             setLive(order);
+            setSelectedProof(''); setProofIntent(null); setProofSending(false); setProofSent(false); setProofError('');
+            setProofRefreshPending(false); setProofRefreshError('');
             idempotencyRef.current = newIdempotencyKey();
+        } else {
+            dialogEpochRef.current += 1;
         }
         // Reset only when this dialog opens for an account, not when parent refetches the list.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, order?.id]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        setCollectionConfig(null);
+        setCollectionConfigError(false);
+        if (!open || !canSubmitProof) return () => { cancelled = true; };
+        api.get('/payment-config/collection')
+            .then(({ data }) => { if (!cancelled) setCollectionConfig(data || {}); })
+            .catch(() => { if (!cancelled) setCollectionConfigError(true); });
+        return () => { cancelled = true; };
+    }, [open, canSubmitProof, user?.restaurant_id]);
 
     const acct = live || order;
     if (!acct) return null;
@@ -148,8 +180,55 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const change = method === 'efectivo' ? Math.max(0, r - chargeAmount) : 0;
     const splitsTotal = splits.reduce((s, x) => s + Number(x.amount || 0), 0);
 
+    const refreshOrderAfterProof = async (orderId, requestEpoch) => {
+        try {
+            const { data } = await api.get(`/orders/${orderId}`);
+            if (dialogEpochRef.current !== requestEpoch || !open) return false;
+            if (!data || data.id !== orderId) throw new Error('Invalid order response');
+            setLive(data);
+            setProofRefreshPending(false);
+            setProofRefreshError('');
+            return true;
+        } catch {
+            if (dialogEpochRef.current === requestEpoch && open) {
+                setProofRefreshPending(true);
+                setProofRefreshError('El comprobante fue recibido, pero no se pudo actualizar la cuenta. Recargue antes de registrar un pago.');
+            }
+            return false;
+        }
+    };
+
+    const submitProof = async () => {
+        if (!canSubmitProof || proofSending || proofSent) return;
+        const intent = proofIntent || { orderId: acct.id, method, payment_proof: selectedProof };
+        if (!intent.payment_proof || !collectionConfig?.[intent.method]?.enabled) return;
+        const requestEpoch = dialogEpochRef.current;
+        const requestOrderId = intent.orderId;
+        setProofIntent(intent);
+        setProofSending(true);
+        setProofError('');
+        try {
+            await api.post(`/payments/${requestOrderId}/proof`, {
+                method: intent.method,
+                payment_proof: intent.payment_proof,
+            });
+            if (dialogEpochRef.current !== requestEpoch || !open) return;
+            setProofSent(true);
+            setProofRefreshPending(true);
+            await refreshOrderAfterProof(requestOrderId, requestEpoch);
+        } catch (error) {
+            if (dialogEpochRef.current !== requestEpoch || !open) return;
+            const detail = error.response?.data?.detail;
+            setProofError(typeof detail === 'string' ? detail : 'No se pudo enviar el comprobante. Puede reintentar la misma imagen.');
+        } finally {
+            if (dialogEpochRef.current === requestEpoch && open) setProofSending(false);
+        }
+    };
+
+    const retryOrderRefresh = () => refreshOrderAfterProof(proofIntent?.orderId || acct.id, dialogEpochRef.current);
+
     const submit = async () => {
-        if (loading) return;
+        if (loading || proofRefreshPending) return;
         if (Number(discount || 0) > 0 && (discountReason || '').trim().length < 5) {
             toast.error('El descuento requiere un motivo (mínimo 5 caracteres).');
             return;
@@ -216,7 +295,10 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-2xl" data-testid="caja-cobrar-dialog">
-                <DialogHeader><DialogTitle>{accountLabel(acct)}</DialogTitle></DialogHeader>
+                <DialogHeader>
+                    <DialogTitle>{accountLabel(acct)}</DialogTitle>
+                    <DialogDescription className="sr-only">Registre un pago verificado o envíe una imagen para revisión.</DialogDescription>
+                </DialogHeader>
                 {result ? (
                     <div className="space-y-4 py-2" data-testid="caja-pago-ok">
                         <div className="font-display italic text-2xl">Pago registrado</div>
@@ -339,9 +421,14 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                     <div className="space-y-3">
                         <div>
                             <Label>Método de pago</Label>
-                            <Tabs value={method} onValueChange={setMethod}>
+                            <Tabs value={method} onValueChange={(nextMethod) => {
+                                if (nextMethod !== method && !proofIntent && !proofSent && acct.payment_status !== 'comprobante_subido') {
+                                    setSelectedProof('');
+                                }
+                                setMethod(nextMethod);
+                            }}>
                                 <TabsList className="flex flex-wrap h-auto">
-                                    {PAYMENT_METHODS.map((m) => <TabsTrigger key={m} value={m} data-testid={`caja-metodo-${m}`}>{PAYMENT_LABELS[m]}</TabsTrigger>)}
+                                    {PAYMENT_METHODS.map((m) => <TabsTrigger key={m} value={m} disabled={Boolean(proofIntent && !proofSent)} data-testid={`caja-metodo-${m}`}>{PAYMENT_LABELS[m]}</TabsTrigger>)}
                                 </TabsList>
                             </Tabs>
                         </div>
@@ -377,6 +464,62 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                                 Verificá el movimiento en la cuenta receptora. Luego registrá el pago verificado de <span className="font-bold tabular-nums">{fmtMoney(chargeAmount)}</span>.
                             </div>
                         )}
+                        {['yape', 'plin'].includes(method) && canSubmitProof && (
+                            <section className="rounded-xl border p-3 space-y-3" data-testid="caja-comprobante-pago">
+                                <h3 className="font-semibold">Pago con {PAYMENT_LABELS[method]}</h3>
+                                {collectionConfigError ? (
+                                    <p role="status" className="text-sm text-destructive">No se pudo cargar la configuración. Cierre y vuelva a abrir este diálogo.</p>
+                                ) : !collectionConfig ? (
+                                    <p className="text-sm text-muted-foreground">Cargando opciones de pago…</p>
+                                ) : !collectionConfig[method]?.enabled ? (
+                                    <p role="status" className="text-sm text-muted-foreground">Este método no está habilitado para recibir comprobantes.</p>
+                                ) : (
+                                    <>
+                                        {collectionConfig[method]?.number && <p className="text-sm">Número: <span className="font-mono">{collectionConfig[method].number}</span></p>}
+                                        {collectionConfig[method]?.holder && <p className="text-sm">Titular: {collectionConfig[method].holder}</p>}
+                                        {/^data:image\/(png|jpeg|webp);base64,/.test(collectionConfig[method]?.qr || '') ? (
+                                            <img src={collectionConfig[method].qr} alt={`Código QR de ${PAYMENT_LABELS[method]}`} className="max-h-52 rounded-lg border object-contain" data-testid={`caja-${method}-qr`} />
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">No hay código QR configurado para este método.</p>
+                                        )}
+                                        {acct.payment_status === 'comprobante_subido' || proofSent ? (
+                                            <p className="text-sm text-muted-foreground">El comprobante está pendiente de verificación.</p>
+                                        ) : (
+                                            <>
+                                                <PaymentProofCapture
+                                                    key={`${acct.id}:${method}`}
+                                                    proof={selectedProof}
+                                                    onProof={setSelectedProof}
+                                                    disabled={proofSending || Boolean(proofIntent)}
+                                                    active={open && canSubmitProof && ['yape', 'plin'].includes(method)}
+                                                />
+                                                {proofError && <p role="alert" className="text-sm text-destructive" data-testid="caja-comprobante-error">{proofError}</p>}
+                                                {proofIntent && !proofSent && <p className="text-xs text-muted-foreground">Se conservará la imagen y el método para reintentar el mismo envío.</p>}
+                                                    <Button type="button" className="w-full" onClick={submitProof} disabled={!selectedProof || proofSending || proofSent} data-testid="caja-enviar-comprobante">
+                                                    {proofSending ? 'Enviando…' : proofIntent ? 'Reintentar envío del comprobante' : 'Enviar comprobante para revisión'}
+                                                </Button>
+                                            </>
+                                        )}
+                                    </>
+                                )}
+                            </section>
+                        )}
+                        {(acct.payment_status === 'comprobante_subido' || proofSent) && (
+                            <div className="space-y-2 rounded-xl border p-3" data-testid="caja-comprobante-pendiente">
+                                <p className="text-sm font-medium" data-testid="caja-comprobante-enviado">
+                                    Comprobante {proofSent ? 'enviado' : 'pendiente'} para {PAYMENT_LABELS[proofIntent?.method || acct.payment_proof_method] || 'Yape o Plin'}; está pendiente de verificación.
+                                </p>
+                                {(proofIntent?.payment_proof || acct.payment_proof_url) && (
+                                    <img src={proofIntent?.payment_proof || acct.payment_proof_url} alt="Comprobante enviado" className="max-h-40 rounded-xl border object-contain" />
+                                )}
+                                {proofRefreshPending && (
+                                    <div className="space-y-2">
+                                        <p role="alert" className="text-sm text-destructive">{proofRefreshError}</p>
+                                        <Button type="button" variant="outline" onClick={retryOrderRefresh} data-testid="caja-recargar-orden">Actualizar cuenta</Button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <div className="rounded-xl bg-secondary/40 p-3 text-sm space-y-1">
                             <div className="flex justify-between"><span>Pagado</span><span className="font-mono">{fmtMoney(paid)}</span></div>
                             <div className="flex justify-between font-semibold"><span>Pendiente</span><span className="font-mono">{fmtMoney(remaining)}</span></div>
@@ -385,7 +528,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={submit} disabled={loading || chargeAmount <= 0} className="h-12" data-testid="caja-cobrar-submit-button">
+                    <Button onClick={submit} disabled={loading || proofRefreshPending || chargeAmount <= 0} className="h-12" data-testid="caja-cobrar-submit-button">
                         <CheckCircle2 className="h-4 w-4 mr-2" />{loading ? 'Registrando…' : (netError ? 'Reintentar el mismo cobro' : confirmLabel)}
                     </Button>
                 </DialogFooter>

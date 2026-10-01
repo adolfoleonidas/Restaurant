@@ -208,6 +208,11 @@ class PublicProofUpload(BaseModel):
     payment_proof: str  # data URL (base64 image)
 
 
+class StaffPaymentProof(BaseModel):
+    payment_proof: str = Field(min_length=1, max_length=2_500_000)
+    method: Literal["yape", "plin"]
+
+
 class PublicItemsAdd(BaseModel):
     items: List[OrderItemInput]
 

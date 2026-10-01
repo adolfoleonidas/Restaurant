@@ -2,18 +2,121 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
+import base64
 import copy
+import hashlib
+import re
 import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from models import PaymentCreate, PaymentVoid
+from models import PaymentCreate, PaymentVoid, StaffPaymentProof
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
+
+_STAFF_PROOF_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$")
+_STAFF_PROOF_MAX_BYTES = 1_800_000
+
+
+def _validated_staff_proof(value: str) -> tuple[str, str]:
+    if len(value) > 2_500_000:
+        raise HTTPException(status_code=400, detail="La imagen supera el tamaño permitido")
+    match = _STAFF_PROOF_DATA_URL.fullmatch(value)
+    if not match:
+        raise HTTPException(status_code=400, detail="Imagen inválida")
+    image_type, encoded = match.groups()
+    try:
+        payload = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise HTTPException(status_code=400, detail="Imagen inválida")
+    if not payload or len(payload) > _STAFF_PROOF_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="La imagen supera el tamaño permitido")
+    signatures = {
+        "png": payload.startswith(b"\x89PNG\r\n\x1a\n"),
+        "jpeg": payload.startswith(b"\xff\xd8\xff"),
+        "webp": len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP",
+    }
+    if not signatures[image_type]:
+        raise HTTPException(status_code=400, detail="El contenido de la imagen no coincide")
+    return value, hashlib.sha256(payload).hexdigest()
+
+
+@router.post("/{order_id}/proof")
+async def upload_staff_proof(
+    order_id: str,
+    data: StaffPaymentProof,
+    user: dict = Depends(require_roles(["cajero"])),
+):
+    proof, digest = _validated_staff_proof(data.payment_proof)
+    restaurant_id = user["restaurant_id"]
+    order = await db.orders.find_one(
+        {"id": order_id, "restaurant_id": restaurant_id}, {"_id": 0}
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+    config = await db.payment_configs.find_one({"restaurant_id": restaurant_id}, {"_id": 0})
+    method = data.method
+    if not config or not config.get(f"enable_{method}"):
+        raise HTTPException(status_code=400, detail="El método de pago no está disponible")
+
+    if order.get("status") in ("pagado", "cancelado") or order.get("payment_status") in ("pagado", "confirmado", "cancelado"):
+        raise HTTPException(status_code=409, detail="El pedido ya tiene un estado de pago final")
+
+    existing_proof = order.get("payment_proof_url")
+    if order.get("payment_status") == "comprobante_subido":
+        if (existing_proof == proof and order.get("payment_proof_method") == method):
+            return {"ok": True, "payment_status": "comprobante_subido"}
+        raise HTTPException(status_code=409, detail="El pedido ya tiene un comprobante pendiente de verificación")
+
+    attention_id = order.get("attention_id")
+    if attention_id:
+        if (not order.get("table_id") or order.get("attention_state") != "open"):
+            raise HTTPException(status_code=409, detail="La visita no está abierta para recibir comprobantes")
+        attention = await db.attentions.find_one({
+            "id": attention_id, "restaurant_id": restaurant_id,
+            "order_id": order_id, "table_id": order["table_id"], "status": "open",
+        }, {"_id": 0})
+        table = await db.tables.find_one({
+            "id": order["table_id"], "restaurant_id": restaurant_id,
+            "active_attention_id": attention_id,
+        }, {"_id": 0})
+        if not attention or not table:
+            raise HTTPException(status_code=409, detail="La mesa ya no pertenece a esta visita")
+
+    now = _now()
+    order_filter = {
+        "id": order_id, "restaurant_id": restaurant_id,
+        "status": {"$nin": ["pagado", "cancelado"]},
+        "payment_status": {"$nin": ["pagado", "confirmado", "cancelado", "comprobante_subido"]},
+        "updated_at": order.get("updated_at"),
+    }
+    if attention_id:
+        order_filter.update({"attention_id": attention_id, "attention_state": "open"})
+    elif order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelva a cargar el pedido")
+    result = await db.orders.update_one(order_filter, {"$set": {
+        "payment_status": "comprobante_subido",
+        "payment_proof_url": proof,
+        "payment_proof_method": method,
+        "payment_proof_sha256": digest,
+        "payment_proof_uploaded_by": user["id"],
+        "payment_proof_uploaded_at": now,
+        "updated_at": now,
+    }})
+    if getattr(result, "matched_count", 0) != 1:
+        latest = await db.orders.find_one({"id": order_id, "restaurant_id": restaurant_id}, {"_id": 0})
+        if (latest and latest.get("payment_status") == "comprobante_subido"
+                and latest.get("payment_proof_url") == proof
+                and latest.get("payment_proof_method") == method):
+            return {"ok": True, "payment_status": "comprobante_subido"}
+        raise HTTPException(status_code=409, detail="El pedido cambió; vuelva a cargarlo antes de adjuntar el comprobante")
+    emit_order(restaurant_id, order_id, order.get("status"), source="staff", payment_status="comprobante_subido")
+    return {"ok": True, "payment_status": "comprobante_subido"}
 
 
 def _now():

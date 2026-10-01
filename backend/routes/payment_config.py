@@ -49,6 +49,24 @@ async def get_config(user: dict = Depends(require_roles(["admin"]))):
     return cfg
 
 
+@router.get("/collection")
+async def collection_config(user: dict = Depends(require_roles(["cajero"]))):
+    """Read the configured mobile-wallet options without creating or exposing bank config."""
+    cfg = await db.payment_configs.find_one(
+        {"restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    ) or {}
+    options = {}
+    for method in ("yape", "plin"):
+        enabled = bool(cfg.get(f"enable_{method}"))
+        options[method] = {
+            "enabled": enabled,
+            "number": cfg.get(f"{method}_number") if enabled else None,
+            "holder": cfg.get(f"{method}_holder") if enabled else None,
+            "qr": cfg.get(f"{method}_qr") if enabled else None,
+        }
+    return options
+
+
 @router.patch("")
 async def update_config(data: PaymentConfigUpdate, user: dict = Depends(require_roles(["admin"]))):
     await _get_or_create_config(user["restaurant_id"])
