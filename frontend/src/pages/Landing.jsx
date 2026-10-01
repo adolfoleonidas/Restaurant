@@ -11,11 +11,16 @@ const PREVIEW = 8;
 
 const byAvailable = (a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1));
 
+const normalizeSearchText = (value) => value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
 const match = (p, q) =>
     !q
-    || p.name.toLowerCase().includes(q)
-    || (p.description || '').toLowerCase().includes(q)
-    || (p.code || '').toLowerCase().includes(q);
+    || normalizeSearchText(p.name).includes(q)
+    || normalizeSearchText(p.description || '').includes(q)
+    || normalizeSearchText(p.code || '').includes(q);
 
 export default function Landing() {
     const [restaurant, setRestaurant] = useState(null);
@@ -42,7 +47,7 @@ export default function Landing() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [generation]);
 
-    const q = search.toLowerCase();
+    const q = normalizeSearchText(search.trim());
 
     const combos = useMemo(
         () => products.filter((p) => p.is_combo).sort(byAvailable),
@@ -149,7 +154,17 @@ export default function Landing() {
 
             <section className="max-w-6xl mx-auto px-4 md:px-6 py-10 space-y-14">
                 {q ? (
-                    renderSection('Resultados', `Buscando “${search}”`, searchResults, 'landing-section-search')
+                    <>
+                        {renderSection('Resultados', `Buscando “${search}”`, searchResults, 'landing-section-search')}
+                        {searchResults.length === 0 && (
+                            <div className="mt-6 text-center" data-testid="landing-empty-search">
+                                <p className="text-muted-foreground">No encontramos resultados. Prueba con otro término.</p>
+                                <Button type="button" variant="outline" className="mt-3" data-testid="landing-clear-search" onClick={() => setSearch('')}>
+                                    Limpiar búsqueda
+                                </Button>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <>
                         {grouped.length === 0 && combos.length === 0 && (

@@ -46,11 +46,11 @@ export const PublicLayout = () => {
                     </Link>
                     <div className="flex items-center gap-3">
                         <ThemeToggle />
-                        <Link to="/login" className="hidden md:inline-flex page-kicker hover:text-primary transition-colors">
+                        <Link to="/login" className="inline-flex page-kicker hover:text-primary transition-colors">
                             Salón
                         </Link>
                         {showCart && (
-                            <Button data-testid="public-cart-button" className="h-11 rounded-full relative font-semibold px-3 sm:px-4" onClick={() => setCartOpen(true)}>
+                            <Button aria-label="Abrir pedido" data-testid="public-cart-button" className="h-11 rounded-full relative font-semibold px-3 sm:px-4" onClick={() => setCartOpen(true)}>
                                 <ShoppingCart className="h-4 w-4" />
                                 {displayCount > 0 ? (
                                     <span className="hidden md:flex flex-col items-start leading-tight text-left">
