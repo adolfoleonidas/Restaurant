@@ -24,7 +24,7 @@ The user explicitly approved implementation in the CURRENT collection module, re
 ## Tasks
 - [x] PQ-1: Add tenant-scoped read-only collection QR config and authenticated proof persistence, respecting current Cobro authorization and exact current attention state. Proof must never create a payment or reduce balance; pending proof blocks closure. Route delegated: multiple backend/test files with canonical money and attention invariants. Focused mock tests, safe suite, independent verification; commit evidence pending.
 - [x] PQ-2: Adapt photo/camera component and extend CURRENT Caja/CobrarDialog with configured enabled method QR and capture/attachment plus pending verification feedback. Preserve payment entry and existing open-register prerequisite; unsupported camera has file fallback. Route delegated: multiple non-trivial frontend/test files. Rendered interactions, full tests/build; commit evidence pending.
-- [ ] PQ-3: Independently validate integration, permissions, proof-not-payment, closure gating, failure/retry and QR selection; record actual failed/skipped checks, work-unit commits and native review disposition. No remote publication/deployment yet. Route delegated verification plus parent readback/delivery decisions.
+- [x] PQ-3: Independently validate integration, permissions, proof-not-payment, closure gating, failure/retry and QR selection; record actual failed/skipped checks, work-unit commits and native review disposition. No remote publication/deployment yet. Route delegated verification plus parent readback/delivery decisions.
 
 ## Acceptance
 - A user with existing Cobro permission sees QR/photo options within current collection; no permission means no staff proof route/UI access.
@@ -39,7 +39,7 @@ The user explicitly approved implementation in the CURRENT collection module, re
 Only in-memory route/CAS and rendered React mock checks are authorized. Fifteen real HTTP/database modules remain excluded; no production transactions, actual Mongo proof, browser capture or phone runtime is claimed. Revert new staff-proof/config-read behavior together with its UI/test additions, preserving prior deployed attention and payment corrections. Do not remove financial history or QR settings.
 
 ## Progress and next step
-Local implementation and independent functional checks complete. Parent spot check passed all 18 rendered proof tests. One coherent local work unit covers PQ-1 and PQ-2 because the current collection behavior depends on both API and UI. Local implementation commit is recorded below; native review disposition remains pending; no remote publication is authorized. Task and mirror are not approvals. Mirror pending as stated above.
+Local implementation and independent functional checks complete. Parent spot check passed all 18 rendered proof tests. One coherent local work unit covers PQ-1 and PQ-2 because the current collection behavior depends on both API and UI. Local implementation commit is recorded below; native review was declined for this candidate only; no remote publication is authorized. Task and mirror are not approvals. Mirror pending as stated above.
 
 ### PQ-1 implementation evidence (independent functional gate clear)
 - Added authenticated `GET /api/payment-config/collection` for existing Cobro permission. It performs only a restaurant-scoped read, returns Yape/Plin options, hides details for disabled methods, and does not create default config. Existing admin-only config GET/PATCH is unchanged.
@@ -76,6 +76,13 @@ Local implementation and independent functional checks complete. Parent spot che
 - Native review is ON globally and must assess the new committed candidate independently; previous candidate decline is not reused.
 
 ### Local commit and closure evidence
-- PQ-1 and PQ-2 share coherent behavior commit 2dd84e872b0445fe3e9605744b57d7568b1ec940 (eat(payments): add QR and pending photo proof to collection). Both outcomes and their checks passed before commit. No push, PR, merge, deployment, original-checkout modification, or Grok-checkout modification occurred.
-- PQ-3 functional verification is complete; native review disposition remains pending. The first assessment returned high/unassessable because generated untracked CodeGraph inventory needs an explicit exclusion. This is not approval and does not lower risk. Resolve the canonical inventory using native STATUS before re-assessment.
+- PQ-1 and PQ-2 share coherent behavior commit 2dd84e872b0445fe3e9605744b57d7568b1ec940 (feat(payments): add QR and pending photo proof to collection). Both outcomes and their checks passed before commit. No push, PR, merge, deployment, original-checkout modification, or Grok-checkout modification occurred.
+- PQ-3 functional verification is complete; native review was declined for this candidate only. The first assessment returned high/unassessable because generated untracked CodeGraph inventory needs an explicit exclusion. This is not approval and does not lower risk. Resolve the canonical inventory using native STATUS before re-assessment.
 - Tracker mirror remains pending because no authoritative runtime session identity is available; preserve this local document for recovery.
+
+### PQ-3 closure
+- User selected Skip this time for the payment-proof candidate. Exact provider-issued decline returned action=declined, consent=declined_this_candidate and target sha256:3526aa12dad090e6826aabe2ac9cea9ea7bf35b237b21b96143102827f8bf1bb. No review receipt or independent native security verdict was produced; future review mode remains ON. Functional and independent integration evidence above remains valid.
+- Native STATUS was re-entered read-only after decline. An initial request incorrectly supplied unsupported --target and was rejected before mutation; the supported lineage-only request succeeded and reported unrelated current changes. No new START or capture was run.
+- Source implementation commit: 2dd84e872b0445fe3e9605744b57d7568b1ec940. Verification-record commit: 082bc47. Native assessed range: 9 files / 1,296 authored changed lines. This closure is passive tracking documentation only; no application bytes changed after functional checks.
+- All three local tasks are complete. Remote publication remains pending explicit authorization and the new feature's delivery-size decision; the previous attention-feature size exception is not reused. Actual device camera and live Mongo/HTTP behavior remain unverified. Current HTTP production camera needs a secure context; attachment remains available.
+- Engram recovery mirror remains pending authoritative runtime session registration; no memory mutation attempted. Original Downloads and Grok checkouts remain untouched.
