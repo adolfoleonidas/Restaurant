@@ -8,6 +8,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/lib/format';
 import { homeFor } from '@/lib/home';
+import { api } from '@/lib/api';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -24,8 +25,17 @@ export default function Login() {
     const [password, setPassword] = useState('');
     const [show, setShow] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [restaurant, setRestaurant] = useState(null);
     const navigate = useNavigate();
     const location = useLocation();
+
+    useEffect(() => {
+        let active = true;
+        api.get('/public/restaurant').then(({ data }) => {
+            if (active) setRestaurant(data);
+        }).catch(() => {});
+        return () => { active = false; };
+    }, []);
 
     if (user) return <Navigate to={homeFor(user)} replace />;
 
@@ -62,14 +72,14 @@ export default function Login() {
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
                     <div className="font-display italic text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</div>
-                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. Sabor Peruano, Barranco.</div>
+                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
                 </div>
             </div>
             <div className="flex-1 flex items-center justify-center p-6">
                 <div className="w-full max-w-md">
                     <div className="flex items-start justify-between mb-10">
                         <Link to="/" className="inline-block">
-                            <BrandMark kicker="Personal de salón" />
+                            <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
                         </Link>
                         <ThemeToggle />
                     </div>
