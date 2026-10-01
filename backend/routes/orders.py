@@ -127,7 +127,7 @@ def _apply_bill(order: dict, items: list, removed_item: dict = None):
 
 
 def _derive_kitchen_status(items: list, current: str) -> str:
-    if current in ("pagado", "cancelado", "pendiente_pago"):
+    if current in ("pagado", "cancelado"):
         return current
     work = [i for i in items if i.get("status") not in ("entregado", "cancelado")]
     if not work:
@@ -165,7 +165,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     items = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
-            "status": {"$nin": ["pagado", "cancelado", "pendiente_pago"]},
+            "status": {"$nin": ["pagado", "cancelado"]},
         },
         projection
     ).sort("created_at", 1).to_list(500)
@@ -556,10 +556,15 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
             if it.get("status") == "listo":
                 it["status"] = "entregado"
         update["items"] = items
-    update.update(ticket_fields(o, new_status, o.get("amount_paid"), o.get("total")))
+    if new_status == "pendiente_pago":
+        fulfillment = o.get("fulfillment_status") or o.get("status")
+        update.update(ticket_fields(o, fulfillment, o.get("amount_paid"), o.get("total")))
+        update["payment_requested"] = True
+    else:
+        update.update(ticket_fields(o, new_status, o.get("amount_paid"), o.get("total")))
     if update["status"] == "pagado":
         update["paid_at"] = o.get("paid_at") or _now()
-    if update["status"] == "pendiente_pago" and o.get("table_id"):
+    if new_status == "pendiente_pago" and o.get("table_id") and update.get("payment_status") != "pagado":
         await db.tables.update_one(
             {"id": o["table_id"]},
             {"$set": {"status": "esperando_pago", "updated_at": _now()}}

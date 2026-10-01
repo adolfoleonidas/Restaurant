@@ -53,7 +53,7 @@ _ITEM_NEXT = {
     "cancelado": set(),
 }
 
-_KITCHEN_CLOSED = {"pagado", "cancelado", "entregado", "pendiente_pago"}
+_KITCHEN_CLOSED = {"pagado", "cancelado", "entregado"}
 
 
 def _item_status(item: dict) -> str:
@@ -95,7 +95,7 @@ def assert_items_ready_to_finish(order: dict):
 
 
 _PROOF_STATES = {"comprobante_subido", "confirmado"}
-_FOOD_OUT = {"entregado", "pendiente_pago"}
+_FOOD_OUT = {"entregado"}
 
 
 def ticket_fields(order: dict, fulfillment: str, amount_paid, total) -> dict:
@@ -133,5 +133,11 @@ def assert_can_serve(order: dict):
     status = order.get("status")
     if status in ("pagado", "cancelado"):
         raise FlowError("El pedido ya está cerrado")
-    if status != "listo" or _unready(order.get("items") or []):
+    items = order.get("items") or []
+    if (
+        status not in ("listo", "pendiente_pago")
+        or _unready(items)
+        or not any(_item_status(item) == "listo" for item in items)
+        or order.get("fulfillment_status") == "entregado"
+    ):
         raise FlowError("Todavía hay productos en preparación")

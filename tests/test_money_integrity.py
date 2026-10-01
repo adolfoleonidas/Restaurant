@@ -15,8 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 from fastapi import HTTPException
 from pydantic import ValidationError
 
-from models import CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
-from routes.cash import _shift_totals
+from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
+from routes.cash import _shift_totals, close_register
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment
 from routes.reports import sales_report
@@ -580,6 +580,130 @@ def test_paying_the_bill_does_not_pull_food_out_of_the_kitchen():
     assert served["fulfillment_status"] == "entregado"
     assert closed["payment_status"] == "pagado"
     assert table_after["status"] == "pagada"
+
+
+def test_request_bill_then_pay_ready_order_keeps_ready_food_serviceable():
+    async def run():
+        db = _DB()
+        ready = _order(status="listo", fulfillment_status="listo")
+        ready["items"][0]["status"] = "listo"
+        ready["table_id"] = "mesa-1"
+        db.orders.docs.append(ready)
+        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "status": "ocupada"})
+        db.restaurants.docs.append({"id": RID, "auto_release_table": False})
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        requested = await change_status("order-1", _flow("pendiente_pago"), _mozo())
+        board = await kitchen_orders(_cocina())
+        paid = await create_payment(_payment_body(), _cashier())
+        table = await db.tables.find_one({"id": "mesa-1"})
+        stored = await db.orders.find_one({"id": "order-1"})
+        served = await serve_order("order-1", _mozo())
+        return requested, board, table, paid, stored, served
+
+    requested, board, table, paid, stored, served = asyncio.run(run())
+    assert requested["fulfillment_status"] == "listo"
+    assert requested["payment_requested"] is True
+    assert paid["fully_paid"] is True
+    assert stored["fulfillment_status"] == "listo"
+    assert stored["status"] == "listo"
+    assert table["status"] != "disponible"
+    assert any(row["id"] == "order-1" for row in board)
+    assert served["status"] == "pagado"
+    assert served["fulfillment_status"] == "entregado"
+
+
+def test_requesting_bill_does_not_hide_ready_food_or_block_service():
+    async def run():
+        db = _DB()
+        ready = _order(status="listo", fulfillment_status="listo")
+        ready["items"][0]["status"] = "listo"
+        db.orders.docs.append(ready)
+        _bind(db)
+        requested = await change_status("order-1", _flow("pendiente_pago"), _mozo())
+        board = await kitchen_orders(_cocina())
+        served = await serve_order("order-1", _mozo())
+        return requested, board, served
+
+    requested, board, served = asyncio.run(run())
+    assert requested["fulfillment_status"] == "listo"
+    assert requested["payment_requested"] is True
+    assert any(row["id"] == "order-1" for row in board)
+    assert served["status"] == "entregado"
+    assert served["fulfillment_status"] == "entregado"
+
+
+def test_request_bill_then_pay_delivered_order_closes_payment_without_reopening_food():
+    async def run():
+        db = _DB()
+        delivered = _order(status="entregado", fulfillment_status="entregado")
+        db.orders.docs.append(delivered)
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        requested = await change_status("order-1", _flow("pendiente_pago"), _mozo())
+        paid = await create_payment(_payment_body(), _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return requested, paid, stored
+
+    requested, paid, stored = asyncio.run(run())
+    assert requested["fulfillment_status"] == "entregado"
+    assert requested["payment_requested"] is True
+    assert paid["fully_paid"] is True
+    assert stored["fulfillment_status"] == "entregado"
+    assert stored["payment_status"] == "pagado"
+    assert stored["status"] == "pagado"
+
+
+def test_request_bill_does_not_allow_duplicate_service_of_delivered_items():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(status="entregado", fulfillment_status="entregado"))
+        _bind(db)
+        await change_status("order-1", _flow("pendiente_pago"), _mozo())
+        with pytest.raises(HTTPException) as caught:
+            await serve_order("order-1", _mozo())
+        return caught.value
+
+    assert asyncio.run(run()).status_code == 400
+
+
+@pytest.mark.parametrize(
+    ("status", "payment_status"),
+    [("en_preparacion", None), ("entregado", "comprobante_subido"), ("entregado", "confirmado")],
+)
+def test_cash_close_rejects_open_orders_and_payment_proofs(status, payment_status):
+    async def run():
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        doc = _order(status=status)
+        if payment_status:
+            doc["payment_status"] = payment_status
+        db.orders.docs.append(doc)
+        _bind(db)
+        with pytest.raises(HTTPException) as caught:
+            await close_register(CashClose(closing_amount=100), _cashier())
+        return caught.value, db.cash_registers.docs[0]
+
+    caught, register = asyncio.run(run())
+    assert caught.status_code == 400
+    assert register["status"] == "open"
+
+
+def test_cash_close_allows_settled_orders_and_ignores_other_restaurants():
+    async def run():
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        db.orders.docs.append(_order(status="pagado", payment_status="pagado"))
+        db.orders.docs.append(_order(
+            id="other-order",
+            restaurant_id="rest-2",
+            status="en_preparacion",
+        ))
+        _bind(db)
+        return await close_register(CashClose(closing_amount=100), _cashier())
+
+    closed = asyncio.run(run())
+    assert closed["status"] == "closed"
 
 
 def test_partial_mixto_does_not_mark_selected_dishes_paid():
