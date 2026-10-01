@@ -4,7 +4,7 @@ from typing import Optional, List
 import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
-from auth import get_current_user, require_roles
+from auth import get_current_user, require_roles, user_functions
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
@@ -37,7 +37,34 @@ def _order_projection(user: dict) -> dict:
     proj = {"_id": 0}
     if user.get("role") == "cocina":
         proj.update(_KITCHEN_HIDE)
+    if not {"cobro", "administracion"}.intersection(user_functions(user)):
+        proj.update({
+            "payment_proof_url": 0,
+            "payment_proof_method": 0,
+            "payment_proof_sha256": 0,
+            "payment_proof_uploaded_by": 0,
+            "payment_proof_uploaded_at": 0,
+        })
     return proj
+
+
+def _order_for_user(order: dict | None, user: dict) -> dict | None:
+    if not order or {"cobro", "administracion"}.intersection(user_functions(user)):
+        return order
+    safe = dict(order)
+    for field in (
+        "payment_proof_url", "payment_proof_method", "payment_proof_sha256",
+        "payment_proof_uploaded_by", "payment_proof_uploaded_at",
+    ):
+        safe.pop(field, None)
+    return safe
+
+
+async def _current_order_response(order_id: str, user: dict) -> dict | None:
+    order = await db.orders.find_one(
+        {"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    )
+    return _order_for_user(order, user)
 
 
 async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, entity_id: str, details: dict = None):
@@ -165,7 +192,9 @@ async def list_orders(
 @router.get("/kitchen")
 async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
     """Orders relevant for kitchen board (no payment info)."""
-    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0}
+    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0,
+                  "payment_proof_method": 0, "payment_proof_sha256": 0, "payment_proof_uploaded_by": 0,
+                  "payment_proof_uploaded_at": 0}
     items = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
@@ -189,7 +218,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
         projection
     ).sort("updated_at", -1).to_list(100)
     board.extend(delivered)
-    return board
+    return [_order_for_user(order, user) for order in board]
 
 
 @router.get("/{order_id}")
@@ -200,7 +229,7 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     )
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    return o
+    return _order_for_user(o, user)
 
 
 @router.post("")
@@ -247,7 +276,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
             raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no)
-    return await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/attention/open")
@@ -295,7 +324,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.delete("/{order_id}/items/{item_id}")
@@ -316,7 +345,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.patch("/{order_id}/items/{item_id}")
@@ -348,7 +377,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/send-to-kitchen")
@@ -375,7 +404,7 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
     })
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
     emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/bump")
@@ -408,7 +437,7 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
         patch["ready_at"] = _now()
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="bump")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/items/{item_id}/status")
@@ -445,7 +474,7 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
         patch["ready_at"] = _now()
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_bump")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/serve")
@@ -467,7 +496,7 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
     await _release_paid_table(o, patch["status"])
     await _audit(user["restaurant_id"], user["id"], "serve", "order", order_id)
     emit_order(user["restaurant_id"], order_id, patch["status"], source=o.get("source"), extra="serve")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/reassign")
@@ -487,7 +516,7 @@ async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depen
         "updated_at": _now(),
     })
     await _audit(user["restaurant_id"], user["id"], "reassign_waiter", "order", order_id, {"waiter_id": waiter["id"]})
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/confirm-payment")
@@ -500,7 +529,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
     await _save_order(o, {"payment_status": "confirmado", "updated_at": _now()})
     await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), payment_status="confirmado")
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
 
 
 @router.post("/{order_id}/status")
@@ -598,4 +627,4 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
     await _release_paid_table(o, update["status"])
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})
     emit_order(user["restaurant_id"], order_id, update["status"], source=o.get("source"))
-    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+    return await _current_order_response(order_id, user)
