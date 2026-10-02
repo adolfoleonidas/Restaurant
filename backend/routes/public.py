@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
 import asyncio
+import base64
 import hashlib
 import json
+import re
 import uuid
 import secrets
 import string
@@ -338,17 +340,38 @@ async def resolve_public_table(token: str):
     return table
 
 
+_PAYMENT_METHOD_DEFAULTS = {
+    "efectivo": True,
+    "yape": True,
+    "plin": True,
+    "transferencia": True,
+    "tarjeta": False,
+}
+
+
+def _public_payment_settings(cfg: dict) -> dict:
+    return {
+        "enable_efectivo": cfg.get("enable_efectivo", _PAYMENT_METHOD_DEFAULTS["efectivo"]),
+        "enable_yape": cfg.get("enable_yape", _PAYMENT_METHOD_DEFAULTS["yape"]),
+        "enable_plin": cfg.get("enable_plin", _PAYMENT_METHOD_DEFAULTS["plin"]),
+        "enable_transferencia": cfg.get("enable_transferencia", _PAYMENT_METHOD_DEFAULTS["transferencia"]),
+        "enable_tarjeta": cfg.get("enable_tarjeta", _PAYMENT_METHOD_DEFAULTS["tarjeta"]),
+    }
+
+
+def _ensure_public_payment_method_enabled(method: str, cfg: dict):
+    settings = _public_payment_settings(cfg)
+    if not settings.get(f"enable_{method}", False):
+        raise HTTPException(status_code=400, detail="El método de pago seleccionado no está disponible")
+
+
 @router.get("/payment-config")
 async def public_payment_config():
     """Public view of payment methods enabled and QR/account info."""
     r = await _get_restaurant()
     cfg = await db.payment_configs.find_one({"restaurant_id": r["id"]}, {"_id": 0}) or {}
     return {
-        "enable_efectivo": cfg.get("enable_efectivo", True),
-        "enable_yape": cfg.get("enable_yape", True),
-        "enable_plin": cfg.get("enable_plin", True),
-        "enable_transferencia": cfg.get("enable_transferencia", True),
-        "enable_tarjeta": cfg.get("enable_tarjeta", False),
+        **_public_payment_settings(cfg),
         "yape_number": cfg.get("yape_number"),
         "yape_holder": cfg.get("yape_holder"),
         "yape_qr": cfg.get("yape_qr"),
@@ -373,6 +396,8 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     r = await _get_restaurant()
     if not data.items:
         raise HTTPException(status_code=400, detail="Agrega al menos un producto")
+    payment_cfg = await db.payment_configs.find_one({"restaurant_id": r["id"]}, {"_id": 0}) or {}
+    _ensure_public_payment_method_enabled(data.payment_method, payment_cfg)
     if data.order_type != "local":
         if not (data.customer_name or "").strip() or not (data.customer_phone or "").strip():
             raise HTTPException(status_code=400, detail="Nombre y celular son requeridos")
@@ -694,17 +719,43 @@ async def public_stream(restaurant_id: str = None, tracking: str = None):
     )
 
 
+_PUBLIC_PROOF_PATTERN = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$")
+_PUBLIC_PROOF_MAX_BYTES = 1_800_000
+
+
+def _validated_public_proof(value: str) -> str:
+    if len(value) > 2_500_000:
+        raise HTTPException(status_code=400, detail="La imagen es muy grande (max ~1.8MB)")
+    match = _PUBLIC_PROOF_PATTERN.fullmatch(value)
+    if not match:
+        raise HTTPException(status_code=400, detail="Imagen inválida")
+    image_type, encoded = match.groups()
+    try:
+        payload = base64.b64decode(encoded, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise HTTPException(status_code=400, detail="Imagen inválida")
+    if not payload or len(payload) > _PUBLIC_PROOF_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="La imagen es muy grande (max ~1.8MB)")
+    signatures = {
+        "png": payload.startswith(b"\x89PNG\r\n\x1a\n"),
+        "jpeg": payload.startswith(b"\xff\xd8\xff"),
+        "webp": len(payload) >= 12 and payload[:4] == b"RIFF" and payload[8:12] == b"WEBP",
+    }
+    if not signatures[image_type]:
+        raise HTTPException(status_code=400, detail="El contenido de la imagen no coincide")
+    return value
+
+
 @router.post("/orders/{tracking_code}/proof")
 async def upload_proof(tracking_code: str, data: PublicProofUpload):
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    if not data.payment_proof or not data.payment_proof.startswith("data:image"):
-        raise HTTPException(status_code=400, detail="Imagen inválida")
-    if len(data.payment_proof) > 2_500_000:
-        raise HTTPException(status_code=400, detail="La imagen es muy grande (max ~1.8MB)")
+    if o.get("status") in ("pagado", "cancelado") or o.get("payment_status") in ("pagado", "confirmado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    proof = _validated_public_proof(data.payment_proof or "")
     await _save_public_order(o, {
-        "payment_proof_url": data.payment_proof,
+        "payment_proof_url": proof,
         "payment_status": "comprobante_subido",
         "updated_at": _now(),
     })

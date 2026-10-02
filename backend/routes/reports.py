@@ -8,12 +8,29 @@ from billing import rank_products, summarize_payments
 
 _OPEN_END = "9999-12-31T23:59:59+00:00"
 
-LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
 
 
-def _lima_period_start(period: str) -> str:
-    now = datetime.now(LIMA)
+async def _resolve_timezone(restaurant_id: str) -> ZoneInfo:
+    """Resolve the restaurant's timezone from its default branch, fallback to UTC."""
+    branch = await db.branches.find_one(
+        {"restaurant_id": restaurant_id},
+        {"_id": 0, "timezone": 1},
+        sort=[("created_at", 1)],
+        limit=1,
+    )
+    tz_name = (branch or {}).get("timezone")
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            pass
+    return ZoneInfo("UTC")
+
+
+async def _period_start(period: str, restaurant_id: str) -> str:
+    tz = await _resolve_timezone(restaurant_id)
+    now = datetime.now(tz)
     if period == "day":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "week":
@@ -23,17 +40,18 @@ def _lima_period_start(period: str) -> str:
     return start.astimezone(timezone.utc).isoformat()
 
 
-def _today_range():
-    now = datetime.now(timezone.utc)
+async def _today_range(restaurant_id: str):
+    tz = await _resolve_timezone(restaurant_id)
+    now = datetime.now(tz)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start.isoformat(), now.isoformat()
+    return start.astimezone(timezone.utc).isoformat(), now.astimezone(timezone.utc).isoformat()
 
 
 @router.get("/dashboard")
 async def dashboard(user: dict = Depends(get_current_user)):
     """KPIs visible to current user role. Some fields restricted by role."""
     rid = user["restaurant_id"]
-    start, end = _today_range()
+    start, end = await _today_range(rid)
 
     active_orders = await db.orders.count_documents({
         "restaurant_id": rid,
@@ -148,7 +166,7 @@ async def product_sales(
     period: str = Query("day", regex="^(day|week|month)$"),
 ):
     rid = user["restaurant_id"]
-    start = _lima_period_start(period)
+    start = await _period_start(period, rid)
     payments = await db.payments.find(
         {"restaurant_id": rid, "$or": [
             {"created_at": {"$gte": start}},

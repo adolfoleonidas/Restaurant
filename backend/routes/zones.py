@@ -97,7 +97,7 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
     # Propagate branch_id change to tables in this zone
     if "branch_id" in update:
         await db.tables.update_many(
-            {"restaurant_id": user["restaurant_id"], "area": z["name"]},
+            {"restaurant_id": user["restaurant_id"], "area": update.get("name", z["name"])},
             {"$set": {"branch_id": update["branch_id"], "updated_at": _now()}}
         )
     

@@ -44,7 +44,11 @@ async def root():
 
 @api_router.get("/health")
 async def health():
-    return {"status": "ok"}
+    try:
+        await db.command("ping")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "database": "disconnected", "detail": str(e)}
 
 
 # Mount all module routers
