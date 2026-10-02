@@ -209,14 +209,18 @@ function Zonas() {
     const [confirmDel, setConfirmDel] = useState(null);
     
     const load = async () => {
-        const [z, b, t] = await Promise.all([
-            api.get('/zones'),
-            api.get('/branches'),
-            api.get('/tables')
-        ]);
-        setZones(z.data);
-        setBranches(Array.isArray(b.data) ? b.data : []);
-        setTables(t.data);
+        try {
+            const [z, b, t] = await Promise.all([
+                api.get('/zones'),
+                api.get('/branches'),
+                api.get('/tables')
+            ]);
+            setZones(z.data);
+            setBranches(Array.isArray(b.data) ? b.data : []);
+            setTables(t.data);
+        } catch {
+            // Keep the section usable with whatever data is already loaded.
+        }
     };
     
     useEffect(() => { load(); }, []);
@@ -378,8 +382,12 @@ function Mesas() {
     const [confirmDel, setConfirmDel] = useState(null);
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
-        const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
-        setTables(t.data); setZones(z.data);
+        try {
+            const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
+            setTables(t.data); setZones(z.data);
+        } catch {
+            // Keep the section usable with whatever data is already loaded.
+        }
     };
     useEffect(() => { load(); }, []);
     const loadBranches = async () => {
@@ -516,7 +524,7 @@ function Mesas() {
                                 disabled={branchesLoading || branchesError || saving}
                                 data-testid="mesa-form-branch"
                             >
-                                <option value="">Heredar de la zona</option>
+                                {!editing?.branch_id && <option value="">Heredar de la zona</option>}
                                 {editing?.branch_id && !branches.some((branch) => branch.id === editing.branch_id) && <option value={editing.branch_id}>{editing.branch_id}</option>}
                                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                             </select>
