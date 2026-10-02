@@ -10,10 +10,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
-import { ChefHat, CheckCheck } from 'lucide-react';
+import { ChefHat, CheckCheck, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 function remaining(order) {
     const total = Number(order.total || 0);
@@ -29,8 +30,10 @@ export default function Servicio() {
     const canCharge = hasFn(user, 'cobro', 'administracion');
     const canServe = hasFn(user, 'preparacion', 'atencion', 'administracion');
     const canClose = ['admin', 'mozo', 'cajero'].includes(user?.role);
+    const canTakeOrder = ['admin', 'mozo'].includes(user?.role);
     const [delivering, setDelivering] = useState(null);
     const [closing, setClosing] = useState(null);
+    const [showNewOrder, setShowNewOrder] = useState(false);
     const { data: tables, refetch: refetchTables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
     const { data: orders, refetch } = usePolling(
         () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
@@ -67,6 +70,17 @@ export default function Servicio() {
     const toPrep = cards.reduce((s, c) => s + c.pendingPrep.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toReady = cards.reduce((s, c) => s + c.ready.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toPay = cards.filter((c) => c.due > 0).length;
+
+    const availableTables = useMemo(() => {
+        return (tables || [])
+            .filter((t) => t.status === 'disponible' && !t.active_order && !t.active_attention_id)
+            .sort((a, b) => Number(a.number) - Number(b.number));
+    }, [tables]);
+
+    const selectTable = (tableId) => {
+        setShowNewOrder(false);
+        navigate(`/pedidos/nuevo?mesa=${tableId}`);
+    };
 
     const refreshService = async () => Promise.allSettled([refetch(), refetchTables()]);
 
@@ -107,11 +121,18 @@ export default function Servicio() {
                         En cocina: {toPrep} · Listos: {toReady} · Por cobrar: {toPay}
                     </p>
                 </div>
-                {toPrep > 0 && (
-                    <Button variant="outline" className="h-11" onClick={() => navigate('/cocina')} data-testid="servicio-ir-cocina">
-                        <ChefHat className="h-4 w-4 mr-1" /> Ir a cocina ({toPrep})
-                    </Button>
-                )}
+                <div className="flex gap-2">
+                    {canTakeOrder && (
+                        <Button className="h-11" onClick={() => setShowNewOrder(true)} data-testid="servicio-nuevo-pedido">
+                            <Plus className="h-4 w-4 mr-1" /> Nuevo pedido
+                        </Button>
+                    )}
+                    {toPrep > 0 && (
+                        <Button variant="outline" className="h-11" onClick={() => navigate('/cocina')} data-testid="servicio-ir-cocina">
+                            <ChefHat className="h-4 w-4 mr-1" /> Ir a cocina ({toPrep})
+                        </Button>
+                    )}
+                </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -247,6 +268,37 @@ export default function Servicio() {
                     </div>
                 </details>
             )}
+
+            {/* Modal: Seleccionar mesa para nuevo pedido */}
+            <Dialog open={showNewOrder} onOpenChange={setShowNewOrder}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Seleccionar mesa</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3 py-2">
+                        {availableTables.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">
+                                No hay mesas disponibles en este momento.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-2 max-h-[60vh] overflow-y-auto">
+                                {availableTables.map((table) => (
+                                    <button
+                                        key={table.id}
+                                        onClick={() => selectTable(table.id)}
+                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                                        data-testid={`servicio-mesa-disponible-${table.number}`}
+                                    >
+                                        <span className="font-display text-2xl font-bold">{table.number}</span>
+                                        <span className="text-xs text-muted-foreground mt-1">{table.area}</span>
+                                        <span className="text-[10px] text-muted-foreground">{table.capacity} pers.</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
