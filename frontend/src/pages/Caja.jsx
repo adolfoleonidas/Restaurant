@@ -109,6 +109,15 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         { id: 'mixed', name: 'Mixto', Icon: ArrowLeftRight },
     ];
 
+    // Detect mobile viewport for responsive defaults
+    const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 760);
+    useEffect(() => {
+        const mq = window.matchMedia('(max-width: 760px)');
+        const handler = (e) => setIsMobile(e.matches);
+        mq.addEventListener('change', handler);
+        return () => mq.removeEventListener('change', handler);
+    }, []);
+
     // State
     const [method, setMethod] = useState('cash');
     const [received, setReceived] = useState('');
@@ -126,7 +135,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const [part, setPart] = useState(0);
     const [picked, setPicked] = useState({});
     const [live, setLive] = useState(order);
-    const [detailOpen, setDetailOpen] = useState(true);
+    const [detailOpen, setDetailOpen] = useState(() => window.innerWidth > 760);
     const [showVerify, setShowVerify] = useState(false);
     const [verified, setVerified] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
@@ -166,7 +175,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             setSplits([{ method: 'cash', amount: '' }, { method: 'yape', amount: '' }]);
             setResult(null); setStale(null); setNetError(false);
             setPayMode('all'); setPeople(2); setPart(0); setPicked({});
-            setLive(order); setDetailOpen(true); setShowVerify(false); setVerified(false);
+            setLive(order); setDetailOpen(window.innerWidth > 760); setShowVerify(false); setVerified(false);
             setShowHelp(false); setShowHistory(false);
             setProofFile(null); setProofUrl(null); setCardRef('');
             setSelectedProof(''); setProofIntent(null); setProofSending(false); setProofSent(false); setProofError('');
