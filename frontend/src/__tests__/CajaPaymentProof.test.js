@@ -58,6 +58,16 @@ async function selectMethod(method) {
     await flush();
 }
 
+async function confirmVerifiedPayment() {
+    await act(async () => document.body.querySelector('[data-testid="caja-cobrar-submit-button"]').click());
+    await flush();
+    const box = document.body.querySelector('[data-testid="caja-verificar-check"]');
+    await act(async () => box.click());
+    await flush();
+    await act(async () => document.body.querySelector('[data-testid="caja-verificar-registrar"]').click());
+    await flush();
+}
+
 async function cleanup(view) {
     await act(async () => view.root.unmount());
     view.host.remove();
@@ -209,8 +219,7 @@ describe('Caja QR and payment-proof collection', () => {
         await selectMethod('plin');
         expect(document.body.textContent).not.toContain('Comprobante enviado para Plin');
         await selectMethod('yape');
-        await act(async () => document.body.querySelector('[data-testid="caja-cobrar-submit-button"]').click());
-        await flush();
+        await confirmVerifiedPayment();
         const payment = api.post.mock.calls.find(([path]) => path === '/payments');
         expect(payment[1].expected_updated_at).toBe('fresh-stamp');
         expect(api.post.mock.calls.filter(([path]) => path.endsWith('/proof'))).toHaveLength(1);
@@ -290,8 +299,7 @@ describe('Caja QR and payment-proof collection', () => {
         api.post.mockResolvedValueOnce({ data: { fully_paid: true, remaining: 0, change_amount: 0 } });
         const view = await openCollectionDialog();
         await selectMethod('yape');
-        await act(async () => document.body.querySelector('[data-testid="caja-cobrar-submit-button"]').click());
-        await flush();
+        await confirmVerifiedPayment();
         expect(api.post.mock.calls[0][0]).toBe('/payments');
         expect(api.post.mock.calls.some(([path]) => path.endsWith('/proof'))).toBe(false);
         expect(document.body.querySelector('[data-testid="caja-pago-ok"]')).not.toBeNull();
