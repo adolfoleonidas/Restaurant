@@ -9,6 +9,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
+import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import { ChefHat, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,6 +34,16 @@ export default function Servicio() {
         8000,
         [generation]
     );
+
+    const pickupProjection = useMemo(() => {
+        const { live, prior } = partitionPriorPickupOrders(orders || []);
+        const active = live.filter((order) => (
+            order.order_type === 'recojo'
+            && !order.table_id
+            && !['entregado', 'pagado', 'cancelado'].includes(order.status)
+        ));
+        return { active, prior };
+    }, [orders]);
 
     const cards = useMemo(() => {
         const byTable = Object.fromEntries((orders || []).filter((o) => o.table_id).map((o) => [o.table_id, o]));
@@ -193,6 +204,42 @@ export default function Servicio() {
                         <Link className="underline" to="/pedidos/nuevo">Tomar un pedido</Link>
                     </CardContent>
                 </Card>
+            )}
+
+            {pickupProjection.active.length > 0 && (
+                <section className="rounded-md border border-border bg-card/50 p-3" data-testid="servicio-recojos-activos">
+                    <h2 className="font-semibold">Recojos activos · {pickupProjection.active.length}</h2>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {pickupProjection.active.map((order) => (
+                            <div key={order.id} className="flex items-center justify-between gap-3 rounded-sm border border-border p-3" data-testid={`servicio-recojo-${order.id}`}>
+                                <div>
+                                    <p className="font-medium">{order.order_number ? `Pedido #${order.order_number}` : 'Pedido'}</p>
+                                    <p className="text-sm text-muted-foreground">{order.status === 'listo' ? 'Listo para recojo' : 'En preparación'}</p>
+                                </div>
+                                <Link className="shrink-0 text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {pickupProjection.prior.length > 0 && (
+                <details className="rounded-md border border-border bg-card/50 p-3" data-testid="servicio-dias-anteriores">
+                    <summary className="cursor-pointer font-semibold">
+                        Días anteriores · {pickupProjection.prior.length} recojo(s) listos
+                    </summary>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {pickupProjection.prior.map((order) => (
+                            <div key={order.id} className="flex items-center justify-between gap-3 rounded-sm border border-border p-3" data-testid={`servicio-recojo-anterior-${order.id}`}>
+                                <div>
+                                    <p className="font-medium">{order.order_number ? `Pedido #${order.order_number}` : 'Pedido'}</p>
+                                    <p className="text-sm text-muted-foreground">Listo para recojo</p>
+                                </div>
+                                <Link className="shrink-0 text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>
+                            </div>
+                        ))}
+                    </div>
+                </details>
             )}
         </div>
     );
