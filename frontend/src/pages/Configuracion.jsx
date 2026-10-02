@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import TableQrActions from '@/components/TableQrActions';
 
 function Restaurante() {
     const [r, setR] = useState(null);
@@ -145,15 +146,18 @@ function Mesas() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {tables.map((t) => (
-                    <div key={t.id} className="flex items-center justify-between border rounded-xl p-3">
-                        <div>
-                            <div className="font-medium">{t.name}</div>
-                            <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                    <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <div className="font-medium">{t.name}</div>
+                                <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => del(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" onClick={() => del(t)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
+                        <TableQrActions table={t} />
                     </div>
                 ))}
             </div>
