@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, constr
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, constr, field_validator
 from typing import List, Optional, Literal
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+import re
 import uuid
 
 
@@ -120,6 +122,87 @@ class ZoneCreate(BaseModel):
 class ZoneUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
     sort_order: Optional[int] = None
+
+
+# ============== BRANCH ==============
+def _branch_name(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("Branch name is required")
+    if len(normalized) > 100:
+        raise ValueError("Branch name must be at most 100 characters")
+    return normalized
+
+
+def _branch_timezone(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("An IANA timezone is required")
+    try:
+        ZoneInfo(normalized)
+    except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+        raise ValueError("Timezone must be a valid IANA timezone") from exc
+    return normalized
+
+
+def _business_day_cutoff(value: str) -> str:
+    normalized = value.strip()
+    if not re.fullmatch(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]", normalized):
+        raise ValueError("Business-day cutoff must use local HH:MM time")
+    return normalized
+
+
+class BranchCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    timezone: str
+    business_day_cutoff: str
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _branch_name(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return _branch_timezone(value)
+
+    @field_validator("business_day_cutoff")
+    @classmethod
+    def validate_cutoff(cls, value: str) -> str:
+        return _business_day_cutoff(value)
+
+
+class BranchUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    timezone: Optional[str] = None
+    business_day_cutoff: Optional[str] = None
+
+    @field_validator("name", "timezone", "business_day_cutoff", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Explicit null is not allowed for branch settings")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return _branch_name(value)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        return _branch_timezone(value)
+
+    @field_validator("business_day_cutoff")
+    @classmethod
+    def validate_cutoff(cls, value: str) -> str:
+        return _business_day_cutoff(value)
 
 
 # ============== CATEGORY ==============

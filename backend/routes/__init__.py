@@ -13,6 +13,7 @@ from .payment_config import router as payment_config_router
 from .notifications import router as notifications_router
 from .approvals import router as approvals_router
 from .zones import router as zones_router
+from .branches import router as branches_router
 
 __all__ = [
     "auth_router",
@@ -30,4 +31,5 @@ __all__ = [
     "notifications_router",
     "approvals_router",
     "zones_router",
+    "branches_router",
 ]
