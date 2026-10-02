@@ -1,97 +1,112 @@
 /* ============================================================
-   TEMA: Cálido (Naranja/Marrón)
-   Basado en el prototipo HTML original
+   TEMA: Cálido (Restaurante Tradicional)
+   Inspirado en el prototipo HTML original
+   Colores tierra, naranja y púrpura
    ============================================================ */
 
 :root {
-  /* ---- Cálido (Naranja/Marrón) — Light ---- */
-  --background: 30 30% 95%;
-  --foreground: 20 40% 18%;
-  --card: 30 35% 99%;
-  --card-foreground: 20 40% 18%;
-  --popover: 30 35% 99%;
-  --popover-foreground: 20 40% 18%;
-  --primary: 15 70% 45%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 30 25% 90%;
-  --secondary-foreground: 20 35% 22%;
-  --muted: 30 20% 88%;
-  --muted-foreground: 20 20% 42%;
-  --accent: 10 75% 40%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 42%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 30 20% 80%;
-  --input: 30 20% 80%;
-  --ring: 15 70% 45%;
-  --chart-1: 15 70% 45%;
-  --chart-2: 340 65% 50%;
-  --chart-3: 45 85% 50%;
-  --chart-4: 180 70% 45%;
-  --chart-5: 280 60% 50%;
-
-  /* ---- Tokens de marca (Cálido) ---- */
-  --brand: hsl(var(--primary));
-  --brand-hover: hsl(15 70% 38%);
-  --brand-soft: hsl(15 60% 92%);
-  --on-brand: hsl(var(--primary-foreground));
-  --page: hsl(var(--background));
-  --paper: hsl(var(--card));
-  --surface: hsl(var(--muted));
-  --line: hsl(var(--border));
-  --ink: hsl(var(--foreground));
-  --muted-ink: hsl(var(--muted-foreground));
-  --soft: hsl(20 15% 55%);
-  --warn: 45 85% 50%;
-  --warn-soft: 45 90% 92%;
-  --green: 150 60% 40%;
-  --green-soft: 150 65% 92%;
-  --red: hsl(var(--destructive));
-  --red-soft: hsl(0 85% 92%);
-  --shadow: 0 24px 60px -20px hsl(20 40% 20% / 0.2);
-  --shadow-sm: 0 2px 8px -2px hsl(20 40% 20% / 0.12);
+  /* Colores base del tema cálido */
+  --page: #edeae5;
+  --paper: #fffefd;
+  --surface: #faf8f5;
+  --line: #e8e2dc;
+  --ink: #302923;
+  --muted: #746b64;
+  --soft: #928980;
+  
+  /* Color principal: Naranja cálido */
+  --brand: #a6452a;
+  --brand-hover: #8b351e;
+  --brand-soft: #fbefe8;
+  
+  /* Color secundario: Púrpura (para Yape) */
+  --purple: #7927c4;
+  --purple-dark: #65209f;
+  --purple-soft: #f7f1fd;
+  --purple-line: #ddc7f3;
+  
+  /* Colores semánticos */
+  --green: #1e7150;
+  --green-soft: #eef7f1;
+  --red: #b02c27;
+  --amber: #94620d;
+  
+  /* Sombras */
+  --shadow: 0 22px 80px #332a2426, 0 4px 16px #332a2412;
+  --shadow-sm: 0 2px 8px #332a2412;
+  
+  /* Bordes */
+  --radius: 14px;
 }
 
 .dark {
-  /* ---- Cálido (Naranja/Marrón) — Dark ---- */
-  --background: 20 35% 10%;
-  --foreground: 30 30% 90%;
-  --card: 20 30% 14%;
-  --card-foreground: 30 30% 90%;
-  --popover: 20 30% 12%;
-  --popover-foreground: 30 30% 90%;
-  --primary: 15 70% 58%;
-  --primary-foreground: 20 35% 10%;
-  --secondary: 20 25% 20%;
-  --secondary-foreground: 30 25% 82%;
-  --muted: 20 22% 20%;
-  --muted-foreground: 30 20% 62%;
-  --accent: 10 75% 50%;
-  --accent-foreground: 20 35% 10%;
-  --destructive: 0 72% 46%;
-  --destructive-foreground: 20 30% 90%;
-  --border: 20 25% 24%;
-  --input: 20 25% 24%;
-  --ring: 15 70% 58%;
+  --page: #1a1614;
+  --paper: #242019;
+  --surface: #2d2820;
+  --line: #3d362d;
+  --ink: #f5f0e8;
+  --muted: #a89f94;
+  --soft: #8a8078;
+  
+  --brand: #d4654a;
+  --brand-hover: #e07a5f;
+  --brand-soft: #3d2a20;
+  
+  --purple: #a855f7;
+  --purple-dark: #c084fc;
+  --purple-soft: #2d1f3d;
+  --purple-line: #4a3560;
+  
+  --green: #22c55e;
+  --green-soft: #1a3d2a;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  
+  --shadow: 0 22px 80px #00000040, 0 4px 16px #00000020;
+  --shadow-sm: 0 2px 8px #00000020;
+}
 
-  /* ---- Tokens de marca (dark) ---- */
-  --brand: hsl(var(--primary));
-  --brand-hover: hsl(15 70% 65%);
-  --brand-soft: hsl(15 60% 20%);
-  --on-brand: hsl(var(--primary-foreground));
-  --page: hsl(var(--background));
-  --paper: hsl(var(--card));
-  --surface: hsl(var(--muted));
-  --line: hsl(var(--border));
-  --ink: hsl(var(--foreground));
-  --muted-ink: hsl(var(--muted-foreground));
-  --soft: hsl(30 15% 60%);
-  --warn: 45 85% 58%;
-  --warn-soft: 45 60% 18%;
-  --green: 150 65% 50%;
-  --green-soft: 150 50% 18%;
-  --red: hsl(var(--destructive));
-  --red-soft: hsl(0 60% 18%);
-  --shadow: 0 24px 60px -20px hsl(20 40% 0% / 0.6);
-  --shadow-sm: 0 2px 8px -2px hsl(20 40% 0% / 0.4);
+/* ============================================================
+   APLICACIÓN DEL TEMA
+   ============================================================ */
+
+body.theme-calido {
+  background: var(--page);
+  color: var(--ink);
+}
+
+body.theme-calido .font-display {
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.02em;
+}
+
+/* Ajustes específicos para el tema cálido */
+body.theme-calido .card,
+body.theme-calido [data-radix-popper-content-wrapper] > div {
+  background: var(--paper);
+  border-color: var(--line);
+}
+
+body.theme-calido button[data-variant="default"],
+body.theme-calido .btn-primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+
+body.theme-calido button[data-variant="default"]:hover,
+body.theme-calido .btn-primary:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+/* Yape específico */
+body.theme-calido [data-method="yape"] {
+  color: var(--purple);
+}
+
+body.theme-calido [data-method="yape"][aria-selected="true"] {
+  background: var(--purple-soft);
+  border-color: var(--purple);
+  color: var(--purple-dark);
 }

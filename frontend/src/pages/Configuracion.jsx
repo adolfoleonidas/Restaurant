@@ -17,7 +17,29 @@ import {
 } from '@/components/ui/alert-dialog';
 
 function Temas() {
-    const { theme, setTheme, themes } = useTheme();
+    const { theme, setTheme, clearThemeOverride, themes } = useTheme();
+    const [restaurant, setRestaurant] = useState(null);
+    const [saving, setSaving] = useState(false);
+    
+    useEffect(() => {
+        api.get('/restaurants/current').then((res) => setRestaurant(res.data));
+    }, []);
+    
+    const saveTheme = async (themeId) => {
+        if (!restaurant) return;
+        setSaving(true);
+        try {
+            await api.patch('/restaurants/current', { theme_id: themeId });
+            setTheme(themeId);
+            toast.success('Tema guardado para todo el restaurante');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Error al guardar el tema');
+        } finally {
+            setSaving(false);
+        }
+    };
+    
+    const hasLocalOverride = typeof window !== 'undefined' && localStorage.getItem('restaurant-theme') !== null;
     
     return (
         <Card><CardContent className="p-5">
@@ -27,20 +49,31 @@ function Temas() {
                         <Palette className="h-5 w-5" /> Tema de la interfaz
                     </h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                        Personaliza los colores de toda la aplicación
+                        Personaliza los colores para todo el restaurante
                     </p>
                 </div>
+                {hasLocalOverride && (
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={clearThemeOverride}
+                        className="text-xs"
+                    >
+                        Restaurar tema del restaurante
+                    </Button>
+                )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {themes.map((t) => (
                     <button
                         key={t.id}
-                        onClick={() => setTheme(t.id)}
+                        onClick={() => saveTheme(t.id)}
+                        disabled={saving}
                         className={`p-4 rounded-lg border-2 text-left transition-all ${
                             theme === t.id 
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary/20' 
                                 : 'border-border hover:border-primary/50'
-                        }`}
+                        } ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
                         data-testid={`theme-${t.id}`}
                     >
                         <div className="font-medium mb-1">{t.name}</div>
@@ -51,8 +84,13 @@ function Temas() {
                     </button>
                 ))}
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-                El tema se aplica inmediatamente y se guarda en tu navegador.
+            {hasLocalOverride && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-4">
+                    ⚠ Tienes un tema local activo. Los demás usuarios ven el tema del restaurante.
+                </p>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+                El tema se aplica inmediatamente para todos los usuarios del restaurante.
             </p>
         </CardContent></Card>
     );

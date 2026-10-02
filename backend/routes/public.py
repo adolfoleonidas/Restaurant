@@ -244,6 +244,7 @@ async def public_restaurant():
         "social_facebook": r.get("social_facebook"),
         "social_instagram": r.get("social_instagram"),
         "social_whatsapp": r.get("social_whatsapp"),
+        "theme_id": r.get("theme_id", "fresco"),
     }
 
 

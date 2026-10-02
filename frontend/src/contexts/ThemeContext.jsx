@@ -1,39 +1,81 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 
 const themes = [
   { id: 'fresco', name: 'Fresco', description: 'Azul/Blanco - Profesional y limpio' },
-  { id: 'restaurante', name: 'Restaurante', description: 'Verde cálido - Estilo restaurante' },
-  { id: 'calido', name: 'Cálido', description: 'Naranja/Marrón - Acogedor' },
+  { id: 'restaurante', name: 'Restaurante', description: 'Verde moderno - Estilo restaurante' },
+  { id: 'calido', name: 'Cálido', description: 'Naranja/Marrón - Acogedor tradicional' },
 ];
 
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  const [theme, setTheme] = useState(() => {
+  const [theme, setThemeState] = useState('fresco');
+  const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('restaurant-theme') || 'fresco';
+      const stored = localStorage.getItem('restaurant-dark-mode');
+      if (stored !== null) return stored === 'true';
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-    return 'fresco';
+    return false;
   });
+  const [loading, setLoading] = useState(true);
 
+  // Cargar tema del restaurante desde la API
   useEffect(() => {
+    const loadRestaurantTheme = async () => {
+      try {
+        const { data } = await api.get('/restaurants/current');
+        const restaurantTheme = data.theme_id || 'fresco';
+        const localOverride = localStorage.getItem('restaurant-theme');
+        
+        // Usar override local si existe (para pruebas), sino el del restaurante
+        const finalTheme = localOverride || restaurantTheme;
+        setThemeState(finalTheme);
+        setLoading(false);
+      } catch (error) {
+        // Si no hay autenticación o error, usar default
+        const localTheme = localStorage.getItem('restaurant-theme') || 'fresco';
+        setThemeState(localTheme);
+        setLoading(false);
+      }
+    };
+
+    loadRestaurantTheme();
+  }, []);
+
+  // Aplicar tema y dark mode
+  useEffect(() => {
+    if (loading) return;
+
     // Remover clases de tema anteriores
-    document.body.classList.remove(...themes.map(t => `theme-${t.id}`));
+    themes.forEach(t => document.body.classList.remove(`theme-${t.id}`));
     // Agregar clase del tema actual
     document.body.classList.add(`theme-${theme}`);
-    // Persistir
-    localStorage.setItem('restaurant-theme', theme);
     
-    // Importar el CSS del tema dinámicamente
+    // Aplicar dark mode
+    if (darkMode) {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
+    }
+    
+    // Persistir dark mode
+    localStorage.setItem('restaurant-dark-mode', darkMode.toString());
+    
+    // Cargar CSS del tema
     loadThemeCSS(theme);
-  }, [theme]);
+  }, [theme, darkMode, loading]);
 
-  const loadThemeCSS = async (themeId) => {
-    if (themeId === 'fresco') return; // Fresco es el default en index.css
-    
+  const loadThemeCSS = (themeId) => {
     const existingLink = document.getElementById('theme-css');
     if (existingLink) {
       existingLink.remove();
+    }
+    
+    if (themeId === 'fresco') {
+      // Fresco es el default en index.css, no necesita cargar nada
+      return;
     }
     
     const link = document.createElement('link');
@@ -43,8 +85,32 @@ export function ThemeProvider({ children }) {
     document.head.appendChild(link);
   };
 
+  const setTheme = (newTheme) => {
+    setThemeState(newTheme);
+    // Guardar como override local
+    localStorage.setItem('restaurant-theme', newTheme);
+  };
+
+  const clearThemeOverride = () => {
+    localStorage.removeItem('restaurant-theme');
+    // Recargar para obtener el tema del restaurante
+    window.location.reload();
+  };
+
+  const toggle = () => {
+    setDarkMode(!darkMode);
+  };
+
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, themes }}>
+    <ThemeContext.Provider value={{ 
+      theme, 
+      setTheme, 
+      clearThemeOverride,
+      themes, 
+      darkMode,
+      toggle,
+      loading 
+    }}>
       {children}
     </ThemeContext.Provider>
   );

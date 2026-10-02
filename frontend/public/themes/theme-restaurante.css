@@ -1,97 +1,136 @@
 /* ============================================================
-   TEMA: Restaurante (Verde Cálido)
-   Inspirado en el prototipo HTML original
+   TEMA: Restaurante (Moderno y Fresco)
+   Diseño moderno con verde/azul, limpio y profesional
    ============================================================ */
 
 :root {
-  /* ---- Restaurante (Verde Cálido) — Light ---- */
-  --background: 40 20% 96%;
-  --foreground: 20 30% 15%;
-  --card: 40 25% 99%;
-  --card-foreground: 20 30% 15%;
-  --popover: 40 25% 99%;
-  --popover-foreground: 20 30% 15%;
-  --primary: 160 65% 35%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 40 20% 92%;
-  --secondary-foreground: 20 25% 20%;
-  --muted: 40 15% 90%;
-  --muted-foreground: 20 15% 40%;
-  --accent: 15 70% 45%;
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 72% 42%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 40 15% 82%;
-  --input: 40 15% 82%;
-  --ring: 160 65% 35%;
-  --chart-1: 160 65% 35%;
-  --chart-2: 15 70% 45%;
-  --chart-3: 45 85% 50%;
-  --chart-4: 200 70% 45%;
-  --chart-5: 320 60% 50%;
-
-  /* ---- Tokens de marca (Restaurante) ---- */
-  --brand: hsl(var(--primary));
-  --brand-hover: hsl(160 65% 28%);
-  --brand-soft: hsl(160 50% 92%);
-  --on-brand: hsl(var(--primary-foreground));
-  --page: hsl(var(--background));
-  --paper: hsl(var(--card));
-  --surface: hsl(var(--muted));
-  --line: hsl(var(--border));
-  --ink: hsl(var(--foreground));
-  --muted-ink: hsl(var(--muted-foreground));
-  --soft: hsl(20 12% 55%);
-  --warn: 45 85% 50%;
-  --warn-soft: 45 90% 92%;
-  --green: 160 65% 40%;
-  --green-soft: 160 70% 92%;
-  --red: hsl(var(--destructive));
-  --red-soft: hsl(0 85% 92%);
-  --shadow: 0 24px 60px -20px hsl(20 30% 20% / 0.18);
-  --shadow-sm: 0 2px 8px -2px hsl(20 30% 20% / 0.12);
+  /* Colores base del tema restaurante */
+  --page: #f8fafc;
+  --paper: #ffffff;
+  --surface: #f1f5f9;
+  --line: #e2e8f0;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --soft: #94a3b8;
+  
+  /* Color principal: Verde esmeralda */
+  --brand: #059669;
+  --brand-hover: #047857;
+  --brand-soft: #d1fae5;
+  
+  /* Color secundario: Azul */
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-soft: #e0f2fe;
+  
+  /* Colores semánticos */
+  --green: #10b981;
+  --green-soft: #d1fae5;
+  --red: #ef4444;
+  --red-soft: #fee2e2;
+  --amber: #f59e0b;
+  --amber-soft: #fef3c7;
+  
+  /* Sombras */
+  --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  
+  /* Bordes */
+  --radius: 12px;
 }
 
 .dark {
-  /* ---- Restaurante (Verde Cálido) — Dark ---- */
-  --background: 20 25% 10%;
-  --foreground: 40 20% 92%;
-  --card: 20 20% 14%;
-  --card-foreground: 40 20% 92%;
-  --popover: 20 20% 12%;
-  --popover-foreground: 40 20% 92%;
-  --primary: 160 65% 50%;
-  --primary-foreground: 20 25% 10%;
-  --secondary: 20 18% 20%;
-  --secondary-foreground: 40 20% 85%;
-  --muted: 20 18% 20%;
-  --muted-foreground: 40 15% 65%;
-  --accent: 15 70% 55%;
-  --accent-foreground: 20 25% 10%;
-  --destructive: 0 72% 46%;
-  --destructive-foreground: 20 25% 92%;
-  --border: 20 18% 24%;
-  --input: 20 18% 24%;
-  --ring: 160 65% 50%;
+  --page: #0f172a;
+  --paper: #1e293b;
+  --surface: #334155;
+  --line: #475569;
+  --ink: #f1f5f9;
+  --muted: #94a3b8;
+  --soft: #64748b;
+  
+  --brand: #10b981;
+  --brand-hover: #34d399;
+  --brand-soft: #064e3b;
+  
+  --accent: #38bdf8;
+  --accent-hover: #7dd3fc;
+  --accent-soft: #0c4a6e;
+  
+  --green: #34d399;
+  --green-soft: #064e3b;
+  --red: #f87171;
+  --red-soft: #7f1d1d;
+  --amber: #fbbf24;
+  --amber-soft: #78350f;
+  
+  --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+}
 
-  /* ---- Tokens de marca (dark) ---- */
-  --brand: hsl(var(--primary));
-  --brand-hover: hsl(160 65% 60%);
-  --brand-soft: hsl(160 50% 20%);
-  --on-brand: hsl(var(--primary-foreground));
-  --page: hsl(var(--background));
-  --paper: hsl(var(--card));
-  --surface: hsl(var(--muted));
-  --line: hsl(var(--border));
-  --ink: hsl(var(--foreground));
-  --muted-ink: hsl(var(--muted-foreground));
-  --soft: hsl(40 12% 65%);
-  --warn: 45 85% 58%;
-  --warn-soft: 45 60% 18%;
-  --green: 160 70% 50%;
-  --green-soft: 160 50% 18%;
-  --red: hsl(var(--destructive));
-  --red-soft: hsl(0 60% 18%);
-  --shadow: 0 24px 60px -20px hsl(20 30% 0% / 0.6);
-  --shadow-sm: 0 2px 8px -2px hsl(20 30% 0% / 0.4);
+/* ============================================================
+   APLICACIÓN DEL TEMA
+   ============================================================ */
+
+body.theme-restaurante {
+  background: var(--page);
+  color: var(--ink);
+}
+
+body.theme-restaurante .font-display {
+  font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Ajustes específicos para el tema restaurante */
+body.theme-restaurante .card,
+body.theme-restaurante [data-radix-popper-content-wrapper] > div {
+  background: var(--paper);
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+body.theme-restaurante button[data-variant="default"],
+body.theme-restaurante .btn-primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: white;
+}
+
+body.theme-restaurante button[data-variant="default"]:hover,
+body.theme-restaurante .btn-primary:hover {
+  background: var(--brand-hover);
+  border-color: var(--brand-hover);
+}
+
+body.theme-restaurante button[data-variant="outline"] {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.theme-restaurante button[data-variant="outline"]:hover {
+  background: var(--surface);
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+/* Yape específico */
+body.theme-restaurante [data-method="yape"] {
+  color: #7c3aed;
+}
+
+body.theme-restaurante [data-method="yape"][aria-selected="true"] {
+  background: #ede9fe;
+  border-color: #7c3aed;
+  color: #6d28d9;
+}
+
+/* Plin específico */
+body.theme-restaurante [data-method="plin"] {
+  color: #06b6d4;
+}
+
+body.theme-restaurante [data-method="plin"][aria-selected="true"] {
+  background: #cffafe;
+  border-color: #06b6d4;
+  color: #0891b2;
 }
