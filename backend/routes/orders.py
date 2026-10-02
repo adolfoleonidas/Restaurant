@@ -22,6 +22,7 @@ from order_flow import (
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
 from attention import AttentionBlocked, open_table_attention, close_table_attention, reserve_table_opening, recover_opening_intent
+from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 
 router = APIRouter()
 
@@ -250,6 +251,12 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         })
         if existing:
             raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+        try:
+            await capture_attention_context(
+                db, tenant_id=user["restaurant_id"], branch_id=table.get("branch_id"), confirmed_at=_now()
+            )
+        except AttentionAcceptanceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     items = [it.model_dump() for it in data.items]
     enriched, subtotal = await _compute_total(items, user["restaurant_id"]) if items else ([], 0.0)
     order_no = await _next_order_number(user["restaurant_id"])
@@ -412,6 +419,15 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if not (o.get("items") or []):
         raise HTTPException(status_code=400, detail="El pedido no tiene productos")
+    if o["status"] == "enviado_cocina" and o.get("acceptance_status") == "aceptado":
+        if o.get("attention_number_pending"):
+            await number_accepted_order(db, order=o)
+            return await _current_order_response(order_id, user)
+        if o.get("attention_number_context") and o.get("attention_number") is not None:
+            return await _current_order_response(order_id, user)
+    if o["status"] == "enviado_cocina" and o.get("attention_number_pending"):
+        await number_accepted_order(db, order=o)
+        return await _current_order_response(order_id, user)
     if o["status"] not in ("nuevo",):
         raise HTTPException(status_code=400, detail="Solo pedidos nuevos pueden enviarse a cocina")
     items = o["items"]
@@ -419,16 +435,37 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
         it["status"] = "pendiente"
         it.setdefault("added_at", _now())
     now = _now()
-    await _save_order(o, {
+    patch = {
         "status": "enviado_cocina",
         "fulfillment_status": "enviado_cocina",
         "acceptance_status": "aceptado",
         "sent_to_kitchen_at": now,
         "items": items,
         "updated_at": now,
-    })
+    }
+    if o.get("order_type") in ("mesa", "recojo"):
+        branch_id = o.get("branch_id") if o.get("table_id") else user.get("branch_id")
+        attention_id = o.get("attention_id") or str(uuid.uuid4())
+        try:
+            context = await capture_attention_context(
+                db, tenant_id=user["restaurant_id"], branch_id=branch_id, confirmed_at=now
+            )
+        except AttentionAcceptanceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        patch.update({
+            "branch_id": branch_id,
+            "attention_id": attention_id,
+            "attention_number_context": context,
+            "attention_number_pending": True,
+        })
+    await _save_order(o, patch)
+    o.update(patch)
+    # Only the request that wins the acceptance CAS owns the existing side effects.
+    # Number propagation is separately retryable and must not repeat these effects.
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
     emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff")
+    if o.get("attention_number_pending"):
+        await number_accepted_order(db, order=o)
     return await _current_order_response(order_id, user)
 
 

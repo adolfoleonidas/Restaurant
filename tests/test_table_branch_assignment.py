@@ -70,6 +70,18 @@ class _Collection:
             row.pop(key, None)
         return _Result(1)
 
+    async def find_one_and_update(self, query, update, *, upsert=False, return_document=None):
+        row = next((r for r in self.rows if _matches(r, query)), None)
+        if row is None:
+            if not upsert:
+                return None
+            row = {key: value for key, value in query.items() if not isinstance(value, dict)}
+            row.update(copy.deepcopy(update.get("$setOnInsert", {})))
+            self.rows.append(row)
+        for key, amount in update.get("$inc", {}).items():
+            row[key] = row.get(key, 0) + amount
+        return copy.deepcopy(row)
+
     async def delete_one(self, query):
         row = next((r for r in self.rows if _matches(r, query)), None)
         if row is None:
@@ -121,6 +133,8 @@ class _DB:
         self.branches = _Collection(branches)
         self.orders = _Collection(orders)
         self.attentions = _Collection(attentions)
+        self.attention_number_assignments = _Collection()
+        self.counters = _Collection()
         self.zones = _Collection()
         self.audit_logs = _Collection()
 
@@ -149,7 +163,7 @@ def test_table_branch_fields_are_optional_but_cannot_be_cleared_or_blank():
 
 def test_opening_reservation_captures_branch_and_only_owner_can_release():
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         branch = await reserve_table_opening(db, table=db.tables.rows[0], order_id="order-1",
                                              restaurant_id="tenant-1", allowed_statuses=("disponible",))
         assert branch == "branch-1"
@@ -186,7 +200,7 @@ def test_table_branch_patch_validates_tenant_and_refuses_opening_or_occupied_tab
 
 def test_branch_assignment_racing_with_order_reservation_has_single_winner():
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         async def assign():
             result = await db.tables.update_one(
                 {"id": "table-1", "restaurant_id": "tenant-1", "branch_id": "branch-1",
@@ -206,7 +220,7 @@ def test_branch_assignment_racing_with_order_reservation_has_single_winner():
 
 def test_concurrent_reservations_for_one_table_have_one_owner():
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         outcomes = await asyncio.gather(
             reserve_table_opening(db, table=_table(branch_id="branch-1"), order_id="order-1",
                                   restaurant_id="tenant-1", allowed_statuses=("disponible",)),
@@ -239,7 +253,7 @@ def test_canonical_attention_claim_preserves_branch_snapshot_and_consumes_reserv
 
 def test_staff_order_opening_uses_branch_reservation_before_insert(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")], branches=[_branch(id="branch-2")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch(), _branch(id="branch-2")])
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         monkeypatch.setattr(order_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=1))
@@ -290,7 +304,7 @@ def _public_data():
 
 def test_public_order_opening_snapshots_branch_through_canonical_attention(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")], branches=[_branch(id="branch-2")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch(), _branch(id="branch-2")])
         monkeypatch.setattr(public_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-1", "require_table_qr": False}))
@@ -319,7 +333,7 @@ def test_public_order_opening_snapshots_branch_through_canonical_attention(monke
 
 def test_staff_stale_table_snapshot_cannot_open_after_branch_assignment(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")], branches=[_branch(id="branch-2")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch(), _branch(id="branch-2")])
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         reached_number = asyncio.Event()
@@ -348,7 +362,7 @@ def test_staff_stale_table_snapshot_cannot_open_after_branch_assignment(monkeypa
 
 def test_public_stale_table_snapshot_cannot_open_after_branch_assignment(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")], branches=[_branch(id="branch-2")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch(), _branch(id="branch-2")])
         monkeypatch.setattr(public_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-1", "require_table_qr": False}))
@@ -394,7 +408,7 @@ def test_legacy_unassigned_open_order_recovers_without_branch_assignment():
 @pytest.mark.parametrize("commit_before_error", [False, True])
 def test_staff_insert_uncertainty_releases_only_confirmed_absence_and_preserves_recovery(monkeypatch, commit_before_error):
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(order_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=1))
         original = db.orders.insert_one
@@ -416,7 +430,7 @@ def test_staff_insert_uncertainty_releases_only_confirmed_absence_and_preserves_
 @pytest.mark.parametrize("commit_before_error", [False, True])
 def test_public_insert_uncertainty_cleans_only_confirmed_absence_and_replays_original(monkeypatch, commit_before_error):
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         monkeypatch.setattr(public_routes, "db", db)
         monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-1", "require_table_qr": False}))
         monkeypatch.setattr(public_routes.public_order_limiter, "allow", lambda *_: True)
@@ -462,7 +476,7 @@ def test_table_mutations_cannot_overwrite_or_delete_opening_reservation(monkeypa
 
 def test_staff_reservation_persists_private_intent_before_order_insert(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(order_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=17))
         monkeypatch.setattr(order_routes, "_compute_total", lambda items, *_: asyncio.sleep(0, result=(items, 12.5)))
@@ -548,7 +562,7 @@ def test_opening_intent_recovery_keeps_mongo_id_for_identity_readback(already_in
 
 def test_staff_can_resume_preinsert_crash_using_only_owned_table_id(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1")], branches=[_branch()])
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         numbers = []
@@ -619,7 +633,7 @@ def test_staff_table_id_recovery_rejects_unowned_or_unrecoverable_markers_withou
 
 def test_public_crash_recovers_only_exact_request_intent_and_keeps_it_private(monkeypatch):
     async def run():
-        db = _DB([_table(branch_id="branch-1", qr_nonce="nonce-1")])
+        db = _DB([_table(branch_id="branch-1", qr_nonce="nonce-1")], branches=[_branch()])
         monkeypatch.setattr(public_routes, "db", db)
         monkeypatch.setattr(table_routes, "db", db)
         monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-1", "require_table_qr": False}))

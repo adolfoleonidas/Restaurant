@@ -96,7 +96,7 @@ def test_new_pickup_requires_enabled_owned_branch_before_order_or_counter_writes
 
 
 def test_enabled_pickup_snapshots_selected_branch_without_changing_table_or_delivery(monkeypatch):
-    db = DB([{"id": "branch-a", "restaurant_id": "tenant-a", "name": "Centro", "pickup_enabled": True}])
+    db = DB([{"id": "branch-a", "restaurant_id": "tenant-a", "name": "Centro", "pickup_enabled": True, "timezone": "America/Lima", "business_day_cutoff": "04:00"}])
     monkeypatch.setattr(public_routes, "db", db)
     monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-a"}))
     monkeypatch.setattr(public_routes.public_order_limiter, "allow", lambda _host: True)
