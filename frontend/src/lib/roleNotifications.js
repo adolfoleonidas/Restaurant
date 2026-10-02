@@ -11,6 +11,14 @@ function who(order) {
     return 'Pedido';
 }
 
+function itemReadyId(order, item, occurrence) {
+    if (item.id) return `listo-item-${item.id}`;
+    // Legacy lines have no canonical identity; occurrence only disambiguates identical metadata.
+    const descriptor = item.product_id || item.product_name || 'item';
+    const safeDescriptor = encodeURIComponent(String(descriptor));
+    return `listo-legacy-item-${order.id}-${safeDescriptor}-${occurrence}`;
+}
+
 export function buildRoleNotifications(role, orders = []) {
     const items = [];
     for (const o of orders) {
@@ -40,7 +48,28 @@ export function buildRoleNotifications(role, orders = []) {
                 at: o.sent_to_kitchen_at || o.created_at,
             });
         }
-        if (['mozo', 'admin'].includes(role) && o.status === 'listo') {
+        const canReceiveReady = ['mozo', 'admin'].includes(role) && o.status !== 'entregado';
+        const readyItems = (o.items || []).filter((it) => it.status === 'listo');
+        if (canReceiveReady && readyItems.length) {
+            const occurrences = new Map();
+            for (const item of o.items || []) {
+                const descriptor = item.product_id || item.product_name || 'item';
+                const occurrence = (occurrences.get(descriptor) || 0) + 1;
+                occurrences.set(descriptor, occurrence);
+                if (item.status !== 'listo') continue;
+                const label = `${item.quantity ?? 1}× ${item.product_name || 'Plato'}`;
+                const mesa = o.table_number || (o.table_id ? 'mesa' : null);
+                items.push({
+                    id: itemReadyId(o, item, occurrence),
+                    type: 'kitchen_ready',
+                    title: mesa ? `Mesa ${mesa}: ${item.product_name || 'plato'} listo` : `Pedido #${n}: ${item.product_name || 'plato'} listo`,
+                    body: `${label} · ${who(o)}`,
+                    href: detailHref,
+                    at: item.ready_at || o.ready_at || o.updated_at || o.created_at,
+                });
+            }
+        } else if (canReceiveReady && o.status === 'listo' && !(o.items || []).some((it) => it.status)) {
+            // Older API projections can omit item status; preserve their whole-order alert.
             const mesa = o.table_number || (o.table_id ? 'mesa' : null);
             items.push({
                 id: `listo-${o.id}`,

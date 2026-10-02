@@ -12,7 +12,9 @@ from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
 from order_flow import VersionError, claim_order, version_conflict
-from attention import AttentionBlocked, open_table_attention
+from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
+from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
+from attention_presentation import public_attention_reference
 from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
@@ -84,7 +86,7 @@ async def _enrich_items(items, r):
 
 
 def _public_order_view(o: dict) -> dict:
-    return {
+    result = {
         "id": o["id"],
         "order_number": o["order_number"],
         "tracking_code": o["tracking_code"],
@@ -104,20 +106,25 @@ def _public_order_view(o: dict) -> dict:
         "updated_at": o.get("updated_at"),
         "has_proof": bool(o.get("payment_proof_url")),
     }
+    result.update(public_attention_reference(o))
+    return result
 
 
 def _public_order_fingerprint(data: PublicOrderCreate, restaurant_id: str, table_id: str | None) -> str:
+    request_payload = data.model_dump(exclude={"request_id", "branch_id"})
+    if data.order_type == "recojo" and data.branch_id is not None:
+        request_payload["branch_id"] = data.branch_id
     payload = {
         "restaurant_id": restaurant_id,
         "table_id": table_id,
-        "request": data.model_dump(exclude={"request_id"}),
+        "request": request_payload,
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _public_order_response(order: dict) -> dict:
-    return {
+    result = {
         "id": order["id"],
         "order_number": order["order_number"],
         "tracking_code": order["tracking_code"],
@@ -125,6 +132,8 @@ def _public_order_response(order: dict) -> dict:
         "total": order["total"],
         "payment_method": order["payment_method_choice"],
     }
+    result.update(public_attention_reference(order))
+    return result
 
 
 async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
@@ -133,6 +142,11 @@ async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
             await open_table_attention(db, order=order, user={"id": None}, now=_now())
         except AttentionBlocked as exc:
             raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá el mismo pedido. {exc.detail}")
+    if order.get("attention_number_pending"):
+        try:
+            await number_accepted_order(db, order=order)
+        except AttentionAcceptanceError as exc:
+            raise HTTPException(status_code=409, detail="El pedido quedó guardado y requiere conciliación") from exc
     event_id = None
     if order.get("request_id"):
         event_id = f"public-order-create:{order['restaurant_id']}:{order['request_id']}"
@@ -231,6 +245,16 @@ async def public_restaurant():
         "social_instagram": r.get("social_instagram"),
         "social_whatsapp": r.get("social_whatsapp"),
     }
+
+
+@router.get("/pickup-branches")
+async def public_pickup_branches():
+    restaurant = await _get_restaurant()
+    branches = await db.branches.find(
+        {"restaurant_id": restaurant["id"], "pickup_enabled": True},
+        {"_id": 0, "id": 1, "name": 1},
+    ).sort("name", 1).to_list(500)
+    return [{"id": branch["id"], "name": branch["name"]} for branch in branches]
 
 
 @router.get("/categories")
@@ -380,6 +404,21 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
                 if previous.get("request_fingerprint") != request_fingerprint or previous.get("table_id") != table_id:
                     raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
                 return await _finish_public_order(previous, data)
+            intent = table.get("opening_intent")
+            if table.get("opening_order_id") and intent:
+                if (intent.get("request_id") != request_id
+                        or intent.get("request_fingerprint") != request_fingerprint
+                        or intent.get("table_id") != table_id
+                        or intent.get("restaurant_id") != r["id"]):
+                    raise HTTPException(status_code=409, detail="La mesa ya tiene una solicitud en apertura")
+                if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
+                    raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+                recovered = await recover_opening_intent(
+                    db, table=table, order_id=intent.get("id"), restaurant_id=r["id"]
+                )
+                if not recovered:
+                    raise HTTPException(status_code=409, detail="La apertura requiere conciliación")
+                return await _finish_public_order(recovered, data)
         if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
             raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         if table.get("active_attention_id") or table.get("status") != "disponible":
@@ -401,17 +440,38 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
                 raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
             return await _finish_public_order(previous, data)
 
+    pickup_branch = None
+    if data.order_type == "recojo":
+        if not data.branch_id:
+            raise HTTPException(status_code=400, detail="Selecciona una sucursal habilitada para recojo")
+        pickup_branch = await db.branches.find_one(
+            {"id": data.branch_id, "restaurant_id": r["id"], "pickup_enabled": True},
+            {"_id": 0},
+        )
+        if not pickup_branch:
+            raise HTTPException(status_code=400, detail="La sucursal seleccionada no está disponible para recojo")
+
     enriched, subtotal = await _enrich_items(data.items, r)
 
     delivery_fee = r.get("delivery_fee", 0.0) if data.order_type == "delivery" else 0.0
     total = subtotal + delivery_fee
     order_id = str(uuid.uuid4())
+    attention_id = str(uuid.uuid4()) if table_id or data.order_type == "recojo" else None
+    branch_context = None
+    accepted_at = _now()
+    if attention_id:
+        branch_id = table.get("branch_id") if table_id else pickup_branch.get("id")
+        try:
+            branch_context = await capture_attention_context(
+                db, tenant_id=r["id"], branch_id=branch_id, confirmed_at=accepted_at
+            )
+        except AttentionAcceptanceError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     tracking_code = _gen_tracking()
     # ensure uniqueness
     while await db.orders.find_one({"tracking_code": tracking_code}):
         tracking_code = _gen_tracking()
     order_no = await _next_order_number(r["id"])
-
     order = {
         "id": order_id,
         "order_number": order_no,
@@ -442,14 +502,36 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "payment_status": "pendiente",
         "payment_proof_url": None,
         "cancellation_reason": None,
-        "sent_to_kitchen_at": _now(),
+        "sent_to_kitchen_at": accepted_at,
         "ready_at": None,
         "paid_at": None,
-        "created_at": _now(),
-        "updated_at": _now(),
+        "created_at": accepted_at,
+        "updated_at": accepted_at,
     }
+    if pickup_branch:
+        order["branch_id"] = pickup_branch["id"]
+    if attention_id:
+        order.update({
+            "attention_id": attention_id,
+            "attention_number_context": branch_context,
+            "attention_number_pending": True,
+        })
     if table_id:
-        order.update({"attention_id": str(uuid.uuid4()), "attention_state": "opening", "attention_open": False})
+        order.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
+        order["_id"] = order_id
+        if table.get("branch_id") is not None:
+            order["branch_id"] = table["branch_id"]
+        try:
+            await reserve_table_opening(
+                db, table=table, order_id=order_id, restaurant_id=r["id"],
+                allowed_statuses=("disponible",), intent=order,
+            )
+        except AttentionBlocked as exc:
+            if request_id:
+                prior = await db.orders.find_one({"restaurant_id": r["id"], "request_id": request_id}, {"_id": 0})
+                if prior and prior.get("request_fingerprint") == request_fingerprint and prior.get("table_id") == table_id:
+                    return await _finish_public_order(prior, data)
+            raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(order)
     except DuplicateKeyError:
@@ -462,6 +544,9 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             if previous:
                 raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+    except Exception:
+        # Keep the durable intent because an insert may have committed before raising.
+        raise
     return await _finish_public_order(order, data)
 
 

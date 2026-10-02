@@ -8,7 +8,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockOrders = [
     {
-        id: 'order-22', order_number: 22, order_type: 'mesa', table_id: 'table-5',
+        id: 'order-22', order_number: 22, order_type: 'mesa', table_id: 'table-5', acceptance_status: 'aceptado', attention_number: 7, attention_business_date: '2026-10-02', branch_id: 'branch-a',
         status: 'en_preparacion', created_at: '2026-09-28T10:00:00Z',
         items: [
             { id: 'item-new', status: 'pendiente', quantity: 1, product_name: 'Causa', added_at: '2026-09-28T10:10:00Z', notes: 'Sin mayonesa' },
@@ -17,7 +17,7 @@ const mockOrders = [
         ],
     },
     {
-        id: 'order-23', order_number: 23, order_type: 'mesa', table_id: 'table-5',
+        id: 'order-23', order_number: 23, order_type: 'mesa', table_id: 'table-5', acceptance_status: 'aceptado', attention_number: 7, attention_business_date: '2026-10-03', branch_id: 'branch-b',
         status: 'pendiente', created_at: '2026-09-28T10:00:00Z',
         items: [
             { id: 'item-old-potatoes', status: 'pendiente', quantity: 1, product_name: 'Papas doradas', added_at: '2026-09-28T10:12:00Z' },
@@ -97,6 +97,11 @@ describe('Cocina priority board', () => {
         expect(markup).toContain('Sin mayonesa');
         expect(markup).toContain('aria-label="Marcar Lomo listo"');
         expect(markup).toContain('hace ');
+        expect(markup).toContain('Atención 7');
+        expect(markup).toContain('2026-10-02');
+        expect(markup).toContain('branch-a');
+        expect(markup).toContain('2026-10-03');
+        expect(markup).toContain('branch-b');
     });
 
     it('switches the mobile priority panel by keyboard arrow', async () => {

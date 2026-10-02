@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
+import AttentionReference from '@/components/AttentionReference';
 
 const STATUS_STEPS = [
     { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
@@ -97,6 +98,7 @@ export default function PedidoTracking() {
                     <h1 className="font-display italic text-3xl md:text-4xl font-bold">Pedido #{order.order_number}</h1>
                     <span className="font-mono text-sm bg-secondary px-2 py-1 rounded-sm">{order.tracking_code}</span>
                 </div>
+                <AttentionReference order={order} publicView />
                 <div className="text-sm text-muted-foreground">Realizado hace {fmtElapsed(order.created_at)}</div>
             </div>
 

@@ -10,6 +10,8 @@ import { Plus, Receipt } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 const FILTERS = [
     { value: 'activos', label: 'Activos' },
@@ -22,6 +24,7 @@ const FILTERS = [
 export default function Pedidos() {
     const [filter, setFilter] = useState('activos');
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
 
     const { data } = usePolling(
@@ -63,6 +66,7 @@ export default function Pedidos() {
                                 <div>
                                     <div className="font-display text-xl font-bold">#{o.order_number}</div>
                                     <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · hace {fmtElapsed(o.created_at)}</div>
+                                    <AttentionReference order={o} branchNames={branchNames} />
                                 </div>
                                 <StateBadge status={o.status} type="order" />
                             </div>

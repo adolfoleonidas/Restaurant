@@ -12,6 +12,8 @@ import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import { ChefHat, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 function remaining(order) {
     const total = Number(order.total || 0);
@@ -22,6 +24,7 @@ function remaining(order) {
 export default function Servicio() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
     const canCharge = hasFn(user, 'cobro', 'administracion');
     const canServe = hasFn(user, 'preparacion', 'atencion', 'administracion');
@@ -145,6 +148,7 @@ export default function Servicio() {
                                 {due > 0 && (
                                     <div className="text-sm">Pendiente de pago: <span className="font-mono font-semibold">{fmtMoney(due)}</span></div>
                                 )}
+                                {order && <AttentionReference order={order} branchNames={branchNames} />}
                                 {table.status === 'pagada' && due <= 0 && !table.active_attention_id && (
                                     <div className="text-sm text-muted-foreground">Cuenta pagada · liberá la mesa en Mesas</div>
                                 )}
@@ -214,6 +218,7 @@ export default function Servicio() {
                             <div key={order.id} className="flex items-center justify-between gap-3 rounded-sm border border-border p-3" data-testid={`servicio-recojo-${order.id}`}>
                                 <div>
                                     <p className="font-medium">{order.order_number ? `Pedido #${order.order_number}` : 'Pedido'}</p>
+                                    <AttentionReference order={order} branchNames={branchNames} />
                                     <p className="text-sm text-muted-foreground">{order.status === 'listo' ? 'Listo para recojo' : 'En preparación'}</p>
                                 </div>
                                 <Link className="shrink-0 text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>
@@ -233,6 +238,7 @@ export default function Servicio() {
                             <div key={order.id} className="flex items-center justify-between gap-3 rounded-sm border border-border p-3" data-testid={`servicio-recojo-anterior-${order.id}`}>
                                 <div>
                                     <p className="font-medium">{order.order_number ? `Pedido #${order.order_number}` : 'Pedido'}</p>
+                                    <AttentionReference order={order} branchNames={branchNames} />
                                     <p className="text-sm text-muted-foreground">Listo para recojo</p>
                                 </div>
                                 <Link className="shrink-0 text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>

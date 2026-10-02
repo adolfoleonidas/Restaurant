@@ -13,6 +13,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { useNotify } from '@/contexts/NotifyContext';
+import OrderCollectionDialog from '@/components/OrderCollectionDialog';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -22,6 +25,7 @@ export default function PedidoDetalle() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
 
     const { data: order, refetch } = usePolling(() => api.get(`/orders/${id}`).then((r) => r.data), 12000, [id, generation]);
@@ -38,6 +42,63 @@ export default function PedidoDetalle() {
     const [categoryId, setCategoryId] = useState('all');
     const [cancelDlg, setCancelDlg] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
+    const [collectionOpen, setCollectionOpen] = useState(false);
+    const [collectionOrderId, setCollectionOrderId] = useState(null);
+    const collectionRequestRef = React.useRef(0);
+    const detailMountedRef = React.useRef(false);
+    const closeCollection = React.useCallback(() => {
+        collectionRequestRef.current += 1;
+        setCollectionOpen(false);
+        setCollectionOrderId(null);
+    }, []);
+
+    const locked = ['pagado', 'cancelado'].includes(order?.status);
+    const canCollect = hasFn(user, 'cobro', 'administracion');
+    const canCharge = Boolean(order && !locked && canCollect
+        && Number(order.amount_paid || 0) < Number(order.total || 0));
+    const collectionContextRef = React.useRef(null);
+    collectionContextRef.current = { routeId: id, orderId: order?.id, canCollect, canCharge };
+
+    React.useEffect(() => {
+        detailMountedRef.current = true;
+        return () => {
+            detailMountedRef.current = false;
+            collectionRequestRef.current += 1;
+        };
+    }, []);
+
+    React.useEffect(() => {
+        closeCollection();
+    }, [id, order?.id, canCollect, closeCollection]);
+
+    React.useEffect(() => {
+        if (!collectionOpen || !canCollect || !order?.id || collectionOrderId !== order.id || collectionOrderId !== id) return undefined;
+        let cancelled = false;
+        const verifyRegister = async () => {
+            try {
+                const { data: register } = await api.get('/cash/current');
+                const context = collectionContextRef.current;
+                if (cancelled || !detailMountedRef.current) return;
+                if (context.routeId !== collectionOrderId || context.orderId !== collectionOrderId || !context.canCollect) return;
+                if (!register || register.status !== 'open') {
+                    closeCollection();
+                    toast.error('El turno de caja ya no está activo. Vuelve a Caja para continuar.');
+                }
+            } catch {
+                const context = collectionContextRef.current;
+                if (cancelled || !detailMountedRef.current || context.routeId !== collectionOrderId
+                    || context.orderId !== collectionOrderId || !context.canCollect) return;
+                closeCollection();
+                toast.error('No se pudo verificar el turno de caja. Se cerró el diálogo de cobro.');
+            }
+        };
+        const interval = setInterval(verifyRegister, 12000);
+        verifyRegister();
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [collectionOpen, collectionOrderId, canCollect, id, order?.id, closeCollection]);
 
     const table = useMemo(() => (tables || []).find((t) => t.id === order?.table_id), [tables, order]);
 
@@ -51,10 +112,8 @@ export default function PedidoDetalle() {
 
     if (!order) return <div className="text-muted-foreground">Cargando pedido…</div>;
 
-    const locked = ['pagado', 'cancelado'].includes(order.status);
     const canEdit = !locked && ['admin', 'mozo'].includes(user.role);
     const canServe = !locked && hasFn(user, 'preparacion', 'atencion', 'administracion');
-    const canCharge = !locked && hasFn(user, 'cobro', 'administracion') && Number(order.amount_paid || 0) < Number(order.total || 0);
     const pending = (order.items || []).filter(itemOpen);
     const ready = (order.items || []).filter((it) => it.status === 'listo');
     const delivered = (order.items || []).filter((it) => it.status === 'entregado');
@@ -116,6 +175,34 @@ export default function PedidoDetalle() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
+    const openCollection = async () => {
+        if (!canCharge || !order?.id || id !== order.id || !detailMountedRef.current) return;
+        const requestId = ++collectionRequestRef.current;
+        const requestedRouteId = id;
+        const requestedOrderId = order.id;
+        const isCurrentRequest = () => {
+            const context = collectionContextRef.current;
+            return detailMountedRef.current
+                && requestId === collectionRequestRef.current
+                && context.routeId === requestedRouteId
+                && context.orderId === requestedOrderId
+                && context.canCollect
+                && context.canCharge;
+        };
+        try {
+            const { data: register } = await api.get('/cash/current');
+            if (!isCurrentRequest()) return;
+            if (!register || register.status !== 'open') {
+                navigate(`/caja?order=${requestedOrderId}`);
+                return;
+            }
+            setCollectionOrderId(requestedOrderId);
+            setCollectionOpen(true);
+        } catch {
+            if (isCurrentRequest()) toast.error('No se pudo verificar si hay un turno de caja activo.');
+        }
+    };
+
     const floorLabel = {
         nuevo: 'Borrador',
         enviado_cocina: 'Preparando',
@@ -139,6 +226,7 @@ export default function PedidoDetalle() {
                         {table ? `Mesa ${table.number}` : `Pedido #${order.order_number}`}
                     </h1>
                     <p className="text-sm text-muted-foreground">Atiende: {order.created_by_name || '—'}</p>
+                    <AttentionReference order={order} branchNames={branchNames} />
                 </div>
             </div>
             {user.role === 'admin' && !locked && (
@@ -269,7 +357,7 @@ export default function PedidoDetalle() {
                 )}
                 {['listo', 'entregado', 'pendiente_pago'].includes(order.status) && canCharge && (
                     <Button
-                        onClick={() => navigate(`/caja?order=${order.id}`)}
+                        onClick={openCollection}
                         variant={order.status === 'pendiente_pago' ? 'default' : 'outline'}
                         className={`w-full ${order.status === 'pendiente_pago' ? 'h-14 rounded-full text-base' : 'h-12'}`}
                         data-testid="pedido-cobrar-button"
@@ -310,6 +398,12 @@ export default function PedidoDetalle() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            <OrderCollectionDialog
+                open={collectionOpen}
+                onOpenChange={(open) => !open && closeCollection()}
+                order={order}
+                onPaid={refetch}
+            />
         </div>
     );
 }

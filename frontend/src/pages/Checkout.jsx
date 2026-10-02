@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fmtMoney, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { toast } from 'sonner';
+import AttentionReference from '@/components/AttentionReference';
 import { Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote, CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon } from 'lucide-react';
 
 const ORDER_TYPE_INFO = {
@@ -37,6 +38,10 @@ export default function Checkout() {
     const [tableInfo, setTableInfo] = useState(null);
     const [tableId, setTableId] = useState('');
     const [tables, setTables] = useState([]);
+    const [pickupBranches, setPickupBranches] = useState([]);
+    const [pickupBranchId, setPickupBranchId] = useState('');
+    const [pickupBranchesLoading, setPickupBranchesLoading] = useState(false);
+    const [pickupBranchesError, setPickupBranchesError] = useState(false);
     const [customer, setCustomer] = useState({ name: '', phone: '', address: '', email: '' });
     const [notes, setNotes] = useState('');
     const [method, setMethod] = useState('yape');
@@ -65,6 +70,23 @@ export default function Checkout() {
         if (restaurant?.require_table_qr) return;
         api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
     }, [tableToken, restaurant]);
+
+    useEffect(() => {
+        let active = true;
+        if (orderType !== 'recojo') {
+            setPickupBranchId('');
+            setPickupBranchesError(false);
+            return () => { active = false; };
+        }
+        setPickupBranchesLoading(true);
+        setPickupBranchesError(false);
+        api.get('/public/pickup-branches').then((r) => {
+            if (active) setPickupBranches(r.data || []);
+        }).catch(() => {
+            if (active) { setPickupBranches([]); setPickupBranchesError(true); }
+        }).finally(() => { if (active) setPickupBranchesLoading(false); });
+        return () => { active = false; };
+    }, [orderType]);
 
     useEffect(() => {
         if (confirmed) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
@@ -120,6 +142,9 @@ export default function Checkout() {
         if (orderType === 'delivery' && !customer.address.trim()) {
             toast.error('Indica la dirección para delivery'); return;
         }
+        if (orderType === 'recojo' && !pickupBranches.some((branch) => branch.id === pickupBranchId)) {
+            toast.error('Selecciona una sucursal habilitada para recojo'); return;
+        }
         if (orderType === 'local' && tableToken && !tableInfo) {
             toast.error('Escaneá el QR de tu mesa'); return;
         }
@@ -139,6 +164,7 @@ export default function Checkout() {
                 payment_method: method,
                 table_token: orderType === 'local' && tableToken ? tableToken : null,
                 table_id: orderType === 'local' && !tableToken ? tableId : null,
+                ...(orderType === 'recojo' ? { branch_id: pickupBranchId } : {}),
             };
             await submitPublicOrder({
                 storage: window.sessionStorage,
@@ -147,7 +173,11 @@ export default function Checkout() {
                 payload,
                 post: (requestPayload) => api.post('/public/orders', requestPayload),
                 onConfirmed: (data) => {
-                    setConfirmed(data);
+                    setConfirmed({
+                        ...data,
+                        order_type: orderType,
+                        branchName: pickupBranches.find((branch) => branch.id === pickupBranchId)?.name || null,
+                    });
                     if (!isActive) {
                         setMeta({
                             tracking_code: data.tracking_code,
@@ -179,6 +209,7 @@ export default function Checkout() {
                             <span className="font-display text-3xl font-bold">#{confirmed.order_number}</span>
                             <span className="text-xs text-muted-foreground">Código seguimiento: <span className="font-mono" data-testid="checkout-tracking-code">{confirmed.tracking_code}</span></span>
                         </div>
+                        <AttentionReference order={confirmed} branchName={confirmed.branchName} publicView />
                         <div className="mt-4 font-display text-2xl font-bold tabular-nums">Total: {fmtMoney(confirmed.total)}</div>
                         <Button asChild variant="outline" className="mt-4">
                             <Link to={`/pedido/${confirmed.tracking_code}`} data-testid="checkout-ver-estado">Ver estado del pedido</Link>
@@ -298,6 +329,18 @@ export default function Checkout() {
                         </CardContent></Card>
                     )}
 
+                    {orderType === 'recojo' && (
+                        <Card><CardContent className="p-5 space-y-2">
+                            <Label htmlFor="checkout-pickup-branch">Sucursal de recojo *</Label>
+                            {pickupBranchesLoading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : pickupBranchesError ? <p role="alert" className="text-sm text-destructive">No se pudieron cargar las sucursales. Intenta nuevamente.</p> : pickupBranches.length === 0 ? <p className="text-sm text-muted-foreground">No hay sucursales disponibles para recojo</p> : (
+                                <select id="checkout-pickup-branch" className="h-11 w-full rounded-md border bg-background px-3" value={pickupBranchId} onChange={(e) => setPickupBranchId(e.target.value)} data-testid="checkout-pickup-branch">
+                                    <option value="">Selecciona una sucursal</option>
+                                    {pickupBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                                </select>
+                            )}
+                        </CardContent></Card>
+                    )}
+
                     {/* Customer data */}
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-1">Tus datos</h2>
@@ -406,7 +449,7 @@ export default function Checkout() {
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
                 <div className="max-w-5xl mx-auto">
-                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0} className="w-full h-12" data-testid="checkout-confirmar-button">
+                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0 || (orderType === 'recojo' && (pickupBranchesLoading || pickupBranchesError || !pickupBranches.some((branch) => branch.id === pickupBranchId)))} className="w-full h-12" data-testid="checkout-confirmar-button">
                         {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
                     </Button>
                 </div>

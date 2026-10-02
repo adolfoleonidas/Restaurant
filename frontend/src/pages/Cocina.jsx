@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 function itemStage(it) {
     const st = it.status || 'pendiente';
@@ -35,7 +37,7 @@ function timerClass(iso) {
     return 'text-muted-foreground';
 }
 
-const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
+const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }) => {
     const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
         ? order.table_number.replace(/^Mesa\s*/i, '')
@@ -63,6 +65,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
                             )}
                             {added ? ' · AGREGADO' : ''}
                         </div>
+                        <AttentionReference order={order} branchNames={branchNames} />
                     </div>
                     <span className={`font-mono text-sm tabular-nums ${stage === 'retirado' ? 'text-muted-foreground' : timerClass(when)}`}>
                         {stage === 'retirado' ? `hace ${fmtElapsed(when)}` : fmtElapsed(when)}
@@ -106,6 +109,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem }) => {
 
 export default function Cocina() {
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
     const { data: orders, refetch } = usePolling(
         () => api.get('/orders/kitchen').then((r) => r.data),
@@ -247,6 +251,7 @@ export default function Cocina() {
                                     added={c.added}
                                     onBump={bump}
                                     onItem={bumpItem}
+                                    branchNames={branchNames}
                                 />
                             ))}
                         </div>
@@ -264,6 +269,7 @@ export default function Cocina() {
                         {priorPickups.map((order) => (
                             <div key={order.id} className="rounded-sm border border-border p-3" data-testid={`cocina-recojo-anterior-${order.id}`}>
                                 <p className="font-semibold">Pedido #{order.order_number}</p>
+                                <AttentionReference order={order} branchNames={branchNames} />
                                 <p className="text-sm text-muted-foreground">Listo para recojo</p>
                                 <Link className="mt-2 inline-block text-sm underline" to={`/pedidos/${order.id}`}>Ver pedido</Link>
                             </div>

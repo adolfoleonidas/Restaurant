@@ -66,6 +66,8 @@ async def ensure_indexes():
     await db.audit_logs.create_index("event_id", unique=True, sparse=True, name="uniq_audit_event_id")
     await db.audit_logs.create_index([("created_at", -1)])
     await db.zones.create_index([("restaurant_id", 1), ("name", 1)], unique=True)
+    await db.branches.create_index("id", unique=True, name="uniq_branch_id")
+    await db.branches.create_index([("restaurant_id", 1), ("name", 1)], name="branches_by_tenant_name")
 
 
 def strip_id(doc):

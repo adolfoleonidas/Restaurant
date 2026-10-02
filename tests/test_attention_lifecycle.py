@@ -90,6 +90,19 @@ class _Collection:
                 raise DuplicateKeyError("duplicate id")
             self.docs.append(copy.deepcopy(doc))
 
+    async def find_one_and_update(self, filt, update, *, upsert=False, return_document=None):
+        async with self.lock:
+            doc = next((row for row in self.docs if _matches(row, filt)), None)
+            if doc is None:
+                if not upsert:
+                    return None
+                doc = {key: value for key, value in filt.items() if not isinstance(value, dict)}
+                doc.update(copy.deepcopy(update.get("$setOnInsert") or {}))
+                self.docs.append(doc)
+            for key, amount in (update.get("$inc") or {}).items():
+                doc[key] = doc.get(key, 0) + amount
+            return copy.deepcopy(doc)
+
     async def update_one(self, filt, update):
         async with self.lock:
             if self.name == "tables" and self.db.fail_table_release and "active_attention_id" in filt:
@@ -112,6 +125,9 @@ class _DB:
         self.orders = _Collection(self, "orders")
         self.attentions = _Collection(self, "attentions")
         self.tables = _Collection(self, "tables")
+        self.branches = _Collection(self, "branches")
+        self.attention_number_assignments = _Collection(self, "attention_number_assignments")
+        self.counters = _Collection(self, "counters")
         self.payments = _Collection(self, "payments")
         self.audit_logs = _Collection(self, "audit_logs")
         self.cash_movements = _Collection(self, "cash_movements")
@@ -410,7 +426,10 @@ def test_public_vacant_table_order_opens_only_its_own_attention():
         import routes.public as public_routes
 
         db = _DB()
-        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "status": "disponible"})
+        db.branches.docs.append({"id": "branch-1", "restaurant_id": "restaurant-1",
+                                 "timezone": "America/Lima", "business_day_cutoff": "04:00"})
+        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1",
+                               "status": "disponible"})
         public_routes.db = db
         public_routes.public_order_limiter.allow = lambda host: True
         public_routes.client_host = lambda request: "test-host"
@@ -658,7 +677,10 @@ def test_staff_table_order_creation_opens_visit_before_returning():
         import routes.orders as order_routes
 
         db = _DB()
-        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "status": "disponible"})
+        db.branches.docs.append({"id": "branch-1", "restaurant_id": "restaurant-1",
+                                 "timezone": "America/Lima", "business_day_cutoff": "04:00"})
+        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1",
+                               "status": "disponible"})
         order_routes.db = db
         async def order_number(restaurant_id):
             return 9

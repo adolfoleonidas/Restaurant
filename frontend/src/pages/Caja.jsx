@@ -18,24 +18,13 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import PaymentProofCapture from '@/components/PaymentProofCapture';
+import OrderCollectionDialog from '@/components/OrderCollectionDialog';
 import '@/styles/cobro.css';
 
 const PAYMENT_METHODS = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto'];
 
 function round2(n) {
     return Math.round(Number(n || 0) * 100) / 100;
-}
-
-function equalShare(remaining, n) {
-    const parts = Math.max(1, Number(n) || 1);
-    if (parts <= 1) return round2(remaining);
-    return Math.floor((Number(remaining) / parts) * 100) / 100;
-}
-
-function newIdempotencyKey() {
-    return (typeof crypto !== 'undefined' && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random()}`;
 }
 
 function WebOrderRow({ order, onConfirm }) {
@@ -1080,7 +1069,6 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     );
 }
 
-
 function PaymentHistory({ refreshKey }) {
     const { user } = useAuth();
     const canVoid = user?.role === 'admin' || !!user?.can_void;
@@ -1731,7 +1719,7 @@ export default function Caja() {
                 <Button variant="outline" onClick={() => { refetchReg(); setCloseDialog(true); }} className="h-12 w-full" data-testid="caja-cerrar-button"><Lock className="h-4 w-4 mr-2" /> Cerrar turno</Button>
             </div>
             )}
-            <CobrarDialog open={!!pendingOrder} onOpenChange={(o) => !o && setPendingOrder(null)} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); }} />
+            <OrderCollectionDialog open={!!pendingOrder} onOpenChange={(o) => !o && setPendingOrder(null)} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); }} />
             <CloseCajaDialog open={closeDialog} onOpenChange={setCloseDialog} register={register} onClosed={refetchReg} />
         </div>
     );
