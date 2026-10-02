@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
-import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, CheckCircle2, Printer, Search } from 'lucide-react';
+import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, CheckCircle2, Printer, Search, Banknote, Smartphone, CreditCard, Building2, ArrowLeftRight, Copy, Check, Image, Camera, Maximize2, HelpCircle, Info, X, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +18,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import PaymentProofCapture from '@/components/PaymentProofCapture';
+import '@/styles/cobro.css';
 
 const PAYMENT_METHODS = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto'];
 
@@ -95,20 +96,45 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const canDiscount = user?.role === 'admin' || !!user?.can_discount;
     const canSubmitProof = user?.role === 'admin' || user?.role === 'cajero'
         || user?.functions?.includes('cobro') || user?.functions?.includes('administracion');
-    const [method, setMethod] = useState('efectivo');
+
+    // Method mapping: prototype id -> backend id
+    const METHOD_MAP = { cash: 'efectivo', yape: 'yape', plin: 'plin', card: 'tarjeta', transfer: 'transferencia', mixed: 'mixto' };
+    const METHOD_REV = Object.fromEntries(Object.entries(METHOD_MAP).map(([k, v]) => [v, k]));
+    const METHODS = [
+        { id: 'cash', name: 'Efectivo', Icon: Banknote },
+        { id: 'yape', name: 'Yape', Icon: Smartphone },
+        { id: 'plin', name: 'Plin', Icon: Smartphone },
+        { id: 'card', name: 'Tarjeta', Icon: CreditCard },
+        { id: 'transfer', name: 'Transferencia', Icon: Building2 },
+        { id: 'mixed', name: 'Mixto', Icon: ArrowLeftRight },
+    ];
+
+    // State
+    const [method, setMethod] = useState('cash');
     const [received, setReceived] = useState('');
     const [discount, setDiscount] = useState('');
     const [discountReason, setDiscountReason] = useState('');
     const [tip, setTip] = useState('');
-    const [splits, setSplits] = useState([{ method: 'efectivo', amount: '' }, { method: 'yape', amount: '' }]);
+    const [tipPct, setTipPct] = useState(0);
+    const [splits, setSplits] = useState([{ method: 'cash', amount: '' }, { method: 'yape', amount: '' }]);
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
     const [stale, setStale] = useState(null);
     const [netError, setNetError] = useState(false);
-    const [payMode, setPayMode] = useState('todo');
-    const [people, setPeople] = useState('2');
+    const [payMode, setPayMode] = useState('all');
+    const [people, setPeople] = useState(2);
+    const [part, setPart] = useState(0);
     const [picked, setPicked] = useState({});
     const [live, setLive] = useState(order);
+    const [detailOpen, setDetailOpen] = useState(true);
+    const [showVerify, setShowVerify] = useState(false);
+    const [verified, setVerified] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
+    const [proofFile, setProofFile] = useState(null);
+    const [proofUrl, setProofUrl] = useState(null);
+    const [cardRef, setCardRef] = useState('');
+    const [toastMsg, setToastMsg] = useState('');
     const [collectionConfig, setCollectionConfig] = useState(null);
     const [collectionConfigError, setCollectionConfigError] = useState(false);
     const [selectedProof, setSelectedProof] = useState('');
@@ -118,31 +144,41 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const [proofError, setProofError] = useState('');
     const [proofRefreshPending, setProofRefreshPending] = useState(false);
     const [proofRefreshError, setProofRefreshError] = useState('');
-    const idempotencyRef = React.useRef(null);
-    const dialogEpochRef = React.useRef(0);
+    const idempotencyRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const dialogEpochRef = useRef(0);
 
-    React.useEffect(() => {
+    const showToast = useCallback((msg) => {
+        setToastMsg(msg);
+        setTimeout(() => setToastMsg(''), 4000);
+    }, []);
+
+    // Reset on open. A closed dialog advances the epoch so a late upload cannot land on the next account.
+    useEffect(() => {
         if (open) {
             dialogEpochRef.current += 1;
             const pendingMethod = order?.payment_status === 'comprobante_subido'
                 && ['yape', 'plin'].includes(order.payment_proof_method)
-                ? order.payment_proof_method : 'efectivo';
+                ? (METHOD_REV[order.payment_proof_method] || 'cash')
+                : 'cash';
             setMethod(pendingMethod); setReceived(''); setDiscount(''); setDiscountReason(''); setTip('');
-            setSplits([{ method: 'efectivo', amount: '' }, { method: 'yape', amount: '' }]);
+            setTipPct(0);
+            setSplits([{ method: 'cash', amount: '' }, { method: 'yape', amount: '' }]);
             setResult(null); setStale(null); setNetError(false);
-            setPayMode('todo'); setPeople('2'); setPicked({});
-            setLive(order);
+            setPayMode('all'); setPeople(2); setPart(0); setPicked({});
+            setLive(order); setDetailOpen(true); setShowVerify(false); setVerified(false);
+            setShowHelp(false); setShowHistory(false);
+            setProofFile(null); setProofUrl(null); setCardRef('');
             setSelectedProof(''); setProofIntent(null); setProofSending(false); setProofSent(false); setProofError('');
             setProofRefreshPending(false); setProofRefreshError('');
             idempotencyRef.current = newIdempotencyKey();
         } else {
             dialogEpochRef.current += 1;
         }
-        // Reset only when this dialog opens for an account, not when parent refetches the list.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, order?.id]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         let cancelled = false;
         setCollectionConfig(null);
         setCollectionConfigError(false);
@@ -153,32 +189,72 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         return () => { cancelled = true; };
     }, [open, canSubmitProof, user?.restaurant_id]);
 
+    if (!open) return null;
     const acct = live || order;
     if (!acct) return null;
+
+    // Computed values
     const subtotal = acct.subtotal || 0;
     const fee = Number(acct.delivery_fee || 0);
     const d = Number(discount || acct.discount || 0);
-    const t = Number(tip || acct.tip || 0);
-    const total = round2(Math.max(0, subtotal + fee - d) + t);
+    const tipVal = Number(tip || 0);
+    const baseTotal = round2(Math.max(0, subtotal + fee - d));
+    const total = round2(baseTotal + tipVal);
     const paid = Number(acct.amount_paid || 0);
     const remaining = Math.max(0, round2(total - paid));
+
     const unpaidItems = (acct.items || []).map((it) => ({
         ...it,
         unpaid: Math.max(0, (it.quantity || 0) - (it.paid_qty || 0)),
     })).filter((it) => it.unpaid > 0);
+
     const pickedLines = unpaidItems
         .map((it) => ({ item_id: it.id, quantity: Number(picked[it.id] || 0), name: it.product_name, unit_price: it.unit_price }))
         .filter((l) => l.quantity > 0);
     const itemsAmount = round2(pickedLines.reduce((s, l) => s + l.quantity * (l.unit_price || 0), 0));
-    const partsN = Math.max(2, parseInt(people, 10) || 2);
+
+    const partsN = Math.max(2, people);
     const chargeAmount = payMode === 'items'
         ? itemsAmount
-        : payMode === 'partes'
+        : payMode === 'equal'
             ? equalShare(remaining, partsN)
             : remaining;
-    const r = Number(received || chargeAmount);
-    const change = method === 'efectivo' ? Math.max(0, r - chargeAmount) : 0;
+
+    const backendMethod = METHOD_MAP[method] || 'efectivo';
+    const r = Number(received || 0);
+    const change = method === 'cash' ? Math.max(0, r - chargeAmount) : 0;
     const splitsTotal = splits.reduce((s, x) => s + Number(x.amount || 0), 0);
+
+    // Mixed payment helpers
+    const mixedData = () => {
+        const due = chargeAmount;
+        const ls = splits;
+        const n = ls.length;
+        let sum = 0;
+        let error = '';
+        let ok = true;
+        const lines = ls.map((l, i) => {
+            if (i === n - 1) return { method: METHOD_MAP[l.method] || l.method, cents: 0 };
+            const amt = Number(l.amount || 0);
+            if (!amt || amt <= 0) { ok = false; if (l.amount) error = 'Cada importe debe ser mayor que cero.'; }
+            else sum += amt;
+            return { method: METHOD_MAP[l.method] || l.method, cents: amt };
+        });
+        const rest = round2(due - sum);
+        lines[n - 1].cents = rest;
+        const usedMethods = ls.map(l => l.method);
+        if (new Set(usedMethods).size !== n) { ok = false; error = 'Elige un metodo distinto en cada linea.'; }
+        if (rest <= 0) { ok = false; if (!error && ls.slice(0, -1).every(l => l.amount)) error = 'Los importes ya cubren el total.'; }
+        return { lines, sum, rest, due, valid: ok && due > 0, error };
+    };
+
+    // Can register?
+    const canRegister = () => {
+        if (chargeAmount <= 0) return false;
+        if (method === 'cash') return r >= chargeAmount;
+        if (method === 'mixed') return mixedData().valid;
+        return true;
+    };
 
     const refreshOrderAfterProof = async (orderId, requestEpoch) => {
         try {
@@ -200,7 +276,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     const submitProof = async () => {
         if (!canSubmitProof || proofSending || proofSent) return;
-        const intent = proofIntent || { orderId: acct.id, method, payment_proof: selectedProof };
+        const intent = proofIntent || { orderId: acct.id, method: backendMethod, payment_proof: selectedProof };
         if (!intent.payment_proof || !collectionConfig?.[intent.method]?.enabled) return;
         const requestEpoch = dialogEpochRef.current;
         const requestOrderId = intent.orderId;
@@ -227,10 +303,11 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     const retryOrderRefresh = () => refreshOrderAfterProof(proofIntent?.orderId || acct.id, dialogEpochRef.current);
 
-    const submit = async () => {
+    // Submit
+    const doSubmit = async () => {
         if (loading || proofRefreshPending) return;
         if (Number(discount || 0) > 0 && (discountReason || '').trim().length < 5) {
-            toast.error('El descuento requiere un motivo (mínimo 5 caracteres).');
+            toast.error('El descuento requiere un motivo (minimo 5 caracteres).');
             return;
         }
         setLoading(true);
@@ -239,18 +316,23 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         try {
             const payload = {
                 order_id: acct.id,
-                method,
+                method: backendMethod,
                 amount: chargeAmount,
                 discount: Number(discount || 0),
                 discount_reason: Number(discount || 0) > 0 ? discountReason.trim() : undefined,
-                tip: Number(tip || 0),
+                tip: tipVal,
                 idempotency_key: idempotencyRef.current,
                 expected_updated_at: acct.updated_at,
                 expected_total: acct.total,
             };
-            if (method === 'efectivo') payload.received_amount = Number(received || chargeAmount);
-            if (method === 'mixto') payload.splits = splits.filter((s) => Number(s.amount) > 0).map((s) => ({ method: s.method, amount: Number(s.amount) }));
-            if (payMode === 'items' && pickedLines.length) payload.lines = pickedLines.map((l) => ({ item_id: l.item_id, quantity: l.quantity }));
+            if (method === 'cash') payload.received_amount = r || chargeAmount;
+            if (method === 'mixed') {
+                const md = mixedData();
+                payload.splits = md.lines.filter((s) => s.cents > 0).map((s) => ({ method: s.method, amount: s.cents }));
+            }
+            if (payMode === 'items' && pickedLines.length) {
+                payload.lines = pickedLines.map((l) => ({ item_id: l.item_id, quantity: l.quantity }));
+            }
             const { data } = await api.post('/payments', payload);
             setResult(data);
             setNetError(false);
@@ -262,7 +344,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         } catch (e) {
             if (!e.response) {
                 setNetError(true);
-                toast.error('Se cortó la conexión. No cobres de nuevo a ciegas: reintentá esta misma operación.');
+                toast.error('Se corto la conexion. No cobres de nuevo a ciegas: reintenta esta misma operacion.');
             } else {
                 const detail = e.response?.data?.detail;
                 if (e.response?.status === 409 && detail?.code === 'account_changed') {
@@ -275,9 +357,17 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         } finally { setLoading(false); }
     };
 
-    const confirmLabel = ['yape', 'plin', 'tarjeta', 'transferencia'].includes(method)
-        ? `Registrar pago verificado ${fmtMoney(chargeAmount)}`
-        : `Confirmar cobro de ${fmtMoney(chargeAmount)}`;
+    const handleRegister = () => {
+        if (result || proofRefreshPending) return;
+        if (!canRegister()) return;
+        setShowVerify(true);
+        setVerified(false);
+    };
+
+    const handleConfirm = () => {
+        setShowVerify(false);
+        doSubmit();
+    };
 
     const doPrint = () => {
         const ok = printCajaReceipt({
@@ -289,255 +379,698 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 ? pickedLines.map((l) => ({ product_name: l.name, quantity: l.quantity, unit_price: l.unit_price, pay_qty: l.quantity }))
                 : acct.items,
         });
-        if (!ok) toast.error('El navegador bloqueó la ventana. Permití popups para imprimir.');
+        if (!ok) toast.error('El navegador bloqueo la ventana. Permite popups para imprimir.');
     };
 
+    const handleFileChange = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+            showToast('Formato no compatible. Usa PNG, JPG o WebP.');
+            return;
+        }
+        if (file.size > 1800000) {
+            showToast('La imagen supera 1.8 MB.');
+            return;
+        }
+        setProofFile(file);
+        setProofUrl(URL.createObjectURL(file));
+    };
+
+    const removeProof = () => {
+        if (proofUrl) URL.revokeObjectURL(proofUrl);
+        setProofFile(null);
+        setProofUrl(null);
+    };
+
+    const copyText = async (text, label) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast(label + ' copiado');
+        } catch {
+            showToast('No se pudo copiar');
+        }
+    };
+
+    // Tip chips
+    const tipChips = [0, 5, 10, 15];
+    const handleTipChip = (pct) => {
+        setTipPct(pct);
+        if (pct === 0) { setTip(''); }
+        else { setTip(String(round2(baseTotal * pct / 100))); }
+    };
+
+    // Preset cash
+    const handlePreset = (val) => {
+        if (val === 'exact') setReceived(String(chargeAmount));
+        else setReceived(String(val / 100));
+    };
+
+    // Verify dialog copy
+    const verifyCopy = method === 'cash'
+        ? 'Recibi el efectivo y comprobe el vuelto.'
+        : method === 'card'
+            ? 'Comprobe que el POS aprobo este cobro.'
+            : method === 'mixed'
+                ? 'Verifique todos los pagos y recibi el efectivo, si corresponde.'
+                : 'Verifique el ingreso en la cuenta receptora.';
+
+    const verifyWarning = method === 'cash'
+        ? 'El importe registrado corresponde al cobro, no al efectivo entregado por el cliente.'
+        : method === 'mixed'
+            ? 'Todos los componentes se registraran juntos.'
+            : 'Confirmacion manual. Adjuntar una imagen no verifica automaticamente el pago.';
+
+    // Register button label
+    const registerLabel = () => {
+        if (result) return 'Finalizar';
+        const amt = chargeAmount > 0 ? ` · ${fmtMoney(chargeAmount)}` : '';
+        if (method === 'cash') return 'Registrar efectivo' + amt;
+        return 'Registrar pago verificado' + amt;
+    };
+
+    // Footer note
+    const footerNote = () => {
+        if (!canRegister() && !result) {
+            if (method === 'cash' && !r) return 'Ingresa el efectivo recibido';
+            if (method === 'cash' && r < chargeAmount) return 'El efectivo recibido no cubre el total';
+            if (method === 'mixed') return 'Completa los montos del pago mixto';
+            if (chargeAmount <= 0) return 'Selecciona al menos un item';
+        }
+        return '';
+    };
+
+    const walletMethod = method === 'yape' || method === 'plin';
+    const showLocalProof = method === 'card' || method === 'transfer';
+    const walletConfig = collectionConfig?.[backendMethod];
+    const proofAlreadySent = acct.payment_status === 'comprobante_subido' || proofSent;
+
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl" data-testid="caja-cobrar-dialog">
-                <DialogHeader>
-                    <DialogTitle>{accountLabel(acct)}</DialogTitle>
-                    <DialogDescription className="sr-only">Registre un pago verificado o envíe una imagen para revisión.</DialogDescription>
-                </DialogHeader>
-                {result ? (
-                    <div className="space-y-4 py-2" data-testid="caja-pago-ok">
-                        <div className="font-display italic text-2xl">Pago registrado</div>
-                        <p className="text-sm text-muted-foreground">
-                            {result.fully_paid
-                                ? 'No hace falta volver a cobrar. La mesa sigue ocupada hasta que el mozo la libere.'
-                                : 'Pago parcial. La cuenta sigue abierta con el saldo de abajo.'}
-                        </p>
-                        {result.change_amount > 0 && (
-                            <div className="rounded-xl bg-primary/10 p-4">
-                                <div className="text-xs text-muted-foreground">Entregar vuelto</div>
-                                <div className="font-mono text-3xl font-bold text-primary">{fmtMoney(result.change_amount)}</div>
-                            </div>
-                        )}
-                        {!result.fully_paid && (
-                            <div className="text-sm">Pendiente: <span className="font-mono font-semibold">{fmtMoney(result.remaining)}</span></div>
-                        )}
-                        <p className="text-sm">Pago confirmado. Si falla la impresora, no vuelvas a cobrar.</p>
-                        <DialogFooter>
-                            <Button variant="outline" className="h-12" onClick={doPrint} data-testid="caja-imprimir">Comprobante</Button>
-                            {result.fully_paid ? (
-                                <Button className="h-12" onClick={() => { onOpenChange(false); setResult(null); }} data-testid="caja-siguiente">Siguiente cuenta</Button>
-                            ) : (
-                                <Button className="h-12" onClick={() => {
-                                    setResult(null);
-                                    setPayMode('todo');
-                                    setPicked({});
-                                    setReceived('');
-                                    setNetError(false);
-                                    setStale(null);
-                                    idempotencyRef.current = newIdempotencyKey();
-                                }} data-testid="caja-cobrar-resto">Cobrar el resto</Button>
-                            )}
-                        </DialogFooter>
+        <div className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}>
+        <div className="cobro-checkout" data-testid="caja-cobrar-dialog" role="dialog" aria-labelledby="checkout-title">
+            {/* Header */}
+            <header className="cobro-checkout-header">
+                <span className="table-mark" aria-hidden="true"><CreditCard style={{ width: 26, height: 26 }} /></span>
+                <div>
+                    <h1 id="checkout-title">{accountLabel(acct)}</h1>
+                    <div className="header-meta">
+                        <span>{(acct.items || []).length} items</span>
+                        <span className="dot" />
+                        <span>{result ? 'Pagada' : paid > 0 ? 'Pago parcial' : 'Cuenta abierta'}</span>
                     </div>
-                ) : (
-                <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-3">
-                        <div className="flex gap-2 mb-2">
-                            {[
-                                ['todo', 'Toda la cuenta'],
-                                ['items', 'Por ítems'],
-                                ['partes', 'Partes iguales'],
-                            ].map(([k, lab]) => (
-                                <button key={k} type="button" onClick={() => setPayMode(k)} className={`text-xs px-2 py-1 rounded-sm border ${payMode === k ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{lab}</button>
+                </div>
+                <div className="header-right">
+                    <button className="icon-button" onClick={() => onOpenChange(false)} aria-label="Cerrar cobro">
+                        <X style={{ width: 20, height: 20 }} />
+                    </button>
+                </div>
+            </header>
+
+            {/* Content */}
+            <div className="cobro-checkout-content">
+                {/* Order Panel */}
+                <section className="order-panel" aria-label="Detalle y total de la cuenta">
+                    {/* Scope Tabs */}
+                    <div className="scope-tabs" role="tablist" aria-label="Como dividir la cuenta">
+                        {[['all', 'Toda la cuenta'], ['items', 'Por items'], ['equal', 'Partes iguales']].map(([k, lab]) => (
+                            <button key={k} className="scope-tab" role="tab" aria-selected={payMode === k} onClick={() => { setPayMode(k); if (k === 'items') setDetailOpen(true); }}>
+                                {lab}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Split settings */}
+                    {payMode === 'equal' && (
+                        <div className="split-settings">
+                            <span className="split-label">Dividir entre</span>
+                            <div className="stepper">
+                                <button onClick={() => people > 2 && setPeople(people - 1)} disabled={people <= 2} aria-label="Una persona menos">-</button>
+                                <output aria-label="Numero de personas">{people}</output>
+                                <button onClick={() => people < 12 && setPeople(people + 1)} disabled={people >= 12} aria-label="Una persona mas">+</button>
+                            </div>
+                            <select className="split-select" value={part} onChange={(e) => setPart(Number(e.target.value))}>
+                                {Array.from({ length: people }, (_, i) => (
+                                    <option key={i} value={i}>Parte {i + 1}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Order heading */}
+                    <div className="order-heading">
+                        <h2 className="section-heading">Detalle de la cuenta</h2>
+                        <span className="item-count">{(acct.items || []).length} items</span>
+                        <button className="detail-toggle" aria-expanded={detailOpen} onClick={() => setDetailOpen(!detailOpen)}>
+                            <span>{detailOpen ? 'Ocultar' : `Ver ${(acct.items || []).length} items`}</span>
+                            <ChevronDown style={{ width: 16, height: 16 }} />
+                        </button>
+                    </div>
+
+                    {/* Line items */}
+                    <div className="line-items-region" hidden={!detailOpen}>
+                        <table className="line-items">
+                            <thead>
+                                <tr>
+                                    <th>{payMode === 'items' ? 'Sel.' : 'Cant.'}</th>
+                                    <th>Descripcion</th>
+                                    <th>Importe</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(acct.items || []).map((it) => {
+                                    const unpaid = Math.max(0, (it.quantity || 0) - (it.paid_qty || 0));
+                                    const paidQty = it.paid_qty || 0;
+                                    const isSelected = payMode === 'items' && (picked[it.id] || 0) > 0;
+                                    return (
+                                        <tr key={it.id}
+                                            className={`${payMode === 'items' && unpaid > 0 ? 'item-selectable' : ''} ${isSelected ? 'item-selected' : ''} ${unpaid === 0 ? 'item-settled' : ''}`}
+                                            onClick={() => {
+                                                if (payMode === 'items' && unpaid > 0) {
+                                                    setPicked({ ...picked, [it.id]: picked[it.id] ? 0 : unpaid });
+                                                }
+                                            }}
+                                        >
+                                            <td>
+                                                {payMode === 'items' && unpaid > 0 ? (
+                                                    <input type="checkbox" className="item-check" checked={isSelected}
+                                                        onChange={(e) => { e.stopPropagation(); setPicked({ ...picked, [it.id]: e.target.checked ? unpaid : 0 }); }}
+                                                        aria-label={`${isSelected ? 'Quitar' : 'Cobrar'}: ${it.product_name}`}
+                                                    />
+                                                ) : `${it.quantity}x`}
+                                            </td>
+                                            <td>
+                                                <span className="item-name">{it.product_name}</span>
+                                                {paidQty > 0 && <span className="item-paid-label">{paidQty} pagados</span>}
+                                            </td>
+                                            <td className="amount">{fmtMoney(it.subtotal)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {payMode === 'items' && <p className="selection-hint">Selecciona los productos que vas a cobrar.</p>}
+
+                    {/* Charge Summary */}
+                    <div className="charge-summary">
+                        <div className="summary-line">
+                            <span>{payMode === 'equal' ? 'Subtotal de esta parte' : 'Subtotal'}</span>
+                            <span className="amount">{fmtMoney(payMode === 'items' ? itemsAmount : payMode === 'equal' ? equalShare(baseTotal, partsN) : baseTotal)}</span>
+                        </div>
+                        <div className="summary-line">
+                            <span className="discount-label" title={canDiscount ? '' : 'No editable'}>
+                                Descuento{!canDiscount && <Lock style={{ width: 12, height: 12 }} />}
+                            </span>
+                            <span className="amount">- {fmtMoney(d)}</span>
+                        </div>
+
+                        {/* Tip */}
+                        <div className="tip-box">
+                            <div className="summary-line tip-line">
+                                <label>{payMode === 'all' ? 'Propina' : 'Propina proporcional'}</label>
+                                {payMode === 'all' ? (
+                                    <div className="currency-input">
+                                        <span>S/</span>
+                                        <input type="text" inputMode="decimal" value={tip} placeholder="Otro monto"
+                                            onChange={(e) => { setTip(e.target.value); setTipPct(0); }}
+                                            aria-label="Otro monto de propina" />
+                                    </div>
+                                ) : (
+                                    <span className="amount">{fmtMoney(tipVal)}</span>
+                                )}
+                            </div>
+                            {payMode === 'all' && (
+                                <div className="tip-chips" role="group" aria-label="Propina por porcentaje">
+                                    {tipChips.map((pct) => (
+                                        <button key={pct} className="tip-chip" aria-pressed={pct === 0 ? (!tip && tipPct === 0) : (tipPct === pct)}
+                                            onClick={() => handleTipChip(pct)}>
+                                            {pct ? `${pct}%` : 'Sin propina'}
+                                            {pct > 0 && <small>{fmtMoney(round2(baseTotal * pct / 100))}</small>}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Discount fields */}
+                    {canDiscount && (
+                        <div className="discount-fields">
+                            <label>Descuento (S/)</label>
+                            <input type="number" min="0" step="0.01" value={discount}
+                                onChange={(e) => setDiscount(e.target.value)} data-testid="caja-descuento" />
+                            {d > 0 && (
+                                <>
+                                    <label style={{ marginTop: 8 }}>Motivo del descuento</label>
+                                    <input value={discountReason} onChange={(e) => setDiscountReason(e.target.value)}
+                                        placeholder="Ej. cortesia de la casa" data-testid="caja-descuento-motivo" />
+                                </>
+                            )}
+                        </div>
+                    )}
+                    {!canDiscount && <div className="discount-fields"><span className="muted" style={{ fontSize: 12 }}>Sin permiso de descuento</span></div>}
+
+                    {/* Tip data-testid for backwards compat */}
+                    <input type="hidden" value={tip} data-testid="caja-propina" readOnly />
+
+                    {/* Total Row */}
+                    <div className="total-row">
+                        <div>
+                            <span className="total-label">{payMode === 'all' ? 'Total' : 'Total a cobrar'}</span>
+                        </div>
+                        <output className="total-amount amount" data-testid="caja-total">{fmtMoney(chargeAmount || total)}</output>
+                    </div>
+                </section>
+
+                {/* Payment Panel */}
+                <section className="payment-panel" aria-label="Datos y registro del pago">
+                    {/* Pay Hero */}
+                    <div className="pay-hero">
+                        <div>
+                            <small>{result ? 'Total pagado' : payMode === 'equal' ? 'Parte por cobrar' : 'Por cobrar'}</small>
+                            <output className="amount">{fmtMoney(chargeAmount)}</output>
+                        </div>
+                    </div>
+
+                    {/* Method heading */}
+                    <div className="method-heading">
+                        <h2 className="section-heading">Metodo de pago</h2>
+                    </div>
+
+                    {/* Method Rail */}
+                    <div className="method-rail-wrap">
+                        <div className="method-rail" role="tablist">
+                            {METHODS.map((m, i) => (
+                                <button key={m.id} className="method" role="tab" data-method={m.id}
+                                    data-testid={`caja-metodo-${METHOD_MAP[m.id]}`}
+                                    aria-selected={method === m.id}
+                                    disabled={Boolean(proofIntent && !proofSent)}
+                                    onClick={() => {
+                                        if (m.id !== method && !proofIntent && !proofSent && acct.payment_status !== 'comprobante_subido') {
+                                            setSelectedProof('');
+                                        }
+                                        setMethod(m.id);
+                                    }}>
+                                    <kbd aria-hidden="true">{i + 1}</kbd>
+                                    <m.Icon style={{ width: 23, height: 23 }} />
+                                    <span>{m.name}</span>
+                                </button>
                             ))}
                         </div>
-                        <div className="space-y-1 text-sm">
-                            {(acct.items || []).map((it) => {
-                                const unpaid = Math.max(0, (it.quantity || 0) - (it.paid_qty || 0));
-                                const paidQty = it.paid_qty || 0;
-                                return (
-                                <div key={it.id} className="flex justify-between gap-2 items-center">
-                                    <label className="flex items-center gap-2 min-w-0">
-                                        {payMode === 'items' && unpaid > 0 && (
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max={unpaid}
-                                                className="w-12 h-8 border rounded-sm px-1 font-mono"
-                                                value={picked[it.id] ?? 0}
-                                                onChange={(e) => setPicked({ ...picked, [it.id]: Math.min(unpaid, Math.max(0, Number(e.target.value))) })}
-                                            />
-                                        )}
-                                        <span className={unpaid === 0 ? 'text-muted-foreground line-through' : ''}>
-                                            {it.quantity}× {it.product_name}
-                                            {paidQty > 0 ? ` · ${paidQty} pagados` : ''}
-                                        </span>
-                                    </label>
-                                    <span className="font-mono tabular-nums">{fmtMoney(it.subtotal)}</span>
-                                </div>
-                                );
-                            })}
-                        </div>
-                        {payMode === 'partes' && (
-                            <div>
-                                <Label>Personas</Label>
-                                <Input type="number" min="2" value={people} onChange={(e) => setPeople(e.target.value)} className="h-10 w-24" />
-                                <div className="text-sm mt-1">Esta parte: <span className="font-mono font-semibold">{fmtMoney(chargeAmount)}</span></div>
-                                <p className="text-xs text-muted-foreground">El último cierra con «Toda la cuenta» para no dejar céntimos.</p>
-                            </div>
-                        )}
-                        {payMode !== 'todo' && (
-                            <div className="text-sm font-semibold">Este cobro: {fmtMoney(chargeAmount)}</div>
-                        )}
-                        {netError && (
-                            <div className="rounded-xl border border-accent p-3 text-sm" data-testid="caja-red-error">
-                                Se cortó la conexión. El pago puede haberse registrado. No inicies otro cobro: reintentá esta misma operación.
-                            </div>
-                        )}
-                        {stale && (
-                            <div className="rounded-xl border border-accent p-3 text-sm" data-testid="caja-cuenta-cambio">
-                                {stale.message || 'La cuenta cambió mientras la revisabas.'}
-                                {stale.new_total != null && <div className="mt-1 font-mono">Nuevo total: {fmtMoney(stale.new_total)}</div>}
-                            </div>
-                        )}
-                        <div className="rounded-xl bg-secondary/40 p-3">
-                            <div className="flex justify-between text-sm"><span>Subtotal</span><span className="tabular-nums">{fmtMoney(subtotal)}</span></div>
-                            {fee > 0 && <div className="flex justify-between text-sm"><span>Envío</span><span className="tabular-nums">{fmtMoney(fee)}</span></div>}
-                            <div className="flex justify-between text-sm"><span>Descuento</span><span className="tabular-nums">- {fmtMoney(d)}</span></div>
-                            <div className="flex justify-between text-sm"><span>Propina</span><span className="tabular-nums">+ {fmtMoney(t)}</span></div>
-                            <div className="border-t mt-2 pt-2 flex justify-between font-display text-xl font-bold"><span>Total</span><span className="tabular-nums" data-testid="caja-total">{fmtMoney(total)}</span></div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            {canDiscount ? (
-                                <div><Label>Descuento (S/)</Label><Input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(e.target.value)} data-testid="caja-descuento" /></div>
-                            ) : (
-                                <div className="text-xs text-muted-foreground self-end pb-2">Sin permiso de descuento</div>
-                            )}
-                            <div><Label>Propina (S/)</Label><Input type="number" min="0" step="0.01" value={tip} onChange={(e) => setTip(e.target.value)} data-testid="caja-propina" /></div>
-                        </div>
-                        {canDiscount && d > 0 && (
-                            <div>
-                                <Label>Motivo del descuento</Label>
-                                <Input value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} placeholder="Ej. cortesía de la casa" data-testid="caja-descuento-motivo" />
-                            </div>
-                        )}
                     </div>
-                    <div className="space-y-3">
-                        <div>
-                            <Label>Método de pago</Label>
-                            <Tabs value={method} onValueChange={(nextMethod) => {
-                                if (nextMethod !== method && !proofIntent && !proofSent && acct.payment_status !== 'comprobante_subido') {
-                                    setSelectedProof('');
-                                }
-                                setMethod(nextMethod);
-                            }}>
-                                <TabsList className="flex flex-wrap h-auto">
-                                    {PAYMENT_METHODS.map((m) => <TabsTrigger key={m} value={m} disabled={Boolean(proofIntent && !proofSent)} data-testid={`caja-metodo-${m}`}>{PAYMENT_LABELS[m]}</TabsTrigger>)}
-                                </TabsList>
-                            </Tabs>
-                        </div>
-                        {method === 'efectivo' && (
-                            <div className="space-y-2">
-                                <Label>Monto recibido (S/)</Label>
-                                <Input type="number" min="0" step="0.01" value={received} onChange={(e) => setReceived(e.target.value)} placeholder={chargeAmount.toFixed(2)} className="h-12 text-base tabular-nums" data-testid="caja-recibido-input" />
-                                <div className="rounded-xl bg-primary/10 p-3">
-                                    <div className="text-xs text-muted-foreground">Vuelto</div>
-                                    <div className="font-display text-2xl font-semibold tabular-nums text-primary" data-testid="caja-vuelto">{fmtMoney(change)}</div>
-                                </div>
-                            </div>
+
+                    {/* Payment Details */}
+                    <div className="payment-card" data-tone={walletMethod ? 'wallet' : 'neutral'}>
+                        <h3 className="card-heading">
+                            {method === 'cash' ? 'Recibir efectivo' : walletMethod ? 'Cuenta receptora' : method === 'card' ? 'Pago en terminal' : method === 'transfer' ? 'Datos de transferencia' : 'Distribuir el pago'}
+                        </h3>
+                        {walletMethod && (
+                            <button className="help-button" onClick={() => setShowHelp(true)} aria-label="Ayuda" title="Ayuda">
+                                <HelpCircle style={{ width: 19, height: 19 }} />
+                            </button>
                         )}
-                        {method === 'mixto' && (
-                            <div className="space-y-2">
-                                {splits.map((s, idx) => (
-                                    <div key={idx} className="flex gap-2">
-                                        <Select value={s.method} onValueChange={(v) => { const c = [...splits]; c[idx] = { ...c[idx], method: v }; setSplits(c); }}>
-                                            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia'].map((m) => <SelectItem key={m} value={m}>{PAYMENT_LABELS[m]}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                        <Input type="number" min="0" step="0.01" value={s.amount} onChange={(e) => { const c = [...splits]; c[idx] = { ...c[idx], amount: e.target.value }; setSplits(c); }} placeholder="0.00" data-testid={`caja-split-${idx}-amount`} />
-                                    </div>
-                                ))}
-                                <Button variant="ghost" size="sm" onClick={() => setSplits([...splits, { method: 'efectivo', amount: '' }])}>+ Agregar método</Button>
-                                <div className="text-sm text-muted-foreground">Total ingresado: <span className={`font-semibold tabular-nums ${splitsTotal >= chargeAmount ? 'text-primary' : 'text-destructive'}`}>{fmtMoney(splitsTotal)}</span></div>
-                            </div>
-                        )}
-                        {['yape', 'plin', 'tarjeta', 'transferencia'].includes(method) && (
-                            <div className="rounded-xl bg-secondary/40 p-3 text-sm">
-                                Verificá el movimiento en la cuenta receptora. Luego registrá el pago verificado de <span className="font-bold tabular-nums">{fmtMoney(chargeAmount)}</span>.
-                            </div>
-                        )}
-                        {['yape', 'plin'].includes(method) && canSubmitProof && (
-                            <section className="rounded-xl border p-3 space-y-3" data-testid="caja-comprobante-pago">
-                                <h3 className="font-semibold">Pago con {PAYMENT_LABELS[method]}</h3>
+
+                        {/* WALLET PANEL (yape/plin) */}
+                        {walletMethod && canSubmitProof && (
+                            <section data-testid="caja-comprobante-pago">
                                 {collectionConfigError ? (
-                                    <p role="status" className="text-sm text-destructive">No se pudo cargar la configuración. Cierre y vuelva a abrir este diálogo.</p>
+                                    <p role="status" className="stale-error">No se pudo cargar la configuración. Cierre y vuelva a abrir este diálogo.</p>
                                 ) : !collectionConfig ? (
-                                    <p className="text-sm text-muted-foreground">Cargando opciones de pago…</p>
-                                ) : !collectionConfig[method]?.enabled ? (
-                                    <p role="status" className="text-sm text-muted-foreground">Este método no está habilitado para recibir comprobantes.</p>
+                                    <p className="neutral-copy">Cargando opciones de pago…</p>
+                                ) : !walletConfig?.enabled ? (
+                                    <p role="status" className="neutral-copy">Este método no está habilitado para recibir comprobantes.</p>
                                 ) : (
-                                    <>
-                                        {collectionConfig[method]?.number && <p className="text-sm">Número: <span className="font-mono">{collectionConfig[method].number}</span></p>}
-                                        {collectionConfig[method]?.holder && <p className="text-sm">Titular: {collectionConfig[method].holder}</p>}
-                                        {/^data:image\/(png|jpeg|webp);base64,/.test(collectionConfig[method]?.qr || '') ? (
-                                            <img src={collectionConfig[method].qr} alt={`Código QR de ${PAYMENT_LABELS[method]}`} className="max-h-52 rounded-lg border object-contain" data-testid={`caja-${method}-qr`} />
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">No hay código QR configurado para este método.</p>
-                                        )}
-                                        {acct.payment_status === 'comprobante_subido' || proofSent ? (
-                                            <p className="text-sm text-muted-foreground">El comprobante está pendiente de verificación.</p>
-                                        ) : (
-                                            <>
-                                                <PaymentProofCapture
-                                                    key={`${acct.id}:${method}`}
-                                                    proof={selectedProof}
-                                                    onProof={setSelectedProof}
-                                                    disabled={proofSending || Boolean(proofIntent)}
-                                                    active={open && canSubmitProof && ['yape', 'plin'].includes(method)}
-                                                />
-                                                {proofError && <p role="alert" className="text-sm text-destructive" data-testid="caja-comprobante-error">{proofError}</p>}
-                                                {proofIntent && !proofSent && <p className="text-xs text-muted-foreground">Se conservará la imagen y el método para reintentar el mismo envío.</p>}
-                                                    <Button type="button" className="w-full" onClick={submitProof} disabled={!selectedProof || proofSending || proofSent} data-testid="caja-enviar-comprobante">
-                                                    {proofSending ? 'Enviando…' : proofIntent ? 'Reintentar envío del comprobante' : 'Enviar comprobante para revisión'}
-                                                </Button>
-                                            </>
-                                        )}
-                                    </>
+                                    <div className="account-layout">
+                                        <div>
+                                            {/^data:image\/(png|jpeg|webp);base64,/.test(walletConfig.qr || '') ? (
+                                                <button className="qr-trigger" aria-label={`Código QR de ${PAYMENT_LABELS[backendMethod]}`}>
+                                                    <img src={walletConfig.qr} alt={`Código QR de ${PAYMENT_LABELS[backendMethod]}`} data-testid={`caja-${backendMethod}-qr`} />
+                                                </button>
+                                            ) : (
+                                                <p className="qr-caption">No hay código QR configurado para este método.</p>
+                                            )}
+                                        </div>
+                                        <dl className="account-data">
+                                            {walletConfig.number && (
+                                                <div className="data-row">
+                                                    <dt>Numero</dt>
+                                                    <dd className="account-number">{walletConfig.number}</dd>
+                                                    <button className="copy-button" onClick={() => copyText(walletConfig.number, 'Numero')} aria-label="Copiar numero">
+                                                        <Copy style={{ width: 17, height: 17 }} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {walletConfig.holder && (
+                                                <div className="data-row">
+                                                    <dt>Titular</dt>
+                                                    <dd>{walletConfig.holder}</dd>
+                                                    <button className="copy-button" onClick={() => copyText(walletConfig.holder, 'Titular')} aria-label="Copiar titular">
+                                                        <Copy style={{ width: 17, height: 17 }} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </dl>
+                                    </div>
+                                )}
+                                {walletConfig?.enabled && !proofAlreadySent && (
+                                    <div className="proof-section">
+                                        <PaymentProofCapture
+                                            key={`${acct.id}:${backendMethod}`}
+                                            proof={selectedProof}
+                                            onProof={setSelectedProof}
+                                            disabled={proofSending || Boolean(proofIntent)}
+                                            active={open && canSubmitProof && walletMethod}
+                                        />
+                                        {proofError && <p role="alert" className="stale-error" data-testid="caja-comprobante-error">{proofError}</p>}
+                                        {proofIntent && !proofSent && <p className="file-hint">Se conservará la imagen y el método para reintentar el mismo envío.</p>}
+                                        <button type="button" className="primary-button" onClick={submitProof} disabled={!selectedProof || proofSending || proofSent} data-testid="caja-enviar-comprobante">
+                                            {proofSending ? 'Enviando…' : proofIntent ? 'Reintentar envío del comprobante' : 'Enviar comprobante para revisión'}
+                                        </button>
+                                    </div>
                                 )}
                             </section>
                         )}
-                        {(acct.payment_status === 'comprobante_subido' || proofSent) && (
-                            <div className="space-y-2 rounded-xl border p-3" data-testid="caja-comprobante-pendiente">
-                                <p className="text-sm font-medium" data-testid="caja-comprobante-enviado">
-                                    Comprobante {proofSent ? 'enviado' : 'pendiente'} para {PAYMENT_LABELS[proofIntent?.method || acct.payment_proof_method] || 'Yape o Plin'}; está pendiente de verificación.
-                                </p>
-                                {(proofIntent?.payment_proof || acct.payment_proof_url) && (
-                                    <img src={proofIntent?.payment_proof || acct.payment_proof_url} alt="Comprobante enviado" className="max-h-40 rounded-xl border object-contain" />
-                                )}
-                                {proofRefreshPending && (
-                                    <div className="space-y-2">
-                                        <p role="alert" className="text-sm text-destructive">{proofRefreshError}</p>
-                                        <Button type="button" variant="outline" onClick={retryOrderRefresh} data-testid="caja-recargar-orden">Actualizar cuenta</Button>
+                        {walletMethod && !canSubmitProof && (
+                            <p className="neutral-copy">Registra el pago solo después de verificar el ingreso. Este usuario no envía comprobantes.</p>
+                        )}
+
+                        {/* CASH PANEL */}
+                        {method === 'cash' && (
+                            <div className="cash-fields">
+                                <label>Efectivo recibido</label>
+                                <div className="currency-input">
+                                    <span>S/</span>
+                                    <input type="text" inputMode="decimal" value={received} placeholder={chargeAmount.toFixed(2)}
+                                        onChange={(e) => setReceived(e.target.value)}
+                                        data-testid="caja-recibido-input" aria-label="Efectivo recibido" />
+                                </div>
+                                <div className="preset-cash">
+                                    <button onClick={() => handlePreset('exact')}>Exacto</button>
+                                    <button onClick={() => handlePreset(2000)}>S/ 20</button>
+                                    <button onClick={() => handlePreset(5000)}>S/ 50</button>
+                                    <button onClick={() => handlePreset(10000)}>S/ 100</button>
+                                </div>
+                                <div className="change-row">
+                                    <span>Vuelto</span>
+                                    <strong className="amount" data-testid="caja-vuelto">{fmtMoney(change)}</strong>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* CARD PANEL */}
+                        {method === 'card' && (
+                            <div>
+                                <p className="neutral-copy">Registra el cobro aprobado en tu POS. No ingreses el numero de la tarjeta ni su codigo de seguridad.</p>
+                                <div className="terminal-fields">
+                                    <label>Referencia de operacion <span className="optional">· Opcional</span></label>
+                                    <input className="text-input" maxLength={60} placeholder="Ej. codigo de operacion" value={cardRef} onChange={(e) => setCardRef(e.target.value)} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TRANSFER PANEL */}
+                        {method === 'transfer' && (
+                            <div className="transfer-data">
+                                <dl className="account-data">
+                                    <div className="data-row"><dt>Banco</dt><dd>Banco de muestra</dd></div>
+                                    <div className="data-row"><dt>Cuenta / CCI</dt><dd>Configura los datos de tu negocio</dd></div>
+                                    <div className="data-row"><dt>Titular</dt><dd>Sabor Peruano S.A.C.</dd></div>
+                                </dl>
+                            </div>
+                        )}
+
+                        {/* MIXED PANEL */}
+                        {method === 'mixed' && (
+                            <div>
+                                <p className="neutral-copy">Combina varios metodos. El ultimo metodo completa el total.</p>
+                                {splits.map((s, idx) => {
+                                    const isLast = idx === splits.length - 1;
+                                    const usedMethods = splits.map(l => l.method);
+                                    return (
+                                        <div key={idx} className="mixed-line">
+                                            <select value={s.method} onChange={(e) => { const c = [...splits]; c[idx] = { ...c[idx], method: e.target.value }; setSplits(c); }}
+                                                data-testid={`caja-metodo-${METHOD_MAP[s.method] || s.method}`}
+                                                aria-label={`Metodo ${idx + 1}`}>
+                                                {METHODS.filter(m => m.id !== 'mixed').map(m => (
+                                                    <option key={m.id} value={m.id} disabled={m.id !== s.method && usedMethods.includes(m.id)}>{m.name}</option>
+                                                ))}
+                                            </select>
+                                            {isLast ? (
+                                                <output className="mixed-auto amount">{fmtMoney(Math.max(0, mixedData().rest))}</output>
+                                            ) : (
+                                                <div className="currency-input">
+                                                    <span>S/</span>
+                                                    <input type="text" inputMode="decimal" value={s.amount} placeholder="0.00"
+                                                        onChange={(e) => { const c = [...splits]; c[idx] = { ...c[idx], amount: e.target.value }; setSplits(c); }}
+                                                        data-testid={`caja-split-${idx}-amount`} aria-label={`Importe metodo ${idx + 1}`} />
+                                                </div>
+                                            )}
+                                            <button className="icon-button" onClick={() => { if (splits.length > 2) { const c = splits.filter((_, i) => i !== idx); setSplits(c); } }}
+                                                disabled={splits.length <= 2} aria-label="Quitar metodo">
+                                                <X style={{ width: 17, height: 17 }} />
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                                <div className="mixed-bar" aria-hidden="true">
+                                    <i style={{ width: `${chargeAmount ? Math.min(100, Math.round(splitsTotal / chargeAmount * 100)) : 0}%` }} />
+                                </div>
+                                <p className="mixed-note">Asignado {fmtMoney(Math.min(splitsTotal, chargeAmount))} de {fmtMoney(chargeAmount)}</p>
+                                <button className="secondary-button mixed-add" type="button"
+                                    disabled={splits.length >= 5}
+                                    onClick={() => {
+                                        const used = splits.map(l => l.method);
+                                        const free = METHODS.find(m => m.id !== 'mixed' && !used.includes(m.id));
+                                        if (!free) return;
+                                        setSplits([...splits, { method: free.id, amount: '' }]);
+                                    }}>
+                                    + Agregar otro metodo
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Proof Section — card/transfer stay local; Yape/Plin use the reviewed upload above */}
+                        {showLocalProof && (
+                            <div className="proof-section">
+                                <p className="proof-title">Comprobante <span className="optional">· Opcional</span></p>
+                                <div className="proof-actions">
+                                    <button className="secondary-button" onClick={() => fileInputRef.current?.click()}>
+                                        <Image style={{ width: 18, height: 18 }} />
+                                        <span>Adjuntar imagen</span>
+                                    </button>
+                                    <button className="secondary-button" onClick={() => fileInputRef.current?.click()}>
+                                        <Camera style={{ width: 18, height: 18 }} />
+                                        <span>Tomar foto</span>
+                                    </button>
+                                </div>
+                                <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={handleFileChange} />
+                                <p className="file-hint">PNG, JPG o WebP · Maximo 1,8 MB</p>
+                                {proofUrl && (
+                                    <div className="proof-preview">
+                                        <img className="proof-thumbnail" src={proofUrl} alt="Vista previa" />
+                                        <div className="proof-info">
+                                            <p className="proof-name">{proofFile?.name}</p>
+                                            <p className="proof-state">Adjunto local · Sin enviar</p>
+                                        </div>
+                                        <button className="icon-button proof-remove" onClick={removeProof} aria-label="Quitar comprobante">
+                                            <X style={{ width: 17, height: 17 }} />
+                                        </button>
                                     </div>
                                 )}
                             </div>
                         )}
-                        <div className="rounded-xl bg-secondary/40 p-3 text-sm space-y-1">
-                            <div className="flex justify-between"><span>Pagado</span><span className="font-mono">{fmtMoney(paid)}</span></div>
-                            <div className="flex justify-between font-semibold"><span>Pendiente</span><span className="font-mono">{fmtMoney(remaining)}</span></div>
+                    </div>
+
+                    {(acct.payment_status === 'comprobante_subido' || proofSent) && (
+                        <div className="proof-section" data-testid="caja-comprobante-pendiente">
+                            <p className="proof-state" data-testid="caja-comprobante-enviado">
+                                Comprobante {proofSent ? 'enviado' : 'pendiente'} para {PAYMENT_LABELS[proofIntent?.method || acct.payment_proof_method] || 'Yape o Plin'}; está pendiente de verificación.
+                            </p>
+                            {(proofIntent?.payment_proof || acct.payment_proof_url) && (
+                                <img src={proofIntent?.payment_proof || acct.payment_proof_url} alt="Comprobante enviado" className="proof-thumbnail" />
+                            )}
+                            {proofRefreshPending && (
+                                <div>
+                                    <p role="alert" className="stale-error">{proofRefreshError}</p>
+                                    <button type="button" className="secondary-button" onClick={retryOrderRefresh} data-testid="caja-recargar-orden">Actualizar cuenta</button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Payment Note */}
+                    {method !== 'cash' && (
+                        <p className="payment-note">
+                            <Info style={{ width: 14, height: 14 }} />
+                            <span>Una imagen <strong>no confirma</strong> el ingreso del dinero.</span>
+                        </p>
+                    )}
+
+                    {/* Payment History */}
+                    <div className="payment-history">
+                        {paid > 0 && (
+                            <div className="history-title">
+                                <strong>Movimientos de la cuenta</strong>
+                                <button onClick={() => setShowHistory(true)}>Ver detalle</button>
+                            </div>
+                        )}
+                        <div className="history-sums">
+                            <div>Pagado<strong className="amount">{fmtMoney(paid)}</strong></div>
+                            <div>Saldo de la cuenta<strong className="amount">{fmtMoney(remaining)}</strong></div>
                         </div>
                     </div>
+
+                    {/* Success Inline */}
+                    {result && (
+                        <>
+                            <div className="success-inline" data-testid="caja-pago-ok">
+                                <CheckCircle2 style={{ width: 18, height: 18 }} />
+                                <span>{result.fully_paid ? 'Cuenta pagada.' : `Pago parcial registrado. Restante: ${fmtMoney(result.remaining)}`}</span>
+                            </div>
+                            {result.change_amount > 0 && (
+                                <div className="change-row" style={{ marginTop: 8 }}>
+                                    <span>Entregar vuelto</span>
+                                    <strong className="amount">{fmtMoney(result.change_amount)}</strong>
+                                </div>
+                            )}
+                            <div className="receipt-actions">
+                                <button className="secondary-button" onClick={doPrint} data-testid="caja-imprimir">
+                                    <Printer style={{ width: 18, height: 18 }} /> Imprimir recibo
+                                </button>
+                                {result.fully_paid ? (
+                                    <button className="secondary-button" onClick={() => { onOpenChange(false); setResult(null); }} data-testid="caja-siguiente">
+                                        Siguiente cuenta
+                                    </button>
+                                ) : (
+                                    <button className="secondary-button" onClick={() => {
+                                        setResult(null); setPayMode('all'); setPicked({});
+                                        setReceived(''); setNetError(false); setStale(null);
+                                        idempotencyRef.current = newIdempotencyKey();
+                                    }} data-testid="caja-cobrar-resto">
+                                        Cobrar el resto
+                                    </button>
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {/* Errors */}
+                    {netError && (
+                        <div className="net-error" data-testid="caja-red-error">
+                            Se corto la conexion. El pago puede haberse registrado. No inicies otro cobro: reintentá esta misma operacion.
+                        </div>
+                    )}
+                    {stale && (
+                        <div className="stale-error" data-testid="caja-cuenta-cambio">
+                            {stale.message || 'La cuenta cambio mientras la revisabas.'}
+                            {stale.new_total != null && <div style={{ marginTop: 4 }}>Nuevo total: {fmtMoney(stale.new_total)}</div>}
+                        </div>
+                    )}
+                </section>
+            </div>
+
+            {/* Footer */}
+            <footer className="cobro-checkout-footer">
+                <span className="footer-caption">
+                    <Info style={{ width: 14, height: 14 }} />
+                    <span>{footerNote() || 'Cobro POS · No procesa pagos reales'}</span>
+                </span>
+                <div className="footer-actions">
+                    <button className="cancel-button" onClick={() => onOpenChange(false)}>Cancelar</button>
+                    <button className="primary-button" onClick={handleRegister}
+                        disabled={proofRefreshPending || loading || (!result && !canRegister())}
+                        data-testid="caja-cobrar-submit-button">
+                        <CheckCircle2 style={{ width: 19, height: 19 }} />
+                        <span>{loading ? 'Registrando...' : (netError ? 'Reintentar el mismo cobro' : registerLabel())}</span>
+                    </button>
                 </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={submit} disabled={loading || proofRefreshPending || chargeAmount <= 0} className="h-12" data-testid="caja-cobrar-submit-button">
-                        <CheckCircle2 className="h-4 w-4 mr-2" />{loading ? 'Registrando…' : (netError ? 'Reintentar el mismo cobro' : confirmLabel)}
-                    </Button>
-                </DialogFooter>
-                </>
-                )}
-            </DialogContent>
-        </Dialog>
+            </footer>
+
+            {/* Verify Dialog */}
+            {showVerify && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', background: '#0b0e1366' }}
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowVerify(false); }}>
+                    <div role="dialog" aria-modal="true" style={{ position: 'relative', border: '1px solid var(--line)', background: 'var(--paper)', padding: 0, borderRadius: 20, width: 'min(420px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 40px)', color: 'var(--ink)', font: '14px/1.5 var(--font)', overflow: 'auto', boxShadow: '0 18px 90px #3027213d' }}>
+                        <header className="dialog-header">
+                            <h2>Verificar antes de registrar</h2>
+                            <button className="icon-button" onClick={() => setShowVerify(false)} aria-label="Cerrar">
+                                <X style={{ width: 20, height: 20 }} />
+                            </button>
+                        </header>
+                        <div className="dialog-body">
+                            <div className="confirm-summary">
+                                <div>
+                                    <div className="muted">Importe de este cobro</div>
+                                    <div className="confirm-method">{METHODS.find(m => m.id === method)?.name}</div>
+                                </div>
+                                <strong className="amount">{fmtMoney(chargeAmount)}</strong>
+                            </div>
+                            <label className="confirm-check">
+                                <input type="checkbox" checked={verified} onChange={(e) => setVerified(e.target.checked)} data-testid="caja-verificar-check" />
+                                <span>{verifyCopy}</span>
+                            </label>
+                            <p className="confirm-warning">{verifyWarning}</p>
+                        </div>
+                        <footer className="dialog-actions">
+                            <button className="cancel-button" onClick={() => setShowVerify(false)}>Volver</button>
+                            <button className="primary-button" disabled={!verified} onClick={handleConfirm} data-testid="caja-verificar-registrar">Registrar</button>
+                        </footer>
+                    </div>
+                </div>
+            )}
+
+            {/* Help Dialog */}
+            {showHelp && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', background: '#0b0e1366' }}
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowHelp(false); }}>
+                    <dialog open style={{ position: 'relative', border: '1px solid var(--line)', background: 'var(--paper)', padding: 0, borderRadius: 20, width: 'min(420px, calc(100vw - 32px))', color: 'var(--ink)', font: '14px/1.5 var(--font)', overflow: 'auto', boxShadow: '0 18px 90px #3027213d' }}>
+                        <header className="dialog-header">
+                            <h2>Como registrar este cobro</h2>
+                            <button className="icon-button" onClick={() => setShowHelp(false)} aria-label="Cerrar ayuda">
+                                <X style={{ width: 20, height: 20 }} />
+                            </button>
+                        </header>
+                        <div className="dialog-body">
+                            <ol className="help-steps">
+                                <li><strong>Muestra los datos de pago</strong>El cliente puede escanear el QR o usar el numero.</li>
+                                <li><strong>Adjunta un respaldo, si lo necesitas</strong>Puedes subir una imagen o tomar una foto.</li>
+                                <li><strong>Verifica y registra</strong>Comprueba el movimiento en la cuenta receptora. Luego registra el pago.</li>
+                            </ol>
+                        </div>
+                    </dialog>
+                </div>
+            )}
+
+            {/* History Dialog */}
+            {showHistory && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'grid', placeItems: 'center', background: '#0b0e1366' }}
+                    onClick={(e) => { if (e.target === e.currentTarget) setShowHistory(false); }}>
+                    <dialog open style={{ position: 'relative', border: '1px solid var(--line)', background: 'var(--paper)', padding: 0, borderRadius: 20, width: 'min(420px, calc(100vw - 32px))', color: 'var(--ink)', font: '14px/1.5 var(--font)', overflow: 'auto', boxShadow: '0 18px 90px #3027213d' }}>
+                        <header className="dialog-header">
+                            <h2>Movimientos de la cuenta</h2>
+                            <button className="icon-button" onClick={() => setShowHistory(false)} aria-label="Cerrar">
+                                <X style={{ width: 20, height: 20 }} />
+                            </button>
+                        </header>
+                        <div className="dialog-body">
+                            <div className="history-sums" style={{ marginBottom: 12 }}>
+                                <div>Pagado<strong className="amount">{fmtMoney(paid)}</strong></div>
+                                <div>Restante<strong className="amount">{fmtMoney(remaining)}</strong></div>
+                            </div>
+                            <p className="help-small">Los movimientos se muestran en el historial de pagos.</p>
+                        </div>
+                    </dialog>
+                </div>
+            )}
+
+            {/* Toast */}
+            {toastMsg && <div className="cobro-toast show">{toastMsg}</div>}
+        </div>
+        </div>
     );
 }
+
 
 function PaymentHistory({ refreshKey }) {
     const { user } = useAuth();

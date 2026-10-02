@@ -1,0 +1,888 @@
+/* ============================================================
+   Cobro — Design System (extracted from HTML prototype)
+   Font: Instrument Sans + Bricolage Grotesque
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap');
+
+/* ---- CSS Variables (Light) ---- */
+.cobro-overlay,
+.cobro-checkout {
+  --page: #e9ecf0;
+  --paper: #fff;
+  --surface: #f4f6f8;
+  --line: #dde1e7;
+  --ink: #12161d;
+  --muted: #5b6472;
+  --soft: #8a93a0;
+  --brand: #0b6b53;
+  --brand-hover: #095843;
+  --brand-soft: #e3f3ee;
+  --on-brand: #fff;
+  --purple: var(--brand);
+  --purple-dark: var(--brand-hover);
+  --purple-soft: var(--brand-soft);
+  --purple-line: var(--line);
+  --yape: #6b1f7c;
+  --yape-t: #f4eaf7;
+  --warn-t: #fff3dc;
+  --green: #0b6b53;
+  --green-soft: #e3f3ee;
+  --red: #b3261e;
+  --shadow: 0 24px 60px -20px #0a142859;
+  --font: "Instrument Sans", Inter, ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+  --display: "Bricolage Grotesque", "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --radius: 14px;
+}
+
+/* ---- CSS Variables (Dark) ---- */
+@media (prefers-color-scheme: dark) {
+  .cobro-overlay,
+  .cobro-checkout {
+    --page: #0b0e13;
+    --paper: #161b23;
+    --surface: #1d232d;
+    --line: #2a3240;
+    --ink: #eef1f5;
+    --muted: #98a2b3;
+    --soft: #7b8594;
+    --brand: #3dbe95;
+    --brand-hover: #5dd0ab;
+    --brand-soft: #12362c;
+    --on-brand: #04140f;
+    --yape: #d59be6;
+    --yape-t: #2b1a33;
+    --warn-t: #3a2a0f;
+    --red: #ff8a80;
+    --shadow: 0 24px 60px -20px #000a;
+  }
+}
+
+.cobro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #0b0e1366;
+}
+
+.cobro-checkout { color-scheme: light dark; }
+
+/* ---- Base ---- */
+.cobro-checkout *,
+.cobro-checkout *::before,
+.cobro-checkout *::after { box-sizing: border-box; }
+
+.cobro-checkout {
+  position: relative;
+  width: min(1100px, 100%);
+  max-height: calc(100dvh - 56px);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font: 15px/1.5 var(--font);
+  color: var(--ink);
+}
+
+/* ---- Focus & Accessibility ---- */
+.cobro-checkout :focus-visible {
+  outline: 3px solid var(--brand) !important;
+  outline-offset: 3px;
+}
+.cobro-checkout button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cobro-checkout button:disabled { cursor: not-allowed; }
+.cobro-checkout button:not(:disabled),
+.cobro-checkout a { touch-action: manipulation; }
+.cobro-checkout button,
+.cobro-checkout input,
+.cobro-checkout select { transition: border-color .14s, background .14s, box-shadow .14s; }
+.cobro-checkout button svg { pointer-events: none; }
+.cobro-checkout [hidden] { display: none !important; }
+
+.cobro-checkout .sr-only {
+  position: absolute !important; width: 1px !important; height: 1px !important;
+  padding: 0 !important; margin: -1px !important; overflow: hidden !important;
+  clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important;
+}
+
+.cobro-checkout .amount { font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.025em; }
+.cobro-checkout .muted { color: var(--muted); }
+
+/* ---- Header ---- */
+.cobro-checkout-header {
+  display: flex; align-items: center; gap: 14px;
+  padding: 23px 28px 21px; border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.cobro-checkout .table-mark {
+  display: grid; place-items: center; width: 48px; height: 48px;
+  background: var(--surface); color: var(--ink); border-radius: 14px;
+}
+.cobro-checkout .table-mark svg { width: 26px; height: 26px; }
+.cobro-checkout h1 {
+  font-family: var(--display); font-size: 26px; letter-spacing: -.03em;
+  line-height: 1.1; margin: 0 0 6px; font-weight: 700;
+}
+.cobro-checkout .header-meta {
+  display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px;
+}
+.cobro-checkout .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--soft); display: inline-block; }
+.cobro-checkout .header-right { margin-left: auto; display: flex; align-items: center; gap: 16px; }
+.cobro-checkout .icon-button {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  min-width: 44px; height: 44px; padding: 8px; border: 1px solid transparent;
+  background: transparent; border-radius: 10px; color: var(--muted);
+}
+.cobro-checkout .icon-button:hover { background: var(--surface); color: var(--ink); }
+.cobro-checkout .icon-button svg { width: 20px; height: 20px; }
+
+/* ---- Content Grid ---- */
+.cobro-checkout-content {
+  display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  overflow: auto; overscroll-behavior: contain; flex: 1; min-height: 0;
+  scrollbar-width: thin; scrollbar-color: #d4ccc4 transparent;
+}
+.cobro-checkout .order-panel {
+  padding: 26px 26px 26px 28px; min-width: 0;
+  border-right: 1px solid var(--line); background: var(--surface);
+}
+.cobro-checkout .payment-panel { padding: 26px 28px 24px 26px; min-width: 0; }
+
+/* ---- Scope Tabs ---- */
+.cobro-checkout .scope-tabs {
+  display: flex; gap: 4px; padding: 4px; background: var(--line);
+  border-radius: 12px; margin-bottom: 25px;
+}
+.cobro-checkout .scope-tab {
+  border: 0; background: transparent; flex: 1; padding: 10px 4px;
+  white-space: nowrap; border-radius: 10px; color: var(--muted);
+  font-size: 13px; font-weight: 550; min-height: 44px;
+}
+.cobro-checkout .scope-tab:hover:not(:disabled) { background: #ffffff26; }
+.cobro-checkout .scope-tab[aria-selected="true"] {
+  background: var(--paper); color: var(--ink);
+  box-shadow: 0 1px 3px #0003; font-weight: 600;
+}
+.cobro-checkout .scope-tab:disabled { opacity: .5; }
+
+/* ---- Section Heading ---- */
+.cobro-checkout .section-heading {
+  margin: 0 0 15px; font-size: 17px; font-weight: 650;
+  letter-spacing: -.02em; font-family: var(--display);
+}
+
+/* ---- Order Heading ---- */
+.cobro-checkout .order-heading {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px;
+}
+.cobro-checkout .order-heading .section-heading { margin: 0; }
+.cobro-checkout .item-count { font-size: 12px; color: var(--muted); }
+.cobro-checkout .detail-toggle {
+  display: none; background: none; border: 0; padding: 6px 0 6px 8px;
+  min-height: 36px; align-items: center; gap: 8px; color: var(--muted); font-size: 12px;
+}
+.cobro-checkout .detail-toggle svg { width: 16px; height: 16px; transition: transform .15s; }
+.cobro-checkout .detail-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* ---- Line Items Table ---- */
+.cobro-checkout .line-items {
+  width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px;
+}
+.cobro-checkout .line-items th {
+  font-size: 12px; color: var(--muted); font-weight: 600; text-align: left;
+  padding: 10px 4px; background: transparent; border: 0;
+  border-bottom: 1px solid var(--line);
+}
+.cobro-checkout .line-items th:first-child { width: 58px; padding-left: 12px; }
+.cobro-checkout .line-items th:last-child { width: 86px; text-align: right; padding-right: 8px; }
+.cobro-checkout .line-items td {
+  padding: 17px 4px; border-bottom: 1px solid var(--line); vertical-align: top;
+}
+.cobro-checkout .line-items td:first-child { padding-left: 12px; color: var(--muted); white-space: nowrap; }
+.cobro-checkout .line-items td:last-child { text-align: right; padding-right: 8px; white-space: nowrap; }
+.cobro-checkout .item-name { display: block; font-weight: 500; line-height: 1.65; letter-spacing: -.12px; }
+.cobro-checkout .line-items tr.item-selectable { cursor: pointer; }
+.cobro-checkout .line-items tr.item-selectable:hover,
+.cobro-checkout .line-items tr.item-selected { background: var(--brand-soft); }
+.cobro-checkout .line-items tr.item-settled { color: var(--soft); }
+.cobro-checkout .item-paid-label { display: block; font-size: 10px; color: var(--green); font-weight: 500; margin-top: 3px; }
+.cobro-checkout .item-check { width: 22px; height: 22px; accent-color: var(--brand); margin: 3px 0 0; cursor: pointer; }
+
+/* ---- Split Settings ---- */
+.cobro-checkout .split-settings {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 12px;
+  padding: 12px; margin-bottom: 16px; display: flex; flex-wrap: wrap;
+  gap: 10px 16px; align-items: center; justify-content: space-between;
+}
+.cobro-checkout .split-label { font-size: 12px; color: var(--muted); }
+.cobro-checkout .stepper {
+  display: flex; align-items: center; border: 1px solid var(--line);
+  border-radius: 8px; overflow: hidden; background: var(--paper);
+}
+.cobro-checkout .stepper button {
+  width: 44px; height: 44px; background: none; border: 0;
+  font-size: 18px; color: var(--ink);
+}
+.cobro-checkout .stepper button:hover { background: var(--surface); }
+.cobro-checkout .stepper button:disabled { opacity: .4; }
+.cobro-checkout .stepper output { min-width: 28px; text-align: center; font-variant-numeric: tabular-nums; }
+.cobro-checkout .split-select {
+  border: 1px solid var(--line); border-radius: 7px; min-height: 36px;
+  background: var(--paper); padding: 4px 9px; color: var(--ink);
+  max-width: 140px; font-size: 12px;
+}
+.cobro-checkout .selection-hint { font-size: 12px; color: var(--brand); margin: 12px 0 2px; }
+
+/* ---- Split Progress ---- */
+.cobro-checkout .split-progress { margin: -8px 0 16px; font-size: 13px; color: var(--muted); }
+.cobro-checkout .split-progress .mixed-bar { margin: 6px 0 0; }
+
+/* ---- Charge Summary ---- */
+.cobro-checkout .charge-summary { padding: 18px 8px 0; }
+.cobro-checkout .summary-line {
+  min-height: 31px; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px;
+}
+.cobro-checkout .summary-line .amount { color: var(--ink); font-size: 13px; }
+.cobro-checkout .discount-label { display: inline-flex; align-items: center; gap: 6px; }
+.cobro-checkout .discount-label svg { width: 12px; height: 12px; color: var(--soft); }
+
+/* ---- Tip ---- */
+.cobro-checkout .tip-box { margin-top: 8px; margin-bottom: 14px; }
+.cobro-checkout .tip-box .tip-line { margin-top: 0; }
+.cobro-checkout .tip-line { margin-top: 9px; min-height: 42px; color: var(--ink); }
+.cobro-checkout .tip-chips {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px; flex-wrap: wrap; margin: 6px 0 2px;
+}
+.cobro-checkout .tip-chip {
+  min-height: 52px; padding: 4px; border-radius: 14px;
+  border: 1.5px solid var(--line); background: var(--paper);
+  color: var(--ink); font-size: 13px; font-weight: 550;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 0; line-height: 1.2; text-align: center;
+}
+.cobro-checkout .tip-chip small { font-size: 11px; font-weight: 400; color: var(--muted); }
+.cobro-checkout .tip-chip:hover:not(:disabled) { border-color: var(--ink); }
+.cobro-checkout .tip-chip[aria-pressed="true"] {
+  background: var(--ink); border-color: var(--ink); color: var(--paper);
+}
+.cobro-checkout .tip-chip[aria-pressed="true"] small { color: inherit; opacity: .75; }
+.cobro-checkout .tip-chip:disabled { opacity: .45; }
+
+/* ---- Currency Input ---- */
+.cobro-checkout .currency-input {
+  position: relative; display: flex; align-items: center;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper); overflow: hidden; width: 150px; height: 44px;
+}
+.cobro-checkout .currency-input:focus-within {
+  border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft);
+}
+.cobro-checkout .currency-input > span {
+  color: var(--muted); position: absolute; left: 12px; font-size: 13px;
+}
+.cobro-checkout .currency-input input {
+  border: 0; outline: 0 !important; box-shadow: none;
+  width: 100%; min-width: 0; padding: 10px 12px 10px 36px;
+  text-align: right; height: 44px; color: var(--ink);
+  background: transparent; font-variant-numeric: tabular-nums;
+}
+.cobro-checkout .currency-input input:disabled {
+  color: var(--muted); background: var(--surface); cursor: not-allowed;
+}
+
+.cobro-checkout .tip-allocation { font-size: 11px; color: var(--muted); margin: 6px 0 0; line-height: 1.6; }
+.cobro-checkout .field-error { font-size: 12px; color: var(--red); margin: 6px 0 0; }
+
+/* ---- Total Row ---- */
+.cobro-checkout .total-row {
+  margin-top: 22px; border-top: 2px solid var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 8px 0;
+}
+.cobro-checkout .total-label {
+  display: block; font-weight: 700; font-size: 18px;
+  letter-spacing: -.35px; font-family: var(--display);
+}
+.cobro-checkout .total-caption { color: var(--muted); font-size: 11px; display: block; margin-top: 3px; }
+.cobro-checkout .total-amount {
+  font-size: 30px; color: var(--ink); font-weight: 720;
+  letter-spacing: -1.2px; line-height: 1.2; font-family: var(--display);
+}
+
+/* ---- Pay Hero ---- */
+.cobro-checkout .pay-hero {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.cobro-checkout .pay-hero small { display: block; color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+.cobro-checkout .pay-hero output {
+  display: block; font-size: 40px; font-weight: 700;
+  letter-spacing: -.04em; line-height: 1; font-family: var(--display);
+}
+.cobro-checkout .pay-hero .cap {
+  font-size: 12px; color: var(--muted); background: var(--surface);
+  padding: 6px 12px; border-radius: 999px;
+}
+
+/* ---- Method Rail ---- */
+.cobro-checkout .method-heading {
+  display: flex; align-items: center; justify-content: space-between; margin: 0 0 13px;
+}
+.cobro-checkout .method-heading .section-heading { margin: 0; }
+.cobro-checkout .method-rail-wrap { position: relative; margin-bottom: 18px; min-width: 0; }
+.cobro-checkout .method-rail {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px; overflow: visible; padding: 2px;
+}
+.cobro-checkout .method {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 6px;
+  height: 72px; background: var(--paper); border: 1px solid var(--line);
+  border-radius: 12px; padding: 8px 4px; color: var(--ink);
+  font-size: 12.5px; font-weight: 500; white-space: nowrap;
+}
+.cobro-checkout .method:hover { background: var(--surface); border-color: var(--muted); }
+.cobro-checkout .method svg { width: 23px; height: 23px; stroke-width: 1.8; }
+.cobro-checkout .method[data-method="yape"] svg { color: var(--yape); }
+.cobro-checkout .method[aria-selected="true"] {
+  background: var(--surface); border-color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink);
+}
+.cobro-checkout .method[aria-selected="true"]::after {
+  content: '\2713'; position: absolute; top: 5px; right: 5px;
+  display: grid; place-items: center; background: var(--ink); color: var(--paper);
+  width: 14px; height: 14px; border-radius: 50%; font-size: 9px; font-weight: 700;
+}
+.cobro-checkout .method kbd {
+  position: absolute; top: 5px; left: 8px;
+  font: 500 11px var(--font); color: var(--muted); opacity: .75;
+}
+@media (hover: none) { .cobro-checkout .method kbd { display: none; } }
+
+/* ---- Payment Card ---- */
+.cobro-checkout .payment-card {
+  position: relative; border: 1px solid var(--line); border-radius: var(--radius);
+  background: none; padding: 18px; min-width: 0;
+}
+.cobro-checkout .payment-card[data-tone="wallet"] {
+  background: var(--yape-t); border-color: transparent;
+}
+.cobro-checkout .card-heading {
+  margin: 0 44px 18px 0; font-size: 17px; font-weight: 600;
+  letter-spacing: -.02em; color: var(--ink); font-family: var(--display);
+}
+.cobro-checkout .payment-card[data-tone="wallet"] .card-heading { color: var(--yape); }
+.cobro-checkout .help-button {
+  position: absolute; right: 12px; top: 10px; width: 44px; height: 44px;
+  border: 1px solid var(--line); border-radius: 50%;
+  display: grid; place-items: center; background: var(--paper);
+  color: var(--ink); z-index: 1;
+}
+.cobro-checkout .help-button:hover { background: var(--surface); }
+.cobro-checkout .help-button svg { width: 19px; height: 19px; }
+
+/* ---- Account Layout (Wallet) ---- */
+.cobro-checkout .account-layout {
+  display: grid; grid-template-columns: 133px minmax(0, 1fr);
+  gap: 17px; align-items: start;
+}
+.cobro-checkout .qr-trigger {
+  position: relative; display: block; width: 100%; padding: 0;
+  background: white; border: 1px solid var(--line); border-radius: 12px;
+  aspect-ratio: 1; overflow: hidden;
+}
+.cobro-checkout .qr-trigger img {
+  display: block; width: 100%; height: 100%; border-radius: 10px; object-fit: contain;
+}
+.cobro-checkout .qr-expand {
+  position: absolute; bottom: 3px; right: 3px; display: grid; place-items: center;
+  width: 30px; height: 30px; background: white; border: 1px solid var(--line);
+  border-radius: 7px; box-shadow: 0 2px 4px #332a2414;
+}
+.cobro-checkout .qr-expand svg { width: 16px; height: 16px; }
+.cobro-checkout .qr-trigger:hover { border-color: var(--brand); }
+.cobro-checkout .qr-caption { margin: 6px 0 0; text-align: center; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.cobro-checkout .account-data { margin: 0; min-width: 0; }
+.cobro-checkout .data-row {
+  position: relative; padding: 8px 58px 8px 14px; margin-bottom: 10px;
+  border: 1px solid var(--line); border-radius: 12px; background: var(--paper);
+  min-height: 56px;
+}
+.cobro-checkout .data-row:last-child { margin-bottom: 0; }
+.cobro-checkout .data-row dt { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.cobro-checkout .data-row dd { margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.cobro-checkout .data-row .account-number {
+  font-weight: 700; font-size: 18px; letter-spacing: .15px;
+  line-height: 1.45; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.cobro-checkout .data-row .copy-button {
+  position: absolute; top: 5px; right: 6px; width: 44px; min-width: 44px;
+  height: 44px; padding: 8px; background: var(--surface);
+  border-radius: 10px; color: var(--ink); border: 0;
+}
+.cobro-checkout .data-row .copy-button svg { width: 17px; height: 17px; }
+.cobro-checkout .data-row .copy-button:hover { background: var(--line); }
+
+/* ---- Cash Fields ---- */
+.cobro-checkout .cash-fields label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+.cobro-checkout .cash-fields .currency-input { width: 100%; height: 56px; margin-bottom: 16px; }
+.cobro-checkout .cash-fields .currency-input input { height: 56px; font-size: 24px; }
+.cobro-checkout .change-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 13px; background: var(--surface); border-radius: 12px;
+  padding: 12px 14px; font-weight: 600;
+}
+.cobro-checkout .change-row strong {
+  font-size: 20px; font-family: var(--display);
+}
+.cobro-checkout .preset-cash { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 16px; }
+.cobro-checkout .preset-cash button {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 999px;
+  padding: 0 16px; font-size: 13px; min-height: 44px; color: var(--ink);
+}
+.cobro-checkout .preset-cash button:hover { border-color: var(--ink); background: var(--surface); }
+
+/* ---- Keypad ---- */
+.cobro-checkout .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 14px; }
+.cobro-checkout .keypad button {
+  min-height: 56px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper); color: var(--ink); font: 600 22px var(--display);
+}
+.cobro-checkout .keypad button:active { background: var(--surface); }
+
+/* ---- Card / Terminal ---- */
+.cobro-checkout .neutral-copy { font-size: 12px; color: var(--muted); line-height: 1.7; margin: 0 0 16px; max-width: 340px; }
+.cobro-checkout .text-input {
+  width: 100%; min-height: 48px; border: 1px solid var(--line);
+  background: var(--paper); border-radius: 12px; padding: 10px 12px;
+  color: var(--ink);
+}
+.cobro-checkout .terminal-fields { margin-top: 10px; }
+.cobro-checkout .terminal-fields label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; }
+.cobro-checkout .optional { font-weight: 400; color: var(--muted); font-size: 10px; }
+
+/* ---- Transfer ---- */
+.cobro-checkout .transfer-data { padding: 4px 0 0; }
+.cobro-checkout .transfer-data .data-row { margin-bottom: 10px; }
+.cobro-checkout .transfer-data .account-number { font-size: 16px; white-space: normal; word-break: break-all; }
+
+/* ---- Mixed Payment ---- */
+.cobro-checkout .mixed-line {
+  display: grid; grid-template-columns: minmax(0, 1fr) 132px 44px;
+  gap: 8px; margin-bottom: 10px; align-items: center;
+}
+.cobro-checkout .mixed-line select {
+  width: 100%; min-height: 48px; padding: 0 10px; font-size: 14px;
+  border: 1px solid var(--line); background: var(--paper);
+  border-radius: 12px; color: var(--ink);
+}
+.cobro-checkout .mixed-line .currency-input { width: 100%; height: 48px; }
+.cobro-checkout .mixed-line .currency-input input { height: 48px; }
+.cobro-checkout .mixed-auto {
+  min-height: 48px; font-size: 15px; font-weight: 600; text-align: right;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface); display: flex; align-items: center; justify-content: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.cobro-checkout .mixed-remove:disabled { visibility: hidden; }
+.cobro-checkout .mixed-bar {
+  height: 6px; border-radius: 99px; background: var(--line);
+  overflow: hidden; margin: 4px 0 8px;
+}
+.cobro-checkout .mixed-bar i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .25s; }
+.cobro-checkout .mixed-note { font-size: 13px; margin: 0 0 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.cobro-checkout .mixed-add {
+  width: 100%; min-height: 48px; border: 1.5px dashed var(--muted);
+  border-radius: 12px; font-weight: 600; background: transparent; color: var(--ink);
+}
+.cobro-checkout .mixed-add:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---- Proof Section ---- */
+.cobro-checkout .proof-section { margin-top: 17px; padding-top: 14px; border-top: 1px solid var(--line); }
+.cobro-checkout .proof-title {
+  display: flex; align-items: center; gap: 7px; font-size: 13px;
+  font-weight: 600; margin: 0 0 10px; color: var(--ink);
+}
+.cobro-checkout .proof-actions { display: flex; gap: 8px; }
+.cobro-checkout .secondary-button {
+  display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+  min-height: 48px; border: 1.5px dashed var(--muted); border-radius: 12px;
+  background: transparent; padding: 9px 13px; font-size: 13px;
+  font-weight: 550; color: var(--ink);
+}
+.cobro-checkout .secondary-button:hover:not(:disabled) { background: var(--surface); border-color: var(--ink); }
+.cobro-checkout .secondary-button svg { width: 18px; height: 18px; }
+.cobro-checkout .proof-actions .secondary-button { flex: 1; }
+.cobro-checkout .file-hint { font-size: 10px; color: var(--muted); margin: 8px 0 0; }
+.cobro-checkout .proof-preview {
+  display: flex; align-items: center; gap: 10px; margin-top: 12px;
+  padding: 10px; background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+}
+.cobro-checkout .proof-thumbnail { width: 42px; height: 46px; object-fit: cover; border-radius: 5px; background: var(--surface); }
+.cobro-checkout .proof-info { min-width: 0; flex: 1; }
+.cobro-checkout .proof-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; margin: 0; }
+.cobro-checkout .proof-state { margin: 3px 0 0; font-size: 10px; color: var(--muted); }
+.cobro-checkout .proof-remove { width: 32px; min-width: 32px; height: 34px; }
+.cobro-checkout .review-button {
+  display: flex; align-items: center; justify-content: center; width: 100%;
+  margin-top: 8px; min-height: 44px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 12px;
+  color: var(--ink); font-size: 12px; font-weight: 600; padding: 8px;
+}
+.cobro-checkout .review-button:hover:not(:disabled) { background: var(--line); }
+.cobro-checkout .review-button:disabled { color: var(--muted); }
+
+/* ---- Payment Note ---- */
+.cobro-checkout .payment-note {
+  display: flex; align-items: flex-start; gap: 7px; font-size: 13px;
+  color: var(--ink); line-height: 1.6; margin: 14px 2px 0;
+  background: var(--warn-t); border-radius: 12px; padding: 12px 14px;
+}
+.cobro-checkout .payment-note svg { width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0; }
+.cobro-checkout .payment-note strong { font-weight: 600; color: var(--ink); }
+
+/* ---- Payment History (inline) ---- */
+.cobro-checkout .payment-history {
+  margin-top: 14px; padding: 12px 14px; border-radius: 12px;
+  background: var(--surface);
+}
+.cobro-checkout .history-title {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; margin-bottom: 9px;
+}
+.cobro-checkout .history-title strong { font-weight: 600; }
+.cobro-checkout .history-title button {
+  background: none; border: 0; color: var(--brand);
+  font-size: 11px; min-height: 44px; padding: 0 0 0 8px;
+}
+.cobro-checkout .history-sums {
+  display: flex; justify-content: space-between; gap: 20px;
+  font-size: 11px; color: var(--muted);
+}
+.cobro-checkout .history-sums strong {
+  display: block; font-size: 15px; color: var(--ink);
+  font-weight: 600; margin-top: 2px; font-family: var(--display);
+}
+.cobro-checkout .history-sums > div:last-child { text-align: right; }
+.cobro-checkout .history-sums > div:last-child strong { color: var(--ink); }
+
+/* ---- Success Inline ---- */
+.cobro-checkout .success-inline {
+  display: flex; align-items: center; gap: 9px; color: var(--brand);
+  font-size: 14px; font-weight: 600; min-height: 48px;
+  margin-top: 12px; padding: 11px 13px; background: var(--brand-soft);
+  border-radius: 12px;
+}
+.cobro-checkout .success-inline svg { width: 18px; height: 18px; }
+.cobro-checkout .success-inline:not([hidden]) { animation: cobro-pop .35s cubic-bezier(.2,1.3,.4,1); }
+@keyframes cobro-pop { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---- Receipt Actions ---- */
+.cobro-checkout .receipt-actions {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+}
+
+/* ---- Reset Button ---- */
+.cobro-checkout .reset-button {
+  margin-top: 8px; border: 0; background: none; color: var(--muted);
+  font-size: 11px; padding: 4px 2px; min-height: 30px;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* ---- Footer ---- */
+.cobro-checkout-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; padding: 18px 28px; background: var(--paper);
+  border-top: 1px solid var(--line); flex-shrink: 0; flex-wrap: wrap;
+}
+.cobro-checkout .footer-caption {
+  display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px;
+}
+.cobro-checkout .footer-caption svg { width: 14px; height: 14px; color: var(--soft); }
+.cobro-checkout .footer-actions { display: flex; gap: 10px; align-items: center; }
+.cobro-checkout .cancel-button {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--paper); border: 1.5px solid var(--line); border-radius: 12px;
+  padding: 12px 24px; min-height: 54px; font-size: 15px; font-weight: 600; color: var(--ink);
+}
+.cobro-checkout .cancel-button:hover { background: var(--surface); }
+.cobro-checkout .primary-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 54px; border: 1px solid var(--brand); border-radius: 12px;
+  background: var(--brand); color: var(--on-brand); padding: 12px 24px;
+  font-size: 15px; font-weight: 600; box-shadow: none;
+}
+.cobro-checkout .primary-button:hover:not(:disabled) { background: var(--brand-hover); border-color: var(--brand-hover); }
+.cobro-checkout .primary-button svg { width: 19px; height: 19px; }
+.cobro-checkout .primary-button:disabled {
+  background: var(--line); border-color: var(--line);
+  color: var(--muted); opacity: 1;
+}
+
+/* ---- Dialogs ---- */
+.cobro-checkout dialog {
+  position: fixed; border: 1px solid var(--line); background: var(--paper);
+  padding: 0; border-radius: 20px;
+  box-shadow: 0 18px 90px #3027213d;
+  width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 40px);
+  color: var(--ink); font: 14px/1.5 var(--font); overflow: auto;
+}
+.cobro-checkout dialog::backdrop { background: #0b0e1366; }
+.cobro-checkout .dialog-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 17px 18px 10px 22px;
+}
+.cobro-checkout .dialog-header h2 {
+  font-size: 18px; font-weight: 600; letter-spacing: -.02em;
+  margin: 0; font-family: var(--display);
+}
+.cobro-checkout .dialog-body { padding: 6px 22px 22px; }
+.cobro-checkout .dialog-actions {
+  display: flex; gap: 8px; justify-content: flex-end; padding: 0 22px 22px;
+}
+.cobro-checkout .dialog-actions button { flex: 1; padding-left: 12px; padding-right: 12px; }
+.cobro-checkout .dialog-actions .cancel-button { border: 1px solid var(--line); }
+
+/* ---- Confirm / Verify Dialog ---- */
+.cobro-checkout .confirm-summary {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px; background: var(--surface); border-radius: 12px;
+  margin: 4px 0 17px; gap: 12px;
+}
+.cobro-checkout .confirm-summary .amount {
+  font-size: 26px; color: var(--ink); font-weight: 700; font-family: var(--display);
+}
+.cobro-checkout .confirm-summary .muted { font-size: 11px; }
+.cobro-checkout .confirm-method { font-size: 13px; font-weight: 600; margin-top: 3px; }
+.cobro-checkout .confirm-check {
+  display: flex; align-items: flex-start; gap: 10px; font-size: 13px;
+  cursor: pointer; padding: 14px; min-height: 56px;
+  background: var(--warn-t); border-radius: 12px; line-height: 1.7;
+}
+.cobro-checkout .confirm-check input {
+  margin: 4px 0 0; width: 24px; height: 24px; flex-shrink: 0;
+  accent-color: var(--brand); cursor: pointer;
+}
+.cobro-checkout .confirm-warning { font-size: 11px; color: var(--muted); margin: 12px 0 0; line-height: 1.7; }
+.cobro-checkout .verify-context { font-size: 12px; color: var(--muted); margin-bottom: 12px; line-height: 1.6; }
+
+/* ---- Help Steps ---- */
+.cobro-checkout .help-steps { list-style: none; margin: 5px 0 0; padding: 0; counter-reset: help; }
+.cobro-checkout .help-steps li {
+  position: relative; padding: 0 0 22px 40px; counter-increment: help;
+  color: var(--muted); font-size: 12px; line-height: 1.75;
+}
+.cobro-checkout .help-steps li::before {
+  content: counter(help); position: absolute; left: 0; top: 0;
+  border-radius: 50%; background: var(--surface); color: var(--ink);
+  height: 26px; width: 26px; display: grid; place-items: center;
+  font-weight: 600; font-size: 12px;
+}
+.cobro-checkout .help-steps li:last-child { padding-bottom: 0; }
+.cobro-checkout .help-steps strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 3px; }
+.cobro-checkout .help-small {
+  border-top: 1px solid var(--line); padding-top: 14px; margin: 18px 0 0;
+  font-size: 11px; color: var(--muted); line-height: 1.7;
+}
+
+/* ---- History List (dialog) ---- */
+.cobro-checkout .history-list { padding: 0; list-style: none; margin: 0; }
+.cobro-checkout .history-list li {
+  padding: 12px 0; border-bottom: 1px solid var(--line);
+  display: flex; align-items: flex-start; justify-content: space-between;
+  font-size: 13px; gap: 12px;
+}
+.cobro-checkout .history-list li:last-child { border: 0; }
+.cobro-checkout .history-list small { display: block; font-size: 10px; margin-top: 3px; color: var(--muted); }
+
+/* ---- Toast ---- */
+.cobro-checkout .cobro-toast {
+  position: fixed; bottom: 110px; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--ink); color: var(--paper);
+  box-shadow: 0 5px 20px #2e271a30; border-radius: 12px;
+  padding: 11px 17px; max-width: min(440px, calc(100vw - 36px));
+  font-size: 12px; z-index: 2147483647; opacity: 0;
+  pointer-events: none; transition: opacity .2s, transform .2s;
+  text-align: center; line-height: 1.6;
+}
+.cobro-checkout .cobro-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---- Discount Fields ---- */
+.cobro-checkout .discount-fields { margin-top: 12px; }
+.cobro-checkout .discount-fields label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+.cobro-checkout .discount-fields input {
+  width: 100%; min-height: 40px; border: 1px solid var(--line);
+  background: var(--paper); border-radius: 10px; padding: 8px 12px;
+  color: var(--ink); font-size: 13px;
+}
+.cobro-checkout .discount-fields input:focus {
+  border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); outline: 0;
+}
+
+/* ---- Network Error ---- */
+.cobro-checkout .net-error {
+  border-radius: 12px; border: 1px solid var(--red);
+  padding: 12px 14px; font-size: 12px; color: var(--red);
+  background: #fef2f2; margin-bottom: 12px;
+}
+.cobro-checkout .stale-error {
+  border-radius: 12px; border: 1px solid var(--line);
+  padding: 12px 14px; font-size: 12px; color: var(--muted);
+  background: var(--surface); margin-bottom: 12px;
+}
+
+/* ---- Touch Feedback ---- */
+.cobro-checkout .method:active,
+.cobro-checkout .tip-chip:active,
+.cobro-checkout .scope-tab:active,
+.cobro-checkout .preset-cash button:active { transform: scale(.97); }
+.cobro-checkout .primary-button:active:not(:disabled) { transform: scale(.985); }
+
+/* ---- Responsive: Tablet (761px - 1040px) ---- */
+@media (min-width: 761px) and (max-width: 1040px) {
+  .cobro-checkout { max-height: calc(100dvh - 36px); }
+  .cobro-checkout .order-panel { padding: 22px 20px; }
+  .cobro-checkout .payment-panel { padding: 22px 20px; }
+  .cobro-checkout-content { grid-template-columns: .85fr 1.15fr; }
+  .cobro-checkout .account-layout { grid-template-columns: 116px minmax(0, 1fr); gap: 12px; }
+  .cobro-checkout .data-row .account-number { font-size: 16px; }
+  .cobro-checkout .payment-card { padding: 16px; }
+  .cobro-checkout .scope-tab { font-size: 11px; }
+}
+
+/* ---- Responsive: Desktop (761px+) ---- */
+@media (min-width: 761px) {
+  .cobro-checkout-content {
+    overflow: hidden; grid-template-rows: minmax(0, 1fr);
+  }
+  .cobro-checkout .order-panel,
+  .cobro-checkout .payment-panel {
+    overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin;
+  }
+  .cobro-checkout .order-panel { display: flex; flex-direction: column; padding-bottom: 0; }
+  .cobro-checkout .order-panel .total-row {
+    margin-top: auto; position: sticky; bottom: 0;
+    background: var(--surface); padding: 14px 8px 18px; z-index: 2;
+  }
+  .cobro-checkout .line-items-region { display: block !important; }
+}
+
+/* ---- Responsive: Mobile (max 760px) ---- */
+@media (max-width: 760px) {
+  .cobro-checkout {
+    width: 100%; height: 100dvh; max-height: none;
+    border: 0; border-radius: 0; box-shadow: none;
+  }
+  .cobro-checkout-header {
+    padding: 10px 16px; gap: 10px;
+  }
+  .cobro-checkout-header h1 { font-size: 20px; }
+  .cobro-checkout .table-mark { width: 36px; height: 36px; }
+  .cobro-checkout .header-meta { font-size: 12px; }
+  .cobro-checkout-content { display: block; overflow-x: hidden; }
+  .cobro-checkout .order-panel { padding: 14px 16px 4px; border-right: 0; }
+  .cobro-checkout .order-panel .total-row { display: none; }
+  .cobro-checkout .payment-panel { padding: 16px 16px 20px; }
+  .cobro-checkout .scope-tabs { margin-bottom: 18px; gap: 3px; padding: 3px; }
+  .cobro-checkout .scope-tab { font-size: 12px; min-height: 39px; padding: 9px 3px; }
+  .cobro-checkout .order-heading { margin-bottom: 8px; }
+  .cobro-checkout .section-heading { font-size: 14px; }
+  .cobro-checkout .item-count { display: none; }
+  .cobro-checkout .detail-toggle { display: flex; min-height: 40px; }
+  .cobro-checkout .line-items-region[hidden] { display: none !important; }
+  .cobro-checkout .pay-hero { margin-bottom: 14px; }
+  .cobro-checkout .pay-hero output { font-size: 36px; }
+  .cobro-checkout .method { height: 68px; }
+  .cobro-checkout .payment-card { padding: 15px; border-radius: 12px; }
+  .cobro-checkout-footer {
+    display: block; gap: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  .cobro-checkout .footer-caption { display: flex !important; font-size: 12px; margin-bottom: 8px; }
+  .cobro-checkout .footer-actions {
+    width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px;
+  }
+  .cobro-checkout .footer-actions .cancel-button {
+    padding: 0 18px; min-height: 56px; border: 1.5px solid var(--line);
+  }
+  .cobro-checkout .footer-actions .primary-button {
+    min-height: 56px; font-size: 15px; white-space: nowrap;
+  }
+  .cobro-checkout .tip-chip { min-height: 48px; font-size: 12.5px; }
+  .cobro-checkout input,
+  .cobro-checkout select,
+  .cobro-checkout textarea { font-size: 16px !important; }
+  .cobro-checkout .mixed-line { grid-template-columns: minmax(0, 1fr) 116px 44px; }
+}
+
+/* ---- Responsive: Small Mobile (max 420px) ---- */
+@media (max-width: 420px) {
+  .cobro-checkout .mixed-line { grid-template-columns: minmax(0, 1fr) 44px; }
+  .cobro-checkout .mixed-line select { grid-column: 1 / -1; }
+}
+
+/* ---- Responsive: Tiny (max 360px) ---- */
+@media (max-width: 360px) {
+  .cobro-checkout .footer-actions .cancel-button { padding: 0 12px; }
+  .cobro-checkout .footer-actions .primary-button { font-size: 14px; }
+  .cobro-checkout .pay-hero output { font-size: 32px; }
+}
+
+/* ---- Responsive: Very Tiny (max 359px) ---- */
+@media (max-width: 359px) {
+  .cobro-checkout-header { padding-inline: 14px; }
+  .cobro-checkout .order-panel { padding-inline: 14px; }
+  .cobro-checkout .payment-panel { padding-inline: 14px; }
+  .cobro-checkout-footer { padding-inline: 14px; }
+  .cobro-checkout .table-mark { display: none; }
+  .cobro-checkout .account-layout { grid-template-columns: 98px minmax(0, 1fr); gap: 10px; }
+  .cobro-checkout .payment-card { padding: 12px; }
+  .cobro-checkout .data-row .account-number { font-size: 14px; }
+  .cobro-checkout .scope-tab { font-size: 11px; }
+  .cobro-checkout .footer-actions { gap: 8px; }
+  .cobro-checkout .footer-actions .primary-button { font-size: 11px; }
+  .cobro-checkout .footer-actions .primary-button svg { display: none; }
+}
+
+/* ---- Landscape short ---- */
+@media (max-height: 520px) and (orientation: landscape) {
+  .cobro-checkout-header { padding-block: 8px; }
+  .cobro-checkout .pay-hero { margin-bottom: 10px; }
+  .cobro-checkout .pay-hero output { font-size: 30px; }
+  .cobro-checkout .method { height: 60px; }
+  .cobro-checkout-footer { padding-block: 8px; }
+}
+
+/* ---- Large screens ---- */
+@media (min-width: 1500px) {
+  .cobro-checkout { width: min(1180px, 100%); }
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .cobro-checkout *,
+  .cobro-checkout *::before,
+  .cobro-checkout *::after {
+    transition: none !important; scroll-behavior: auto !important;
+  }
+  .cobro-checkout .success-inline { animation: none !important; }
+}
+
+/* ---- Print ---- */
+@media print {
+  .cobro-checkout-footer,
+  .cobro-checkout .header-right,
+  .cobro-checkout .payment-panel,
+  .cobro-checkout .scope-tabs { display: none !important; }
+  .cobro-checkout { box-shadow: none; border: 0; max-height: none; width: 100%; }
+  .cobro-checkout-content { display: block; overflow: visible; }
+  .cobro-checkout .order-panel { border: 0; }
+  .cobro-checkout .line-items-region { display: block !important; }
+}
