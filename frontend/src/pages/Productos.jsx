@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { fmtMoney } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
@@ -221,6 +222,7 @@ export default function Productos({ section = 'platos' }) {
     const [form, setForm] = useState(emptyProduct);
     const [importOpen, setImportOpen] = useState(false);
     const [pendingAvail, setPendingAvail] = useState(null);
+    const [confirmDelete, setConfirmDelete] = useState(null);
 
     const load = async () => {
         const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
@@ -291,10 +293,11 @@ export default function Productos({ section = 'platos' }) {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
-    const del = async (p) => {
-        if (!window.confirm(`Eliminar "${p.name}"?`)) return;
-        try { await api.delete(`/products/${p.id}`); toast.success('Eliminado'); await load(); }
+    const doDelete = async () => {
+        if (!confirmDelete) return;
+        try { await api.delete(`/products/${confirmDelete.id}`); toast.success('Eliminado'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        finally { setConfirmDelete(null); }
     };
 
     const toggleAvail = async (p) => {
@@ -414,7 +417,7 @@ export default function Productos({ section = 'platos' }) {
                                     <label className="flex items-center gap-2 text-sm"><Switch checked={p.is_available} onCheckedChange={() => toggleAvail(p)} data-testid={`producto-disp-${p.id}`} /> {p.is_available ? 'Disponible' : 'Agotado'}</label>
                                     <div className="flex items-center gap-1">
                                         <Button size="icon" variant="ghost" onClick={() => openEdit(p)} data-testid={`producto-edit-${p.id}`}><Pencil className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => del(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDelete(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                     </div>
                                 </div>
                             </CardContent></Card>
@@ -522,6 +525,19 @@ export default function Productos({ section = 'platos' }) {
             </Dialog>
 
             <ImportarPlatos open={importOpen} onOpenChange={setImportOpen} onDone={load} />
+
+            <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminar «{confirmDelete?.name}»</AlertDialogTitle>
+                        <AlertDialogDescription>Este producto se elimina de la carta. Los pedidos anteriores lo mantienen en su historial.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={doDelete} data-testid="producto-confirm-delete">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

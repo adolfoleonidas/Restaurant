@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
-from database import db
+from pydantic import BaseModel
+from database import db, strip_id
 from auth import get_current_user, require_roles
 from models import RestaurantUpdate
+from handoff import HandoffRefused, assert_handoff_admin, handoff_reset
 
 router = APIRouter()
 
@@ -26,3 +28,25 @@ async def update_current_restaurant(data: RestaurantUpdate, user: dict = Depends
     await db.restaurants.update_one({"id": user["restaurant_id"]}, {"$set": update})
     r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
     return r
+
+
+class HandoffBody(BaseModel):
+    confirmation: str
+
+
+@router.post("/current/handoff")
+async def handoff_current_restaurant(body: HandoffBody, user: dict = Depends(get_current_user)):
+    try:
+        assert_handoff_admin(user)
+        await handoff_reset(
+            db,
+            restaurant_id=user["restaurant_id"],
+            admin_user_id=user["id"],
+            confirmation=body.confirmation,
+            now=_now(),
+        )
+    except HandoffRefused as refused:
+        if refused.reason == "role":
+            raise HTTPException(status_code=403, detail="Solo el administrador puede dejar el sistema limpio") from refused
+        raise HTTPException(status_code=400, detail="Confirmación incorrecta") from refused
+    return strip_id(await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0}))

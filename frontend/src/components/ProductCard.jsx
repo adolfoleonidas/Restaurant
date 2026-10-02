@@ -28,7 +28,7 @@ export function ProductCard({ product, children }) {
         const pending = busy[product.id] || false;
         return (
             <article
-                className={`w-full rounded-xl border bg-card overflow-hidden flex flex-col ${agotado ? 'opacity-60' : ''} ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
+                className={`w-full rounded-xl border bg-card overflow-hidden flex flex-row ${agotado ? 'opacity-60' : ''} ${qty > 0 ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border'}`}
                 data-testid={`landing-product-${product.id}`}
             >
                 {product.image_url ? (

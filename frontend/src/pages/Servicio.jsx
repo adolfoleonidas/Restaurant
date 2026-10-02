@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { ChefHat, CheckCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { canCloseAttention, itemsReadyToClose, paymentAwaitingCheck, postCloseAttention } from '@/lib/attentionClose';
 
 function remaining(order) {
     const total = Number(order.total || 0);
@@ -24,6 +25,7 @@ export default function Servicio() {
     const canCharge = hasFn(user, 'cobro', 'administracion');
     const canServe = hasFn(user, 'preparacion', 'atencion', 'administracion');
     const [delivering, setDelivering] = useState(null);
+    const [closingId, setClosingId] = useState(null);
     const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
     const { data: orders, refetch } = usePolling(
         () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
@@ -43,12 +45,26 @@ export default function Servicio() {
                 const due = o ? remaining(o) : 0;
                 return { table: t, order: o, pendingPrep, ready, due };
             })
-            .filter((c) => c.order || c.table.status === 'pagada');
+            .filter((c) => c.order);
     }, [tables, orders]);
 
     const toPrep = cards.reduce((s, c) => s + c.pendingPrep.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toReady = cards.reduce((s, c) => s + c.ready.reduce((x, it) => x + (it.quantity || 0), 0), 0);
     const toPay = cards.filter((c) => c.due > 0).length;
+
+    const closeAttention = async (order) => {
+        if (closingId) return;
+        setClosingId(order.id);
+        try {
+            await postCloseAttention(api, order);
+            toast.success('Mesa libre');
+            refetch();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo cerrar');
+        } finally {
+            setClosingId(null);
+        }
+    };
 
     const deliver = async (order) => {
         setDelivering(order.id);
@@ -114,8 +130,8 @@ export default function Servicio() {
                                 {due > 0 && (
                                     <div className="text-sm">Pendiente de pago: <span className="font-mono font-semibold">{fmtMoney(due)}</span></div>
                                 )}
-                                {table.status === 'pagada' && due <= 0 && (
-                                    <div className="text-sm text-muted-foreground">Cuenta pagada · liberá la mesa en Mesas</div>
+                                {order && itemsReadyToClose(order) && paymentAwaitingCheck(order) && (
+                                    <div className="text-sm text-muted-foreground">Pago por verificar</div>
                                 )}
                                 <div className="flex flex-wrap gap-2">
                                     {order && (
@@ -130,6 +146,16 @@ export default function Servicio() {
                                             data-testid={`servicio-entregar-${table.number}`}
                                         >
                                             <CheckCheck className="h-4 w-4 mr-1" /> Entregar
+                                        </Button>
+                                    )}
+                                    {canCloseAttention(user) && order && itemsReadyToClose(order) && !paymentAwaitingCheck(order) && (
+                                        <Button
+                                            className="h-11"
+                                            onClick={() => closeAttention(order)}
+                                            disabled={closingId === order.id}
+                                            data-testid={`servicio-cerrar-${table.number}`}
+                                        >
+                                            Cobrar y cerrar
                                         </Button>
                                     )}
                                     {canCharge && order && due > 0 && (

@@ -10,6 +10,7 @@ import { Search, Grid2X2, Plus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { toast } from 'sonner';
+import { canCloseAttention, itemsReadyToClose, paymentAwaitingCheck, postCloseAttention } from '@/lib/attentionClose';
 
 const FLOOR_STYLE = {
     libre: { label: 'Libre', bg: '#E7F6EE', fg: '#0F5132', border: '#BFE7D0', dot: '#22C55E' },
@@ -45,6 +46,7 @@ export default function Mesas() {
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
     const [openTable, setOpenTable] = useState(null);
+    const [closing, setClosing] = useState(false);
 
     const { generation } = useNotify();
     const { data: tables, refetch } = usePolling(
@@ -148,7 +150,7 @@ export default function Mesas() {
             navigate(`/pedidos/nuevo?mesa=${t.id}`);
             return;
         }
-        if (t.status !== 'disponible') {
+        if (t.status !== 'disponible' && t.status !== 'pagada') {
             toast.info('Esta mesa no está disponible');
             return;
         }
@@ -161,15 +163,18 @@ export default function Mesas() {
         }
     };
 
-    const releaseTable = async (t) => {
-        if (!canTake) return;
+    const closeAttention = async (order) => {
+        if (closing) return;
+        setClosing(true);
         try {
-            await api.post(`/tables/${t.id}/release`);
-            toast.success(`Mesa ${t.number} libre`);
+            await postCloseAttention(api, order);
+            toast.success('Mesa libre');
             closeSheet();
             refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo liberar');
+            toast.error(e.response?.data?.detail || 'No se pudo cerrar');
+        } finally {
+            setClosing(false);
         }
     };
 
@@ -355,12 +360,17 @@ export default function Mesas() {
                                             >
                                                 {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
                                             </Button>
+                                            {canCloseAttention(user) && sheetOrder && sheetOrder.id === t.active_order.id && itemsReadyToClose(sheetOrder) && (
+                                                paymentAwaitingCheck(sheetOrder) ? (
+                                                    <div className="text-sm text-center text-muted-foreground py-2" data-testid="mesa-sheet-pago-verificar">Pago por verificar</div>
+                                                ) : (
+                                                    <Button className="w-full h-12" onClick={() => closeAttention(sheetOrder)} disabled={closing} data-testid="mesa-sheet-cerrar">
+                                                        Cobrar y cerrar
+                                                    </Button>
+                                                )
+                                            )}
                                         </>
-                                    ) : t.status === 'pagada' ? (
-                                        <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
-                                            Liberar mesa
-                                        </Button>
-                                    ) : t.status === 'disponible' ? (
+                                    ) : (t.status === 'disponible' || t.status === 'pagada') ? (
                                         <Button className="w-full h-12" onClick={() => takeTable(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
                                             <Plus className="h-4 w-4 mr-1" /> Tomar mesa y pedir
                                         </Button>

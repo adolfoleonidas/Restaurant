@@ -46,9 +46,13 @@ export default function Pagos() {
     if (!cfg) return <div className="text-muted-foreground">Cargando…</div>;
 
     return (
-        <div className="space-y-5" data-testid="pagos-root">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
+        <div className="space-y-6" data-testid="pagos-root">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+                <div>
+                    <p className="page-kicker mb-1">Administración</p>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Configurá cómo pueden pagar los clientes en la carta web y en caja.</p>
+                </div>
                 <Button onClick={save} data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button>
             </div>
 

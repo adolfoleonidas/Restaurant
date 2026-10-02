@@ -4,10 +4,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin } from 'lucide-react';
+import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin, AlertTriangle, Building2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
+import { TABLE_STATUS_LABELS } from '@/lib/format';
 import { toast } from 'sonner';
 
 function Restaurante() {
@@ -19,33 +20,35 @@ function Restaurante() {
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (
-        <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><Label>Nombre del restaurante</Label><Input value={r.name || ''} onChange={(e) => setR({ ...r, name: e.target.value })} data-testid="config-name" /></div>
-            <div><Label>RUC</Label><Input value={r.ruc || ''} onChange={(e) => setR({ ...r, ruc: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>Dirección</Label><Input value={r.address || ''} onChange={(e) => setR({ ...r, address: e.target.value })} /></div>
-            <div><Label>Teléfono</Label><Input value={r.phone || ''} onChange={(e) => setR({ ...r, phone: e.target.value })} /></div>
-            <div><Label>Moneda</Label><Input value={r.currency || ''} onChange={(e) => setR({ ...r, currency: e.target.value })} /></div>
-            <div><Label>Zona horaria</Label><Input value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
-            <div><Label>Horario</Label><Input value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
-            <div className="md:col-span-2">
-                <Label>Seguimiento de preparación</Label>
-                <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="simple">Sencillo — Pendiente → Servido</SelectItem>
-                        <SelectItem value="detailed">Detallado — Enviado → Preparando → Listo → Entregado</SelectItem>
-                    </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con servido. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
+        <Card><CardContent className="p-5 space-y-5">
+            <div className="flex items-center gap-3">
+                <Building2 className="h-5 w-5 text-primary" />
+                <div>
+                    <h2 className="font-display text-lg font-semibold">Datos del restaurante</h2>
+                    <p className="text-xs text-muted-foreground">Información que aparece en los comprobantes y la carta web.</p>
+                </div>
             </div>
-            <div className="md:col-span-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Switch checked={!!r.auto_release_table} onCheckedChange={(v) => setR({ ...r, auto_release_table: v })} data-testid="config-auto-release" />
-                    Liberar mesa automáticamente al cobrar
-                </label>
-                <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><Label>Nombre del restaurante</Label><Input value={r.name || ''} onChange={(e) => setR({ ...r, name: e.target.value })} data-testid="config-name" /></div>
+                <div><Label>RUC</Label><Input value={r.ruc || ''} onChange={(e) => setR({ ...r, ruc: e.target.value })} /></div>
+                <div className="md:col-span-2"><Label>Dirección</Label><Input value={r.address || ''} onChange={(e) => setR({ ...r, address: e.target.value })} /></div>
+                <div><Label>Teléfono</Label><Input value={r.phone || ''} onChange={(e) => setR({ ...r, phone: e.target.value })} /></div>
+                <div><Label>Moneda</Label><Input value={r.currency || ''} onChange={(e) => setR({ ...r, currency: e.target.value })} /></div>
+                <div><Label>Zona horaria</Label><Input value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
+                <div><Label>Horario</Label><Input value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
+                <div className="md:col-span-2">
+                    <Label>Seguimiento de preparación</Label>
+                    <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="simple">Sencillo — Pendiente → Servido</SelectItem>
+                            <SelectItem value="detailed">Detallado — Enviado → Preparando → Listo → Entregado</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con servido. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
+                </div>
             </div>
-            <div className="md:col-span-2 flex justify-end"><Button onClick={save} data-testid="config-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button></div>
+            <div className="flex justify-end"><Button onClick={save} data-testid="config-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button></div>
         </CardContent></Card>
     );
 }
@@ -55,6 +58,7 @@ function Zonas() {
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [name, setName] = useState('');
+    const [confirmDelete, setConfirmDelete] = useState(null);
     const load = async () => { const { data } = await api.get('/zones'); setZones(data); };
     useEffect(() => { load(); }, []);
     const openNew = () => { setEditing(null); setName(''); setDlg(true); };
@@ -66,28 +70,37 @@ function Zonas() {
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
-    const del = async (z) => {
-        if (!window.confirm(`Eliminar la zona «${z.name}»?`)) return;
-        try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
+    const doDelete = async () => {
+        if (!confirmDelete) return;
+        try { await api.delete(`/zones/${confirmDelete.id}`); toast.success('Zona eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        finally { setConfirmDelete(null); }
     };
 
     return (
-        <Card><CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><MapPin className="h-5 w-5" /> Zonas del salón</h2>
+        <Card><CardContent className="p-5 space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <MapPin className="h-5 w-5 text-primary" />
+                    <div>
+                        <h2 className="font-display text-lg font-semibold">Zonas del salón</h2>
+                        <p className="text-xs text-muted-foreground">{zones.length} {zones.length === 1 ? 'zona' : 'zonas'} configuradas</p>
+                    </div>
+                </div>
                 <Button onClick={openNew} data-testid="zona-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva zona</Button>
             </div>
             {zones.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Sin zonas. Creá una para agrupar las mesas (ej: Salón, Terraza).</p>
+                <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-sm">
+                    Sin zonas todavía. Creá una para agrupar las mesas (ej: Salón, Terraza).
+                </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {zones.map((z) => (
-                        <div key={z.id} className="flex items-center justify-between border rounded-xl p-3">
+                        <div key={z.id} className="flex items-center justify-between border rounded-sm p-3">
                             <div className="font-medium">{z.name}</div>
                             <div className="flex items-center gap-1">
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => del(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDelete(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                         </div>
                     ))}
@@ -105,9 +118,27 @@ function Zonas() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminar zona «{confirmDelete?.name}»</AlertDialogTitle>
+                        <AlertDialogDescription>Las mesas asignadas a esta zona quedarán sin zona. Esta acción no se puede deshacer.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={doDelete} data-testid="zona-confirm-delete">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </CardContent></Card>
     );
 }
+
+const TABLE_STATUS_DOT = {
+    disponible: '#22C55E', ocupada: '#EF4444', esperando_pago: '#F59E0B',
+    reservada: '#8B5CF6', inactiva: '#71717A',
+};
 
 function Mesas() {
     const [tables, setTables] = useState([]);
@@ -115,6 +146,7 @@ function Mesas() {
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible' });
+    const [confirmDelete, setConfirmDelete] = useState(null);
     const load = async () => {
         const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
         setTables(t.data); setZones(z.data);
@@ -131,32 +163,48 @@ function Mesas() {
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
-    const del = async (t) => {
-        if (!window.confirm(`Eliminar ${t.name}?`)) return;
-        try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
+    const doDelete = async () => {
+        if (!confirmDelete) return;
+        try { await api.delete(`/tables/${confirmDelete.id}`); toast.success('Mesa eliminada'); await load(); }
         catch (e) { toast.error('Error'); }
+        finally { setConfirmDelete(null); }
     };
 
     return (
-        <Card><CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Grid2X2 className="h-5 w-5" /> Mesas</h2>
+        <Card><CardContent className="p-5 space-y-4">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <Grid2X2 className="h-5 w-5 text-primary" />
+                    <div>
+                        <h2 className="font-display text-lg font-semibold">Mesas</h2>
+                        <p className="text-xs text-muted-foreground">{tables.length} {tables.length === 1 ? 'mesa' : 'mesas'} registradas</p>
+                    </div>
+                </div>
                 <Button onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {tables.map((t) => (
-                    <div key={t.id} className="flex items-center justify-between border rounded-xl p-3">
-                        <div>
-                            <div className="font-medium">{t.name}</div>
-                            <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+            {tables.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-sm">
+                    No hay mesas. Creá la primera para empezar a operar.
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {tables.map((t) => (
+                        <div key={t.id} className="flex items-center justify-between border rounded-sm p-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: TABLE_STATUS_DOT[t.status] || '#71717A' }} />
+                                <div className="min-w-0">
+                                    <div className="font-medium truncate">{t.name}</div>
+                                    <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax · {TABLE_STATUS_LABELS[t.status] || t.status}</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDelete(t)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                            <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                            <Button size="icon" variant="ghost" onClick={() => del(t)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                        </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>
@@ -178,7 +226,7 @@ function Mesas() {
                                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        {['disponible', 'ocupada', 'esperando_pago', 'reservada', 'inactiva'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                        {['disponible', 'ocupada', 'esperando_pago', 'reservada', 'inactiva'].map((s) => <SelectItem key={s} value={s}>{TABLE_STATUS_LABELS[s] || s}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -190,17 +238,71 @@ function Mesas() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminar {confirmDelete?.name}</AlertDialogTitle>
+                        <AlertDialogDescription>Esta mesa se elimina del sistema. Los pedidos anteriores quedan en el historial.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={doDelete} data-testid="mesa-confirm-delete">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </CardContent></Card>
+    );
+}
+
+function EntregaLimpia() {
+    const [confirmation, setConfirmation] = useState('');
+    const submit = async () => {
+        try {
+            await api.post('/restaurants/current/handoff', { confirmation });
+            toast.success('Sistema listo para el cliente nuevo');
+            window.location.reload();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Error');
+        }
+    };
+    return (
+        <Card className="border-destructive/40"><CardContent className="p-5 space-y-4">
+            <div className="flex items-center gap-3">
+                <div className="h-9 w-9 rounded-sm bg-destructive/10 flex items-center justify-center">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                </div>
+                <div>
+                    <h2 className="font-display text-lg font-semibold text-destructive">Entregar limpio</h2>
+                    <p className="text-xs text-muted-foreground">Acción irreversible — solo al cambiar de cliente.</p>
+                </div>
+            </div>
+            <div className="rounded-sm bg-destructive/5 border border-destructive/20 p-3 text-sm text-muted-foreground">
+                Esto borra la carta, las mesas, los pedidos, los pagos, la caja y al resto del personal. Quedan el administrador actual y una casa en blanco para el cliente nuevo.
+            </div>
+            <div>
+                <Label>Confirmación</Label>
+                <Input value={confirmation} onChange={(e) => setConfirmation(e.target.value)} data-testid="handoff-confirmation" autoComplete="off" placeholder="Escribí ENTREGAR LIMPIO" />
+            </div>
+            <div className="flex justify-end">
+                <Button variant="destructive" onClick={submit} disabled={confirmation !== 'ENTREGAR LIMPIO'} data-testid="handoff-submit">Entregar limpio</Button>
+            </div>
         </CardContent></Card>
     );
 }
 
 export default function Configuracion() {
     return (
-        <div className="space-y-5" data-testid="config-root">
-            <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Casa</h1>
+        <div className="space-y-6" data-testid="config-root">
+            <div>
+                <p className="page-kicker mb-1">Administración</p>
+                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Casa</h1>
+                <p className="text-sm text-muted-foreground mt-1">Configuración del restaurante, zonas, mesas y operaciones de servicio.</p>
+            </div>
             <Restaurante />
             <Zonas />
             <Mesas />
+            <EntregaLimpia />
         </div>
     );
 }

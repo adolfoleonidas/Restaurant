@@ -21,7 +21,6 @@ const ALL_NAV = [
     { to: '/mesas', label: 'Operación', icon: Grid2X2, roles: ['admin'], group: 'main' },
     { to: '/mesas', label: 'Mesas', icon: Grid2X2, roles: ['mozo', 'cajero'], group: 'main' },
     { to: '/productos', label: 'Carta', icon: Package, roles: ['admin'], group: 'main' },
-    { to: '/mesas', label: 'Mesas', icon: Grid2X2, roles: ['mozo', 'cajero'], group: 'main' },
     { to: '/caja', label: 'Caja', icon: Wallet, roles: ['admin', 'cajero'], group: 'main' },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'], group: 'main' },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['cocina'], group: 'main' },

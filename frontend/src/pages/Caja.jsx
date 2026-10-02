@@ -222,7 +222,7 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                         <div className="font-display italic text-2xl">Pago registrado</div>
                         <p className="text-sm text-muted-foreground">
                             {result.fully_paid
-                                ? 'No hace falta volver a cobrar. La mesa sigue ocupada hasta que el mozo la libere.'
+                                ? 'No hace falta volver a cobrar. La mesa se libera al cerrar la atención.'
                                 : 'Pago parcial. La cuenta sigue abierta con el saldo de abajo.'}
                         </p>
                         {result.change_amount > 0 && (

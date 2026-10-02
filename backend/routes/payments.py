@@ -11,6 +11,7 @@ from models import PaymentCreate, PaymentVoid
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
 from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
+from attention import close_settled_attention
 
 LIMA = ZoneInfo("America/Lima")
 router = APIRouter()
@@ -277,14 +278,11 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise
 
     emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
-    if order_set.get("status") == "pagado" and order.get("table_id"):
-        r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
-        new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
-        await db.tables.update_one(
-            {"id": order["table_id"]},
-            {"$set": {"status": new_status, "updated_at": _now()}},
-        )
-        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status=new_status)
+    if fully_paid and order.get("table_id"):
+        fresh = await db.orders.find_one({"id": data.order_id, "restaurant_id": user["restaurant_id"]})
+        closed = await close_settled_attention(db, fresh or order, user, _now())
+        if closed:
+            emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status="disponible")
 
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),

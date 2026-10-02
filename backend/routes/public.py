@@ -10,10 +10,11 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
-from order_flow import VersionError, claim_order, version_conflict
+from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
+from attention import AttentionBlocked, open_table_attention
 
 router = APIRouter()
 
@@ -203,7 +204,7 @@ async def public_tables():
             "table_id": {"$type": "string"},
             "status": {"$in": _ACTIVE_ORDER_STATUSES},
         },
-        {"_id": 0, "id": 1, "table_id": 1, "order_number": 1, "status": 1, "items": 1},
+        {"_id": 0, "id": 1, "table_id": 1, "order_number": 1, "status": 1, "items": 1, "attention_open": 1},
     ).to_list(300)
     by_table = {order["table_id"]: order for order in active_orders if order.get("table_id")}
     active_ids = list(by_table.keys())
@@ -221,11 +222,12 @@ async def public_tables():
     ).sort("number", 1).to_list(200)
     for table in items:
         order = by_table.get(table["id"])
+        joinable = order and (order.get("attention_open") or order.get("status") == "pendiente_pago")
         table["active_order"] = {
             "order_number": order["order_number"],
             "status": order["status"],
             "item_count": sum(int(item.get("quantity") or 0) for item in (order.get("items") or [])),
-        } if order else None
+        } if joinable else None
     return items
 
 
@@ -246,7 +248,45 @@ async def resolve_public_table(token: str):
         raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
     table.pop("qr_nonce", None)
     table.pop("qr_revoked", None)
+    order = await db.orders.find_one(
+        {
+            "restaurant_id": restaurant["id"],
+            "table_id": table["id"],
+            "status": {"$in": _ACTIVE_ORDER_STATUSES},
+            "attention_open": True,
+        },
+        {"_id": 0, "order_number": 1, "status": 1},
+    )
+    table["active_order"] = (
+        {"order_number": order["order_number"], "status": order["status"]}
+        if order else None
+    )
     return table
+
+
+_PAYMENT_METHOD_DEFAULTS = {
+    "efectivo": True,
+    "yape": True,
+    "plin": True,
+    "transferencia": True,
+    "tarjeta": False,
+}
+
+
+def _public_payment_settings(cfg: dict) -> dict:
+    return {
+        "enable_efectivo": cfg.get("enable_efectivo", _PAYMENT_METHOD_DEFAULTS["efectivo"]),
+        "enable_yape": cfg.get("enable_yape", _PAYMENT_METHOD_DEFAULTS["yape"]),
+        "enable_plin": cfg.get("enable_plin", _PAYMENT_METHOD_DEFAULTS["plin"]),
+        "enable_transferencia": cfg.get("enable_transferencia", _PAYMENT_METHOD_DEFAULTS["transferencia"]),
+        "enable_tarjeta": cfg.get("enable_tarjeta", _PAYMENT_METHOD_DEFAULTS["tarjeta"]),
+    }
+
+
+def _ensure_public_payment_method_enabled(method: str, cfg: dict):
+    settings = _public_payment_settings(cfg)
+    if not settings.get(f"enable_{method}", False):
+        raise HTTPException(status_code=400, detail="El método de pago seleccionado no está disponible")
 
 
 @router.get("/payment-config")
@@ -255,11 +295,7 @@ async def public_payment_config():
     r = await _get_restaurant()
     cfg = await db.payment_configs.find_one({"restaurant_id": r["id"]}, {"_id": 0}) or {}
     return {
-        "enable_efectivo": cfg.get("enable_efectivo", True),
-        "enable_yape": cfg.get("enable_yape", True),
-        "enable_plin": cfg.get("enable_plin", True),
-        "enable_transferencia": cfg.get("enable_transferencia", True),
-        "enable_tarjeta": cfg.get("enable_tarjeta", False),
+        **_public_payment_settings(cfg),
         "yape_number": cfg.get("yape_number"),
         "yape_holder": cfg.get("yape_holder"),
         "yape_qr": cfg.get("yape_qr"),
@@ -274,6 +310,51 @@ async def public_payment_config():
     }
 
 
+async def _append_public_round(restaurant: dict, order: dict, data: PublicOrderCreate):
+    """Add a guest's next round to the open table bill. Same order, same atención."""
+    enriched, _ = await _enrich_items(data.items, restaurant)
+    combined = list(order.get("items") or []) + enriched
+    subtotal, total = _money_totals(order, combined)
+    new_status = _derive_kitchen_status(combined, order["status"])
+    if order["status"] == "entregado":
+        new_status = "enviado_cocina"
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    patch.update(ticket_fields(order, new_status, order.get("amount_paid"), total))
+    await _save_public_order(order, patch)
+    emit_order(
+        restaurant["id"],
+        order["id"],
+        patch["status"],
+        source=order.get("source"),
+        extra="items_added",
+        order_number=order.get("order_number"),
+    )
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": restaurant["id"],
+        "user_id": None,
+        "action": "public_items_added",
+        "entity": "order",
+        "entity_id": order["id"],
+        "details": {
+            "order_number": order.get("order_number"),
+            "tracking_code": order.get("tracking_code"),
+            "items_added": len(enriched),
+            "source": "second_round",
+        },
+        "created_at": _now(),
+    })
+    return {
+        "id": order["id"],
+        "order_number": order.get("order_number"),
+        "tracking_code": order.get("tracking_code"),
+        "status": patch["status"],
+        "total": patch["total"],
+        "payment_method": order.get("payment_method_choice") or data.payment_method,
+        "added_to_order": True,
+    }
+
+
 @router.post("/orders")
 async def public_create_order(data: PublicOrderCreate, request: Request):
     if not public_order_limiter.allow(client_host(request)):
@@ -281,6 +362,8 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     r = await _get_restaurant()
     if not data.items:
         raise HTTPException(status_code=400, detail="Agrega al menos un producto")
+    payment_cfg = await db.payment_configs.find_one({"restaurant_id": r["id"]}, {"_id": 0}) or {}
+    _ensure_public_payment_method_enabled(data.payment_method, payment_cfg)
     if data.order_type != "local":
         if not (data.customer_name or "").strip() or not (data.customer_phone or "").strip():
             raise HTTPException(status_code=400, detail="Nombre y celular son requeridos")
@@ -306,14 +389,18 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             raise HTTPException(status_code=400, detail="Esa mesa no existe")
         if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
             raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
-        if table.get("status") != "disponible":
-            raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
         existing = await db.orders.find_one({
             "restaurant_id": r["id"],
             "table_id": table_id,
             "status": {"$in": _ACTIVE_ORDER_STATUSES},
         })
         if existing:
+            if existing.get("status") == "pendiente_pago":
+                raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
+            if not existing.get("attention_open"):
+                raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
+            return await _append_public_round(r, existing, data)
+        if table.get("status") != "disponible":
             raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
 
     enriched, subtotal = await _enrich_items(data.items, r)
@@ -371,6 +458,19 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             {"$set": {"status": "ocupada", "updated_at": _now()}},
         )
         emit_notice(r["id"], "table", table_id=order["table_id"], status="ocupada")
+        try:
+            opened = await open_table_attention(
+                db,
+                restaurant_id=r["id"],
+                table_id=order["table_id"],
+                order_id=order["id"],
+                user_id=None,
+                now=order["created_at"],
+            )
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=400, detail=exc.detail)
+        order["attention_id"] = opened["id"]
+        order["attention_open"] = True
     emit_order(r["id"], order_id, order["status"], source="public", order_number=order_no)
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -540,6 +640,8 @@ async def upload_proof(tracking_code: str, data: PublicProofUpload):
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o.get("status") in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if not data.payment_proof or not data.payment_proof.startswith("data:image"):
         raise HTTPException(status_code=400, detail="Imagen inválida")
     if len(data.payment_proof) > 2_500_000:

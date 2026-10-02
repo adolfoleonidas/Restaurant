@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,6 +15,7 @@ export default function Categorias() {
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ name: '', description: '', sort_order: 0 });
+    const [confirmDelete, setConfirmDelete] = useState(null);
 
     const load = async () => { const { data } = await api.get('/categories'); setCats(data); };
     useEffect(() => { load(); }, []);
@@ -28,33 +30,44 @@ export default function Categorias() {
             setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
-    const del = async (c) => {
-        if (!window.confirm(`Eliminar categoría "${c.name}"?`)) return;
-        try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); await load(); }
+    const doDelete = async () => {
+        if (!confirmDelete) return;
+        try { await api.delete(`/categories/${confirmDelete.id}`); toast.success('Categoría eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        finally { setConfirmDelete(null); }
     };
 
     return (
-        <div className="space-y-5" data-testid="categorias-root">
-            <div className="flex items-center justify-between">
-                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Categorías</h1>
+        <div className="space-y-6" data-testid="categorias-root">
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+                <div>
+                    <p className="page-kicker mb-1">Carta</p>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Categorías</h1>
+                    <p className="text-sm text-muted-foreground mt-1">Agrupá los platos de la carta. El orden define cómo aparecen en el menú.</p>
+                </div>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
             </div>
             <Card><CardContent className="p-0">
-                <div className="divide-y">
-                    {cats.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between p-4">
-                            <div>
-                                <div className="font-medium">{c.name}</div>
-                                <div className="text-xs text-muted-foreground">{c.description || 'Sin descripción'} · Orden: {c.sort_order}</div>
+                {cats.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-muted-foreground">
+                        No hay categorías todavía. Creá la primera para agrupar los platos.
+                    </div>
+                ) : (
+                    <div className="divide-y">
+                        {cats.map((c) => (
+                            <div key={c.id} className="flex items-center justify-between p-4" data-testid={`categoria-row-${c.id}`}>
+                                <div>
+                                    <div className="font-medium">{c.name}</div>
+                                    <div className="text-xs text-muted-foreground">{c.description || 'Sin descripción'} · Orden: {c.sort_order}</div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                                    <Button size="icon" variant="ghost" onClick={() => setConfirmDelete(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => del(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+                        ))}
+                    </div>
+                )}
             </CardContent></Card>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
@@ -71,6 +84,19 @@ export default function Categorias() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Eliminar categoría «{confirmDelete?.name}»</AlertDialogTitle>
+                        <AlertDialogDescription>Los platos de esta categoría quedan sin categoría asignada. Esta acción no se puede deshacer.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={doDelete} data-testid="categoria-confirm-delete">Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

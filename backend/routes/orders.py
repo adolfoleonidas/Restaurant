@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import uuid
+from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
@@ -21,6 +22,15 @@ from order_flow import (
 )
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
+from attention import (
+    AttentionBlocked,
+    abandon_table_attention,
+    assert_close_role,
+    close_block_reason,
+    close_table_attention,
+    load_attention,
+    open_table_attention,
+)
 
 router = APIRouter()
 
@@ -108,15 +118,8 @@ async def _save_order(order: dict, fields: dict):
 
 
 async def _release_paid_table(order: dict, status: str):
-    if status != "pagado" or not order.get("table_id"):
-        return
-    restaurant = await db.restaurants.find_one({"id": order["restaurant_id"]}, {"_id": 0})
-    table_status = "disponible" if (restaurant or {}).get("auto_release_table") else "pagada"
-    await db.tables.update_one(
-        {"id": order["table_id"]},
-        {"$set": {"status": table_status, "updated_at": _now()}},
-    )
-    emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status=table_status)
+    """Paying or serving keeps the table. Only closing the atención frees it."""
+    return None
 
 
 def _apply_bill(order: dict, items: list, removed_item: dict = None):
@@ -153,7 +156,10 @@ async def list_orders(
     if table_id:
         q["table_id"] = table_id
     if active_only:
-        q["status"] = {"$nin": ["pagado", "cancelado"]}
+        q["$or"] = [
+            {"status": {"$nin": ["pagado", "cancelado"]}},
+            {"attention_open": True},
+        ]
     items = await db.orders.find(q, _order_projection(user)).sort("created_at", -1).limit(limit).to_list(limit)
     return items
 
@@ -212,6 +218,13 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         })
         if existing:
             raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+        open_attention = await db.attentions.find_one({
+            "restaurant_id": user["restaurant_id"],
+            "table_id": data.table_id,
+            "status": "abierta",
+        })
+        if open_attention:
+            raise HTTPException(status_code=400, detail="La mesa ya tiene una atención abierta")
 
     items = [it.model_dump() for it in data.items]
     enriched, subtotal = await _compute_total(items, user["restaurant_id"]) if items else ([], 0.0)
@@ -249,6 +262,17 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
             {"$set": {"status": "ocupada", "updated_at": _now()}}
         )
         emit_notice(user["restaurant_id"], "table", table_id=data.table_id, status="ocupada")
+    if data.order_type == "mesa" and data.table_id:
+        opened = await open_table_attention(
+            db,
+            restaurant_id=user["restaurant_id"],
+            table_id=data.table_id,
+            order_id=order_id,
+            user_id=user["id"],
+            now=o["updated_at"],
+        )
+        o["attention_id"] = opened["id"]
+        o["attention_open"] = True
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no)
     return {k: v for k, v in o.items() if k != "_id"}
@@ -450,6 +474,90 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
     return await db.orders.find_one({"id": order_id}, {"_id": 0})
 
 
+class CloseAttentionBody(BaseModel):
+    method: Optional[str] = None
+    amount: Optional[float] = None
+    received_amount: Optional[float] = None
+    idempotency_key: Optional[str] = None
+
+
+@router.post("/{order_id}/close-attention")
+async def close_attention(
+    order_id: str,
+    data: Optional[CloseAttentionBody] = None,
+    user: dict = Depends(require_roles(["admin", "mozo", "cajero"])),
+):
+    try:
+        assert_close_role(user)
+    except AttentionBlocked as exc:
+        raise HTTPException(status_code=403, detail=exc.detail)
+    data = data or CloseAttentionBody()
+    order = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order.get("table_id") and not order.get("attention_id"):
+        try:
+            opened = await open_table_attention(
+                db,
+                restaurant_id=user["restaurant_id"],
+                table_id=order["table_id"],
+                order_id=order["id"],
+                user_id=user["id"],
+                now=_now(),
+            )
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=400, detail=exc.detail)
+        order["attention_id"] = opened["id"]
+        order["attention_open"] = True
+    attention = await load_attention(db, order)
+    if attention and attention.get("status") == "cerrada":
+        return attention
+    payments = await db.payments.find({
+        "restaurant_id": order["restaurant_id"],
+        "order_id": order["id"],
+        "status": "completed",
+    }).to_list(50)
+    reason = close_block_reason(order, payments, attention)
+    if reason in ("Todavía hay productos sin entregar", "Hay un pago por verificar", "La cuenta no cuadra"):
+        raise HTTPException(status_code=400, detail=reason)
+    if reason == "La cuenta no está cubierta":
+        if data.method is None:
+            raise HTTPException(status_code=400, detail=reason)
+        if data.method != "efectivo":
+            raise HTTPException(status_code=400, detail="Ese medio lo cobra caja")
+        total = round(float(order.get("total") or 0), 2)
+        paid = round(float(order.get("amount_paid") or 0), 2)
+        remainder = round(total - paid, 2)
+        if data.amount is None or abs(float(data.amount) - remainder) > 0.009:
+            raise HTTPException(status_code=400, detail=reason)
+        from routes.payments import create_payment
+        from models import PaymentCreate
+        await create_payment(PaymentCreate(
+            order_id=order["id"],
+            method="efectivo",
+            amount=remainder,
+            received_amount=data.received_amount if data.received_amount is not None else remainder,
+            idempotency_key=data.idempotency_key,
+        ), user)
+        order = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]})
+        attention = await load_attention(db, order)
+        if attention and attention.get("status") == "cerrada":
+            return attention
+    elif reason:
+        raise HTTPException(status_code=400, detail=reason)
+    try:
+        closed = await close_table_attention(db, order=order, user=user, now=_now())
+    except AttentionBlocked as exc:
+        if exc.detail == "La atención ya está cerrada" and attention:
+            stored = await load_attention(db, order)
+            if stored and stored.get("status") == "cerrada":
+                return stored
+        raise HTTPException(status_code=400, detail=exc.detail)
+    if order.get("table_id"):
+        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status="disponible")
+    return closed
+
+
 @router.post("/{order_id}/reassign")
 async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depends(require_roles(["admin"]))):
     o = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
@@ -544,12 +652,6 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
         update["items"] = items
     if new_status == "cancelado":
         update["cancellation_reason"] = data.reason
-        if o.get("table_id"):
-            await db.tables.update_one(
-                {"id": o["table_id"]},
-                {"$set": {"status": "disponible", "updated_at": _now()}}
-            )
-            emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="disponible")
     if new_status == "entregado":
         items = o.get("items") or []
         for it in items:
@@ -567,6 +669,9 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
         emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="esperando_pago")
 
     await _save_order(o, update)
+    if new_status == "cancelado" and o.get("table_id"):
+        await abandon_table_attention(db, o, user, _now())
+        emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="disponible")
     await _release_paid_table(o, update["status"])
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})
     emit_order(user["restaurant_id"], order_id, update["status"], source=o.get("source"))

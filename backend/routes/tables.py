@@ -38,10 +38,18 @@ async def list_tables(user: dict = Depends(get_current_user)):
     }
     if user.get("role") != "cocina":
         proj["total"] = 1
+        proj["payment_status"] = 1
+        proj["amount_paid"] = 1
+        proj["fulfillment_status"] = 1
+        proj["attention_open"] = 1
+        proj["attention_id"] = 1
     active_orders = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
-            "status": {"$nin": ["pagado", "cancelado"]}
+            "$or": [
+                {"status": {"$nin": ["pagado", "cancelado"]}},
+                {"attention_open": True},
+            ],
         },
         proj,
     ).to_list(1000)
@@ -150,9 +158,14 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     })
     if active:
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
-    if t.get("status") == "pagada":
-        raise HTTPException(status_code=400, detail="Liberá la mesa pagada antes de tomarla")
-    if t.get("status") not in ("disponible", "ocupada"):
+    open_attention = await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"],
+        "table_id": table_id,
+        "attention_open": True,
+    })
+    if open_attention:
+        raise HTTPException(status_code=400, detail="Cerrá la atención para tomar la mesa")
+    if t.get("status") not in ("disponible", "ocupada", "pagada"):
         raise HTTPException(status_code=400, detail="Esta mesa no se puede tomar")
     await db.tables.update_one(
         {"id": table_id},
@@ -174,6 +187,13 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
         "table_id": table_id,
         "status": {"$nin": ["pagado", "cancelado"]},
     })
+    open_attention = await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"],
+        "table_id": table_id,
+        "attention_open": True,
+    })
+    if open_attention:
+        raise HTTPException(status_code=400, detail="Cerrá la atención para liberar la mesa.")
     if active:
         raise HTTPException(status_code=400, detail="Hay un pedido enviado. No se puede liberar como borrador.")
     await db.tables.update_one(

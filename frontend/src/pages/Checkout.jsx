@@ -73,6 +73,12 @@ export default function Checkout() {
     const total = subtotal + deliveryFee;
 
     const enabledMethods = paymentCfg ? ['efectivo', 'yape', 'plin', 'transferencia', 'tarjeta'].filter((m) => paymentCfg[`enable_${m}`]) : [];
+    const joiningOrder = (() => {
+        if (orderType !== 'local') return null;
+        const active = tableInfo?.active_order || tables.find((t) => t.id === tableId)?.active_order;
+        if (!active || active.status === 'pendiente_pago') return null;
+        return active;
+    })();
 
     if (items.length === 0 && !confirmed) {
         return (
@@ -149,13 +155,15 @@ export default function Checkout() {
                 });
             }
             clear();
-            toast.success(`Pedido #${data.order_number} confirmado`);
+            toast.success(data.added_to_order
+                ? `Platos agregados al pedido #${data.order_number}`
+                : `Pedido #${data.order_number} confirmado`);
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
         finally { setSubmitting(false); }
     };
 
     if (confirmed) {
-        const needsProof = ['yape', 'plin', 'transferencia'].includes(confirmed.payment_method);
+        const needsProof = !confirmed.added_to_order && ['yape', 'plin', 'transferencia'].includes(confirmed.payment_method);
         return (
             <div className="max-w-2xl mx-auto px-4 py-10 space-y-5" data-testid="checkout-confirmed-root">
                 <Card>
@@ -163,8 +171,8 @@ export default function Checkout() {
                         <div className="h-16 w-16 rounded-sm bg-primary text-primary-foreground mx-auto flex items-center justify-center mb-3">
                             <CheckCircle2 className="h-9 w-9" />
                         </div>
-                        <h1 className="font-display italic text-3xl font-bold">Pedido en cocina</h1>
-                        <p className="text-muted-foreground mt-1">Seguí el estado con tu código. Si necesitás hablar con la casa, usá WhatsApp.</p>
+                        <h1 className="font-display italic text-3xl font-bold">{confirmed.added_to_order ? 'Platos agregados' : 'Pedido en cocina'}</h1>
+                        <p className="text-muted-foreground mt-1">{confirmed.added_to_order ? 'Quedaron en la misma cuenta de la mesa.' : 'Seguí el estado con tu código. Si necesitás hablar con la casa, usá WhatsApp.'}</p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
                             <span className="font-display text-3xl font-bold">#{confirmed.order_number}</span>
@@ -257,7 +265,15 @@ export default function Checkout() {
                         <Card><CardContent className="p-5">
                             <h2 className="font-display text-lg font-semibold mb-3">{tableInfo ? 'Tu mesa' : '¿En qué mesa estás?'}</h2>
                             {tableInfo ? (
-                                <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{tableInfo.number}</span>{tableInfo.area ? ` · ${tableInfo.area}` : ''}</p>
+                                <div>
+                                    <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{tableInfo.number}</span>{tableInfo.area ? ` · ${tableInfo.area}` : ''}</p>
+                                    {tableInfo.active_order && tableInfo.active_order.status !== 'pendiente_pago' && (
+                                        <p className="text-sm text-muted-foreground mt-2" data-testid="checkout-sumar-pedido">Los platos se suman al pedido #{tableInfo.active_order.order_number}.</p>
+                                    )}
+                                    {tableInfo.active_order?.status === 'pendiente_pago' && (
+                                        <p className="text-sm text-amber-700 mt-2">La cuenta ya fue solicitada. Acercate a caja.</p>
+                                    )}
+                                </div>
                             ) : restaurant?.require_table_qr ? (
                                 <p className="text-sm text-muted-foreground">Escaneá el QR de tu mesa para pedir en el local.</p>
                             ) : tables.length === 0 ? (
@@ -267,7 +283,8 @@ export default function Checkout() {
                                     {tables.map((t) => {
                                         const active = t.active_order;
                                         const billPending = active?.status === 'pendiente_pago';
-                                        const blocked = billPending || t.status !== 'disponible';
+                                        const joining = Boolean(active) && !billPending;
+                                        const blocked = billPending || (t.status !== 'disponible' && !joining);
                                         return (
                                             <button
                                                 key={t.id}
@@ -280,6 +297,7 @@ export default function Checkout() {
                                                 <div className="font-display italic text-xl font-semibold">{t.number}</div>
                                                 <div className="text-[11px] text-muted-foreground">{t.area}</div>
                                                 {billPending && <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>}
+                                                {joining && <div className="mt-1 text-[10px] font-medium text-primary">Sumar al #{active.order_number}</div>}
                                                 {blocked && !billPending && <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>}
                                             </button>
                                         );
@@ -308,7 +326,12 @@ export default function Checkout() {
                         </div>
                     </CardContent></Card>
 
-                    {/* Payment method */}
+                    {joiningOrder ? (
+                        <Card><CardContent className="p-5">
+                            <h2 className="font-display text-lg font-semibold mb-1">Misma cuenta</h2>
+                            <p className="text-sm text-muted-foreground">Estos platos se suman al pedido #{joiningOrder.order_number}. La mesa se cobra al cerrar.</p>
+                        </CardContent></Card>
+                    ) : (
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-3">Método de pago</h2>
                         <Tabs value={method} onValueChange={setMethod}>
@@ -367,6 +390,7 @@ export default function Checkout() {
                             )}
                         </div>
                     </CardContent></Card>
+                    )}
                 </div>
 
                 {/* Summary */}
@@ -397,8 +421,8 @@ export default function Checkout() {
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
                 <div className="max-w-5xl mx-auto">
-                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0} className="w-full h-12" data-testid="checkout-confirmar-button">
-                        {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
+                    <Button onClick={submit} disabled={submitting || (!joiningOrder && enabledMethods.length === 0) || tableInfo?.active_order?.status === 'pendiente_pago'} className="w-full h-12" data-testid="checkout-confirmar-button">
+                        {submitting ? 'Procesando…' : joiningOrder ? `Sumar al pedido #${joiningOrder.order_number} · ${fmtMoney(total)}` : `Confirmar pedido · ${fmtMoney(total)}`}
                     </Button>
                 </div>
             </div>

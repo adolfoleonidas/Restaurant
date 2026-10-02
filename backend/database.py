@@ -29,6 +29,12 @@ async def ensure_indexes():
         },
         name="uniq_active_order_per_table",
     )
+    await db.attentions.create_index(
+        [("restaurant_id", 1), ("table_id", 1)],
+        unique=True,
+        partialFilterExpression={"status": "abierta"},
+        name="uniq_open_attention_per_table",
+    )
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])

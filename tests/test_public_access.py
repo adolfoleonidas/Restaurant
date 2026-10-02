@@ -12,9 +12,9 @@ os.environ.setdefault("DB_NAME", "restaurant_db_unit")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from models import PublicOrderCreate, OrderItemInput
+from models import PublicOrderCreate, OrderItemInput, PublicProofUpload
 from routes.orders import kitchen_orders
-from routes.public import public_create_order, public_tables
+from routes.public import public_create_order, public_tables, upload_proof
 from guest_access import read_table_token, sign_table, public_order_limiter
 from test_money_integrity import _DB, _cashier
 import routes.orders as order_routes
@@ -54,6 +54,7 @@ def _world():
         "is_available": True,
         "is_combo": False,
     })
+    db.payment_configs = type(db.orders)()
     return db
 
 
@@ -176,3 +177,98 @@ def test_revoked_or_rotated_qr_is_rejected():
     assert created["id"]
     assert revoked is not None and revoked.status_code == 400
     assert rotated is not None and rotated.status_code == 400
+
+
+def test_public_proof_upload_accepts_open_order_and_rejects_closed_orders():
+    async def run():
+        db = _world()
+        _bind(db)
+        open_order = {
+            "id": "order-open",
+            "restaurant_id": "rest-1",
+            "tracking_code": "OPEN1234",
+            "status": "enviado_cocina",
+            "updated_at": "2026-09-11T12:00:00+00:00",
+        }
+        paid_order = {**open_order, "id": "order-paid", "tracking_code": "PAID1234", "status": "pagado"}
+        cancelled_order = {**open_order, "id": "order-cancelled", "tracking_code": "CANCEL12", "status": "cancelado"}
+        db.orders.docs.extend([open_order, paid_order, cancelled_order])
+        proof = PublicProofUpload(payment_proof="data:image/png;base64,abc")
+
+        accepted = await upload_proof("open1234", proof)
+        stored_open = await db.orders.find_one({"id": "order-open"})
+        try:
+            await upload_proof("paid1234", proof)
+            paid = None
+        except HTTPException as exc:
+            paid = exc
+        try:
+            await upload_proof("cancel12", proof)
+            cancelled = None
+        except HTTPException as exc:
+            cancelled = exc
+        return accepted, stored_open, paid, cancelled
+
+    accepted, stored_open, paid, cancelled = asyncio.run(run())
+    assert accepted == {"ok": True}
+    assert stored_open["payment_status"] == "comprobante_subido"
+    assert stored_open["payment_proof_url"].startswith("data:image")
+    assert paid is not None and paid.status_code == 400
+    assert paid.detail == "El pedido ya está cerrado"
+    assert cancelled is not None and cancelled.status_code == 400
+    assert cancelled.detail == "El pedido ya está cerrado"
+
+
+def test_public_order_rejects_disabled_payment_method_but_keeps_enabled_defaults():
+    async def run():
+        db = _world()
+        db.payment_configs.docs.append({
+            "restaurant_id": "rest-1",
+            "enable_yape": False,
+            "enable_plin": True,
+        })
+        _bind(db)
+        public_order_limiter.reset()
+        try:
+            await public_create_order(_body(payment_method="yape"), _Request("10.0.0.21"))
+            disabled = None
+        except HTTPException as exc:
+            disabled = exc
+
+        public_order_limiter.reset()
+        default_enabled = await public_create_order(
+            _body(payment_method="efectivo", order_type="recojo", table_token=None, table_id=None),
+            _Request("10.0.0.22"),
+        )
+        public_order_limiter.reset()
+        configured_enabled = await public_create_order(
+            _body(payment_method="plin", order_type="recojo", table_token=None, table_id=None),
+            _Request("10.0.0.23"),
+        )
+        return disabled, default_enabled, configured_enabled
+
+    disabled, default_enabled, configured_enabled = asyncio.run(run())
+    assert disabled is not None and disabled.status_code == 400
+    assert disabled.detail == "El método de pago seleccionado no está disponible"
+    assert default_enabled["payment_method"] == "efectivo"
+    assert configured_enabled["payment_method"] == "plin"
+
+
+def test_public_order_rejects_card_when_default_payment_config_disables_it():
+    async def run():
+        db = _world()
+        _bind(db)
+        public_order_limiter.reset()
+        try:
+            await public_create_order(
+                _body(payment_method="tarjeta", order_type="recojo", table_token=None, table_id=None),
+                _Request("10.0.0.24"),
+            )
+            blocked = None
+        except HTTPException as exc:
+            blocked = exc
+        return blocked
+
+    blocked = asyncio.run(run())
+    assert blocked is not None and blocked.status_code == 400
+    assert blocked.detail == "El método de pago seleccionado no está disponible"

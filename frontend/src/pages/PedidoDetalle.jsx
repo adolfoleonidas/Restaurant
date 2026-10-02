@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { useNotify } from '@/contexts/NotifyContext';
+import { canCloseAttention, itemsReadyToClose, paymentAwaitingCheck, postCloseAttention } from '@/lib/attentionClose';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -38,6 +39,7 @@ export default function PedidoDetalle() {
     const [categoryId, setCategoryId] = useState('all');
     const [cancelDlg, setCancelDlg] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
+    const [closing, setClosing] = useState(false);
 
     const table = useMemo(() => (tables || []).find((t) => t.id === order?.table_id), [tables, order]);
 
@@ -89,6 +91,22 @@ export default function PedidoDetalle() {
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
+
+    const closeAttention = async () => {
+        if (closing) return;
+        setClosing(true);
+        try {
+            await postCloseAttention(api, order);
+            toast.success('Mesa libre');
+            navigate('/mesas');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo cerrar');
+            setClosing(false);
+        }
+    };
+
+    const showClose = canCloseAttention(user) && order.attention_open && itemsReadyToClose(order);
+    const awaitingPaymentCheck = showClose && paymentAwaitingCheck(order);
 
     const requestBill = async () => {
         try {
@@ -279,6 +297,14 @@ export default function PedidoDetalle() {
                 )}
                 {order.status === 'pendiente_pago' && !canCharge && (
                     <div className="text-center text-sm text-muted-foreground py-2">Cuenta solicitada · se paga en caja</div>
+                )}
+                {awaitingPaymentCheck && (
+                    <div className="text-center text-sm text-muted-foreground py-2" data-testid="pedido-pago-verificar">Pago por verificar</div>
+                )}
+                {showClose && !awaitingPaymentCheck && (
+                    <Button onClick={closeAttention} disabled={closing} className="w-full h-14 rounded-full text-base" data-testid="pedido-cerrar-atencion">
+                        Cobrar y cerrar
+                    </Button>
                 )}
                 {order.status === 'pagado' && (
                     <Button variant="outline" className="w-full h-12" onClick={() => navigate('/caja')} data-testid="pedido-ver-caja">
