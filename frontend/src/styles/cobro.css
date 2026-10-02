@@ -764,8 +764,20 @@
   .cobro-checkout .line-items-region[hidden] { display: none !important; }
   .cobro-checkout .pay-hero { margin-bottom: 14px; }
   .cobro-checkout .pay-hero output { font-size: 36px; }
-  .cobro-checkout .method { height: 68px; }
+  /* Method rail: horizontal scroll en móvil */
+  .cobro-checkout .method-rail {
+    display: flex; overflow-x: auto; overflow-y: hidden;
+    gap: 10px; padding: 4px 2px 8px; scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .cobro-checkout .method-rail::-webkit-scrollbar { display: none; }
+  .cobro-checkout .method {
+    flex: 0 0 auto; width: 80px; height: 72px; scroll-snap-align: start;
+  }
   .cobro-checkout .payment-card { padding: 15px; border-radius: 12px; }
+  /* Presets de efectivo: una sola línea, más compactos */
+  .cobro-checkout .preset-cash { flex-wrap: nowrap; overflow-x: auto; gap: 8px; margin: -4px 0 12px; padding-bottom: 4px; }
+  .cobro-checkout .preset-cash button { flex: 0 0 auto; min-width: 70px; padding: 8px 12px; font-size: 13px; }
   .cobro-checkout-footer {
     display: block; gap: 0; padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
   }
