@@ -1,5 +1,6 @@
 """Public orders need a table QR, a rate limit, and staff acceptance before the kitchen."""
 import asyncio
+import base64
 import os
 import sys
 from pathlib import Path
@@ -351,6 +352,11 @@ def test_public_order_request_id_accepts_uuid_v4_but_rejects_v1():
         _body(request_id="a8098c1a-f86e-11d8-b102-1b6f7c5f3a21")
 
 
+def _png_proof() -> str:
+    """A tiny payload with a real PNG signature that passes proof validation."""
+    return "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32).decode()
+
+
 def test_public_proof_upload_accepts_open_order_and_rejects_closed_orders():
     async def run():
         db = _world()
@@ -371,7 +377,7 @@ def test_public_proof_upload_accepts_open_order_and_rejects_closed_orders():
             "payment_status": "confirmado",
         }
         db.orders.docs.extend([open_order, paid_order, cancelled_order, confirmed_order])
-        proof = PublicProofUpload(payment_proof="data:image/png;base64,abc")
+        proof = PublicProofUpload(payment_proof=_png_proof())
 
         accepted = await upload_proof("open1234", proof)
         stored_open = await db.orders.find_one({"id": "order-open"})
@@ -392,6 +398,40 @@ def test_public_proof_upload_accepts_open_order_and_rejects_closed_orders():
         exc = blocked[label]
         assert exc is not None and exc.status_code == 400
         assert exc.detail == "El pedido ya está cerrado"
+
+
+def test_public_proof_upload_rejects_broken_or_non_image_payloads():
+    async def run():
+        db = _world()
+        _bind(db)
+        db.orders.docs.append({
+            "id": "order-open",
+            "restaurant_id": "rest-1",
+            "tracking_code": "OPEN1234",
+            "status": "enviado_cocina",
+            "updated_at": "2026-09-11T12:00:00+00:00",
+        })
+        cases = [
+            ("data:image/png;base64,abc", "Imagen inválida"),
+            ("data:text/html;base64,PGI+", "Imagen inválida"),
+            ("not-a-data-url", "Imagen inválida"),
+            ("data:image/png;base64," + base64.b64encode(b"not-a-png-image").decode(),
+             "El contenido de la imagen no coincide"),
+        ]
+        results = []
+        for payload, expected in cases:
+            try:
+                await upload_proof("open1234", PublicProofUpload(payment_proof=payload))
+                results.append((payload, expected, None))
+            except HTTPException as exc:
+                results.append((payload, expected, exc))
+        return results, db
+
+    results, db = asyncio.run(run())
+    for payload, expected, exc in results:
+        assert exc is not None and exc.status_code == 400, payload
+        assert exc.detail == expected, payload
+    assert "payment_proof_url" not in db.orders.docs[0]
 
 
 def test_public_order_rejects_disabled_payment_method_but_keeps_enabled_defaults():
