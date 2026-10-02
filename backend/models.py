@@ -203,6 +203,7 @@ class BranchCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     timezone: str
     business_day_cutoff: str
+    pickup_enabled: bool = Field(default=False, strict=True)
 
     @field_validator("name")
     @classmethod
@@ -226,12 +227,20 @@ class BranchUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=100)
     timezone: Optional[str] = None
     business_day_cutoff: Optional[str] = None
+    pickup_enabled: Optional[bool] = Field(default=None, strict=True)
 
     @field_validator("name", "timezone", "business_day_cutoff", mode="before")
     @classmethod
     def reject_explicit_null(cls, value):
         if value is None:
             raise ValueError("Explicit null is not allowed for branch settings")
+        return value
+
+    @field_validator("pickup_enabled", mode="before")
+    @classmethod
+    def reject_null_pickup_flag(cls, value):
+        if value is None:
+            raise ValueError("Pickup availability cannot be null")
         return value
 
     @field_validator("name")
@@ -323,6 +332,7 @@ class PublicOrderCreate(BaseModel):
     order_type: Literal["local", "recojo", "delivery"]
     table_id: Optional[str] = None
     table_token: Optional[str] = None
+    branch_id: Optional[str] = None
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
     customer_address: Optional[str] = None
@@ -330,6 +340,11 @@ class PublicOrderCreate(BaseModel):
     items: List[OrderItemInput]
     notes: Optional[str] = None
     payment_method: Literal["efectivo", "yape", "plin", "transferencia", "tarjeta"]
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 class PublicProofUpload(BaseModel):

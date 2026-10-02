@@ -51,6 +51,68 @@ function Restaurante() {
     );
 }
 
+function Sucursales() {
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [draft, setDraft] = useState({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
+    const [saving, setSaving] = useState(false);
+    const load = async () => {
+        setLoading(true);
+        try { const { data } = await api.get('/branches'); setBranches(Array.isArray(data) ? data : []); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales'); }
+        finally { setLoading(false); }
+    };
+    useEffect(() => { load(); }, []);
+    const update = (id, key, value) => setBranches((rows) => rows.map((branch) => branch.id === id ? { ...branch, [key]: value } : branch));
+    const create = async () => {
+        setSaving(true);
+        try {
+            await api.post('/branches', draft);
+            setDraft({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
+            toast.success('Sucursal creada'); await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear la sucursal'); }
+        finally { setSaving(false); }
+    };
+    const save = async (branch) => {
+        setSaving(true);
+        try {
+            await api.patch(`/branches/${branch.id}`, {
+                name: branch.name,
+                timezone: branch.timezone,
+                business_day_cutoff: branch.business_day_cutoff,
+                pickup_enabled: Boolean(branch.pickup_enabled),
+            });
+            toast.success('Sucursal guardada'); await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la sucursal'); }
+        finally { setSaving(false); }
+    };
+    const fields = (value, onChange, prefix) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div><Label>Nombre de sucursal</Label><Input value={value.name || ''} onChange={(e) => onChange('name', e.target.value)} data-testid={`${prefix}-name`} /></div>
+            <div><Label>Zona horaria IANA</Label><Input value={value.timezone || ''} onChange={(e) => onChange('timezone', e.target.value)} placeholder="America/Lima" data-testid={`${prefix}-timezone`} /></div>
+            <div><Label>Corte del día de negocio (hora local)</Label><Input type="time" value={value.business_day_cutoff || ''} onChange={(e) => onChange('business_day_cutoff', e.target.value)} data-testid={`${prefix}-cutoff`} /></div>
+        </div>
+    );
+    return (
+        <Card><CardContent className="p-5 space-y-5">
+            <div><h2 className="font-display text-lg font-semibold">Sucursales</h2><p className="text-sm text-muted-foreground">El recojo público solo aparece en sucursales habilitadas explícitamente.</p></div>
+            <div className="rounded-xl border p-4 space-y-3">
+                {fields(draft, (key, value) => setDraft((current) => ({ ...current, [key]: value })), 'branch-new')}
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.pickup_enabled} onChange={(e) => setDraft((current) => ({ ...current, pickup_enabled: e.target.checked }))} data-testid="branch-pickup-enabled-new" />Habilitar recojo público</label>
+                <Button onClick={create} disabled={saving || !draft.name.trim() || !draft.timezone.trim() || !draft.business_day_cutoff} data-testid="branch-create">Crear sucursal</Button>
+            </div>
+            {loading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : branches.map((branch) => (
+                <div key={branch.id} className="rounded-xl border p-4 space-y-3" data-testid={`branch-row-${branch.id}`}>
+                    {fields(branch, (key, value) => update(branch.id, key, value), `branch-${branch.id}`)}
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
+                    <Button onClick={() => save(branch)} disabled={saving || !branch.name?.trim() || !branch.timezone?.trim() || !branch.business_day_cutoff} data-testid={`branch-save-${branch.id}`}>Guardar sucursal</Button>
+                </div>
+            ))}
+            {!loading && branches.length === 0 && <p className="text-sm text-muted-foreground">No hay sucursales configuradas.</p>}
+        </CardContent></Card>
+    );
+}
+
 function Zonas() {
     const [zones, setZones] = useState([]);
     const [dlg, setDlg] = useState(false);
@@ -203,6 +265,7 @@ export default function Configuracion() {
         <div className="space-y-5" data-testid="config-root">
             <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Casa</h1>
             <Restaurante />
+            <Sucursales />
             <Zonas />
             <Mesas />
         </div>

@@ -85,7 +85,7 @@ def _branch(**overrides):
 
 def test_branch_create_requires_name_timezone_and_local_cutoff():
     data = BranchCreate(name=" Sur ", timezone="America/Lima", business_day_cutoff="03:30")
-    assert data.model_dump() == {"name": "Sur", "timezone": "America/Lima", "business_day_cutoff": "03:30"}
+    assert data.model_dump() == {"name": "Sur", "timezone": "America/Lima", "business_day_cutoff": "03:30", "pickup_enabled": False}
     with pytest.raises(ValidationError):
         BranchCreate(name="Sur", timezone="America/Lima")
     with pytest.raises(ValidationError):
@@ -202,3 +202,21 @@ def test_empty_update_is_rejected_without_mutation(monkeypatch):
         asyncio.run(branch_routes.update_branch("branch-1", BranchUpdate(), _admin()))
     assert error.value.status_code == 400
     assert db.branches.rows == [row]
+
+
+def test_pickup_publication_is_disabled_by_default_and_updates_partially(monkeypatch):
+    db = _DB()
+    monkeypatch.setattr(branch_routes, "db", db)
+    created = asyncio.run(branch_routes.create_branch(
+        BranchCreate(name="Norte", timezone="America/Lima", business_day_cutoff="03:30"), _admin()
+    ))
+    assert created["pickup_enabled"] is False
+    enabled = asyncio.run(branch_routes.update_branch(created["id"], BranchUpdate(pickup_enabled=True), _admin()))
+    assert enabled["pickup_enabled"] is True
+    assert enabled["timezone"] == "America/Lima" and enabled["business_day_cutoff"] == "03:30"
+    with pytest.raises(ValidationError):
+        BranchUpdate(pickup_enabled=None)
+    with pytest.raises(ValidationError):
+        BranchUpdate(pickup_enabled="true")
+    with pytest.raises(ValidationError):
+        BranchCreate(name="South", timezone="America/Lima", business_day_cutoff="03:00", pickup_enabled="true")

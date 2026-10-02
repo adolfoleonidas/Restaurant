@@ -32,6 +32,7 @@ async def create_branch(data: BranchCreate, user: dict = Depends(require_roles([
         "name": data.name,
         "timezone": data.timezone,
         "business_day_cutoff": data.business_day_cutoff,
+        "pickup_enabled": data.pickup_enabled,
         "created_at": timestamp,
         "updated_at": timestamp,
     }
