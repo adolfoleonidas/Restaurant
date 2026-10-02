@@ -8,8 +8,8 @@ module.exports = {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
-                display: ['Fraunces', 'Georgia', 'serif'],
+                sans: ['Instrument Sans', 'Inter', 'system-ui', 'sans-serif'],
+                display: ['Bricolage Grotesque', 'Instrument Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
                 mono: ['IBM Plex Mono', 'ui-monospace', 'monospace'],
             },
             borderRadius: {

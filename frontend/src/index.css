@@ -1,16 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   DESIGN SYSTEM — Fresco (Azul/Blanco)
+   Tokens semánticos. Cambia este archivo para cambiar el tema
+   de toda la app sin tocar componentes.
+   ============================================================ */
+
 body {
     margin: 0;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
 .font-display {
-    font-family: 'Fraunces', Georgia, serif;
+    font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
 }
 
 .font-mono {
@@ -23,58 +32,103 @@ body {
 
 @layer base {
     :root {
-        /* Carta de papel — tema claro (default) */
-        --background: 36 42% 96%;
-        --foreground: 17 42% 14%;
-        --card: 36 50% 99%;
-        --card-foreground: 17 42% 14%;
-        --popover: 36 50% 99%;
-        --popover-foreground: 17 42% 14%;
-        --primary: 13 54% 42%;
-        --primary-foreground: 36 45% 97%;
-        --secondary: 32 28% 92%;
-        --secondary-foreground: 17 32% 18%;
-        --muted: 32 20% 91%;
-        --muted-foreground: 22 12% 38%;
-        --accent: 13 48% 36%;
-        --accent-foreground: 36 45% 97%;
-        --destructive: 8 72% 42%;
-        --destructive-foreground: 36 45% 97%;
-        --border: 30 18% 82%;
-        --input: 30 18% 82%;
-        --ring: 13 54% 42%;
-        --chart-1: 13 54% 46%;
-        --chart-2: 9 68% 46%;
-        --chart-3: 72 40% 38%;
-        --chart-4: 28 50% 42%;
-        --chart-5: 200 28% 42%;
+        /* ---- Fresco (Azul/Blanco) — Light ---- */
+        --background: 220 30% 98%;
+        --foreground: 220 30% 10%;
+        --card: 0 0% 100%;
+        --card-foreground: 220 30% 10%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 220 30% 10%;
+        --primary: 220 75% 45%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 220 25% 92%;
+        --secondary-foreground: 220 25% 15%;
+        --muted: 220 20% 92%;
+        --muted-foreground: 220 15% 35%;
+        --accent: 220 65% 38%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 0 72% 42%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 220 15% 82%;
+        --input: 220 15% 82%;
+        --ring: 220 75% 45%;
+        --chart-1: 220 75% 45%;
+        --chart-2: 320 65% 50%;
+        --chart-3: 160 65% 40%;
+        --chart-4: 30 85% 50%;
+        --chart-5: 190 80% 50%;
         --radius: 0.5rem;
+
+        /* ---- Tokens de marca (accesibles desde CSS directo) ---- */
+        --brand: hsl(var(--primary));
+        --brand-hover: hsl(220 75% 38%);
+        --brand-soft: hsl(220 65% 92%);
+        --on-brand: hsl(var(--primary-foreground));
+        --page: hsl(var(--background));
+        --paper: hsl(var(--card));
+        --surface: hsl(var(--muted));
+        --line: hsl(var(--border));
+        --ink: hsl(var(--foreground));
+        --muted-ink: hsl(var(--muted-foreground));
+        --soft: hsl(220 12% 55%);
+        --warn: 30 85% 50%;
+        --warn-soft: 30 90% 92%;
+        --green: 160 65% 40%;
+        --green-soft: 160 70% 92%;
+        --red: hsl(var(--destructive));
+        --red-soft: hsl(0 85% 92%);
+        --shadow: 0 24px 60px -20px hsl(220 30% 20% / 0.18);
+        --shadow-sm: 0 2px 8px -2px hsl(220 30% 20% / 0.12);
+        --font: 'Instrument Sans', 'Inter', ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+        --display: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
     }
     .dark {
-        --background: 17 47% 12%;
-        --foreground: 38 59% 88%;
-        --card: 16 35% 17%;
-        --card-foreground: 38 59% 88%;
-        --popover: 16 35% 15%;
-        --popover-foreground: 38 59% 88%;
-        --primary: 44 82% 51%;
-        --primary-foreground: 17 47% 12%;
-        --secondary: 18 28% 20%;
-        --secondary-foreground: 36 40% 88%;
-        --muted: 18 22% 20%;
-        --muted-foreground: 30 18% 68%;
-        --accent: 9 70% 45%;
-        --accent-foreground: 38 59% 95%;
-        --destructive: 8 72% 46%;
-        --destructive-foreground: 38 59% 95%;
-        --border: 18 24% 24%;
-        --input: 18 24% 24%;
-        --ring: 44 82% 51%;
-        --chart-1: 44 82% 51%;
-        --chart-2: 9 70% 50%;
-        --chart-3: 72 45% 48%;
-        --chart-4: 28 55% 48%;
-        --chart-5: 200 30% 50%;
+        /* ---- Fresco (Azul/Blanco) — Dark ---- */
+        --background: 220 25% 10%;
+        --foreground: 220 25% 92%;
+        --card: 220 20% 14%;
+        --card-foreground: 220 25% 92%;
+        --popover: 220 20% 12%;
+        --popover-foreground: 220 25% 92%;
+        --primary: 220 75% 58%;
+        --primary-foreground: 220 25% 10%;
+        --secondary: 220 18% 20%;
+        --secondary-foreground: 220 25% 85%;
+        --muted: 220 18% 20%;
+        --muted-foreground: 220 15% 65%;
+        --accent: 220 65% 45%;
+        --accent-foreground: 220 25% 92%;
+        --destructive: 0 72% 46%;
+        --destructive-foreground: 220 25% 92%;
+        --border: 220 18% 24%;
+        --input: 220 18% 24%;
+        --ring: 220 75% 58%;
+        --chart-1: 220 75% 58%;
+        --chart-2: 320 70% 58%;
+        --chart-3: 160 70% 45%;
+        --chart-4: 30 85% 58%;
+        --chart-5: 190 80% 58%;
+
+        /* ---- Tokens de marca (dark) ---- */
+        --brand: hsl(var(--primary));
+        --brand-hover: hsl(220 75% 65%);
+        --brand-soft: hsl(220 65% 20%);
+        --on-brand: hsl(var(--primary-foreground));
+        --page: hsl(var(--background));
+        --paper: hsl(var(--card));
+        --surface: hsl(var(--muted));
+        --line: hsl(var(--border));
+        --ink: hsl(var(--foreground));
+        --muted-ink: hsl(var(--muted-foreground));
+        --soft: hsl(220 12% 65%);
+        --warn: 30 85% 58%;
+        --warn-soft: 30 60% 18%;
+        --green: 160 70% 50%;
+        --green-soft: 160 50% 18%;
+        --red: hsl(var(--destructive));
+        --red-soft: hsl(0 60% 18%);
+        --shadow: 0 24px 60px -20px hsl(220 30% 0% / 0.6);
+        --shadow-sm: 0 2px 8px -2px hsl(220 30% 0% / 0.4);
     }
 }
 
@@ -86,7 +140,8 @@ body {
         @apply bg-background text-foreground;
     }
     h1, h2, h3 {
-        font-family: 'Fraunces', Georgia, serif;
+        font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: -0.02em;
     }
 }
 
@@ -110,37 +165,25 @@ body {
     font-weight: 600;
 }
 
-.state-disponible { background: #E7F4E8; color: #1F5C32; border-color: #C5E3C9; }
-.state-ocupada    { background: #FBE4E0; color: #8B2A1C; border-color: #F0C4BB; }
-.state-esperando  { background: #F8EDD2; color: #6B4E00; border-color: #E8D39A; }
-.state-listo      { background: #E8F0D8; color: #3F5A18; border-color: #C9D9A4; }
-.state-cancelada  { background: #EEEAE6; color: #5C534C; border-color: #D9D2CB; }
-.state-pagado     { background: #E7F4E8; color: #1F5C32; border-color: #C5E3C9; }
-.state-nuevo      { background: #F3E6D4; color: #5C3D1E; border-color: #E2C9A8; }
-.state-enviado    { background: #F8EDD2; color: #6B4E00; border-color: #E8D39A; }
-.state-preparacion{ background: #F6E4D0; color: #7A3F12; border-color: #E8C49A; }
-.state-entregado  { background: #E8F0D8; color: #3F5A18; border-color: #C9D9A4; }
-.state-reservada  { background: #F1E4DC; color: #6B3A28; border-color: #E0C4B6; }
-.state-inactiva   { background: #EEEAE6; color: #5C534C; border-color: #D9D2CB; }
-
-.dark .state-disponible { background: hsl(90 25% 18%); color: hsl(80 40% 72%); border-color: hsl(90 25% 28%); }
-.dark .state-ocupada    { background: hsl(8 40% 18%); color: hsl(8 70% 78%); border-color: hsl(8 40% 30%); }
-.dark .state-esperando  { background: hsl(44 40% 16%); color: hsl(44 80% 70%); border-color: hsl(44 40% 28%); }
-.dark .state-listo      { background: hsl(72 30% 16%); color: hsl(72 45% 72%); border-color: hsl(72 30% 28%); }
-.dark .state-cancelada  { background: hsl(20 10% 18%); color: hsl(20 10% 70%); border-color: hsl(20 10% 28%); }
-.dark .state-pagado     { background: hsl(90 25% 18%); color: hsl(80 40% 72%); border-color: hsl(90 25% 28%); }
-.dark .state-nuevo      { background: hsl(28 30% 16%); color: hsl(38 60% 78%); border-color: hsl(28 30% 28%); }
-.dark .state-enviado    { background: hsl(44 40% 16%); color: hsl(44 80% 70%); border-color: hsl(44 40% 28%); }
-.dark .state-preparacion{ background: hsl(28 45% 16%); color: hsl(28 70% 72%); border-color: hsl(28 45% 28%); }
-.dark .state-entregado  { background: hsl(72 30% 16%); color: hsl(72 45% 72%); border-color: hsl(72 30% 28%); }
-.dark .state-reservada  { background: hsl(16 30% 16%); color: hsl(16 50% 75%); border-color: hsl(16 30% 28%); }
-.dark .state-inactiva   { background: hsl(20 10% 16%); color: hsl(20 10% 60%); border-color: hsl(20 10% 26%); }
+/* State badges — semantic colors that follow the theme */
+.state-disponible { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-ocupada    { background: var(--red-soft); color: var(--red); border-color: hsl(var(--red) / 0.3); }
+.state-esperando  { background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
+.state-listo      { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-cancelada  { background: var(--muted); color: var(--muted-ink); border-color: var(--line); }
+.state-pagado     { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-nuevo      { background: var(--brand-soft); color: var(--brand); border-color: hsl(var(--primary) / 0.3); }
+.state-enviado    { background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
+.state-preparacion{ background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
+.state-entregado  { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-reservada  { background: var(--brand-soft); color: var(--brand); border-color: hsl(var(--primary) / 0.3); }
+.state-inactiva   { background: var(--muted); color: var(--muted-ink); border-color: var(--line); }
 
 .pulse-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: hsl(var(--primary));
+    background-color: var(--brand);
     animation: pulse-soft 1.6s ease-in-out infinite;
 }
 
@@ -165,9 +208,9 @@ body {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: var(--line);
     border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.45);
+    background: var(--soft);
 }

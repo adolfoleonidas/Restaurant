@@ -42,7 +42,7 @@ export default function Pedidos() {
         <div className="space-y-5" data-testid="pedidos-root">
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Receipt className="h-6 w-6 text-primary" /> Pedidos</h1>
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Receipt className="h-6 w-6 text-primary" /> Pedidos</h1>
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
                 {['admin', 'mozo'].includes(user.role) && (

@@ -1,0 +1,56 @@
+/* ============================================================
+   THEME: Caja (Verde/Papel) — Default
+   ============================================================ */
+:root {
+  --background: 36 42% 96%;
+  --foreground: 17 42% 14%;
+  --card: 36 50% 99%;
+  --card-foreground: 17 42% 14%;
+  --popover: 36 50% 99%;
+  --popover-foreground: 17 42% 14%;
+  --primary: 162 78% 23%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 160 40% 92%;
+  --secondary-foreground: 17 32% 18%;
+  --muted: 32 20% 91%;
+  --muted-foreground: 22 12% 38%;
+  --accent: 162 70% 28%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 8 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 30 18% 82%;
+  --input: 30 18% 82%;
+  --ring: 162 78% 23%;
+  --chart-1: 162 78% 30%;
+  --chart-2: 9 68% 46%;
+  --chart-3: 72 40% 38%;
+  --chart-4: 28 50% 42%;
+  --chart-5: 200 28% 42%;
+  --radius: 0.75rem;
+}
+.dark {
+  --background: 22 20% 8%;
+  --foreground: 36 42% 96%;
+  --card: 22 18% 12%;
+  --card-foreground: 36 42% 96%;
+  --popover: 22 18% 10%;
+  --popover-foreground: 36 42% 96%;
+  --primary: 162 70% 48%;
+  --primary-foreground: 22 20% 8%;
+  --secondary: 22 15% 18%;
+  --secondary-foreground: 36 40% 88%;
+  --muted: 22 15% 18%;
+  --muted-foreground: 30 18% 68%;
+  --accent: 162 60% 35%;
+  --accent-foreground: 36 42% 96%;
+  --destructive: 8 72% 46%;
+  --destructive-foreground: 36 42% 96%;
+  --border: 22 15% 22%;
+  --input: 22 15% 22%;
+  --ring: 162 70% 48%;
+  --chart-1: 162 70% 48%;
+  --chart-2: 9 70% 50%;
+  --chart-3: 72 45% 48%;
+  --chart-4: 28 55% 48%;
+  --chart-5: 200 30% 50%;
+}

@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
-import { Search, Grid2X2, Plus, Users, ShoppingCart } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart, Clock, UtensilsCrossed, Receipt, Bell } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { toast } from 'sonner';
@@ -45,6 +45,29 @@ function floorState(t) {
     return { key: 'sentados' };
 }
 
+// Priority rank for table sorting — lower number = higher priority (appears first).
+// Attention-needed states (listo, cuenta, atencion) are surfaced first so staff
+// can locate them at a glance. Among equal priority, older orders rank higher.
+function priorityRank(floorKey, order) {
+    if (floorKey === 'cuenta') return 0;
+    if (floorKey === 'listo') return 1;
+    if (floorKey === 'atencion') return 2;
+    if (floorKey === 'preparando') return 3;
+    if (floorKey === 'entregado') return 4;
+    if (floorKey === 'sentados') return 5;
+    if (floorKey === 'libre') return 6;
+    if (floorKey === 'reservada') return 7;
+    if (floorKey === 'pagada') return 8;
+    if (floorKey === 'inactiva') return 9;
+    return 10;
+}
+
+function orderTimestamp(order) {
+    if (!order?.created_at) return 0;
+    const t = new Date(order.created_at).getTime();
+    return Number.isFinite(t) ? t : 0;
+}
+
 export default function Mesas() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
@@ -69,10 +92,25 @@ export default function Mesas() {
     }, [tables]);
 
     const filtered = useMemo(() => {
-        return (tables || []).filter((t) => {
+        const list = (tables || []).filter((t) => {
             if (areaFilter !== 'todas' && t.area !== areaFilter) return false;
             if (search && !`${t.number} ${t.name}`.toLowerCase().includes(search.toLowerCase())) return false;
             return true;
+        });
+        // Sort by priority (attention-needed first), then by oldest order timestamp.
+        return list.slice().sort((a, b) => {
+            const fa = floorState(a);
+            const fb = floorState(b);
+            const ra = priorityRank(fa.key, a.active_order);
+            const rb = priorityRank(fb.key, b.active_order);
+            if (ra !== rb) return ra - rb;
+            // Among equal priority, older orders first (smaller timestamp = older).
+            const ta = orderTimestamp(a.active_order);
+            const tb = orderTimestamp(b.active_order);
+            if (ta && tb) return ta - tb;
+            if (ta) return -1;
+            if (tb) return 1;
+            return Number(a.number) - Number(b.number);
         });
     }, [tables, areaFilter, search]);
 
@@ -209,7 +247,7 @@ export default function Mesas() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                     <p className="page-kicker mb-1">Salón</p>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Grid2X2 className="h-6 w-6 text-primary" /> Mesas</h1>
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Grid2X2 className="h-6 w-6 text-primary" /> Mesas</h1>
                     <p className="text-muted-foreground text-sm">Tocá una mesa para ver el detalle y actuar.</p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -259,24 +297,81 @@ export default function Mesas() {
                     {filtered.map((t) => {
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
+                        const order = t.active_order;
+                        const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
+                        const elapsed = order?.created_at ? fmtElapsed(order.created_at) : null;
                         return (
-                            <button
+                            <div
                                 key={t.id}
-                                type="button"
                                 data-testid={`mesa-card-${t.number}`}
+                                data-floor-state={floor.key}
                                 onClick={() => openSheet(t)}
-                                className="cursor-pointer rounded-xl border-2 p-4 flex flex-col gap-2 text-left active:scale-[0.99] transition-transform"
-                                style={{ background: s.bg, borderColor: s.border }}
+                                className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
+                                style={{
+                                    background: s.bg,
+                                    borderColor: needsAttention ? s.dot : s.border,
+                                    ...(needsAttention ? { ['--tw-ring-color']: s.dot } : {}),
+                                }}
                             >
-                                <div className="font-display italic text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
-                                    <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
+                                <div
+                                    className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform"
+                                >
+                                    <div className="flex items-start justify-between gap-1">
+                                        <div className="font-display text-3xl sm:text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
+                                        {needsAttention && (
+                                            <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
+                                                <Bell className="h-3.5 w-3.5 text-white" />
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
+                                        <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
+                                    </div>
+                                    {elapsed && floor.key !== 'libre' && floor.key !== 'pagada' && floor.key !== 'inactiva' && (
+                                        <div className="flex items-center gap-1 text-xs" style={{ color: s.fg, opacity: 0.75 }}>
+                                            <Clock className="h-3 w-3" />
+                                            <span>Hace {elapsed}</span>
+                                        </div>
+                                    )}
+                                    {order?.total != null && (
+                                        <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(order.total)}</div>
+                                    )}
                                 </div>
-                                {t.active_order?.total != null && (
-                                    <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(t.active_order.total)}</div>
+                                {floor.key === 'listo' && canServe && (
+                                    <button
+                                        type="button"
+                                        className="mx-3 mb-3 sm:mx-4 sm:mb-4 h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
+                                        style={{ background: s.dot }}
+                                        onClick={(e) => { e.stopPropagation(); deliver(order.id); }}
+                                        data-testid={`mesa-card-deliver-${t.number}`}
+                                    >
+                                        <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" /> Entregar
+                                    </button>
                                 )}
-                            </button>
+                                {floor.key === 'cuenta' && canServe && (
+                                    <button
+                                        type="button"
+                                        className="mx-3 mb-3 sm:mx-4 sm:mb-4 h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
+                                        style={{ background: s.dot }}
+                                        onClick={(e) => { e.stopPropagation(); closeSheet(); navigate(`/pedidos/${order.id}`); }}
+                                        data-testid={`mesa-card-cobrar-${t.number}`}
+                                    >
+                                        <Receipt className="h-3.5 w-3.5 inline mr-1" /> Cobrar
+                                    </button>
+                                )}
+                                {floor.key === 'sentados' && canTake && (
+                                    <button
+                                        type="button"
+                                        className="mx-3 mb-3 sm:mx-4 sm:mb-4 h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
+                                        style={{ background: s.border, color: s.fg }}
+                                        onClick={(e) => { e.stopPropagation(); takeTable(t); }}
+                                        data-testid={`mesa-card-pedir-${t.number}`}
+                                    >
+                                        Tomar pedido
+                                    </button>
+                                )}
+                            </div>
                         );
                     })}
                 </div>
@@ -295,7 +390,7 @@ export default function Mesas() {
                                     <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
                                     <div className="flex items-center gap-2 mt-1">
                                         <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
-                                        <h2 className="font-display italic text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
+                                        <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
                                     </div>
                                     <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
                                         <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas

@@ -1,0 +1,56 @@
+/* ============================================================
+   THEME: Elegante (Oscuro/Madera) — Premium
+   ============================================================ */
+:root {
+  --background: 30 28% 94%;
+  --foreground: 20 35% 12%;
+  --card: 30 38% 98%;
+  --card-foreground: 20 35% 12%;
+  --popover: 30 38% 98%;
+  --popover-foreground: 20 35% 12%;
+  --primary: 18 62% 40%;
+  --primary-foreground: 30 38% 98%;
+  --secondary: 28 25% 88%;
+  --secondary-foreground: 20 35% 18%;
+  --muted: 28 20% 85%;
+  --muted-foreground: 22 12% 35%;
+  --accent: 18 55% 32%;
+  --accent-foreground: 30 38% 98%;
+  --destructive: 8 72% 42%;
+  --destructive-foreground: 30 38% 98%;
+  --border: 28 18% 72%;
+  --input: 28 18% 72%;
+  --ring: 18 62% 40%;
+  --chart-1: 18 62% 40%;
+  --chart-2: 320 55% 45%;
+  --chart-3: 160 55% 35%;
+  --chart-4: 200 55% 45%;
+  --chart-5: 40 70% 50%;
+  --radius: 0.75rem;
+}
+.dark {
+  --background: 22 25% 10%;
+  --foreground: 30 30% 92%;
+  --card: 22 22% 14%;
+  --card-foreground: 30 30% 92%;
+  --popover: 22 22% 12%;
+  --popover-foreground: 30 30% 92%;
+  --primary: 18 65% 52%;
+  --primary-foreground: 22 25% 10%;
+  --secondary: 22 18% 20%;
+  --secondary-foreground: 30 25% 85%;
+  --muted: 22 18% 20%;
+  --muted-foreground: 30 18% 65%;
+  --accent: 18 55% 38%;
+  --accent-foreground: 30 30% 92%;
+  --destructive: 8 72% 46%;
+  --destructive-foreground: 30 30% 92%;
+  --border: 22 18% 24%;
+  --input: 22 18% 24%;
+  --ring: 18 65% 52%;
+  --chart-1: 18 65% 52%;
+  --chart-2: 320 60% 55%;
+  --chart-3: 160 60% 42%;
+  --chart-4: 200 60% 55%;
+  --chart-5: 40 75% 55%;
+}

@@ -54,7 +54,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
             <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
                     <div>
-                        <div className="font-display italic text-3xl font-bold leading-none">{place}</div>
+                        <div className="font-display text-3xl font-bold leading-none">{place}</div>
                         <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                             #{order.order_number}
                             {order.source === 'public' ? ' · carta web' : ''}
@@ -193,7 +193,7 @@ export default function Cocina() {
             <div className="flex items-end justify-between gap-3">
                 <div>
                     <p className="page-kicker mb-1">Pase</p>
-                    <h1 className="font-display italic text-3xl font-semibold">Cocina</h1>
+                    <h1 className="font-display text-3xl font-semibold">Cocina</h1>
                 </div>
                 <Button asChild variant="outline" className="h-10">
                     <Link to="/disponibilidad">Agotar plato</Link>

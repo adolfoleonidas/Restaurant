@@ -39,7 +39,7 @@ export default function Disponibilidad() {
         <div className="space-y-4" data-testid="disponibilidad-root">
             <div>
                 <p className="page-kicker mb-1">Durante el servicio</p>
-                <h1 className="font-display italic text-3xl font-semibold">Agotar o habilitar</h1>
+                <h1 className="font-display text-3xl font-semibold">Agotar o habilitar</h1>
                 <p className="text-sm text-muted-foreground">No hace falta editar precio ni foto. Los pedidos ya tomados no se cancelan solos.</p>
             </div>
             <Input className="h-12" placeholder="Buscar plato…" value={q} onChange={(e) => setQ(e.target.value)} data-testid="disp-buscar" />

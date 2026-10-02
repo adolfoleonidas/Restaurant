@@ -1575,7 +1575,7 @@ export default function Caja() {
 
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
-            <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
             <OpenCajaCard onOpened={refetchReg} />
             {cobrables.length > 0 && (
                 <Card data-testid="caja-cuentas-cerradas">
@@ -1605,7 +1605,7 @@ export default function Caja() {
         <div className="space-y-5" data-testid="caja-root">
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
                     <p className="text-muted-foreground text-sm">Turno de {register.opened_by_name} · {fmtDateTime(register.opened_at)}</p>
                 </div>
                 <div className="flex gap-2">

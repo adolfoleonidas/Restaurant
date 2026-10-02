@@ -38,7 +38,7 @@ export function ProductCard({ product, children }) {
                 )}
                 <div className="min-w-0 p-3 sm:p-4 flex flex-col gap-2 flex-1">
                     {product.code && <div className="page-kicker text-primary">{product.code}</div>}
-                    <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
+                    <h3 className="font-display text-lg font-semibold leading-tight">{product.name}</h3>
                     {agotado && (
                         <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                     )}
@@ -113,7 +113,7 @@ export function ProductCard({ product, children }) {
             )}
             <div className="min-w-0 p-3 sm:p-4 flex flex-col gap-2 flex-1">
                 {product.code && <div className="page-kicker text-primary">{product.code}</div>}
-                <h3 className="font-display italic text-lg font-semibold leading-tight">{product.name}</h3>
+                <h3 className="font-display text-lg font-semibold leading-tight">{product.name}</h3>
                 {agotado && (
                     <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                 )}

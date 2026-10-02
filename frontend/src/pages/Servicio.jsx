@@ -102,7 +102,7 @@ export default function Servicio() {
             <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                     <p className="page-kicker mb-1">Servicio</p>
-                    <h1 className="font-display italic text-3xl font-semibold">Mesas y cuentas</h1>
+                    <h1 className="font-display text-3xl font-semibold">Mesas y cuentas</h1>
                     <p className="text-sm text-muted-foreground">
                         En cocina: {toPrep} · Listos: {toReady} · Por cobrar: {toPay}
                     </p>

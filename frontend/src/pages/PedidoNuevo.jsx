@@ -107,7 +107,7 @@ export default function PedidoNuevo() {
                     </Button>
                     <div>
                         <p className="page-kicker">Borrador · no está en cocina</p>
-                        <h1 className="font-display italic text-3xl font-semibold">
+                        <h1 className="font-display text-3xl font-semibold">
                             {table ? `Mesa ${table.number}` : 'Tomar pedido'}
                         </h1>
                     </div>
@@ -166,7 +166,7 @@ export default function PedidoNuevo() {
                             <CardContent className="p-4 flex flex-col gap-3">
                                 <div>
                                     <div className="flex items-start justify-between gap-2">
-                                        <div className="font-display italic text-lg font-semibold leading-tight truncate">{p.name}</div>
+                                        <div className="font-display text-lg font-semibold leading-tight truncate">{p.name}</div>
                                         {agotado && (
                                             <span className="shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                                         )}

@@ -322,7 +322,7 @@ export default function Productos({ section = 'platos' }) {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
                     <p className="page-kicker mb-1">Carta</p>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2">
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
                         {tab === 'combos' ? <Layers className="h-6 w-6 text-primary" /> : <Package className="h-6 w-6 text-primary" />}
                         {tab === 'combos' ? 'Combos' : 'Platos'}
                     </h1>
@@ -397,7 +397,7 @@ export default function Productos({ section = 'platos' }) {
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         {p.code && <div className="page-kicker mb-1">{p.code}</div>}
-                                        <div className="font-display italic text-lg font-semibold">{p.name}</div>
+                                        <div className="font-display text-lg font-semibold">{p.name}</div>
                                         <div className="text-xs text-muted-foreground">{p.is_combo ? 'Combo' : (cat?.name || '—')} · {p.preparation_time} min</div>
                                     </div>
                                     <span className="font-mono text-lg font-bold tabular-nums text-primary">{fmtMoney(p.price)}</span>

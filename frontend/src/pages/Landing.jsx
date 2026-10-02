@@ -92,7 +92,7 @@ export default function Landing() {
             <div ref={(el) => { if (sectionId) sectionRefs.current[sectionId] = el; }} data-testid={testId}>
                 <div className="flex items-end justify-between mb-5 border-b border-border pb-3">
                     <div>
-                        <h2 className="font-display italic text-2xl md:text-3xl font-bold">{title}</h2>
+                        <h2 className="font-display text-2xl md:text-3xl font-bold">{title}</h2>
                         {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
                     </div>
                     <span className="page-kicker">{items.length}</span>
@@ -168,7 +168,7 @@ export default function Landing() {
                 ) : (
                     <>
                         {grouped.length === 0 && combos.length === 0 && (
-                            <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos con esos filtros.</div>
+                            <div className="py-20 text-center text-muted-foreground font-display text-xl">No hay platos con esos filtros.</div>
                         )}
                         {grouped.map((g, i) => (
                             <React.Fragment key={g.category.id}>

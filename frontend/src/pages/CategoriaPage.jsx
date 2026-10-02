@@ -58,13 +58,13 @@ export default function CategoriaPage() {
             </Button>
             <div className="flex items-end justify-between mb-6 border-b border-border pb-3">
                 <div>
-                    <h1 className="font-display italic text-3xl md:text-4xl font-bold">{title}</h1>
+                    <h1 className="font-display text-3xl md:text-4xl font-bold">{title}</h1>
                     {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
                 </div>
                 <span className="page-kicker">{items.length}</span>
             </div>
             {items.length === 0 ? (
-                <div className="py-20 text-center text-muted-foreground font-display italic text-xl">No hay platos en esta categoría.</div>
+                <div className="py-20 text-center text-muted-foreground font-display text-xl">No hay platos en esta categoría.</div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
                     {items.map((p) => (

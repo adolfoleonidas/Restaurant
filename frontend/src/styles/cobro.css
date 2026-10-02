@@ -1,60 +1,24 @@
 /* ============================================================
-   Cobro — Design System (extracted from HTML prototype)
-   Font: Instrument Sans + Bricolage Grotesque
+   Cobro — Design System
+   Los tokens de color y tipografía se heredan del design system
+   global (index.css / tema activo).
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap');
 
-/* ---- CSS Variables (Light) ---- */
+/* ---- Tokens: hereda del design system global (index.css) ---- */
 .cobro-overlay,
 .cobro-checkout {
-  --page: #e9ecf0;
-  --paper: #fff;
-  --surface: #f4f6f8;
-  --line: #dde1e7;
-  --ink: #12161d;
-  --muted: #5b6472;
-  --soft: #8a93a0;
-  --brand: #0b6b53;
-  --brand-hover: #095843;
-  --brand-soft: #e3f3ee;
-  --on-brand: #fff;
-  --purple: var(--brand);
-  --purple-dark: var(--brand-hover);
-  --purple-soft: var(--brand-soft);
-  --purple-line: var(--line);
-  --yape: #6b1f7c;
-  --yape-t: #f4eaf7;
-  --warn-t: #fff3dc;
-  --green: #0b6b53;
-  --green-soft: #e3f3ee;
-  --red: #b3261e;
-  --shadow: 0 24px 60px -20px #0a142859;
-  --font: "Instrument Sans", Inter, ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
-  --display: "Bricolage Grotesque", "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-  --radius: 14px;
+  /* Solo aliases locales específicos de Yape/warn que no existen en el theme */
+  --yape: 300 50% 40%;
+  --yape-t: 300 55% 94%;
+  --warn-t: hsl(var(--warn-soft));
+  --radius: 0.75rem;
 }
 
-/* ---- CSS Variables (Dark) ---- */
-@media (prefers-color-scheme: dark) {
-  .cobro-overlay,
-  .cobro-checkout {
-    --page: #0b0e13;
-    --paper: #161b23;
-    --surface: #1d232d;
-    --line: #2a3240;
-    --ink: #eef1f5;
-    --muted: #98a2b3;
-    --soft: #7b8594;
-    --brand: #3dbe95;
-    --brand-hover: #5dd0ab;
-    --brand-soft: #12362c;
-    --on-brand: #04140f;
-    --yape: #d59be6;
-    --yape-t: #2b1a33;
-    --warn-t: #3a2a0f;
-    --red: #ff8a80;
-    --shadow: 0 24px 60px -20px #000a;
-  }
+.dark .cobro-overlay,
+.dark .cobro-checkout {
+  --yape: 300 65% 70%;
+  --yape-t: 300 45% 18%;
+  --warn-t: hsl(var(--warn-soft));
 }
 
 .cobro-overlay {
@@ -64,7 +28,7 @@
   display: grid;
   place-items: center;
   padding: 16px;
-  background: #0b0e1366;
+  background: hsl(var(--foreground) / 0.35);
 }
 
 .cobro-checkout { color-scheme: light dark; }
@@ -350,7 +314,7 @@
 }
 .cobro-checkout .method:hover { background: var(--surface); border-color: var(--muted); }
 .cobro-checkout .method svg { width: 23px; height: 23px; stroke-width: 1.8; }
-.cobro-checkout .method[data-method="yape"] svg { color: var(--yape); }
+.cobro-checkout .method[data-method="yape"] svg { color: hsl(var(--yape)); }
 .cobro-checkout .method[aria-selected="true"] {
   background: var(--surface); border-color: var(--ink);
   box-shadow: inset 0 0 0 1.5px var(--ink); color: var(--ink);
@@ -372,13 +336,13 @@
   background: none; padding: 18px; min-width: 0;
 }
 .cobro-checkout .payment-card[data-tone="wallet"] {
-  background: var(--yape-t); border-color: transparent;
+  background: hsl(var(--yape-t)); border-color: transparent;
 }
 .cobro-checkout .card-heading {
   margin: 0 44px 18px 0; font-size: 17px; font-weight: 600;
   letter-spacing: -.02em; color: var(--ink); font-family: var(--display);
 }
-.cobro-checkout .payment-card[data-tone="wallet"] .card-heading { color: var(--yape); }
+.cobro-checkout .payment-card[data-tone="wallet"] .card-heading { color: hsl(var(--yape)); }
 .cobro-checkout .help-button {
   position: absolute; right: 12px; top: 10px; width: 44px; height: 44px;
   border: 1px solid var(--line); border-radius: 50%;
@@ -395,7 +359,7 @@
 }
 .cobro-checkout .qr-trigger {
   position: relative; display: block; width: 100%; padding: 0;
-  background: white; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
   aspect-ratio: 1; overflow: hidden;
 }
 .cobro-checkout .qr-trigger img {
@@ -403,7 +367,7 @@
 }
 .cobro-checkout .qr-expand {
   position: absolute; bottom: 3px; right: 3px; display: grid; place-items: center;
-  width: 30px; height: 30px; background: white; border: 1px solid var(--line);
+  width: 30px; height: 30px; background: var(--paper); border: 1px solid var(--line);
   border-radius: 7px; box-shadow: 0 2px 4px #332a2414;
 }
 .cobro-checkout .qr-expand svg { width: 16px; height: 16px; }

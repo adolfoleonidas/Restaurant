@@ -222,7 +222,7 @@ export default function PedidoDetalle() {
                 </Button>
                 <div>
                     <p className="page-kicker">{floorLabel}</p>
-                    <h1 className="font-display italic text-3xl font-semibold">
+                    <h1 className="font-display text-3xl font-semibold">
                         {table ? `Mesa ${table.number}` : `Pedido #${order.order_number}`}
                     </h1>
                     <p className="text-sm text-muted-foreground">Atiende: {order.created_by_name || '—'}</p>

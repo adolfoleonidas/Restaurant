@@ -48,7 +48,7 @@ export default function Pagos() {
     return (
         <div className="space-y-5" data-testid="pagos-root">
             <div className="flex items-center justify-between flex-wrap gap-2">
-                <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
+                <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
                 <Button onClick={save} data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button>
             </div>
 

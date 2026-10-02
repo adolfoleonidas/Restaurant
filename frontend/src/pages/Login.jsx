@@ -71,7 +71,7 @@ export default function Login() {
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
-                    <div className="font-display italic text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</div>
+                    <div className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</div>
                     <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
                 </div>
             </div>

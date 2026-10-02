@@ -51,13 +51,13 @@ export const CartPanel = ({ onClose }) => {
                 <div className="p-5 border-b border-border">
                     {tabs}
                     <p className="page-kicker">En curso</p>
-                    <h2 className="font-display italic text-2xl font-semibold">Tu pedido #{order.order_number}</h2>
+                    <h2 className="font-display text-2xl font-semibold">Tu pedido #{order.order_number}</h2>
                     <p className="text-xs text-muted-foreground mt-1">{ORDER_STATUS_LABELS[order.status] || order.status}</p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3">
                     {liveItems.length === 0 ? (
                         <div className="py-16 text-center text-muted-foreground">
-                            <div className="font-display italic text-xl mb-2">Sin platos</div>
+                            <div className="font-display text-xl mb-2">Sin platos</div>
                             <div className="text-sm">Agregá un plato desde el menú</div>
                         </div>
                     ) : liveItems.map((it) => {
@@ -68,7 +68,7 @@ export const CartPanel = ({ onClose }) => {
                             <div key={it.id} className="border border-border rounded-sm p-3 space-y-2" data-testid={`cart-live-item-${it.id}`}>
                                 <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
-                                        <div className="font-display italic truncate">{it.product_name}</div>
+                                        <div className="font-display truncate">{it.product_name}</div>
                                         <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmtMoney(it.unit_price)} c/u</div>
                                     </div>
                                     <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
@@ -105,20 +105,20 @@ export const CartPanel = ({ onClose }) => {
             <div className="p-5 border-b border-border">
                 {tabs}
                 <p className="page-kicker">{cartMode ? 'Para llevar' : 'Tu mesa'}</p>
-                <h2 className="font-display italic text-2xl font-semibold">Pedido ({count})</h2>
+                <h2 className="font-display text-2xl font-semibold">Pedido ({count})</h2>
                 {cartMode && <p className="text-xs text-muted-foreground mt-1">Este pedido es aparte del de tu mesa: lo pagás y lo llevás.</p>}
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {items.length === 0 ? (
                     <div className="py-16 text-center text-muted-foreground">
-                        <div className="font-display italic text-xl mb-2">Carta vacía</div>
+                        <div className="font-display text-xl mb-2">Carta vacía</div>
                         <div className="text-sm">Agregá un plato para armar el pedido</div>
                     </div>
                 ) : items.map((it) => (
                     <div key={it.product_id} className="border border-border rounded-sm p-3 space-y-2" data-testid={`cart-item-${it.product_id}`}>
                         <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                                <div className="font-display italic truncate">{it.name}{it.is_combo ? ' · combo' : ''}</div>
+                                <div className="font-display truncate">{it.name}{it.is_combo ? ' · combo' : ''}</div>
                                 <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmtMoney(it.price)} c/u</div>
                             </div>
                             <button onClick={() => remove(it.product_id)} className="text-muted-foreground hover:text-destructive" data-testid={`cart-item-${it.product_id}-remove`}><X className="h-4 w-4" /></button>

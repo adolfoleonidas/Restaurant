@@ -202,7 +202,7 @@ export default function Checkout() {
                         <div className="h-16 w-16 rounded-sm bg-primary text-primary-foreground mx-auto flex items-center justify-center mb-3">
                             <CheckCircle2 className="h-9 w-9" />
                         </div>
-                        <h1 className="font-display italic text-3xl font-bold">Pedido en cocina</h1>
+                        <h1 className="font-display text-3xl font-bold">Pedido en cocina</h1>
                         <p className="text-muted-foreground mt-1">Seguí el estado con tu código. Si necesitás hablar con la casa, usá WhatsApp.</p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
@@ -270,7 +270,7 @@ export default function Checkout() {
                 <Button asChild variant="ghost" size="sm"><Link to="/"><ChevronLeft className="h-4 w-4 mr-1" /> Seguir comprando</Link></Button>
             </div>
             <p className="page-kicker mb-2">Carta</p>
-            <h1 className="font-display italic text-4xl font-bold mb-6">Confirmar pedido</h1>
+            <h1 className="font-display text-4xl font-bold mb-6">Confirmar pedido</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-5">
@@ -317,7 +317,7 @@ export default function Checkout() {
                                                 data-testid={`checkout-mesa-${t.number}`}
                                                 className={`rounded-sm border p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
                                             >
-                                                <div className="font-display italic text-xl font-semibold">{t.number}</div>
+                                                <div className="font-display text-xl font-semibold">{t.number}</div>
                                                 <div className="text-[11px] text-muted-foreground">{t.area}</div>
                                                 {billPending && <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>}
                                                 {blocked && !billPending && <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>}

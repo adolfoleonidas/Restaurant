@@ -68,7 +68,7 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
                     <p className="page-kicker mb-1">Hoy</p>
-                    <h1 className="font-display italic text-3xl md:text-4xl font-semibold">Turno en curso</h1>
+                    <h1 className="font-display text-3xl md:text-4xl font-semibold">Turno en curso</h1>
                     <p className="text-muted-foreground">
                         {stale
                             ? `Sin actualizar desde hace ${Math.max(staleMin, 2)} min`

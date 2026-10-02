@@ -95,7 +95,7 @@ export default function PedidoTracking() {
             <div>
                 <div className="page-kicker">Seguimiento</div>
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                    <h1 className="font-display italic text-3xl md:text-4xl font-bold">Pedido #{order.order_number}</h1>
+                    <h1 className="font-display text-3xl md:text-4xl font-bold">Pedido #{order.order_number}</h1>
                     <span className="font-mono text-sm bg-secondary px-2 py-1 rounded-sm">{order.tracking_code}</span>
                 </div>
                 <AttentionReference order={order} publicView />

@@ -247,7 +247,7 @@ export default function OrderCollectionDialog({ open, onOpenChange, order, onPai
                 </DialogHeader>
                 {result ? (
                     <div className="space-y-4 py-2" data-testid="caja-pago-ok">
-                        <div className="font-display italic text-2xl">Pago registrado</div>
+                        <div className="font-display text-2xl">Pago registrado</div>
                         <p className="text-sm text-muted-foreground">
                             {result.fully_paid
                                 ? 'No hace falta volver a cobrar. La mesa sigue ocupada hasta que el mozo la libere.'
