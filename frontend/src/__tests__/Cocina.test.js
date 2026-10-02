@@ -40,6 +40,29 @@ jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a> }));
 
 describe('Cocina priority board', () => {
+    it('keeps unfinished pickups in the live pass and exposes stale ready pickups in a closed history section', () => {
+        mockOrders.push(
+            {
+                id: 'pickup-ready-old', order_number: 31, order_type: 'recojo', status: 'listo',
+                ready_at: '2000-01-01T10:00:00Z', items: [{ id: 'ready-old', status: 'listo', product_name: 'Empanadas', quantity: 1 }],
+            },
+            {
+                id: 'pickup-working-old', order_number: 32, order_type: 'recojo', status: 'en_preparacion',
+                created_at: '2000-01-01T09:00:00Z', items: [{ id: 'working-old', status: 'en_preparacion', product_name: 'Tamal', quantity: 1 }],
+            }
+        );
+        try {
+            const markup = renderToStaticMarkup(<Cocina />);
+            expect(markup).toContain('<details class="rounded-md border border-border bg-card/50 p-3" data-testid="cocina-dias-anteriores">');
+            expect(markup).toContain('cocina-recojo-anterior-pickup-ready-old');
+            expect(markup).toContain('href="/pedidos/pickup-ready-old"');
+            expect(markup).not.toContain('cocina-recojo-anterior-pickup-working-old');
+            expect(markup).toContain('data-testid="cocina-ticket-32-fuego"');
+        } finally {
+            mockOrders.splice(-2, 2);
+        }
+    });
+
     it('orders multiple incoming tickets oldest first while preserving mixed item stages and accessible priorities', () => {
         const markup = renderToStaticMarkup(<Cocina />);
         expect(markup).toContain('role="tablist"');

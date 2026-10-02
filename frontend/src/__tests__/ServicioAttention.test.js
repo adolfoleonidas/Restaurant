@@ -49,6 +49,27 @@ describe('Servicio attention closure', () => {
         toast.success.mockClear();
     });
 
+    it('shows active no-table pickups and keeps prior-day ready pickups collapsed and inspectable', async () => {
+        mockRows.orders = [
+            ...mockRows.orders,
+            { id: 'pickup-today', order_number: 55, order_type: 'recojo', status: 'listo', ready_at: new Date().toISOString(), items: [] },
+            { id: 'pickup-working', order_number: 56, order_type: 'recojo', status: 'en_preparacion', items: [] },
+            { id: 'pickup-old', order_number: 57, order_type: 'recojo', status: 'listo', ready_at: '2000-01-01T10:00:00Z', items: [] },
+        ];
+        const { container, root } = await renderPage();
+        expect(container.querySelector('[data-testid="servicio-recojos-activos"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="servicio-recojo-pickup-today"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="servicio-recojo-pickup-working"]')).not.toBeNull();
+        const history = container.querySelector('[data-testid="servicio-dias-anteriores"]');
+        expect(history).not.toBeNull();
+        expect(history.open).toBe(false);
+        expect(history.textContent).toContain('Pedido #57');
+        expect(history.querySelector('a[href="/pedidos/pickup-old"]')).not.toBeNull();
+        expect(api.post).not.toHaveBeenCalled();
+        await act(async () => root.unmount());
+        container.remove();
+    });
+
     it('closes only the exact active visit without sending a payment and refreshes server state', async () => {
         const { container, root } = await renderPage();
         const button = container.querySelector('[data-testid="servicio-cerrar-1"]');
