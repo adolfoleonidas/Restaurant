@@ -44,10 +44,10 @@ Frontend visual and interaction work in the isolated worktree. Reuse existing ro
   Acceptance: waiter can locate attention-needed tables and reach the correct order action without losing existing functionality.
   Checks: focused frontend tests; npm run build; table runtime scenario.
   Evidence: pending.
-- [ ] T05 Orders and cash: clarify lists, pending actions, and payment-state hierarchy without changing financial rules. Route: delegated direct; multiple screens/components plus tests.
+- [x] T05 Orders and cash: clarify lists, pending actions, and payment-state hierarchy without changing financial rules. Route: delegated direct; multiple screens/components plus tests.
   Acceptance: order and cash actions remain permission-correct and operationally legible.
   Checks: focused frontend tests; npm run build; payment runtime scenario.
-  Evidence: pending.
+  Evidence: Strict TDD RED: focused `OrdersCashUI.test.js` suite had 5 failures (missing Cobrar button, missing Verificar comprobante, missing remaining balance, missing waiting highlight, missing card testid). GREEN: implemented payment-status indicators (parcial shows remaining balance, comprobante_subido shows verification pending, pagado shows Pagado), prominent Cobrar action for pendiente_pago orders, Verificar comprobante action for proof-uploaded orders, Clock icon + amber highlight for orders waiting >15 min. `npm test -- --watchAll=false --runInBand src/__tests__/OrdersCashUI.test.js` passed 1 suite / 8 tests (exit 0). Full suite: `npm test -- --watchAll=false --runInBand` passed 20 suites / 102 tests (1 pre-existing skipped suite, 18 pre-existing skipped tests). `npm run build` compiled successfully (+802 B JS, +225 B CSS). Caja payment history now shows method totals summary grid and visually distinguishes voided/refunded payments with `caja-pago-voided` class (opacity + strikethrough amount). No API or financial rules changed. Rollback boundary: revert T05-only changes to `Pedidos.jsx`, `Caja.jsx`, and the new test file.
 - [ ] T06 Administration and integration: align remaining admin/report/settings views and perform cross-role responsive/accessibility regression checks. Route: delegated direct; multiple screens/components plus tests.
   Acceptance: shared visual system is consistent across roles, all applicable tests and build pass, and failed/skipped checks are recorded.
   Checks: full frontend tests; npm run build; representative browser scenarios.

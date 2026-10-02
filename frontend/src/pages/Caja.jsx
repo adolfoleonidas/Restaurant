@@ -1134,6 +1134,32 @@ function PaymentHistory({ refreshKey }) {
         return null;
     };
 
+    // Compute method totals and status grouping
+    const methodTotals = useMemo(() => {
+        if (!items) return {};
+        const map = {};
+        for (const p of items) {
+            if (p.status === 'completed') {
+                const key = p.method;
+                map[key] = (map[key] || 0) + Number(p.amount || 0);
+            }
+        }
+        return map;
+    }, [items]);
+
+    const statusGroups = useMemo(() => {
+        if (!items) return { completed: [], voided: [], other: [] };
+        const completed = [];
+        const voided = [];
+        const other = [];
+        for (const p of items) {
+            if (p.status === 'voided' || p.status === 'refunded') voided.push(p);
+            else if (p.status === 'completed') completed.push(p);
+            else other.push(p);
+        }
+        return { completed, voided, other };
+    }, [items]);
+
     return (
         <Card data-testid="caja-historial-pagos">
             <CardContent className="p-4 space-y-4">
@@ -1147,6 +1173,19 @@ function PaymentHistory({ refreshKey }) {
                         </TabsList>
                     </Tabs>
                 </div>
+
+                {/* Method totals summary */}
+                {items && Object.keys(methodTotals).length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 rounded-lg border border-border p-3" data-testid="caja-pago-method-totals">
+                        {Object.entries(methodTotals).map(([method, total]) => (
+                            <div key={method} className="text-sm">
+                                <div className="text-xs text-muted-foreground">{PAYMENT_LABELS[method] || method}</div>
+                                <div className="font-mono font-semibold tabular-nums">{fmtMoney(total)}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 <Input className="h-11" placeholder="Buscar #pedido, método o cajero" value={q} onChange={(e) => setQ(e.target.value)} data-testid="caja-hist-pagos-buscar" />
                 {!items ? (
                     <div className="text-sm text-muted-foreground">Cargando pagos…</div>
@@ -1154,20 +1193,26 @@ function PaymentHistory({ refreshKey }) {
                     <div className="py-8 text-center text-sm text-muted-foreground">No hay pagos en este período.</div>
                 ) : (
                     <div className="divide-y border border-border rounded-sm">
-                        {items.map((p) => (
-                            <div key={p.id} className="px-3 py-2 flex items-center justify-between gap-3 text-sm" data-testid={`caja-pago-${p.id}`}>
-                                <button type="button" className="text-left min-w-0" onClick={() => setDetail(p)}>
-                                    <div className="font-medium">Pedido #{p.order_number} · {PAYMENT_LABELS[p.method] || p.method}{statusLabel(p) ? ` · ${statusLabel(p)}` : ''}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)} · {p.paid_by_name}</div>
-                                </button>
-                                <div className="text-right shrink-0 space-y-1">
-                                    <div className="font-mono font-semibold tabular-nums">{fmtMoney(p.amount)}</div>
-                                    <Button size="sm" variant="outline" className="h-8" onClick={() => reprint(p)} data-testid={`caja-reimprimir-${p.id}`}>
-                                        <Printer className="h-3.5 w-3.5 mr-1" />Comprobante
-                                    </Button>
+                        {items.map((p) => {
+                            const isVoided = p.status === 'voided' || p.status === 'refunded';
+                            return (
+                                <div key={p.id} className={`px-3 py-2 flex items-center justify-between gap-3 text-sm ${isVoided ? 'caja-pago-voided opacity-60' : ''}`} data-testid={`caja-pago-${p.id}`}>
+                                    <button type="button" className="text-left min-w-0" onClick={() => setDetail(p)}>
+                                        <div className="font-medium">
+                                            Pedido #{p.order_number} · {PAYMENT_LABELS[p.method] || p.method}
+                                            {statusLabel(p) ? ` · ${statusLabel(p)}` : ''}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">{fmtDateTime(p.created_at)} · {p.paid_by_name}</div>
+                                    </button>
+                                    <div className="text-right shrink-0 space-y-1">
+                                        <div className={`font-mono font-semibold tabular-nums ${isVoided ? 'line-through text-muted-foreground' : ''}`}>{fmtMoney(p.amount)}</div>
+                                        <Button size="sm" variant="outline" className="h-8" onClick={() => reprint(p)} data-testid={`caja-reimprimir-${p.id}`}>
+                                            <Printer className="h-3.5 w-3.5 mr-1" />Comprobante
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
                 <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
