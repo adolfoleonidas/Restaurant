@@ -18,26 +18,50 @@ def _id():
     return str(uuid.uuid4())
 
 
-async def _ensure_new_fields():
-    """Idempotent updates for new schema fields added in Phase 3."""
-    rest = await db.restaurants.find_one({})
-    if rest:
-        rid = rest["id"]
-        updates = {}
-        if "delivery_fee" not in rest:
-            updates["delivery_fee"] = 5.0
-        if "cover_url" not in rest or not rest.get("cover_url"):
-            updates["cover_url"] = "https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1600"
-        if "public_description" not in rest:
-            updates["public_description"] = "Cocina peruana de autor con productos frescos. Pide para recoger, delivery o disfruta en el local."
-        if "social_instagram" not in rest:
-            updates["social_instagram"] = "@saborperuano"
-        if "social_whatsapp" not in rest:
-            updates["social_whatsapp"] = "+51999888777"
-        if updates:
-            updates["updated_at"] = _now()
-            await db.restaurants.update_one({"id": rid}, {"$set": updates})
+def _demo_seed_enabled() -> bool:
+    return os.environ.get("SEED_DEMO", "").strip().lower() in {"true", "1", "yes"}
 
+
+def _empty_payment_config(*, restaurant_id: str, now: str, config_id: str) -> dict:
+    """Blank payment identity: only cash on, no demo numbers or QRs."""
+    return {
+        "id": config_id,
+        "restaurant_id": restaurant_id,
+        "yape_number": "",
+        "yape_holder": "",
+        "yape_qr": None,
+        "plin_number": "",
+        "plin_holder": "",
+        "plin_qr": None,
+        "bank_name": "",
+        "bank_account": "",
+        "bank_cci": "",
+        "bank_holder": "",
+        "transfer_instructions": "",
+        "enable_efectivo": True,
+        "enable_yape": False,
+        "enable_plin": False,
+        "enable_transferencia": False,
+        "enable_tarjeta": False,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+async def _ensure_new_fields():
+    """Fill missing operational fields. Never restore demo identity."""
+    rest = await db.restaurants.find_one({})
+    if not rest:
+        return
+    rid = rest["id"]
+    updates = {}
+    if "delivery_fee" not in rest:
+        updates["delivery_fee"] = 0
+    if updates:
+        updates["updated_at"] = _now()
+        await db.restaurants.update_one({"id": rid}, {"$set": updates})
+
+    if await db.products.find_one({"restaurant_id": rid, "is_combo": True}, {"id": 1}):
         from routes.products import get_or_create_combos_category
         combos_cat = await get_or_create_combos_category(rid)
         await db.products.update_many(
@@ -45,51 +69,75 @@ async def _ensure_new_fields():
             {"$set": {"category_id": combos_cat["id"]}},
         )
 
-        cfg = await db.payment_configs.find_one({"restaurant_id": rid})
-        if not cfg:
-            await db.payment_configs.insert_one({
+    if not await db.payment_configs.find_one({"restaurant_id": rid}):
+        now = _now()
+        await db.payment_configs.insert_one(_empty_payment_config(restaurant_id=rid, now=now, config_id=_id()))
+
+    zones = await db.zones.find({"restaurant_id": rid}).to_list(1000)
+    if not zones:
+        areas = [t.get("area") for t in await db.tables.find(
+            {"restaurant_id": rid, "area": {"$ne": None}}, {"area": 1}
+        ).to_list(1000)]
+        seen = []
+        for a in areas:
+            if a and a not in seen:
+                seen.append(a)
+        now = _now()
+        for i, name in enumerate(seen):
+            await db.zones.insert_one({
                 "id": _id(),
                 "restaurant_id": rid,
-                "yape_number": "999 888 777",
-                "yape_holder": rest.get("name", "Restaurante"),
-                "yape_qr": None,
-                "plin_number": "999 888 777",
-                "plin_holder": rest.get("name", "Restaurante"),
-                "plin_qr": None,
-                "bank_name": "BCP",
-                "bank_account": "194-12345678-0-12",
-                "bank_cci": "00219400123456780123",
-                "bank_holder": rest.get("name", "Restaurante"),
-                "transfer_instructions": "Envía tu comprobante por WhatsApp indicando tu nº de pedido.",
-                "enable_efectivo": True,
-                "enable_yape": True,
-                "enable_plin": True,
-                "enable_transferencia": True,
-                "enable_tarjeta": False,
-                "created_at": _now(),
-                "updated_at": _now(),
+                "name": name,
+                "sort_order": i,
+                "created_at": now,
+                "updated_at": now,
             })
 
-        zones = await db.zones.find({"restaurant_id": rid}).to_list(1000)
-        if not zones:
-            areas = [t.get("area") for t in await db.tables.find(
-                {"restaurant_id": rid, "area": {"$ne": None}}, {"area": 1}
-            ).to_list(1000)]
-            seen = []
-            for a in areas:
-                if a and a not in seen:
-                    seen.append(a)
-            if not seen:
-                seen = ["Salón"]
-            for i, name in enumerate(seen):
-                await db.zones.insert_one({
-                    "id": _id(),
-                    "restaurant_id": rid,
-                    "name": name,
-                    "sort_order": i,
-                    "created_at": _now(),
-                    "updated_at": _now(),
-                })
+
+async def _seed_blank():
+    """First boot without demo data: one empty house and the operator's admin."""
+    resolved = resolve_seed_passwords()
+    if not os.environ.get("SEED_ADMIN_PASSWORD"):
+        logger.warning("Seed de desarrollo con contraseñas de demo. No uses este modo en un deploy real.")
+    restaurant_id = _id()
+    now = _now()
+    await db.restaurants.insert_one({
+        "id": restaurant_id,
+        "name": "Restaurante",
+        "ruc": "",
+        "address": "",
+        "phone": "",
+        "logo_url": None,
+        "cover_url": None,
+        "currency": "PEN",
+        "currency_symbol": "S/",
+        "timezone": "America/Lima",
+        "opening_hours": "",
+        "delivery_fee": 0,
+        "public_description": "",
+        "social_facebook": None,
+        "social_instagram": None,
+        "social_whatsapp": None,
+        "status": "active",
+        "created_at": now,
+        "updated_at": now,
+    })
+    await db.payment_configs.insert_one(_empty_payment_config(restaurant_id=restaurant_id, now=now, config_id=_id()))
+    await db.users.insert_one({
+        "id": _id(),
+        "restaurant_id": restaurant_id,
+        "email": "admin@resto.com",
+        "password_hash": hash_password(resolved["SEED_ADMIN_PASSWORD"]),
+        "full_name": "Administrador",
+        "role": "admin",
+        "phone": None,
+        "status": "active",
+        "can_discount": True,
+        "can_void": True,
+        "created_at": now,
+        "updated_at": now,
+    })
+    logger.info("Seed completed: blank restaurant and admin")
 
 
 async def run_seed():
@@ -98,6 +146,9 @@ async def run_seed():
     # Skip first-time seed if already seeded
     existing = await db.restaurants.find_one({})
     if existing:
+        return
+    if not _demo_seed_enabled():
+        await _seed_blank()
         return
 
     resolved = resolve_seed_passwords()

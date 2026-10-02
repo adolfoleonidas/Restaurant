@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
-import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppShell } from '@/components/AppShell';
 import { PublicLayout } from '@/components/PublicLayout';
@@ -42,8 +41,7 @@ function ScrollToTop() {
 function App() {
     return (
         <div className="App">
-            <ThemeProvider>
-                <AuthProvider>
+            <AuthProvider>
                     <CartProvider>
                         <LiveOrderProvider>
                             <BrowserRouter>
@@ -88,7 +86,6 @@ function App() {
                     </LiveOrderProvider>
                 </CartProvider>
             </AuthProvider>
-            </ThemeProvider>
         </div>
     );
 }

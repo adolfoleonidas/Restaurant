@@ -8,11 +8,26 @@ from models import CashOpen, CashClose, CashMovement
 from billing import method_amounts, shift_payment_filter
 from notify import emit_notice
 
-LIMA = ZoneInfo("America/Lima")
+async def _resolve_timezone(restaurant_id: str) -> ZoneInfo:
+    """Resolve the restaurant's timezone from its default branch, fallback to UTC."""
+    branch = await db.branches.find_one(
+        {"restaurant_id": restaurant_id},
+        {"_id": 0, "timezone": 1},
+        sort=[("created_at", 1)],
+        limit=1,
+    )
+    tz_name = (branch or {}).get("timezone")
+    if tz_name:
+        try:
+            return ZoneInfo(tz_name)
+        except Exception:
+            pass
+    return ZoneInfo("UTC")
 
 
-def _period_start(period: str) -> str:
-    now = datetime.now(LIMA)
+async def _period_start(period: str, restaurant_id: str) -> str:
+    tz = await _resolve_timezone(restaurant_id)
+    now = datetime.now(tz)
     if period == "day":
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "week":
@@ -85,7 +100,7 @@ async def cash_history(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     period: str = Query("day", regex="^(day|week|month)$"),
 ):
-    start = _period_start(period)
+    start = await _period_start(period, user["restaurant_id"])
     regs = await db.cash_registers.find(
         {"restaurant_id": user["restaurant_id"], "opened_at": {"$gte": start}},
         {"_id": 0},
