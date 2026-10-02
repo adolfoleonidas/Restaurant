@@ -21,7 +21,7 @@ from order_flow import (
 )
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
-from attention import AttentionBlocked, open_table_attention, close_table_attention
+from attention import AttentionBlocked, open_table_attention, close_table_attention, reserve_table_opening, recover_opening_intent
 
 router = APIRouter()
 
@@ -255,6 +255,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     order_no = await _next_order_number(user["restaurant_id"])
     order_id = str(uuid.uuid4())
     attention_id = str(uuid.uuid4()) if data.table_id else None
+    branch_id = table.get("branch_id") if data.table_id else None
     o = {
         "id": order_id, "order_number": order_no, "restaurant_id": user["restaurant_id"],
         "table_id": data.table_id, "created_by": user["id"], "created_by_name": user["full_name"],
@@ -265,10 +266,29 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     }
     if attention_id:
         o.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
+        o["_id"] = order_id
+        if branch_id is not None:
+            o["branch_id"] = branch_id
+        try:
+            await reserve_table_opening(
+                db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"],
+                allowed_statuses=("disponible", "ocupada"), intent=o,
+            )
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(o)
     except DuplicateKeyError:
+        if attention_id:
+            current = await db.tables.find_one({"id": data.table_id, "restaurant_id": user["restaurant_id"], "opening_order_id": order_id}, {"_id": 0})
+            recovered = await recover_opening_intent(db, table=current or {}, order_id=order_id, restaurant_id=user["restaurant_id"])
+            if recovered:
+                await open_table_attention(db, order=recovered, user=user, now=_now())
+                return await _current_order_response(order_id, user)
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+    except Exception:
+        # Keep the durable intent: an insert may have committed before its error reached us.
+        raise
     if attention_id:
         try:
             await open_table_attention(db, order=o, user=user, now=_now())
@@ -283,7 +303,12 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
 async def resume_attention_open(order_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
     order = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     if not order:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        table = await db.tables.find_one({"restaurant_id": user["restaurant_id"], "opening_order_id": order_id}, {"_id": 0})
+        if not table:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        order = await recover_opening_intent(db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"])
+        if not order:
+            raise HTTPException(status_code=409, detail="La apertura requiere conciliación")
     try:
         return await open_table_attention(db, order=order, user=user, now=_now())
     except AttentionBlocked as exc:

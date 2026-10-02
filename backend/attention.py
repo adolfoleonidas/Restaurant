@@ -62,13 +62,86 @@ async def _load_attention(db, order: dict) -> dict | None:
     attention_id = order.get("attention_id")
     if not attention_id:
         return None
-    return await db.attentions.find_one({
+    query = {
         "id": attention_id,
         "restaurant_id": order.get("restaurant_id"),
         "order_id": order.get("id"),
         "table_id": order.get("table_id"),
-    }, {"_id": 0})
+    }
+    if "branch_id" in order:
+        query["branch_id"] = order["branch_id"]
+    else:
+        query["branch_id"] = {"$exists": False}
+    return await db.attentions.find_one(query, {"_id": 0})
 
+
+async def reserve_table_opening(db, *, table: dict, order_id: str, restaurant_id: str,
+                               allowed_statuses: tuple[str, ...], intent: dict | None = None) -> str | None:
+    """Atomically reserve a table and persist its private order intent."""
+    query = {
+        "id": table["id"], "restaurant_id": restaurant_id,
+        "status": {"$in": list(allowed_statuses)},
+        "active_attention_id": {"$exists": False},
+        "opening_order_id": {"$exists": False},
+        "branch_id": table.get("branch_id") if "branch_id" in table else {"$exists": False},
+    }
+    branch_id = table.get("branch_id")
+    if intent is not None:
+        intent = dict(intent)
+        intent.setdefault("_id", order_id)
+        if "branch_id" in table:
+            intent["branch_id"] = branch_id
+        else:
+            intent.pop("branch_id", None)
+    claimed = await db.tables.update_one(query, {"$set": {
+        "opening_order_id": order_id, "opening_branch_id": branch_id,
+        **({"opening_intent": intent} if intent is not None else {}),
+    }})
+    if getattr(claimed, "modified_count", 0) != 1:
+        raise AttentionBlocked("La mesa cambió; vuelva a cargarla antes de abrir el pedido")
+    return branch_id
+
+
+async def recover_opening_intent(db, *, table: dict, order_id: str,
+                                 restaurant_id: str) -> dict | None:
+    """Materialize only the immutable intent owned by this table and tenant."""
+    intent = table.get("opening_intent")
+    if (not isinstance(intent, dict) or table.get("opening_order_id") != order_id
+            or intent.get("id") != order_id or intent.get("restaurant_id") != restaurant_id
+            or intent.get("table_id") != table.get("id")
+            or intent.get("branch_id") != table.get("opening_branch_id")):
+        return None
+    # Recovery needs Mongo's actual _id to prove that this is the same intent.
+    existing = await db.orders.find_one({"id": order_id, "restaurant_id": restaurant_id})
+    if existing:
+        return existing if _same_opening_order(existing, intent) else None
+    try:
+        await db.orders.insert_one(dict(intent))
+    except DuplicateKeyError:
+        pass
+    except Exception:
+        # The insert outcome can be ambiguous. Leave the durable reservation intact.
+        existing = await db.orders.find_one({"id": order_id, "restaurant_id": restaurant_id})
+        if existing and _same_opening_order(existing, intent):
+            return existing
+        raise
+    existing = await db.orders.find_one({"id": order_id, "restaurant_id": restaurant_id})
+    return existing if existing and _same_opening_order(existing, intent) else None
+
+
+def _same_opening_order(existing: dict, intent: dict) -> bool:
+    keys = ("_id", "id", "restaurant_id", "table_id", "attention_id", "branch_id", "order_number",
+            "request_id", "request_fingerprint")
+    return all(existing.get(key) == intent.get(key) for key in keys)
+
+
+async def release_table_opening(db, *, table_id: str, restaurant_id: str, order_id: str) -> bool:
+    """Release only a reservation still owned by this opening order."""
+    released = await db.tables.update_one({
+        "id": table_id, "restaurant_id": restaurant_id, "opening_order_id": order_id,
+        "opening_intent": {"$exists": False},
+    }, {"$unset": {"opening_order_id": "", "opening_branch_id": ""}})
+    return getattr(released, "modified_count", 0) == 1
 
 async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict:
     """Recover an explicit opening intent; never joins an existing visit."""
@@ -82,24 +155,34 @@ async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict
     existing = await _load_attention(db, order)
     if existing and existing.get("status") in ("closing", "closed"):
         raise AttentionBlocked("La visita ya no admite reapertura")
-    table_claim = await db.tables.update_one({
+    table_query = {
         "id": table_id,
         "restaurant_id": restaurant_id,
         "status": {"$in": ["disponible", "ocupada"]},
         "$or": [
-            {"active_attention_id": {"$exists": False}},
+            {"active_attention_id": {"$exists": False}, "opening_order_id": order["id"], "opening_branch_id": order.get("branch_id")},
             {"active_attention_id": attention_id},
+            {"active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
         ],
-    }, {"$set": {
-        "status": "ocupada",
-        "active_attention_id": attention_id,
-        "updated_at": now,
-    }})
+        "branch_id": order.get("branch_id"),
+    }
+    table_claim = await db.tables.update_one(table_query, {"$set": {
+        "status": "ocupada", "active_attention_id": attention_id, "updated_at": now,
+    }, "$unset": {"opening_order_id": "", "opening_branch_id": "", "opening_intent": ""}})
     if getattr(table_claim, "modified_count", 0) != 1:
         table = await db.tables.find_one(
             {"id": table_id, "restaurant_id": restaurant_id}, {"_id": 0}
         )
-        if not table or table.get("active_attention_id") != attention_id:
+        active_order = await db.orders.find_one({
+            "id": order["id"], "restaurant_id": restaurant_id, "table_id": table_id,
+            "attention_id": attention_id, "attention_state": {"$in": ["opening", "open"]},
+            "branch_id": order.get("branch_id") if "branch_id" in order else {"$exists": False},
+        }, {"_id": 0})
+        if (not table or not active_order or table.get("active_attention_id") != attention_id
+                or table.get("restaurant_id") != restaurant_id
+                or table.get("id") != table_id
+                or table.get("status") not in ("disponible", "ocupada")
+                or table.get("branch_id") != order.get("branch_id")):
             raise AttentionBlocked("La mesa ya pertenece a otra visita o no está disponible")
 
     attention = await _load_attention(db, order)
@@ -109,6 +192,7 @@ async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict
             "restaurant_id": restaurant_id,
             "table_id": table_id,
             "order_id": order["id"],
+            **({"branch_id": order["branch_id"]} if "branch_id" in order else {}),
             "status": "opening",
             "opened_by": user.get("id"),
             "opened_at": now,
@@ -127,11 +211,17 @@ async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict
             "id": attention_id,
             "restaurant_id": restaurant_id,
             "order_id": order["id"],
+            **({"branch_id": order["branch_id"]} if "branch_id" in order else {}),
             "status": "opening",
         }, {"$set": {"status": "open", "opened_by": user.get("id"), "opened_at": now}})
         if getattr(changed, "modified_count", 0) != 1:
             latest = await _load_attention(db, order)
-            if not latest or latest.get("status") != "open":
+            if (not latest or latest.get("status") != "open"
+                    or latest.get("id") != attention_id
+                    or latest.get("restaurant_id") != restaurant_id
+                    or latest.get("order_id") != order["id"]
+                    or latest.get("table_id") != table_id
+                    or latest.get("branch_id") != order.get("branch_id")):
                 raise AttentionBlocked("No se pudo confirmar la apertura; reintentá la misma visita")
 
     latest_order = await db.orders.find_one({

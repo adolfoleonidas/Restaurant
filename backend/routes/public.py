@@ -12,7 +12,7 @@ from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
 from order_flow import VersionError, claim_order, version_conflict
-from attention import AttentionBlocked, open_table_attention
+from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
@@ -380,6 +380,21 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
                 if previous.get("request_fingerprint") != request_fingerprint or previous.get("table_id") != table_id:
                     raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
                 return await _finish_public_order(previous, data)
+            intent = table.get("opening_intent")
+            if table.get("opening_order_id") and intent:
+                if (intent.get("request_id") != request_id
+                        or intent.get("request_fingerprint") != request_fingerprint
+                        or intent.get("table_id") != table_id
+                        or intent.get("restaurant_id") != r["id"]):
+                    raise HTTPException(status_code=409, detail="La mesa ya tiene una solicitud en apertura")
+                if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
+                    raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+                recovered = await recover_opening_intent(
+                    db, table=table, order_id=intent.get("id"), restaurant_id=r["id"]
+                )
+                if not recovered:
+                    raise HTTPException(status_code=409, detail="La apertura requiere conciliación")
+                return await _finish_public_order(recovered, data)
         if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
             raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         if table.get("active_attention_id") or table.get("status") != "disponible":
@@ -449,7 +464,22 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "updated_at": _now(),
     }
     if table_id:
-        order.update({"attention_id": str(uuid.uuid4()), "attention_state": "opening", "attention_open": False})
+        attention_id = str(uuid.uuid4())
+        order.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
+        order["_id"] = order_id
+        if table.get("branch_id") is not None:
+            order["branch_id"] = table["branch_id"]
+        try:
+            await reserve_table_opening(
+                db, table=table, order_id=order_id, restaurant_id=r["id"],
+                allowed_statuses=("disponible",), intent=order,
+            )
+        except AttentionBlocked as exc:
+            if request_id:
+                prior = await db.orders.find_one({"restaurant_id": r["id"], "request_id": request_id}, {"_id": 0})
+                if prior and prior.get("request_fingerprint") == request_fingerprint and prior.get("table_id") == table_id:
+                    return await _finish_public_order(prior, data)
+            raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(order)
     except DuplicateKeyError:
@@ -462,6 +492,9 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             if previous:
                 raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+    except Exception:
+        # Keep the durable intent because an insert may have committed before raising.
+        raise
     return await _finish_public_order(order, data)
 
 

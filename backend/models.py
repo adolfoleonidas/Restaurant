@@ -129,6 +129,12 @@ class TableCreate(BaseModel):
     name: Optional[str] = None
     capacity: int = 4
     area: str = "Salón"
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 class TableUpdate(BaseModel):
@@ -137,6 +143,19 @@ class TableUpdate(BaseModel):
     capacity: Optional[int] = None
     area: Optional[str] = None
     status: Optional[TableStatus] = None
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id", mode="before")
+    @classmethod
+    def reject_explicit_null_branch(cls, value):
+        if value is None:
+            raise ValueError("Branch assignment cannot be cleared")
+        return value
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 # ============== ZONE ==============
