@@ -268,13 +268,14 @@ describe('table branch assignment controls', () => {
     });
 
     it('offers catalog retry for table assignment without auto-selecting on retry', async () => {
-        let calls = 0;
+        let failing = true;
         const pendingRetry = deferred();
         api.get.mockImplementation((path) => path === '/branches'
-            ? (calls++ < 2 ? Promise.reject(new Error('offline')) : pendingRetry.promise)
+            ? (failing ? Promise.reject(new Error('offline')) : pendingRetry.promise)
             : Promise.resolve({ data: path === '/tables' ? [] : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' } : null }));
         const view = await render(Configuracion);
         await click('mesa-config-nueva');
+        failing = false;
         expect(document.body.querySelector('[data-testid="mesa-branches-retry"]')).not.toBeNull();
         await act(async () => document.body.querySelector('[data-testid="mesa-branches-retry"]').click());
         expect(document.body.querySelector('[data-testid="mesa-branches-retry"]')).toBeNull();

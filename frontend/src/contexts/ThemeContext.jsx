@@ -7,7 +7,18 @@ const themes = [
   { id: 'calido', name: 'Cálido', description: 'Naranja/Marrón - Acogedor tradicional' },
 ];
 
-const ThemeContext = createContext();
+// Default value so components (and tests) can render outside a ThemeProvider.
+const fallbackTheme = {
+  theme: 'fresco',
+  setTheme: () => {},
+  clearThemeOverride: () => {},
+  themes,
+  darkMode: false,
+  toggle: () => {},
+  loading: false,
+};
+
+const ThemeContext = createContext(fallbackTheme);
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState('fresco');
@@ -117,9 +128,5 @@ export function ThemeProvider({ children }) {
 }
 
 export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
+  return useContext(ThemeContext);
 }
