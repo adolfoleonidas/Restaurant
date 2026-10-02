@@ -4,9 +4,11 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
-import { Search, Grid2X2, Plus, Users } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { toast } from 'sonner';
@@ -47,6 +49,9 @@ export default function Mesas() {
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
     const [openTable, setOpenTable] = useState(null);
+    const [showNewOrder, setShowNewOrder] = useState(false);
+    const [newOrderType, setNewOrderType] = useState('mesa');
+    const [newOrderTable, setNewOrderTable] = useState('');
 
     const { generation } = useNotify();
     const { data: tables, refetch } = usePolling(
@@ -175,6 +180,27 @@ export default function Mesas() {
         }
     };
 
+    const startNewOrder = () => {
+        if (newOrderType === 'mesa' && !newOrderTable) {
+            toast.error('Seleccioná una mesa');
+            return;
+        }
+        setShowNewOrder(false);
+        if (newOrderType === 'mesa') {
+            navigate(`/pedidos/nuevo?mesa=${newOrderTable}`);
+        } else {
+            navigate(`/pedidos/nuevo?tipo=${newOrderType}`);
+        }
+        setNewOrderType('mesa');
+        setNewOrderTable('');
+    };
+
+    const availableTables = useMemo(() => {
+        return (tables || []).filter((t) => 
+            t.status === 'disponible' || t.status === 'ocupada'
+        );
+    }, [tables]);
+
     return (
         <div className="space-y-5" data-testid="mesas-root">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -183,9 +209,16 @@ export default function Mesas() {
                     <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Grid2X2 className="h-6 w-6 text-primary" /> Mesas</h1>
                     <p className="text-muted-foreground text-sm">Tocá una mesa para ver el detalle y actuar.</p>
                 </div>
-                <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                    <Input className="pl-9 h-10 w-48" placeholder="Buscar mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="mesas-search-input" />
+                <div className="flex gap-2 items-center">
+                    <div className="relative">
+                        <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
+                        <Input className="pl-9 h-10 w-48" placeholder="Buscar mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="mesas-search-input" />
+                    </div>
+                    {canTake && (
+                        <Button onClick={() => setShowNewOrder(true)} data-testid="mesas-nuevo-pedido">
+                            <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -380,6 +413,55 @@ export default function Mesas() {
                     })()}
                 </SheetContent>
             </Sheet>
+
+            <Dialog open={showNewOrder} onOpenChange={setShowNewOrder}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Nuevo pedido</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Tipo de pedido</label>
+                            <Select value={newOrderType} onValueChange={setNewOrderType}>
+                                <SelectTrigger data-testid="nuevo-pedido-tipo">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="mesa">Mesa</SelectItem>
+                                    <SelectItem value="delivery">Delivery</SelectItem>
+                                    <SelectItem value="recojo">Recojo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {newOrderType === 'mesa' && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Seleccioná una mesa</label>
+                                <Select value={newOrderTable} onValueChange={setNewOrderTable}>
+                                    <SelectTrigger data-testid="nuevo-pedido-mesa">
+                                        <SelectValue placeholder="Elegir mesa..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {availableTables.map((t) => (
+                                            <SelectItem key={t.id} value={t.id}>
+                                                Mesa {t.number} · {t.area} {t.status === 'ocupada' ? '(ocupada)' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Podés crear el pedido desde donde estés, sin necesidad de ir a la mesa.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowNewOrder(false)}>Cancelar</Button>
+                        <Button onClick={startNewOrder} data-testid="nuevo-pedido-crear">
+                            Crear pedido
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
