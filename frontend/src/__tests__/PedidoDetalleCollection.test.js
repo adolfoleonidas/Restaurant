@@ -10,6 +10,7 @@ const originalFileReader = global.FileReader;
 const mockUser = { id: 'waiter-1', role: 'mozo', functions: ['atencion', 'cobro'] };
 const mockOrder = {
     id: 'order-1', order_number: 17, status: 'pendiente_pago', payment_status: 'pendiente',
+    acceptance_status: 'aceptado', attention_number: 6, attention_business_date: '2026-10-02', branch_id: 'branch-1',
     order_type: 'local', subtotal: 25, total: 25, amount_paid: 0, updated_at: 'stamp',
     items: [{ id: 'item-1', product_name: 'Lomo', quantity: 1, unit_price: 25, subtotal: 25, paid_qty: 0 }],
 };
@@ -94,6 +95,7 @@ describe('PedidoDetalle collection entry', () => {
         expect(api.get).toHaveBeenCalledWith('/cash/current');
         expect(mockNavigate).not.toHaveBeenCalled();
         expect(document.body.querySelector('[data-testid="caja-cobrar-dialog"]')).not.toBeNull();
+        expect(view.host.textContent).toContain('Atención 6 · 2026-10-02 · branch-1');
         await click(document.body.querySelector('[data-testid="caja-cobrar-submit-button"]'));
         await flush();
         expect(api.post).toHaveBeenCalledWith('/payments', expect.objectContaining({

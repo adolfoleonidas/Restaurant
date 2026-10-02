@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fmtMoney, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { toast } from 'sonner';
+import AttentionReference from '@/components/AttentionReference';
 import { Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote, CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon } from 'lucide-react';
 
 const ORDER_TYPE_INFO = {
@@ -172,7 +173,11 @@ export default function Checkout() {
                 payload,
                 post: (requestPayload) => api.post('/public/orders', requestPayload),
                 onConfirmed: (data) => {
-                    setConfirmed(data);
+                    setConfirmed({
+                        ...data,
+                        order_type: orderType,
+                        branchName: pickupBranches.find((branch) => branch.id === pickupBranchId)?.name || null,
+                    });
                     if (!isActive) {
                         setMeta({
                             tracking_code: data.tracking_code,
@@ -204,6 +209,7 @@ export default function Checkout() {
                             <span className="font-display text-3xl font-bold">#{confirmed.order_number}</span>
                             <span className="text-xs text-muted-foreground">Código seguimiento: <span className="font-mono" data-testid="checkout-tracking-code">{confirmed.tracking_code}</span></span>
                         </div>
+                        <AttentionReference order={confirmed} branchName={confirmed.branchName} publicView />
                         <div className="mt-4 font-display text-2xl font-bold tabular-nums">Total: {fmtMoney(confirmed.total)}</div>
                         <Button asChild variant="outline" className="mt-4">
                             <Link to={`/pedido/${confirmed.tracking_code}`} data-testid="checkout-ver-estado">Ver estado del pedido</Link>

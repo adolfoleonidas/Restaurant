@@ -14,6 +14,7 @@ from billing import BillError, guarded_totals
 from order_flow import VersionError, claim_order, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
+from attention_presentation import public_attention_reference
 from guest_access import client_host, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
@@ -85,7 +86,7 @@ async def _enrich_items(items, r):
 
 
 def _public_order_view(o: dict) -> dict:
-    return {
+    result = {
         "id": o["id"],
         "order_number": o["order_number"],
         "tracking_code": o["tracking_code"],
@@ -105,6 +106,8 @@ def _public_order_view(o: dict) -> dict:
         "updated_at": o.get("updated_at"),
         "has_proof": bool(o.get("payment_proof_url")),
     }
+    result.update(public_attention_reference(o))
+    return result
 
 
 def _public_order_fingerprint(data: PublicOrderCreate, restaurant_id: str, table_id: str | None) -> str:
@@ -121,7 +124,7 @@ def _public_order_fingerprint(data: PublicOrderCreate, restaurant_id: str, table
 
 
 def _public_order_response(order: dict) -> dict:
-    return {
+    result = {
         "id": order["id"],
         "order_number": order["order_number"],
         "tracking_code": order["tracking_code"],
@@ -129,6 +132,8 @@ def _public_order_response(order: dict) -> dict:
         "total": order["total"],
         "payment_method": order["payment_method_choice"],
     }
+    result.update(public_attention_reference(order))
+    return result
 
 
 async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:

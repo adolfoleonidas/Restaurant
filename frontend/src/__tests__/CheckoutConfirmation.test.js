@@ -52,7 +52,7 @@ describe('Checkout confirmed-order persistence', () => {
             if (path === '/public/tables/resolve') return Promise.resolve({ data: { id: 'table-1', number: 1, area: 'Salon' } });
             return Promise.resolve({ data: [] });
         });
-        api.post.mockResolvedValue({ data: { tracking_code: 'owner-code', order_number: 17, total: 25, payment_method: 'yape' } });
+        api.post.mockResolvedValue({ data: { tracking_code: 'owner-code', order_number: 17, total: 25, payment_method: 'yape', acceptance_status: 'aceptado', attention_number: 2, attention_business_date: '2026-10-02' } });
         window.scrollTo = jest.fn();
         removeItem = jest.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
             throw new Error('session storage cleanup unavailable');
@@ -76,6 +76,8 @@ describe('Checkout confirmed-order persistence', () => {
         expect(removeItem).toHaveBeenCalled();
         expect(container.querySelector('[data-testid="checkout-confirmed-root"]')).not.toBeNull();
         expect(container.querySelector('[data-testid="checkout-tracking-code"]').textContent).toBe('owner-code');
+        expect(container.textContent).toContain('Atención 2');
+        expect(container.textContent).toContain('2026-10-02');
         expect(toast.success).toHaveBeenCalledWith('Pedido #17 confirmado');
         expect(mockClearCart).toHaveBeenCalled();
 

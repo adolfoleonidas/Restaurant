@@ -8,6 +8,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockVisit = {
     id: 'order-1', table_id: 'table-1', attention_id: 'visit-1', attention_state: 'open',
+    acceptance_status: 'aceptado', attention_number: 5, attention_business_date: '2026-10-02', branch_id: 'branch-1',
     status: 'pagado', payment_status: 'pagado', amount_paid: 25, total: 25,
     items: [{ id: 'item-1', status: 'entregado', quantity: 1 }],
 };
@@ -97,6 +98,7 @@ describe('Servicio attention closure', () => {
         mockRows.orders = [{ ...mockVisit, status: 'listo', payment_requested: true, items: [{ id: 'item-1', status: 'listo', quantity: 1 }] }];
         const { container, root } = await renderPage();
         expect(container.textContent).toContain('Cuenta solicitada');
+        expect(container.textContent).toContain('Atención 5 · 2026-10-02 · branch-1');
         expect(container.querySelector('[data-testid="servicio-entregar-1"]')).not.toBeNull();
         await act(async () => root.unmount());
         container.remove();

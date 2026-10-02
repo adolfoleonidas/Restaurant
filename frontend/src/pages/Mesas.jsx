@@ -10,6 +10,8 @@ import { Search, Grid2X2, Plus, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { toast } from 'sonner';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 const FLOOR_STYLE = {
     libre: { label: 'Libre', bg: '#E7F6EE', fg: '#0F5132', border: '#BFE7D0', dot: '#22C55E' },
@@ -43,6 +45,7 @@ function floorState(t) {
 
 export default function Mesas() {
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
@@ -271,6 +274,7 @@ export default function Mesas() {
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">
                                                 <div>Pedido #{order.order_number} · {order.source === 'public' ? 'Carta web' : 'Salón'}</div>
+                                                <AttentionReference order={order} branchNames={branchNames} />
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
@@ -302,6 +306,7 @@ export default function Mesas() {
                                                     <div key={o.id} className="py-2 px-3 flex items-center justify-between gap-2 text-sm">
                                                         <div className="min-w-0">
                                                             <div className="font-medium truncate">#{o.order_number} · {ORDER_STATUS_LABELS[o.status] || o.status}</div>
+                                                            <AttentionReference order={o} branchNames={branchNames} />
                                                             <div className="text-xs text-muted-foreground">{fmtDateTime(o.created_at)}</div>
                                                         </div>
                                                         <span className="font-mono font-semibold tabular-nums shrink-0">{fmtMoney(o.total)}</span>

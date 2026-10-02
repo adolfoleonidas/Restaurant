@@ -378,6 +378,47 @@ def test_ambiguous_order_propagation_does_not_accept_partial_or_wrong_date_readb
     assert db.orders.rows[0]["attention_business_date"] == "2026-10-01"
 
 
+def test_public_attention_serializers_expose_only_valid_safe_reference_fields():
+    import routes.public as public_routes
+    order = {
+        "id": "public-order", "order_number": 81, "tracking_code": "TRACK81",
+        "status": "enviado_cocina", "order_type": "recojo", "total": 12,
+        "payment_method_choice": "efectivo", "acceptance_status": "aceptado",
+        "attention_number": 4, "attention_business_date": "2026-10-02",
+        "attention_number_assigned_at": "private-time", "attention_number_context": {"private": True},
+        "attention_number_pending": False, "attention_id": "private-attention", "branch_id": "private-branch",
+    }
+
+    response = public_routes._public_order_response(order)
+    view = public_routes._public_order_view(order)
+    for serialized in (response, view):
+        assert serialized["attention_number"] == 4
+        assert serialized["attention_business_date"] == "2026-10-02"
+        assert serialized["acceptance_status"] == "aceptado"
+        for private in ("attention_number_assigned_at", "attention_number_context", "attention_number_pending",
+                        "attention_id", "branch_id"):
+            assert private not in serialized
+
+
+@pytest.mark.parametrize("changes", [
+    {"order_type": "delivery"}, {"order_type": "recojo", "attention_number": True},
+    {"order_type": "recojo", "attention_number": 0}, {"order_type": "recojo", "attention_number": 3.5},
+    {"order_type": "recojo", "attention_number": 9007199254740992}, {"order_type": "other"},
+    {"order_type": "recojo", "attention_business_date": "2026-02-30"},
+    {"order_type": "recojo", "acceptance_status": "pendiente"},
+])
+def test_public_serializers_omit_invalid_or_inapplicable_attention_reference(changes):
+    import routes.public as public_routes
+    order = {"id": "public-order", "order_number": 81, "tracking_code": "TRACK81", "status": "nuevo",
+             "order_type": "recojo", "total": 12, "payment_method_choice": "efectivo",
+             "acceptance_status": "aceptado", "attention_number": 4,
+             "attention_business_date": "2026-10-02", **changes}
+    for serialized in (public_routes._public_order_response(order), public_routes._public_order_view(order)):
+        assert "attention_number" not in serialized
+        assert "attention_business_date" not in serialized
+        assert "acceptance_status" not in serialized
+
+
 def test_public_retry_finishes_numbering_from_persisted_snapshot_without_leaking_context(monkeypatch):
     import routes.public as public_routes
     from models import PublicOrderCreate

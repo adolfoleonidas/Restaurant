@@ -14,6 +14,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { useNotify } from '@/contexts/NotifyContext';
 import OrderCollectionDialog from '@/components/OrderCollectionDialog';
+import AttentionReference from '@/components/AttentionReference';
+import useBranchNames from '@/hooks/useBranchNames';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -23,6 +25,7 @@ export default function PedidoDetalle() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
+    const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
 
     const { data: order, refetch } = usePolling(() => api.get(`/orders/${id}`).then((r) => r.data), 12000, [id, generation]);
@@ -223,6 +226,7 @@ export default function PedidoDetalle() {
                         {table ? `Mesa ${table.number}` : `Pedido #${order.order_number}`}
                     </h1>
                     <p className="text-sm text-muted-foreground">Atiende: {order.created_by_name || '—'}</p>
+                    <AttentionReference order={order} branchNames={branchNames} />
                 </div>
             </div>
             {user.role === 'admin' && !locked && (
