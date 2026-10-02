@@ -119,24 +119,64 @@ function Sucursales() {
 
 function Zonas() {
     const [zones, setZones] = useState([]);
+    const [branches, setBranches] = useState([]);
+    const [tables, setTables] = useState([]);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [name, setName] = useState('');
+    const [branchId, setBranchId] = useState('');
     const [confirmDel, setConfirmDel] = useState(null);
-    const load = async () => { const { data } = await api.get('/zones'); setZones(data); };
+    
+    const load = async () => {
+        const [z, b, t] = await Promise.all([
+            api.get('/zones'),
+            api.get('/branches'),
+            api.get('/tables')
+        ]);
+        setZones(z.data);
+        setBranches(Array.isArray(b.data) ? b.data : []);
+        setTables(t.data);
+    };
+    
     useEffect(() => { load(); }, []);
-    const openNew = () => { setEditing(null); setName(''); setDlg(true); };
-    const openEdit = (z) => { setEditing(z); setName(z.name); setDlg(true); };
+    
+    const openNew = () => { 
+        setEditing(null); 
+        setName(''); 
+        setBranchId('');
+        setDlg(true); 
+    };
+    
+    const openEdit = (z) => { 
+        setEditing(z); 
+        setName(z.name); 
+        setBranchId(z.branch_id || '');
+        setDlg(true); 
+    };
+    
     const save = async () => {
         try {
-            if (editing) await api.patch(`/zones/${editing.id}`, { name });
-            else await api.post('/zones', { name });
+            const payload = { name };
+            if (branchId) payload.branch_id = branchId;
+            
+            if (editing) await api.patch(`/zones/${editing.id}`, payload);
+            else await api.post('/zones', payload);
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
+    
     const doDelete = async (z) => {
         try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+    };
+    
+    const getBranchName = (id) => {
+        const branch = branches.find(b => b.id === id);
+        return branch ? branch.name : 'Sin sucursal';
+    };
+    
+    const getTablesInZone = (zoneName) => {
+        return tables.filter(t => t.area === zoneName);
     };
 
     return (
@@ -145,26 +185,74 @@ function Zonas() {
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2"><MapPin className="h-5 w-5" /> Zonas del salón</h2>
                 <Button onClick={openNew} data-testid="zona-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva zona</Button>
             </div>
+            <p className="text-xs text-muted-foreground mb-4">Asigná una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
+            
             {zones.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-2">Sin zonas. Creá una para agrupar las mesas (ej: Salón, Terraza).</p>
             ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {zones.map((z) => (
-                        <div key={z.id} className="flex items-center justify-between border rounded-xl p-3">
-                            <div className="font-medium">{z.name}</div>
-                            <div className="flex items-center gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                <div className="space-y-3">
+                    {zones.map((z) => {
+                        const zoneTables = getTablesInZone(z.name);
+                        return (
+                            <div key={z.id} className="border rounded-xl p-4 space-y-3" data-testid={`zona-row-${z.id}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-lg">{z.name}</span>
+                                            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
+                                                {getBranchName(z.branch_id)}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            {zoneTables.length} {zoneTables.length === 1 ? 'mesa' : 'mesas'} en esta zona
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    </div>
+                                </div>
+                                
+                                {zoneTables.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 pt-2 border-t">
+                                        {zoneTables.map(t => (
+                                            <span key={t.id} className="text-xs px-2 py-1 rounded bg-muted">
+                                                Mesa {t.number}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>{editing ? 'Editar zona' : 'Nueva zona'}</DialogTitle></DialogHeader>
-                    <div><Label>Nombre</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" /></div>
+                    <div className="space-y-4">
+                        <div>
+                            <Label>Nombre</Label>
+                            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
+                        </div>
+                        <div>
+                            <Label>Sucursal asignada</Label>
+                            <Select value={branchId} onValueChange={setBranchId}>
+                                <SelectTrigger data-testid="zona-form-branch">
+                                    <SelectValue placeholder="Seleccionar sucursal..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {branches.map(b => (
+                                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Las mesas de esta zona heredarán automáticamente esta sucursal.
+                            </p>
+                        </div>
+                    </div>
                     <p className="text-xs text-muted-foreground">Al renombrar una zona, las mesas que la usan se actualizan solas.</p>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>
@@ -245,6 +333,29 @@ function Mesas() {
         try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error('Error'); }
     };
+    
+    const getZoneBranch = (area) => {
+        const zone = zones.find(z => z.name === area);
+        return zone?.branch_id || null;
+    };
+    
+    const getBranchName = (id) => {
+        const branch = branches.find(b => b.id === id);
+        return branch ? branch.name : null;
+    };
+    
+    const getTableBranchInfo = (table) => {
+        if (table.branch_id) {
+            const name = getBranchName(table.branch_id);
+            return { type: 'explicit', name: name || table.branch_id };
+        }
+        const zoneBranch = getZoneBranch(table.area);
+        if (zoneBranch) {
+            const name = getBranchName(zoneBranch);
+            return { type: 'inherited', name: name || zoneBranch };
+        }
+        return { type: 'none', name: 'Sin sucursal' };
+    };
 
     return (
         <Card><CardContent className="p-5">
@@ -252,26 +363,46 @@ function Mesas() {
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Grid2X2 className="h-5 w-5" /> Mesas</h2>
                 <Button onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
             </div>
+            <p className="text-xs text-muted-foreground mb-4">
+                Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {tables.map((t) => (
-                    <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} />
-                                <div>
-                                    <div className="font-medium">{t.name}</div>
-                                    <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
-                                    <div className="text-xs text-muted-foreground" data-testid={`mesa-config-branch-${t.id}`}>{t.branch_id ? branches.find((branch) => branch.id === t.branch_id)?.name || t.branch_id : 'Sin sucursal asignada'}</div>
+                {tables.map((t) => {
+                    const branchInfo = getTableBranchInfo(t);
+                    return (
+                        <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} />
+                                    <div>
+                                        <div className="font-medium">{t.name}</div>
+                                        <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                                        <div className="text-xs mt-1" data-testid={`mesa-config-branch-${t.id}`}>
+                                            {branchInfo.type === 'explicit' && (
+                                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                                    {branchInfo.name}
+                                                </span>
+                                            )}
+                                            {branchInfo.type === 'inherited' && (
+                                                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                                    Hereda: {branchInfo.name}
+                                                </span>
+                                            )}
+                                            {branchInfo.type === 'none' && (
+                                                <span className="text-muted-foreground">{branchInfo.name}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
+                                    <Button size="icon" variant="ghost" onClick={() => setConfirmDel(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                            </div>
+                            <TableQrActions table={t} />
                         </div>
-                        <TableQrActions table={t} />
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
@@ -282,14 +413,20 @@ function Mesas() {
                         <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                         <div><Label>Capacidad</Label><Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
                         <div><Label>Zona</Label>
-                            <Select value={form.area} onValueChange={(v) => setForm({ ...form, area: v })}>
+                            <Select value={form.area} onValueChange={(v) => {
+                                const zoneBranch = getZoneBranch(v);
+                                // Si la mesa no tiene branch_id explícito, hereda de la zona
+                                const newBranchId = (!editing || !editing.branch_id) ? (zoneBranch || '') : form.branch_id;
+                                setForm({ ...form, area: v, branch_id: newBranchId });
+                            }}>
                                 <SelectTrigger data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
                                 <SelectContent>
                                     {zones.map((z) => <SelectItem key={z.id} value={z.name}>{z.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="col-span-2"><Label htmlFor="mesa-form-branch">Sucursal</Label>
+                        <div className="col-span-2">
+                            <Label htmlFor="mesa-form-branch">Sucursal</Label>
                             <select
                                 id="mesa-form-branch"
                                 className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -298,13 +435,36 @@ function Mesas() {
                                 disabled={branchesLoading || branchesError || saving}
                                 data-testid="mesa-form-branch"
                             >
-                                {(!editing || !form.branch_id) && <option value="">Sin asignar</option>}
+                                <option value="">Heredar de la zona</option>
                                 {editing?.branch_id && !branches.some((branch) => branch.id === editing.branch_id) && <option value={editing.branch_id}>{editing.branch_id}</option>}
                                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                             </select>
                             {branchesLoading && <p className="text-xs text-muted-foreground mt-1" data-testid="mesa-branches-loading">Cargando sucursales…</p>}
                             {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="mesa-branches-retry">Reintentar</Button></div>}
                             {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
+                            
+                            {/* Mostrar qué sucursal heredará si no hay asignación explícita */}
+                            {!form.branch_id && form.area && (() => {
+                                const zoneBranch = getZoneBranch(form.area);
+                                if (zoneBranch) {
+                                    const branchName = getBranchName(zoneBranch);
+                                    return (
+                                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                                            ✓ Heredará: {branchName || zoneBranch} (de la zona "{form.area}")
+                                        </p>
+                                    );
+                                }
+                                return (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        La zona "{form.area}" no tiene sucursal asignada. Esta mesa quedará sin sucursal.
+                                    </p>
+                                );
+                            })()}
+                            {form.branch_id && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                    ✓ Asignación explícita (override de la zona)
+                                </p>
+                            )}
                         </div>
                         {editing && (
                             <div className="col-span-2"><Label>Estado</Label>
