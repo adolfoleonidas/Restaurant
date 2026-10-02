@@ -8,6 +8,17 @@ from models import UserCreate, UserUpdate
 router = APIRouter()
 
 
+async def _assert_owned_branch(branch_id: str, restaurant_id: str):
+    if not isinstance(branch_id, str) or not branch_id.strip():
+        raise HTTPException(status_code=400, detail="Debe indicar una sucursal válida")
+    branch = await db.branches.find_one(
+        {"id": branch_id, "restaurant_id": restaurant_id},
+        {"_id": 0},
+    )
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
@@ -23,6 +34,8 @@ async def list_users(user: dict = Depends(require_roles(["admin"]))):
 
 @router.post("")
 async def create_user(data: UserCreate, user: dict = Depends(require_roles(["admin"]))):
+    if data.branch_id is not None:
+        await _assert_owned_branch(data.branch_id, user["restaurant_id"])
     existing = await db.users.find_one({"email": data.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email ya registrado")
@@ -41,21 +54,30 @@ async def create_user(data: UserCreate, user: dict = Depends(require_roles(["adm
         "created_at": _now(),
         "updated_at": _now(),
     }
+    if data.branch_id is not None:
+        new["branch_id"] = data.branch_id
     await db.users.insert_one(new)
     return {k: v for k, v in new.items() if k not in ("_id", "password_hash")}
 
 
 @router.patch("/{user_id}")
 async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(require_roles(["admin"]))):
-    target = await db.users.find_one({"id": user_id, "restaurant_id": user["restaurant_id"]})
+    user_filter = {"id": user_id, "restaurant_id": user["restaurant_id"]}
+    target = await db.users.find_one(user_filter)
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
+    if "branch_id" in update:
+        await _assert_owned_branch(update["branch_id"], user["restaurant_id"])
     if "password" in update:
         update["password_hash"] = hash_password(update.pop("password"))
     update["updated_at"] = _now()
-    await db.users.update_one({"id": user_id}, {"$set": update})
-    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    result = await db.users.update_one(user_filter, {"$set": update})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    updated = await db.users.find_one(user_filter, {"_id": 0, "password_hash": 0})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return updated
 
 

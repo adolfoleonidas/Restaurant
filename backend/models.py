@@ -30,6 +30,13 @@ class TokenOut(BaseModel):
 Role = Literal["admin", "cajero", "mozo", "cocina"]
 
 
+def _user_branch_id(value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError("Branch ID cannot be blank")
+    return normalized
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -39,6 +46,12 @@ class UserCreate(BaseModel):
     can_discount: bool = False
     can_void: bool = False
     functions: Optional[List[str]] = None
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 class UserUpdate(BaseModel):
@@ -51,6 +64,19 @@ class UserUpdate(BaseModel):
     can_void: Optional[bool] = None
     functions: Optional[List[str]] = None
     home_view: Optional[str] = None
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id", mode="before")
+    @classmethod
+    def reject_explicit_null_branch(cls, value):
+        if value is None:
+            raise ValueError("Branch assignment cannot be cleared")
+        return value
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 # ============== RESTAURANT ==============
