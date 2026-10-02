@@ -1,0 +1,56 @@
+/* ============================================================
+   THEME: Fresco (Azul/Blanco) — Moderno
+   ============================================================ */
+:root {
+  --background: 220 30% 98%;
+  --foreground: 220 30% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 30% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 30% 10%;
+  --primary: 220 75% 45%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 25% 92%;
+  --secondary-foreground: 220 25% 15%;
+  --muted: 220 20% 92%;
+  --muted-foreground: 220 15% 35%;
+  --accent: 220 65% 38%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 220 15% 82%;
+  --input: 220 15% 82%;
+  --ring: 220 75% 45%;
+  --chart-1: 220 75% 45%;
+  --chart-2: 320 65% 50%;
+  --chart-3: 160 65% 40%;
+  --chart-4: 30 85% 50%;
+  --chart-5: 190 80% 50%;
+  --radius: 0.5rem;
+}
+.dark {
+  --background: 220 25% 10%;
+  --foreground: 220 25% 92%;
+  --card: 220 20% 14%;
+  --card-foreground: 220 25% 92%;
+  --popover: 220 20% 12%;
+  --popover-foreground: 220 25% 92%;
+  --primary: 220 75% 58%;
+  --primary-foreground: 220 25% 10%;
+  --secondary: 220 18% 20%;
+  --secondary-foreground: 220 25% 85%;
+  --muted: 220 18% 20%;
+  --muted-foreground: 220 15% 65%;
+  --accent: 220 65% 45%;
+  --accent-foreground: 220 25% 92%;
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 220 25% 92%;
+  --border: 220 18% 24%;
+  --input: 220 18% 24%;
+  --ring: 220 75% 58%;
+  --chart-1: 220 75% 58%;
+  --chart-2: 320 70% 58%;
+  --chart-3: 160 70% 45%;
+  --chart-4: 30 85% 58%;
+  --chart-5: 190 80% 58%;
+}

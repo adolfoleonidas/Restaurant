@@ -1,0 +1,97 @@
+/* ============================================================
+   TEMA: Restaurante (Verde Cálido)
+   Inspirado en el prototipo HTML original
+   ============================================================ */
+
+:root {
+  /* ---- Restaurante (Verde Cálido) — Light ---- */
+  --background: 40 20% 96%;
+  --foreground: 20 30% 15%;
+  --card: 40 25% 99%;
+  --card-foreground: 20 30% 15%;
+  --popover: 40 25% 99%;
+  --popover-foreground: 20 30% 15%;
+  --primary: 160 65% 35%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 40 20% 92%;
+  --secondary-foreground: 20 25% 20%;
+  --muted: 40 15% 90%;
+  --muted-foreground: 20 15% 40%;
+  --accent: 15 70% 45%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 40 15% 82%;
+  --input: 40 15% 82%;
+  --ring: 160 65% 35%;
+  --chart-1: 160 65% 35%;
+  --chart-2: 15 70% 45%;
+  --chart-3: 45 85% 50%;
+  --chart-4: 200 70% 45%;
+  --chart-5: 320 60% 50%;
+
+  /* ---- Tokens de marca (Restaurante) ---- */
+  --brand: hsl(var(--primary));
+  --brand-hover: hsl(160 65% 28%);
+  --brand-soft: hsl(160 50% 92%);
+  --on-brand: hsl(var(--primary-foreground));
+  --page: hsl(var(--background));
+  --paper: hsl(var(--card));
+  --surface: hsl(var(--muted));
+  --line: hsl(var(--border));
+  --ink: hsl(var(--foreground));
+  --muted-ink: hsl(var(--muted-foreground));
+  --soft: hsl(20 12% 55%);
+  --warn: 45 85% 50%;
+  --warn-soft: 45 90% 92%;
+  --green: 160 65% 40%;
+  --green-soft: 160 70% 92%;
+  --red: hsl(var(--destructive));
+  --red-soft: hsl(0 85% 92%);
+  --shadow: 0 24px 60px -20px hsl(20 30% 20% / 0.18);
+  --shadow-sm: 0 2px 8px -2px hsl(20 30% 20% / 0.12);
+}
+
+.dark {
+  /* ---- Restaurante (Verde Cálido) — Dark ---- */
+  --background: 20 25% 10%;
+  --foreground: 40 20% 92%;
+  --card: 20 20% 14%;
+  --card-foreground: 40 20% 92%;
+  --popover: 20 20% 12%;
+  --popover-foreground: 40 20% 92%;
+  --primary: 160 65% 50%;
+  --primary-foreground: 20 25% 10%;
+  --secondary: 20 18% 20%;
+  --secondary-foreground: 40 20% 85%;
+  --muted: 20 18% 20%;
+  --muted-foreground: 40 15% 65%;
+  --accent: 15 70% 55%;
+  --accent-foreground: 20 25% 10%;
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 20 25% 92%;
+  --border: 20 18% 24%;
+  --input: 20 18% 24%;
+  --ring: 160 65% 50%;
+
+  /* ---- Tokens de marca (dark) ---- */
+  --brand: hsl(var(--primary));
+  --brand-hover: hsl(160 65% 60%);
+  --brand-soft: hsl(160 50% 20%);
+  --on-brand: hsl(var(--primary-foreground));
+  --page: hsl(var(--background));
+  --paper: hsl(var(--card));
+  --surface: hsl(var(--muted));
+  --line: hsl(var(--border));
+  --ink: hsl(var(--foreground));
+  --muted-ink: hsl(var(--muted-foreground));
+  --soft: hsl(40 12% 65%);
+  --warn: 45 85% 58%;
+  --warn-soft: 45 60% 18%;
+  --green: 160 70% 50%;
+  --green-soft: 160 50% 18%;
+  --red: hsl(var(--destructive));
+  --red-soft: hsl(0 60% 18%);
+  --shadow: 0 24px 60px -20px hsl(20 30% 0% / 0.6);
+  --shadow-sm: 0 2px 8px -2px hsl(20 30% 0% / 0.4);
+}

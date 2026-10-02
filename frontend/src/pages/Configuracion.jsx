@@ -4,16 +4,59 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin } from 'lucide-react';
+import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin, Palette } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
+import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+function Temas() {
+    const { theme, setTheme, themes } = useTheme();
+    
+    return (
+        <Card><CardContent className="p-5">
+            <div className="flex items-center justify-between mb-4">
+                <div>
+                    <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                        <Palette className="h-5 w-5" /> Tema de la interfaz
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        Personaliza los colores de toda la aplicación
+                    </p>
+                </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {themes.map((t) => (
+                    <button
+                        key={t.id}
+                        onClick={() => setTheme(t.id)}
+                        className={`p-4 rounded-lg border-2 text-left transition-all ${
+                            theme === t.id 
+                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20' 
+                                : 'border-border hover:border-primary/50'
+                        }`}
+                        data-testid={`theme-${t.id}`}
+                    >
+                        <div className="font-medium mb-1">{t.name}</div>
+                        <div className="text-xs text-muted-foreground">{t.description}</div>
+                        {theme === t.id && (
+                            <div className="text-xs text-primary font-medium mt-2">✓ Activo</div>
+                        )}
+                    </button>
+                ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+                El tema se aplica inmediatamente y se guarda en tu navegador.
+            </p>
+        </CardContent></Card>
+    );
+}
 
 function Restaurante() {
     const [r, setR] = useState(null);
@@ -505,6 +548,7 @@ export default function Configuracion() {
             <p className="page-kicker mb-1">Administración</p>
             <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Configuración</h1>
             <p className="text-muted-foreground text-sm">Datos del restaurante, sucursales, zonas y mesas.</p>
+            <Temas />
             <Restaurante />
             <Sucursales />
             <Zonas />
