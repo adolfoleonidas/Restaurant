@@ -175,24 +175,45 @@ function Zonas() {
 function Mesas() {
     const [tables, setTables] = useState([]);
     const [zones, setZones] = useState([]);
+    const [branches, setBranches] = useState([]);
+    const [branchesLoading, setBranchesLoading] = useState(true);
+    const [branchesError, setBranchesError] = useState(false);
+    const [saving, setSaving] = useState(false);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible' });
+    const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
         const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
         setTables(t.data); setZones(z.data);
     };
     useEffect(() => { load(); }, []);
-    const defaultArea = () => (zones[0]?.name || 'Salón');
-    const openNew = () => { setEditing(null); setForm({ number: tables.length + 1, name: '', capacity: 4, area: defaultArea(), status: 'disponible' }); setDlg(true); };
-    const openEdit = (t) => { setEditing(t); setForm({ number: t.number, name: t.name, capacity: t.capacity, area: t.area, status: t.status }); setDlg(true); };
-    const save = async () => {
+    const loadBranches = async () => {
+        setBranchesLoading(true);
+        setBranchesError(false);
         try {
-            const payload = { ...form, number: Number(form.number), capacity: Number(form.capacity) };
+            const { data } = await api.get('/branches');
+            setBranches(Array.isArray(data) ? data : []);
+        } catch (e) {
+            setBranchesError(true);
+            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
+        } finally { setBranchesLoading(false); }
+    };
+    useEffect(() => { loadBranches(); }, []);
+    const defaultArea = () => (zones[0]?.name || 'Salón');
+    const openNew = () => { setEditing(null); setForm({ number: tables.length + 1, name: '', capacity: 4, area: defaultArea(), status: 'disponible', branch_id: '' }); setDlg(true); };
+    const openEdit = (t) => { setEditing(t); setForm({ number: t.number, name: t.name, capacity: t.capacity, area: t.area, status: t.status, branch_id: t.branch_id || '' }); setDlg(true); };
+    const save = async () => {
+        if (saving) return;
+        setSaving(true);
+        try {
+            const { branch_id, ...tableForm } = form;
+            const payload = { ...tableForm, number: Number(form.number), capacity: Number(form.capacity) };
+            if (branch_id && branch_id !== (editing?.branch_id || '')) payload.branch_id = branch_id;
             if (editing) await api.patch(`/tables/${editing.id}`, payload);
             else await api.post('/tables', payload);
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        finally { setSaving(false); }
     };
     const del = async (t) => {
         if (!window.confirm(`Eliminar ${t.name}?`)) return;
@@ -213,6 +234,7 @@ function Mesas() {
                             <div>
                                 <div className="font-medium">{t.name}</div>
                                 <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                                <div className="text-xs text-muted-foreground" data-testid={`mesa-config-branch-${t.id}`}>{t.branch_id ? branches.find((branch) => branch.id === t.branch_id)?.name || t.branch_id : 'Sin sucursal asignada'}</div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
@@ -239,6 +261,23 @@ function Mesas() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="col-span-2"><Label htmlFor="mesa-form-branch">Sucursal</Label>
+                            <select
+                                id="mesa-form-branch"
+                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                value={form.branch_id}
+                                onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
+                                disabled={branchesLoading || branchesError || saving}
+                                data-testid="mesa-form-branch"
+                            >
+                                {(!editing || !form.branch_id) && <option value="">Sin asignar</option>}
+                                {editing?.branch_id && !branches.some((branch) => branch.id === editing.branch_id) && <option value={editing.branch_id}>{editing.branch_id}</option>}
+                                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                            </select>
+                            {branchesLoading && <p className="text-xs text-muted-foreground mt-1" data-testid="mesa-branches-loading">Cargando sucursales…</p>}
+                            {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="mesa-branches-retry">Reintentar</Button></div>}
+                            {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
+                        </div>
                         {editing && (
                             <div className="col-span-2"><Label>Estado</Label>
                                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
@@ -252,7 +291,7 @@ function Mesas() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>
-                        <Button onClick={save} data-testid="mesa-form-save">Guardar</Button>
+                        <Button onClick={save} disabled={saving} data-testid="mesa-form-save">{saving ? 'Guardando…' : 'Guardar'}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
