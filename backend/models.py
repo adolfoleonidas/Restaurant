@@ -162,11 +162,30 @@ class TableUpdate(BaseModel):
 class ZoneCreate(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     sort_order: int = 0
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 class ZoneUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
     sort_order: Optional[int] = None
+    branch_id: Optional[str] = None
+
+    @field_validator("branch_id", mode="before")
+    @classmethod
+    def reject_explicit_null_branch(cls, value):
+        if value is None:
+            raise ValueError("Branch assignment cannot be cleared")
+        return value
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 # ============== BRANCH ==============

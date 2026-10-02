@@ -39,6 +39,15 @@ async def _validate_area(restaurant_id: str, area: str):
     return area
 
 
+async def _get_zone_branch(restaurant_id: str, area: str) -> str | None:
+    """Get the branch_id from a zone, if it has one."""
+    zone = await db.zones.find_one(
+        {"restaurant_id": restaurant_id, "name": area},
+        {"_id": 0, "branch_id": 1}
+    )
+    return zone.get("branch_id") if zone else None
+
+
 @router.get("")
 async def list_tables(user: dict = Depends(get_current_user)):
     items = await db.tables.find(
@@ -88,19 +97,27 @@ async def create_table(data: TableCreate, user: dict = Depends(require_roles(["a
     exists = await db.tables.find_one({"restaurant_id": user["restaurant_id"], "number": data.number})
     if exists:
         raise HTTPException(status_code=400, detail="Número de mesa ya existe")
+    
+    area = await _validate_area(user["restaurant_id"], data.area)
+    
+    # Determine branch_id: explicit > zone's branch_id > None
+    branch_id = data.branch_id
+    if branch_id is None:
+        branch_id = await _get_zone_branch(user["restaurant_id"], area)
+    
     t = {
         "id": str(uuid.uuid4()),
         "restaurant_id": user["restaurant_id"],
         "number": data.number,
         "name": data.name or f"Mesa {data.number}",
         "capacity": data.capacity,
-        "area": await _validate_area(user["restaurant_id"], data.area),
+        "area": area,
         "status": "disponible",
         "created_at": _now(),
         "updated_at": _now(),
     }
-    if data.branch_id is not None:
-        t["branch_id"] = data.branch_id
+    if branch_id is not None:
+        t["branch_id"] = branch_id
     await db.tables.insert_one(t)
     return {k: v for k, v in t.items() if k != "_id"}
 

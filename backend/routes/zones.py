@@ -12,6 +12,18 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+async def _validate_branch(restaurant_id: str, branch_id: str | None):
+    """Validate that branch exists and belongs to the restaurant."""
+    if branch_id is None:
+        return
+    branch = await db.branches.find_one(
+        {"id": branch_id, "restaurant_id": restaurant_id},
+        {"_id": 0}
+    )
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+
 @router.get("")
 async def list_zones(user: dict = Depends(get_current_user)):
     return await db.zones.find(
@@ -28,6 +40,10 @@ async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["adm
     exists = await db.zones.find_one({"restaurant_id": user["restaurant_id"], "name": name})
     if exists:
         raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
+    
+    # Validate branch if provided
+    await _validate_branch(user["restaurant_id"], data.branch_id)
+    
     z = {
         "id": str(uuid.uuid4()),
         "restaurant_id": user["restaurant_id"],
@@ -36,6 +52,8 @@ async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["adm
         "created_at": _now(),
         "updated_at": _now(),
     }
+    if data.branch_id:
+        z["branch_id"] = data.branch_id
     await db.zones.insert_one(z)
     return {k: v for k, v in z.items() if k != "_id"}
 
@@ -58,16 +76,31 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
             if clash:
                 raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
         update["name"] = new_name
+    
+    # Validate branch if being updated
+    if "branch_id" in update:
+        await _validate_branch(user["restaurant_id"], update["branch_id"])
+    
     update["updated_at"] = _now()
     await db.zones.update_one(
         {"id": zone_id, "restaurant_id": user["restaurant_id"]},
         {"$set": update}
     )
+    
+    # Propagate name change to tables
     if "name" in update and update["name"] != z["name"]:
         await db.tables.update_many(
             {"restaurant_id": user["restaurant_id"], "area": z["name"]},
             {"$set": {"area": update["name"], "updated_at": _now()}}
         )
+    
+    # Propagate branch_id change to tables in this zone
+    if "branch_id" in update:
+        await db.tables.update_many(
+            {"restaurant_id": user["restaurant_id"], "area": z["name"]},
+            {"$set": {"branch_id": update["branch_id"], "updated_at": _now()}}
+        )
+    
     return await db.zones.find_one({"id": zone_id}, {"_id": 0})
 
 
