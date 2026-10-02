@@ -8,12 +8,17 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Plus, Pencil, Trash2, Tags } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Categorias() {
     const [cats, setCats] = useState([]);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ name: '', description: '', sort_order: 0 });
+    const [confirmDel, setConfirmDel] = useState(null);
 
     const load = async () => { const { data } = await api.get('/categories'); setCats(data); };
     useEffect(() => { load(); }, []);
@@ -28,16 +33,19 @@ export default function Categorias() {
             setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
-    const del = async (c) => {
-        if (!window.confirm(`Eliminar categoría "${c.name}"?`)) return;
+    const doDelete = async (c) => {
         try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
     return (
         <div className="space-y-5" data-testid="categorias-root">
+            <p className="page-kicker mb-1">Administración</p>
             <div className="flex items-center justify-between">
-                <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Categorías</h1>
+                <div>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Categorías</h1>
+                    <p className="text-muted-foreground text-sm">Organizá los platos de la carta en grupos.</p>
+                </div>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
             </div>
             <Card><CardContent className="p-0">
@@ -50,7 +58,7 @@ export default function Categorias() {
                             </div>
                             <div className="flex items-center gap-1">
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => del(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                         </div>
                     ))}
@@ -71,6 +79,18 @@ export default function Categorias() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar categoría &quot;{confirmDel?.name}&quot;?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

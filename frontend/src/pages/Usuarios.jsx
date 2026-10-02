@@ -12,6 +12,17 @@ import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/lib/format';
 import { FN_LABELS, ROLE_FUNCTIONS } from '@/lib/functions';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+
+const ROLE_AVATAR_BG = {
+    admin: 'bg-purple-100 text-purple-700',
+    cajero: 'bg-blue-100 text-blue-700',
+    mozo: 'bg-emerald-100 text-emerald-700',
+    cocina: 'bg-amber-100 text-amber-700',
+};
 
 export default function Usuarios() {
     const [users, setUsers] = useState([]);
@@ -22,6 +33,7 @@ export default function Usuarios() {
     const [branchesLoading, setBranchesLoading] = useState(true);
     const [branchesError, setBranchesError] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [confirmDel, setConfirmDel] = useState(null);
     const { user: me } = useAuth();
 
     const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
@@ -62,8 +74,7 @@ export default function Usuarios() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
         finally { setSaving(false); }
     };
-    const del = async (u) => {
-        if (!window.confirm(`Eliminar a "${u.full_name}"?`)) return;
+    const doDelete = async (u) => {
         try { await api.delete(`/users/${u.id}`); toast.success('Eliminado'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
@@ -74,27 +85,48 @@ export default function Usuarios() {
 
     return (
         <div className="space-y-5" data-testid="usuarios-root">
+            <p className="page-kicker mb-1">Administración</p>
             <div className="flex items-center justify-between">
-                <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Users className="h-6 w-6 text-primary" /> Equipo</h1>
+                <div>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Users className="h-6 w-6 text-primary" /> Equipo</h1>
+                    <p className="text-muted-foreground text-sm">Usuarios del sistema, roles y permisos.</p>
+                </div>
                 <Button onClick={openNew} data-testid="usuario-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nuevo usuario</Button>
             </div>
             <Card><CardContent className="p-0">
                 <div className="divide-y">
                     {users.map((u) => (
                         <div key={u.id} className="p-4 flex flex-wrap items-center gap-3 justify-between">
-                            <div>
-                                <div className="font-medium">{u.full_name} {u.id === me.id && <span className="text-xs text-muted-foreground">(tú)</span>}</div>
-                                <div className="text-xs text-muted-foreground">{u.email} · {(u.functions?.length ? u.functions : ROLE_FUNCTIONS[u.role] || []).map((f) => FN_LABELS[f] || f).join(', ')}{u.branch_id && <span> · {branches.find((branch) => branch.id === u.branch_id)?.name || u.branch_id}</span>}</div>
+                            <div className="flex items-center gap-3">
+                                <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${ROLE_AVATAR_BG[u.role] || 'bg-gray-100 text-gray-600'}`}>
+                                    {(u.full_name || '?').charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <div className="font-medium">{u.full_name} {u.id === me.id && <span className="text-xs text-muted-foreground">(tú)</span>}</div>
+                                    <div className="text-xs text-muted-foreground">{u.email} · {(u.functions?.length ? u.functions : ROLE_FUNCTIONS[u.role] || []).map((f) => FN_LABELS[f] || f).join(', ')}{u.branch_id && <span> · {branches.find((branch) => branch.id === u.branch_id)?.name || u.branch_id}</span>}</div>
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <label className="flex items-center gap-1 text-xs"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={`Editar ${u.full_name}`}><Pencil className="h-4 w-4" /></Button>
-                                {u.id !== me.id && (<Button size="icon" variant="ghost" onClick={() => del(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
+                                {u.id !== me.id && (<Button size="icon" variant="ghost" onClick={() => setConfirmDel(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
                             </div>
                         </div>
                     ))}
                 </div>
             </CardContent></Card>
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar a &quot;{confirmDel?.full_name}&quot;?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>

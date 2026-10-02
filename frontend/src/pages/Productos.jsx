@@ -13,6 +13,10 @@ import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadshee
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -221,6 +225,7 @@ export default function Productos({ section = 'platos' }) {
     const [form, setForm] = useState(emptyProduct);
     const [importOpen, setImportOpen] = useState(false);
     const [pendingAvail, setPendingAvail] = useState(null);
+    const [confirmDel, setConfirmDel] = useState(null);
 
     const load = async () => {
         const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
@@ -291,8 +296,7 @@ export default function Productos({ section = 'platos' }) {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
-    const del = async (p) => {
-        if (!window.confirm(`Eliminar "${p.name}"?`)) return;
+    const doDelete = async (p) => {
         try { await api.delete(`/products/${p.id}`); toast.success('Eliminado'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
@@ -414,7 +418,7 @@ export default function Productos({ section = 'platos' }) {
                                     <label className="flex items-center gap-2 text-sm"><Switch checked={p.is_available} onCheckedChange={() => toggleAvail(p)} data-testid={`producto-disp-${p.id}`} /> {p.is_available ? 'Disponible' : 'Agotado'}</label>
                                     <div className="flex items-center gap-1">
                                         <Button size="icon" variant="ghost" onClick={() => openEdit(p)} data-testid={`producto-edit-${p.id}`}><Pencil className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => del(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                     </div>
                                 </div>
                             </CardContent></Card>
@@ -522,6 +526,18 @@ export default function Productos({ section = 'platos' }) {
             </Dialog>
 
             <ImportarPlatos open={importOpen} onOpenChange={setImportOpen} onDone={load} />
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar &quot;{confirmDel?.name}&quot;?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

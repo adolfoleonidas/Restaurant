@@ -1,12 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
-import { BarChart3, TrendingUp, ShoppingCart, Ban } from 'lucide-react';
+import { BarChart3, TrendingUp, ShoppingCart, Ban, Printer, FileDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
 
 const COLORS = ['#1F6F66', '#C65A3D', '#F59E0B', '#3B82F6', '#22C55E', '#8B5CF6'];
+
+function exportCsv(data) {
+    if (!data) return;
+    const rows = [['Reporte de ventas']];
+    rows.push(['Total ventas', data.total_sales]);
+    rows.push(['Pedidos pagados', data.orders_count]);
+    rows.push(['Ticket promedio', data.avg_ticket]);
+    rows.push(['Cancelados', data.cancelled_orders]);
+    rows.push([]);
+    rows.push(['Ventas por día']);
+    rows.push(['Fecha', 'Monto']);
+    (data.sales_by_day || []).forEach((d) => rows.push([d.date, d.amount]));
+    rows.push([]);
+    rows.push(['Por método de pago']);
+    rows.push(['Método', 'Monto']);
+    (data.by_method || []).forEach((m) => rows.push([m.method, m.amount]));
+    rows.push([]);
+    rows.push(['Productos más vendidos']);
+    rows.push(['Producto', 'Cantidad', 'Ingresos']);
+    (data.top_products || []).forEach((p) => rows.push([p.name, p.quantity, p.revenue]));
+    const csv = '\uFEFF' + rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reporte-${data.period || 'ventas'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
 
 export default function Reportes() {
     const [period, setPeriod] = useState('day');
@@ -18,15 +48,23 @@ export default function Reportes() {
 
     return (
         <div className="space-y-5" data-testid="reportes-root">
+            <p className="page-kicker mb-1">Administración</p>
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Reportes</h1>
-                <Tabs value={period} onValueChange={setPeriod}>
-                    <TabsList>
-                        <TabsTrigger value="day" data-testid="reportes-periodo-day">Hoy</TabsTrigger>
-                        <TabsTrigger value="week" data-testid="reportes-periodo-week">7 días</TabsTrigger>
-                        <TabsTrigger value="month" data-testid="reportes-periodo-month">30 días</TabsTrigger>
-                    </TabsList>
-                </Tabs>
+                <div>
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Reportes</h1>
+                    <p className="text-muted-foreground text-sm">Ventas, productos y métodos de pago.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Imprimir</Button>
+                    <Button variant="outline" onClick={() => exportCsv(data)} disabled={!data}><FileDown className="h-4 w-4 mr-2" />Exportar CSV</Button>
+                    <Tabs value={period} onValueChange={setPeriod}>
+                        <TabsList>
+                            <TabsTrigger value="day" data-testid="reportes-periodo-day">Hoy</TabsTrigger>
+                            <TabsTrigger value="week" data-testid="reportes-periodo-week">7 días</TabsTrigger>
+                            <TabsTrigger value="month" data-testid="reportes-periodo-month">30 días</TabsTrigger>
+                        </TabsList>
+                    </Tabs>
+                </div>
             </div>
 
             {!data ? (

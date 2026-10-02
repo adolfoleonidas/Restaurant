@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 function Restaurante() {
     const [r, setR] = useState(null);
@@ -118,6 +122,7 @@ function Zonas() {
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [name, setName] = useState('');
+    const [confirmDel, setConfirmDel] = useState(null);
     const load = async () => { const { data } = await api.get('/zones'); setZones(data); };
     useEffect(() => { load(); }, []);
     const openNew = () => { setEditing(null); setName(''); setDlg(true); };
@@ -129,8 +134,7 @@ function Zonas() {
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
-    const del = async (z) => {
-        if (!window.confirm(`Eliminar la zona «${z.name}»?`)) return;
+    const doDelete = async (z) => {
         try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
@@ -150,7 +154,7 @@ function Zonas() {
                             <div className="font-medium">{z.name}</div>
                             <div className="flex items-center gap-1">
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => del(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                         </div>
                     ))}
@@ -168,9 +172,30 @@ function Zonas() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar zona «{confirmDel?.name}»?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </CardContent></Card>
     );
 }
+
+const TABLE_STATUS_DOT = {
+    disponible: 'bg-green-500',
+    ocupada: 'bg-red-500',
+    esperando_pago: 'bg-amber-500',
+    reservada: 'bg-blue-500',
+    inactiva: 'bg-gray-400',
+    pagada: 'bg-emerald-400',
+};
 
 function Mesas() {
     const [tables, setTables] = useState([]);
@@ -181,6 +206,7 @@ function Mesas() {
     const [saving, setSaving] = useState(false);
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
+    const [confirmDel, setConfirmDel] = useState(null);
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
         const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
@@ -215,8 +241,7 @@ function Mesas() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
         finally { setSaving(false); }
     };
-    const del = async (t) => {
-        if (!window.confirm(`Eliminar ${t.name}?`)) return;
+    const doDelete = async (t) => {
         try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error('Error'); }
     };
@@ -231,14 +256,17 @@ function Mesas() {
                 {tables.map((t) => (
                     <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
                         <div className="flex items-center justify-between">
-                            <div>
-                                <div className="font-medium">{t.name}</div>
-                                <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
-                                <div className="text-xs text-muted-foreground" data-testid={`mesa-config-branch-${t.id}`}>{t.branch_id ? branches.find((branch) => branch.id === t.branch_id)?.name || t.branch_id : 'Sin sucursal asignada'}</div>
+                            <div className="flex items-center gap-2">
+                                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} />
+                                <div>
+                                    <div className="font-medium">{t.name}</div>
+                                    <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                                    <div className="text-xs text-muted-foreground" data-testid={`mesa-config-branch-${t.id}`}>{t.branch_id ? branches.find((branch) => branch.id === t.branch_id)?.name || t.branch_id : 'Sin sucursal asignada'}</div>
+                                </div>
                             </div>
                             <div className="flex items-center gap-1">
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => del(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                         </div>
                         <TableQrActions table={t} />
@@ -295,6 +323,18 @@ function Mesas() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar {confirmDel?.name}?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </CardContent></Card>
     );
 }
@@ -302,7 +342,9 @@ function Mesas() {
 export default function Configuracion() {
     return (
         <div className="space-y-5" data-testid="config-root">
-            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Casa</h1>
+            <p className="page-kicker mb-1">Administración</p>
+            <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Configuración</h1>
+            <p className="text-muted-foreground text-sm">Datos del restaurante, sucursales, zonas y mesas.</p>
             <Restaurante />
             <Sucursales />
             <Zonas />
