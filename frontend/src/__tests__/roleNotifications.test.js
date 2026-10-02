@@ -53,4 +53,21 @@ describe('role notification projection', () => {
             ['aceptar-other', 'web_pending'], ['comp-other', 'web_proof'], ['cobro-other', 'cobro'], ['cuenta-other', 'bill'],
         ]);
     });
+
+    it('keeps a ready legacy line identity when an earlier same-descriptor line changes lifecycle', () => {
+        const firstLine = { product_name: 'Agua', quantity: 1, status: 'listo' };
+        const secondLine = { product_name: 'Agua', quantity: 1, status: 'listo' };
+        const initiallyReady = buildRoleNotifications('mozo', [order({ items: [firstLine, secondLine] })]);
+        expect(initiallyReady.map((notification) => notification.id)).toEqual([
+            'listo-legacy-item-order-1-Agua-1',
+            'listo-legacy-item-order-1-Agua-2',
+        ]);
+
+        const afterFirstServed = buildRoleNotifications('mozo', [order({ items: [
+            { ...firstLine, status: 'servido' },
+            secondLine,
+        ] })]);
+        expect(afterFirstServed).toHaveLength(1);
+        expect(afterFirstServed[0].id).toBe(initiallyReady[1].id);
+    });
 });

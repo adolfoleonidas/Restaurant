@@ -52,10 +52,11 @@ export function buildRoleNotifications(role, orders = []) {
         const readyItems = (o.items || []).filter((it) => it.status === 'listo');
         if (canReceiveReady && readyItems.length) {
             const occurrences = new Map();
-            for (const item of readyItems) {
+            for (const item of o.items || []) {
                 const descriptor = item.product_id || item.product_name || 'item';
                 const occurrence = (occurrences.get(descriptor) || 0) + 1;
                 occurrences.set(descriptor, occurrence);
+                if (item.status !== 'listo') continue;
                 const label = `${item.quantity ?? 1}× ${item.product_name || 'Plato'}`;
                 const mesa = o.table_number || (o.table_id ? 'mesa' : null);
                 items.push({
