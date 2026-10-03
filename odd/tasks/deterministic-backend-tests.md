@@ -42,7 +42,7 @@ Use only `.venv-oc5\Scripts\python.exe -I -B` with process-only `PYTEST_DISABLE_
 ## Progress and recovery
 
 - Exploration completed: clock not frozen; two public-order fakes lack `payment_configs`; the missing collection prevents the race event from being signalled.
-- Task state: functional outcome accepted after writer, independent verifier, and parent spot check. Local work-unit commit and native assessment pending. This checkbox is not review or publication authority.
+- Task state: functional outcome accepted after writer, independent verifier, and parent spot check; the local work-unit commit is recorded below. Native assessment defers review for this medium, under-budget slice. This checkbox is not review or publication authority.
 - Initial RED: the named staff-confirmation test failed because the date depended on the live route clock; the table-order test failed because its fake lacked `payment_configs`; the third public race test stalled at the event wait and the owned process was interrupted once after 60 seconds. This was not three observed test failures.
 - Expanded RED before fixture repair: all four named public-order tests in `test_pickup_branch_selection.py` (three) and `test_attention_lifecycle.py` (one) failed with `AttributeError` for missing fake `payment_configs`.
 - Focused GREEN for all four affected modules: 107 passed / 0 failed / 5 warnings in 2.36s. The route clock is frozen to aware UTC 2026-10-02 11:00; affected fakes use their existing in-memory collection implementations; the race-event wait is bounded and propagates task errors if setup fails.
@@ -51,10 +51,19 @@ Use only `.venv-oc5\Scripts\python.exe -I -B` with process-only `PYTEST_DISABLE_
 - Four-module focused GREEN after all fixes: 107 passed / 0 failed / 5 warnings in 1.85s.
 - Ten-module closure after all fixes: 199 passed / 0 failed / 5 warnings in 1.95s.
 - Verification: independent verifier repeated the exact ten modules: 199 passed / 0 failed / 5 deprecation warnings in 1.59s. Parent repeated the fixed cases plus lifecycle-before-money regression: 54 passed / 0 failed / 5 warnings in 1.17s. Parent and verifier structural readback and `git diff --check` passed. Initial assessment was unassessable due to untracked generated files; no review consent or receipt exists. Frontend checks were not rerun because no frontend files changed; no live DB, HTTP, production, or unrestricted discovery was tested.
-- Commit evidence: pending.
+- Commit evidence: `a512b196a44784c7cfe005b58ce127e371427c48` (`test: stabilize backend attention regressions`), 5 paths / 80 additions / 5 deletions. Four changed test files contain 20 additions / 5 deletions; the remaining authored additions are this tracker.
 - Engram mirror `odd/deterministic-backend-tests/tasks`: pending because the runtime hook has not confirmed registration after compaction. Do not write with a retained, invented, or omitted session identity. The complete local document is the recovery source until the host restores registration.
-- Next step: parent creates the authorized local work-unit commit, records its identity, and follows native assessment. No commit was created by this worker. Separate branch-isolation work needs a focused cash policy decision; this task does not resolve it.
+- Next step: await the human cash-policy decision before branch-isolation implementation. The recommendation is independent branch registers with owner-wide consolidated visibility; it is not an accepted requirement yet. Delivery routing is also unresolved. No publication or deployment is authorized for this feature.
 
 ## Independent diagnostic correction
 
 The ten-module rerun reproduced 197 passed / 2 failed in 4.82s. The money module alone passed 27/27; both selected tests alone passed 2/2. `tests/test_attention_lifecycle.py` directly replaces `order_routes._compute_total` and `order_routes.assert_can_cancel` without restoring them. Both assignments exist in base `1530e8b`; production routes, order flow, models, billing, and the money tests are unchanged. This proves the shared test-state leak exists on base, but is not a full baseline-suite run or a production money defect. The scoped monkeypatch correction is now implemented and the exact ten-module suite passes.
+
+## Native assessment and delivery status
+
+- RDD remains on (global); no switch or settings change occurred.
+- Work-unit range: base `1530e8bd7fc39b8be29d8899bb0afbbc12f612ab` through `a512b196a44784c7cfe005b58ce127e371427c48`.
+- Canonical untracked digest: `sha256:ea0815a16ab2e4dad7b327841256532a2fbf4e39bcb642c16ad5f5e739a290ca`. All 9384 untracked files belong to the pre-existing generated `.venv-oc5/`; no untracked source files remain. They were excluded explicitly and preserved.
+- Native assessment: `gentle-ai.review-assessment/v1`, risk `medium`, `review_due=false`, reason `under_budget`, 5 paths / 85 authored changed lines. The range stays pending below the slice budget; the reviewed boundary remains the feature base.
+- Only read-only STATUS preflight/inventory and assessments ran. No START, consent decision, reviewer, acknowledgement, or approval receipt exists. There is no pending human review consent.
+- All changes are local on `codex/backend-test-stability`. No push, PR, merge, live probe, or deployment was performed.
