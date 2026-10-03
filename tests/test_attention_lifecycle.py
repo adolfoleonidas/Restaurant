@@ -126,6 +126,7 @@ class _DB:
         self.attentions = _Collection(self, "attentions")
         self.tables = _Collection(self, "tables")
         self.branches = _Collection(self, "branches")
+        self.payment_configs = _Collection(self, "payment_configs")
         self.attention_number_assignments = _Collection(self, "attention_number_assignments")
         self.counters = _Collection(self, "counters")
         self.payments = _Collection(self, "payments")
@@ -370,7 +371,7 @@ def test_close_retry_never_releases_a_later_visit_for_same_table():
     assert db.tables.docs[0]["status"] == "ocupada"
 
 
-def test_open_and_paid_order_cannot_admit_second_table_visit():
+def test_open_and_paid_order_cannot_admit_second_table_visit(monkeypatch):
     async def run():
         from fastapi import HTTPException
         from types import SimpleNamespace
@@ -384,7 +385,7 @@ def test_open_and_paid_order_cannot_admit_second_table_visit():
             return 2
         async def no_audit(*args, **kwargs):
             return None
-        order_routes._compute_total = no_items
+        monkeypatch.setattr(order_routes, "_compute_total", no_items)
         order_routes._next_order_number = order_number
         order_routes._audit = no_audit
         data = SimpleNamespace(order_type="mesa", table_id="table-1", items=[], notes=None)
@@ -528,7 +529,7 @@ def test_legacy_order_without_explicit_attention_cannot_release_table():
     assert db.tables.docs[0]["status"] == "ocupada"
 
 
-def test_cancelled_attention_order_keeps_table_until_explicit_close():
+def test_cancelled_attention_order_keeps_table_until_explicit_close(monkeypatch):
     async def run():
         from types import SimpleNamespace
         import routes.orders as order_routes
@@ -537,7 +538,7 @@ def test_cancelled_attention_order_keeps_table_until_explicit_close():
                        payment_status="pendiente", items=[{"id": "item-1", "status": "listo"}])
         db = _ready_db(order=order)
         order_routes.db = db
-        order_routes.assert_can_cancel = lambda current: None
+        monkeypatch.setattr(order_routes, "assert_can_cancel", lambda current: None)
         async def no_audit(*args, **kwargs):
             return None
         order_routes._audit = no_audit

@@ -135,6 +135,7 @@ class _DB:
         self.attentions = _Collection(attentions)
         self.attention_number_assignments = _Collection()
         self.counters = _Collection()
+        self.payment_configs = _Collection()
         self.zones = _Collection()
         self.audit_logs = _Collection()
 
@@ -379,7 +380,17 @@ def test_public_stale_table_snapshot_cannot_open_after_branch_assignment(monkeyp
         monkeypatch.setattr(public_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=1))
         monkeypatch.setattr(public_routes, "_gen_tracking", lambda: "ABC124")
         create_task = asyncio.create_task(public_routes.public_create_order(_public_data(), _public_request()))
-        await reached_enrich.wait()
+        try:
+            await asyncio.wait_for(reached_enrich.wait(), timeout=1)
+        except asyncio.TimeoutError:
+            if create_task.done():
+                await create_task
+            create_task.cancel()
+            try:
+                await create_task
+            except asyncio.CancelledError:
+                pass
+            raise AssertionError("public order setup did not reach item enrichment")
         await table_routes.update_table("table-1", TableUpdate(branch_id="branch-2"),
                                         {"id": "admin", "role": "admin", "restaurant_id": "tenant-1"})
         finish_enrich.set()

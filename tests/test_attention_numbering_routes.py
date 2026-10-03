@@ -97,6 +97,7 @@ class Database:
         self.orders = MemoryCollection(orders)
         self.attention_number_assignments = MemoryCollection()
         self.counters = MemoryCollection()
+        self.payment_configs = MemoryCollection()
 
 
 def test_capture_requires_owned_branch_with_explicit_valid_configuration_before_acceptance():
@@ -195,6 +196,7 @@ def test_staff_confirmation_freezes_branch_context_and_assigns_number_once(monke
     monkeypatch.setattr(staff, "db", db)
     monkeypatch.setattr(staff, "_save_order", save_order)
     monkeypatch.setattr(staff, "_current_order_response", current_response)
+    monkeypatch.setattr(staff, "_now", lambda: datetime(2026, 10, 2, 11, tzinfo=timezone.utc))
     monkeypatch.setattr(staff, "_audit", lambda *args, **kwargs: asyncio.sleep(0, result=audits.append(args)))
     monkeypatch.setattr(staff, "emit_order", lambda *args, **kwargs: events.append(args))
     user = {"id": "staff-a", "restaurant_id": "tenant-a", "branch_id": "branch-a", "role": "mozo"}

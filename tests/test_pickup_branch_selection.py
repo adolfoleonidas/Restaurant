@@ -46,6 +46,7 @@ class DB:
     def __init__(self, branches=(), orders=()):
         self.branches = Collection(branches)
         self.orders = Collection(orders)
+        self.payment_configs = Collection()
         self.audit_logs = Collection()
         self.counters = Collection()
 
