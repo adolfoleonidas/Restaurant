@@ -1,6 +1,6 @@
 # Restore deterministic backend regression checks
 
-Stabilize the existing fake-only backend checks without changing production behavior. The user approved test stabilization and branch isolation; this document tracks the independent test-stability work unit only. Branch isolation remains pending its cash and delivery policy decisions.
+Stabilize the existing fake-only backend checks without changing production behavior. The user approved test stabilization and branch isolation; this document tracks the independent test-stability work unit only. The user has approved independent per-branch registers, consolidated owner visibility, and inclusion of the existing delivery flow in branch isolation.
 
 ## Scope and authority
 
@@ -53,7 +53,7 @@ Use only `.venv-oc5\Scripts\python.exe -I -B` with process-only `PYTEST_DISABLE_
 - Verification: independent verifier repeated the exact ten modules: 199 passed / 0 failed / 5 deprecation warnings in 1.59s. Parent repeated the fixed cases plus lifecycle-before-money regression: 54 passed / 0 failed / 5 warnings in 1.17s. Parent and verifier structural readback and `git diff --check` passed. Initial assessment was unassessable due to untracked generated files; no review consent or receipt exists. Frontend checks were not rerun because no frontend files changed; no live DB, HTTP, production, or unrestricted discovery was tested.
 - Commit evidence: `a512b196a44784c7cfe005b58ce127e371427c48` (`test: stabilize backend attention regressions`), 5 paths / 80 additions / 5 deletions. Four changed test files contain 20 additions / 5 deletions; the remaining authored additions are this tracker.
 - Engram mirror `odd/deterministic-backend-tests/tasks`: pending because the runtime hook has not confirmed registration after compaction. Do not write with a retained, invented, or omitted session identity. The complete local document is the recovery source until the host restores registration.
-- Next step: await the human cash-policy decision before branch-isolation implementation. The recommendation is independent branch registers with owner-wide consolidated visibility; it is not an accepted requirement yet. Delivery routing is also unresolved. No publication or deployment is authorized for this feature.
+- Next step: branch isolation, independent registers, consolidated owner visibility, and inclusion of existing delivery are approved. The implementation plan is in `odd/tasks/branch-isolation.md`; chain strategy remains pending before feature branch creation. No branch-isolation source changes, publication, or deployment have occurred.
 
 ## Independent diagnostic correction
 
