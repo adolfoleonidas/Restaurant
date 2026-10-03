@@ -57,20 +57,29 @@ def _scoped_report_query(restaurant_id: str, branch_filter: dict, time_filter: d
 
 
 @router.get("/dashboard")
-async def dashboard(user: dict = Depends(get_current_user)):
+async def dashboard(
+    user: dict = Depends(get_current_user),
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
+):
     """KPIs visible to current user role. Some fields restricted by role."""
     rid = user["restaurant_id"]
+    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
     start, end = await _today_range(rid)
 
-    active_orders = await db.orders.count_documents({
-        "restaurant_id": rid,
-        "status": {"$nin": ["pagado", "cancelado"]}
-    })
-    occupied_tables = await db.tables.count_documents({
-        "restaurant_id": rid,
-        "status": {"$in": ["ocupada", "esperando_pago"]}
-    })
-    total_tables = await db.tables.count_documents({"restaurant_id": rid})
+    active_orders = await db.orders.count_documents(_scoped_report_query(
+        rid,
+        branch_filter,
+        {"status": {"$nin": ["pagado", "cancelado"]}},
+    ))
+    occupied_tables = await db.tables.count_documents(_scoped_report_query(
+        rid,
+        branch_filter,
+        {"status": {"$in": ["ocupada", "esperando_pago"]}},
+    ))
+    total_tables = await db.tables.count_documents(
+        _scoped_report_query(rid, branch_filter, {})
+    )
 
     result = {
         "active_orders": active_orders,
@@ -80,11 +89,12 @@ async def dashboard(user: dict = Depends(get_current_user)):
 
     # Financial KPIs only for admin/cajero
     if user["role"] in ("admin", "cajero"):
+        payment_query = _scoped_report_query(rid, branch_filter, {"$or": [
+            {"created_at": {"$gte": start}},
+            {"voided_at": {"$gte": start}},
+        ]})
         payments = await db.payments.find(
-            {"restaurant_id": rid, "$or": [
-                {"created_at": {"$gte": start}},
-                {"voided_at": {"$gte": start}},
-            ]},
+            payment_query,
             {"_id": 0}
         ).to_list(10000)
         summary = summarize_payments(payments, start, _OPEN_END)
@@ -99,10 +109,7 @@ async def dashboard(user: dict = Depends(get_current_user)):
 
     if user["role"] == "admin":
         ranked = await db.payments.find(
-            {"restaurant_id": rid, "$or": [
-                {"created_at": {"$gte": start}},
-                {"voided_at": {"$gte": start}},
-            ]},
+            payment_query,
             {"_id": 0, "sold_lines": 1, "status": 1, "created_at": 1, "voided_at": 1},
         ).to_list(10000)
         result["top_products"] = rank_products(ranked, start, _OPEN_END, limit=5)

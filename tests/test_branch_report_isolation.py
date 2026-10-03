@@ -280,3 +280,199 @@ def test_product_branch_filter_is_applied_before_existing_query_cap(monkeypatch)
         assert db.payments.queries[-1]["branch_id"] == "branch-1"
 
     asyncio.run(run())
+
+
+def dashboard_db(monkeypatch):
+    rows = [
+        make_payment("branch-one", RID, "branch-1", amount=10),
+        make_payment("branch-two", RID, "branch-2", amount=20),
+        make_payment("legacy-null", RID, None, amount=30),
+        make_payment("legacy-missing", RID, amount=40),
+        make_payment("foreign-tenant", "other-tenant", "foreign-branch", amount=100),
+        make_payment("before-today", RID, "branch-2", amount=500, created="2026-09-30T23:59:59+00:00"),
+    ]
+    db = report_db(monkeypatch, rows)
+    db.tables = RecordingCollection()
+    db.orders.docs.extend([
+        {"id": "order-one", "restaurant_id": RID, "branch_id": "branch-1", "status": "pendiente"},
+        {"id": "order-two", "restaurant_id": RID, "branch_id": "branch-2", "status": "en_preparacion"},
+        {"id": "order-legacy-null", "restaurant_id": RID, "branch_id": None, "status": "pendiente"},
+        {"id": "order-legacy-missing", "restaurant_id": RID, "status": "en_preparacion"},
+        {"id": "order-foreign", "restaurant_id": "other-tenant", "branch_id": "foreign-branch", "status": "pendiente"},
+        {"id": "order-paid", "restaurant_id": RID, "branch_id": "branch-2", "status": "pagado"},
+    ])
+    db.tables.docs.extend([
+        {"id": "table-one", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"},
+        {"id": "table-two", "restaurant_id": RID, "branch_id": "branch-2", "status": "esperando_pago"},
+        {"id": "table-legacy-null", "restaurant_id": RID, "branch_id": None, "status": "ocupada"},
+        {"id": "table-legacy-missing", "restaurant_id": RID, "status": "ocupada"},
+        {"id": "table-foreign", "restaurant_id": "other-tenant", "branch_id": "foreign-branch", "status": "ocupada"},
+    ])
+
+    async def today_range(restaurant_id):
+        return START, END
+
+    monkeypatch.setattr(report_routes, "_today_range", today_range)
+    return db
+
+
+def test_dashboard_staff_kpis_and_financials_use_assigned_branch(monkeypatch):
+    async def run():
+        db = dashboard_db(monkeypatch)
+        staff = {"id": "cashier", "restaurant_id": RID, "role": "cajero", "branch_id": "branch-2"}
+        result = await report_routes.dashboard(staff)
+
+        assert result["active_orders"] == 1
+        assert result["occupied_tables"] == 1
+        assert result["total_tables"] == 1
+        assert result["daily_sales"] == 20
+        assert result["orders_paid"] == 1
+        assert result["avg_ticket"] == 20
+        assert "top_products" not in result
+        assert db.orders.count_queries[0]["branch_id"] == "branch-2"
+        assert all(query["branch_id"] == "branch-2" for query in db.tables.count_queries)
+        assert all(query["branch_id"] == "branch-2" for query in db.payments.queries)
+        assert all(query["restaurant_id"] == RID for query in db.payments.queries)
+
+    asyncio.run(run())
+
+
+def test_dashboard_owner_consolidates_tenant_and_selected_branch_context(monkeypatch):
+    async def run():
+        db = dashboard_db(monkeypatch)
+        consolidated = await report_routes.dashboard(OWNER)
+        assert consolidated == {
+            "active_orders": 4,
+            "occupied_tables": 4,
+            "total_tables": 4,
+            "daily_sales": 100,
+            "orders_paid": 4,
+            "avg_ticket": 25,
+            "top_products": report_routes.rank_products(
+                [row for row in db.payments.docs if row["restaurant_id"] == RID and row["created_at"] >= START],
+                START,
+                report_routes._OPEN_END,
+                limit=5,
+            ),
+        }
+        assert all(query["restaurant_id"] == RID for query in db.orders.count_queries)
+        assert all(query["restaurant_id"] == RID for query in db.tables.count_queries)
+        assert all(query["restaurant_id"] == RID for query in db.payments.queries)
+
+        selected = await report_routes.dashboard(OWNER, branch_id="branch-2")
+        assert selected["active_orders"] == 1
+        assert selected["occupied_tables"] == 1
+        assert selected["total_tables"] == 1
+        assert selected["daily_sales"] == 20
+        assert selected["orders_paid"] == 1
+        assert [row["product_id"] for row in selected["top_products"]] == ["branch-two"]
+        assert all(query.get("branch_id") == "branch-2" for query in db.orders.count_queries[1:])
+        assert all(query.get("branch_id") == "branch-2" for query in db.tables.count_queries[2:])
+        assert all(query.get("branch_id") == "branch-2" for query in db.payments.queries[2:])
+
+    asyncio.run(run())
+
+
+def test_dashboard_owner_legacy_context_intersects_today_payment_or(monkeypatch):
+    async def run():
+        db = dashboard_db(monkeypatch)
+        result = await report_routes.dashboard(OWNER, legacy_only=True)
+        assert result["active_orders"] == 2
+        assert result["occupied_tables"] == 2
+        assert result["total_tables"] == 2
+        assert result["daily_sales"] == 70
+        assert result["orders_paid"] == 2
+        assert {row["product_id"] for row in result["top_products"]} == {
+            "legacy-null", "legacy-missing",
+        }
+        legacy = {"$or": [{"branch_id": None}, {"branch_id": {"$exists": False}}]}
+        assert db.orders.count_queries[0]["$and"][0] == legacy
+        assert all(query["$and"][0] == legacy for query in db.tables.count_queries)
+        assert all(query["$and"][0] == legacy for query in db.payments.queries)
+        assert all("$or" in query["$and"][1] for query in db.payments.queries)
+
+    asyncio.run(run())
+
+
+def test_dashboard_staff_cannot_spoof_or_read_legacy_and_invalid_assignment_fails_closed(monkeypatch):
+    async def run():
+        db = dashboard_db(monkeypatch)
+        staff = {"id": "cashier", "restaurant_id": RID, "role": "cajero", "branch_id": "branch-2"}
+        with pytest.raises(HTTPException) as spoof:
+            await report_routes.dashboard(staff, branch_id="branch-1")
+        assert spoof.value.status_code == 403
+        with pytest.raises(HTTPException) as legacy:
+            await report_routes.dashboard(staff, legacy_only=True)
+        assert legacy.value.status_code == 403
+        assert db.orders.count_queries == []
+        assert db.tables.count_queries == []
+        assert db.payments.queries == []
+
+        unassigned = {**staff, "branch_id": None}
+        with pytest.raises(HTTPException) as missing:
+            await report_routes.dashboard(unassigned)
+        assert missing.value.status_code == 403
+        invalid = {**staff, "branch_id": "deleted-branch"}
+        with pytest.raises(HTTPException) as deleted:
+            await report_routes.dashboard(invalid)
+        assert deleted.value.status_code == 403
+        assert db.orders.count_queries == []
+        assert db.tables.count_queries == []
+        assert db.payments.queries == []
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(("params", "status_code"), [
+    ({"branch_id": " "}, 400),
+    ({"branch_id": "deleted-branch"}, 404),
+    ({"branch_id": "branch-2", "legacy_only": True}, 400),
+])
+def test_dashboard_owner_invalid_or_conflicting_context_fails_before_queries(monkeypatch, params, status_code):
+    async def run():
+        db = dashboard_db(monkeypatch)
+        with pytest.raises(HTTPException) as error:
+            await report_routes.dashboard(OWNER, **params)
+        assert error.value.status_code == status_code
+        assert db.orders.count_queries == []
+        assert db.tables.count_queries == []
+        assert db.payments.queries == []
+
+    asyncio.run(run())
+
+
+def test_dashboard_preserves_nonfinancial_staff_field_visibility(monkeypatch):
+    async def run():
+        dashboard_db(monkeypatch)
+        staff = {"id": "server", "restaurant_id": RID, "role": "mozo", "branch_id": "branch-2"}
+        result = await report_routes.dashboard(staff)
+        assert result["active_orders"] == 1
+        assert result["total_tables"] == 1
+        assert "daily_sales" not in result
+        assert "orders_paid" not in result
+        assert "avg_ticket" not in result
+        assert "top_products" not in result
+
+    asyncio.run(run())
+
+
+def test_dashboard_applies_selected_branch_before_existing_payment_cap(monkeypatch):
+    async def run():
+        rows = [
+            make_payment(f"other-{index}", RID, "branch-2", amount=1)
+            for index in range(10000)
+        ]
+        rows.append(make_payment("selected-after-cap", RID, "branch-1", amount=25))
+        db = report_db(monkeypatch, rows)
+        db.tables = RecordingCollection()
+
+        async def today_range(restaurant_id):
+            return START, END
+
+        monkeypatch.setattr(report_routes, "_today_range", today_range)
+        result = await report_routes.dashboard(OWNER, branch_id="branch-1")
+        assert result["daily_sales"] == 25
+        assert [row["product_id"] for row in result["top_products"]] == ["selected-after-cap"]
+        assert all(query["branch_id"] == "branch-1" for query in db.payments.queries)
+
+    asyncio.run(run())
