@@ -476,3 +476,154 @@ def test_dashboard_applies_selected_branch_before_existing_payment_cap(monkeypat
         assert all(query["branch_id"] == "branch-1" for query in db.payments.queries)
 
     asyncio.run(run())
+
+
+def today_db(monkeypatch):
+    db = _DB()
+    db.branches.docs.extend([
+        {"id": "branch-2", "restaurant_id": RID},
+        {"id": "foreign-branch", "restaurant_id": "other-tenant"},
+    ])
+    for name in ("tables", "orders", "cash_registers", "products", "approvals"):
+        setattr(db, name, RecordingCollection())
+    monkeypatch.setattr(report_routes, "db", db)
+    return db
+
+
+def test_today_owner_consolidates_branch_records_and_avoids_arbitrary_cash_opener(monkeypatch):
+    async def run():
+        db = today_db(monkeypatch)
+        db.tables.docs.extend([
+            {"id": "table-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"},
+            {"id": "table-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "ocupada"},
+            {"id": "table-foreign", "restaurant_id": "other-tenant", "branch_id": "foreign-branch", "status": "ocupada"},
+        ])
+        db.orders.docs.extend([
+            {"id": "order-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "enviado_cocina"},
+            {"id": "order-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "pendiente_pago"},
+            {"id": "order-foreign", "restaurant_id": "other-tenant", "branch_id": "foreign-branch", "status": "enviado_cocina"},
+        ])
+        db.cash_registers.docs.extend([
+            {"id": "cash-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "open", "opened_by_name": "Ada"},
+            {"id": "cash-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "open", "opened_by_name": "Bea"},
+            {"id": "cash-foreign", "restaurant_id": "other-tenant", "branch_id": "foreign-branch", "status": "open", "opened_by_name": "Other"},
+        ])
+        db.products.docs.append({"id": "global-product", "restaurant_id": RID, "name": "Global", "is_available": False})
+        db.approvals.docs.append({"id": "global-approval", "restaurant_id": RID, "status": "pending", "kind": "refund"})
+
+        result = await report_routes.today_board(OWNER)
+
+        assert result["summary"] == {
+            "occupied_tables": 2,
+            "total_tables": 2,
+            "kitchen_orders": 1,
+            "bill_requests": 1,
+            "cash_open": True,
+            "cash_opened_by": None,
+            "active_orders": 2,
+        }
+        assert {card["kind"] for card in result["attention"]} == {"approval", "sold_out"}
+        assert set(result) == {"generated_at", "attention", "summary"}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(("context", "expected_branch", "legacy"), [
+    ({"branch_id": "branch-2"}, "branch-2", False),
+    ({"legacy_only": True}, None, True),
+])
+def test_today_owner_context_scopes_operational_reads_but_not_catalog_or_approvals(
+    monkeypatch, context, expected_branch, legacy
+):
+    async def run():
+        db = today_db(monkeypatch)
+        db.tables.docs.extend([
+            {"id": "table-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "ocupada"},
+            {"id": "table-legacy-null", "restaurant_id": RID, "branch_id": None, "status": "ocupada"},
+            {"id": "table-legacy-missing", "restaurant_id": RID, "status": "ocupada"},
+            {"id": "table-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"},
+        ])
+        db.orders.docs.extend([
+            {"id": "order-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "enviado_cocina"},
+            {"id": "order-legacy-null", "restaurant_id": RID, "branch_id": None, "status": "pendiente_pago"},
+            {"id": "order-legacy-missing", "restaurant_id": RID, "status": "pendiente_pago"},
+            {"id": "order-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "enviado_cocina"},
+        ])
+        db.cash_registers.docs.extend([
+            {"id": "cash-2", "restaurant_id": RID, "branch_id": "branch-2", "status": "open", "opened_by_name": "Bea"},
+            {"id": "cash-legacy-null", "restaurant_id": RID, "branch_id": None, "status": "open", "opened_by_name": "Legacy A"},
+            {"id": "cash-legacy-missing", "restaurant_id": RID, "status": "open", "opened_by_name": "Legacy B"},
+            {"id": "cash-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "open", "opened_by_name": "Ada"},
+        ])
+        db.products.docs.append({"id": "tenant-product", "restaurant_id": RID, "name": "Tenant", "is_available": False})
+        db.approvals.docs.append({"id": "tenant-approval", "restaurant_id": RID, "status": "pending", "kind": "refund"})
+
+        result = await report_routes.today_board(OWNER, **context)
+
+        selected = {"branch_id": expected_branch} if expected_branch else {"$or": [{"branch_id": None}, {"branch_id": {"$exists": False}}]}
+        for collection in (db.tables, db.orders, db.cash_registers):
+            query = collection.queries[0]
+            assert query["restaurant_id"] == RID
+            branch_query = query["$and"][0] if "$and" in query else query
+            assert branch_query.get("branch_id") == selected.get("branch_id")
+            if legacy:
+                assert branch_query["$or"] == selected["$or"]
+        if legacy:
+            assert result["summary"]["occupied_tables"] == 2
+            assert result["summary"]["active_orders"] == 2
+            assert result["summary"]["cash_opened_by"] is None
+        else:
+            assert result["summary"]["occupied_tables"] == 1
+            assert result["summary"]["active_orders"] == 1
+            assert result["summary"]["cash_opened_by"] == "Bea"
+        assert result["summary"]["total_tables"] == result["summary"]["occupied_tables"]
+        assert db.products.queries[0] == {"restaurant_id": RID}
+        assert db.approvals.queries[0] == {"restaurant_id": RID, "status": "pending"}
+        assert {card["kind"] for card in result["attention"]} == {"approval", "sold_out"}
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(("context", "status_code"), [
+    ({"branch_id": " "}, 400),
+    ({"branch_id": "missing"}, 404),
+    ({"branch_id": "foreign-branch"}, 404),
+    ({"branch_id": "branch-2", "legacy_only": True}, 400),
+])
+def test_today_invalid_owner_context_fails_before_operational_reads(monkeypatch, context, status_code):
+    async def run():
+        db = today_db(monkeypatch)
+        with pytest.raises(HTTPException) as error:
+            await report_routes.today_board(OWNER, **context)
+        assert error.value.status_code == status_code
+        assert db.tables.queries == []
+        assert db.orders.queries == []
+        assert db.cash_registers.queries == []
+
+    asyncio.run(run())
+
+
+def test_today_selected_scope_is_applied_before_existing_table_and_order_caps(monkeypatch):
+    async def run():
+        db = today_db(monkeypatch)
+        db.tables.docs.extend(
+            {"id": f"other-table-{index}", "restaurant_id": RID, "branch_id": "branch-2", "status": "ocupada"}
+            for index in range(200)
+        )
+        db.tables.docs.append({"id": "selected-table", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"})
+        db.orders.docs.extend(
+            {"id": f"other-order-{index}", "restaurant_id": RID, "branch_id": "branch-2", "status": "enviado_cocina"}
+            for index in range(500)
+        )
+        db.orders.docs.append({"id": "selected-order", "restaurant_id": RID, "branch_id": "branch-1", "status": "pendiente_pago"})
+
+        result = await report_routes.today_board(OWNER, branch_id="branch-1")
+
+        assert result["summary"]["occupied_tables"] == 1
+        assert result["summary"]["total_tables"] == 1
+        assert result["summary"]["active_orders"] == 1
+        assert result["summary"]["bill_requests"] == 1
+        assert db.tables.queries[0]["branch_id"] == "branch-1"
+        assert db.orders.queries[0]["branch_id"] == "branch-1"
+
+    asyncio.run(run())

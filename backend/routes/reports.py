@@ -223,13 +223,25 @@ def _elapsed_minutes(iso: str) -> float:
 
 
 @router.get("/today")
-async def today_board(user: dict = Depends(require_roles(["admin"]))):
+async def today_board(
+    user: dict = Depends(require_roles(["admin"])),
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
+):
     rid = user["restaurant_id"]
-    tables = await db.tables.find({"restaurant_id": rid}, {"_id": 0}).to_list(200)
+    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    tables = await db.tables.find(
+        _scoped_report_query(rid, branch_filter, {}), {"_id": 0}
+    ).to_list(200)
     occupied = sum(1 for t in tables if t.get("status") in ("ocupada", "esperando_pago", "pagada"))
-    cash = await db.cash_registers.find_one({"restaurant_id": rid, "status": "open"}, {"_id": 0})
+    open_registers = await db.cash_registers.find(
+        _scoped_report_query(rid, branch_filter, {"status": "open"}),
+        {"_id": 0, "opened_by_name": 1},
+    ).to_list(2)
     active = await db.orders.find(
-        {"restaurant_id": rid, "status": {"$nin": ["pagado", "cancelado"]}},
+        _scoped_report_query(
+            rid, branch_filter, {"status": {"$nin": ["pagado", "cancelado"]}}
+        ),
         {"_id": 0},
     ).to_list(500)
     kitchen_orders = sum(1 for o in active if o.get("status") in ("enviado_cocina", "en_preparacion"))
@@ -310,8 +322,11 @@ async def today_board(user: dict = Depends(require_roles(["admin"]))):
             "total_tables": len(tables),
             "kitchen_orders": kitchen_orders,
             "bill_requests": bill_requests,
-            "cash_open": bool(cash),
-            "cash_opened_by": (cash or {}).get("opened_by_name"),
+            "cash_open": bool(open_registers),
+            "cash_opened_by": (
+                open_registers[0].get("opened_by_name")
+                if len(open_registers) == 1 else None
+            ),
             "active_orders": len(active),
         },
     }
