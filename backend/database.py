@@ -51,12 +51,27 @@ async def ensure_indexes():
         name="uniq_payment_idempotency",
     )
     await db.cash_registers.create_index([("restaurant_id", 1), ("status", 1), ("opened_at", -1)])
-    await db.cash_registers.create_index(
-        [("restaurant_id", 1)],
-        unique=True,
-        partialFilterExpression={"status": "open"},
-        name="uniq_open_cash_register",
+    cash_indexes = await db.cash_registers.list_indexes().to_list(length=100)
+    legacy_tenant_open_index = any(
+        index.get("unique")
+        and list(dict(index.get("key", {})).items()) == [("restaurant_id", 1)]
+        and (index.get("partialFilterExpression") or {}).get("status") == "open"
+        and "branch_id" not in (index.get("partialFilterExpression") or {})
+        for index in cash_indexes
     )
+    if not legacy_tenant_open_index:
+        await db.cash_registers.create_index(
+            [("restaurant_id", 1), ("branch_id", 1)],
+            unique=True,
+            partialFilterExpression={"status": "open", "branch_id": {"$type": "string"}},
+            name="uniq_open_cash_register_by_branch",
+        )
+        await db.cash_registers.create_index(
+            [("restaurant_id", 1)],
+            unique=True,
+            partialFilterExpression={"status": "open", "branch_id": {"$exists": False}},
+            name="uniq_open_legacy_cash_register",
+        )
     await db.attentions.create_index("id", unique=True, name="uniq_attention_id")
     await db.attentions.create_index(
         [("restaurant_id", 1), ("table_id", 1)], unique=True,

@@ -10,6 +10,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
+from branch_access import has_tenantwide_branch_access, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
@@ -20,6 +21,39 @@ router = APIRouter()
 
 _STAFF_PROOF_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$")
 _STAFF_PROOF_MAX_BYTES = 1_800_000
+
+
+async def _authorized_order(order_id: str, user: dict) -> dict:
+    order = await db.orders.find_one(
+        {"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if not has_tenantwide_branch_access(user):
+        branch_id = await validate_user_branch(user, db.branches)
+        if not branch_id or order.get("branch_id") != branch_id:
+            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    return order
+
+
+async def _payment_branch_scope(user: dict) -> dict:
+    if has_tenantwide_branch_access(user):
+        return {"restaurant_id": user["restaurant_id"]}
+    branch_id = await validate_user_branch(user, db.branches)
+    return {"restaurant_id": user["restaurant_id"], "branch_id": branch_id}
+
+
+async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
+    branch_id = order.get("branch_id")
+    query = {"restaurant_id": restaurant_id, "status": "open"}
+    query["branch_id"] = branch_id
+    return await db.cash_registers.find_one(query, {"_id": 0})
+
+
+def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
+    if payment.get("order_id") != order_id or payment.get("branch_id") != order.get("branch_id"):
+        raise HTTPException(status_code=409, detail="El pago existente no coincide con el pedido y sucursal originales")
+    return payment
 
 
 def _validated_staff_proof(value: str) -> tuple[str, str]:
@@ -53,11 +87,7 @@ async def upload_staff_proof(
 ):
     proof, digest = _validated_staff_proof(data.payment_proof)
     restaurant_id = user["restaurant_id"]
-    order = await db.orders.find_one(
-        {"id": order_id, "restaurant_id": restaurant_id}, {"_id": 0}
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    order = await _authorized_order(order_id, user)
 
     config = await db.payment_configs.find_one({"restaurant_id": restaurant_id}, {"_id": 0})
     method = data.method
@@ -95,6 +125,8 @@ async def upload_staff_proof(
         "payment_status": {"$nin": ["pagado", "confirmado", "cancelado", "comprobante_subido"]},
         "updated_at": order.get("updated_at"),
     }
+    if order.get("branch_id"):
+        order_filter["branch_id"] = order["branch_id"]
     if attention_id:
         order_filter.update({"attention_id": attention_id, "attention_state": "open"})
     elif order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
@@ -115,7 +147,7 @@ async def upload_staff_proof(
                 and latest.get("payment_proof_method") == method):
             return {"ok": True, "payment_status": "comprobante_subido"}
         raise HTTPException(status_code=409, detail="El pedido cambió; vuelva a cargarlo antes de adjuntar el comprobante")
-    emit_order(restaurant_id, order_id, order.get("status"), source="staff", payment_status="comprobante_subido")
+    emit_order(restaurant_id, order_id, order.get("status"), source="staff", payment_status="comprobante_subido", branch_id=order.get("branch_id"))
     return {"ok": True, "payment_status": "comprobante_subido"}
 
 
@@ -141,7 +173,7 @@ async def list_payments(
     q: Optional[str] = None,
     period: Optional[str] = Query(None, regex="^(day|week|month)$"),
 ):
-    filt = {"restaurant_id": user["restaurant_id"]}
+    filt = await _payment_branch_scope(user)
     if period:
         filt["created_at"] = {"$gte": _period_start(period)}
     items = await db.payments.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
@@ -162,31 +194,31 @@ async def list_payments(
 
 @router.get("/by-order/{order_id}")
 async def payments_for_order(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    await _authorized_order(order_id, user)
+    branch_scope = await _payment_branch_scope(user)
+    query = {"restaurant_id": user["restaurant_id"], "order_id": order_id}
+    if "branch_id" in branch_scope:
+        query["branch_id"] = branch_scope["branch_id"]
     return await db.payments.find(
-        {"restaurant_id": user["restaurant_id"], "order_id": order_id},
+        query,
         {"_id": 0},
     ).sort("created_at", 1).to_list(50)
 
 
 @router.post("")
 async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    order = await _authorized_order(data.order_id, user)
     if data.idempotency_key:
         existing = await db.payments.find_one(
             {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
             {"_id": 0},
         )
         if existing:
-            return existing
+            return _check_payment_replay(existing, order, data.order_id)
 
-    open_reg = await db.cash_registers.find_one(
-        {"restaurant_id": user["restaurant_id"], "status": "open"}
-    )
+    open_reg = await _register_for_order(order, user["restaurant_id"])
     if not open_reg:
-        raise HTTPException(status_code=400, detail="No hay caja abierta")
-
-    order = await db.orders.find_one({"id": data.order_id, "restaurant_id": user["restaurant_id"]})
-    if not order:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        raise HTTPException(status_code=400, detail="No hay caja abierta para la sucursal del pedido")
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
@@ -219,7 +251,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         discount=discount,
         tip=tip,
     )
-    prior = await db.payments.find({"order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
+    prior = await db.payments.find({"restaurant_id": user["restaurant_id"], "order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
     paid_so_far = round(sum(float(p.get("amount") or 0) for p in prior), 2)
     remaining = round(bill_total - paid_so_far, 2)
     if remaining <= 0:
@@ -301,14 +333,17 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order_set["status"] == "pagado":
         order_set["paid_at"] = now
 
-    claim = await db.orders.update_one(
-        {
+    claim_filter = {
             "id": data.order_id,
             "restaurant_id": user["restaurant_id"],
             "status": {"$nin": ["pagado", "cancelado"]},
             "updated_at": order.get("updated_at"),
             "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
-        },
+        }
+    if order.get("branch_id"):
+        claim_filter["branch_id"] = order["branch_id"]
+    claim = await db.orders.update_one(
+        claim_filter,
         {"$set": order_set},
     )
     if claim.modified_count != 1:
@@ -318,7 +353,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
                 {"_id": 0},
             )
             if existing:
-                return existing
+                return _check_payment_replay(existing, order, data.order_id)
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
             "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
@@ -334,6 +369,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "order_id": data.order_id,
         "order_number": order.get("order_number"),
         "cash_register_id": open_reg["id"],
+        "branch_id": order.get("branch_id"),
         "method": data.method,
         "amount": amount,
         "received_amount": received,
@@ -376,21 +412,21 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
             {"_id": 0},
         )
         if existing:
-            return existing
+            return _check_payment_replay(existing, order, data.order_id)
         raise HTTPException(status_code=400, detail="No se pudo registrar el pago")
     except Exception:
         await _release_claim()
         raise
 
-    emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial")
+    emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial", branch_id=order.get("branch_id"))
     if order_set.get("status") == "pagado" and order.get("table_id") and not order.get("attention_id"):
         r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
         new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
         await db.tables.update_one(
-            {"id": order["table_id"]},
+            {"id": order["table_id"], "restaurant_id": user["restaurant_id"], **({"branch_id": order["branch_id"]} if order.get("branch_id") else {})},
             {"$set": {"status": new_status, "updated_at": _now()}},
         )
-        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status=new_status)
+        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status=new_status, branch_id=order.get("branch_id"))
 
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -446,6 +482,7 @@ async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str
             "id": f"payment-refund:{pay['id']}",
             "cash_register_id": register["id"],
             "restaurant_id": order["restaurant_id"],
+            "branch_id": order.get("branch_id"),
             "type": "egreso", "amount": cash_amount,
             "description": f"Devolución pedido {pay.get('order_number') or pay.get('order_id')}",
             "source_payment_id": pay["id"],
@@ -495,7 +532,7 @@ async def _ensure_refund_movement(intent: dict) -> None:
     if not expected:
         return
     existing = await db.cash_movements.find_one({"_id": expected["_id"]})
-    keys = ("cash_register_id", "restaurant_id", "type", "amount", "source_payment_id",
+    keys = ("cash_register_id", "restaurant_id", "branch_id", "type", "amount", "source_payment_id",
             "created_by", "created_by_name", "description")
     if existing:
         if any(existing.get(key) != expected.get(key) for key in keys):
@@ -571,9 +608,10 @@ async def _resume_attention_void(order: dict, payment: dict, intent: dict) -> di
 
     if intent.get("movement"):
         emit_notice(intent["restaurant_id"], "cash", status="movement",
-                    register_id=intent["movement"]["cash_register_id"])
+                    register_id=intent["movement"]["cash_register_id"],
+                    branch_id=intent["movement"].get("branch_id"))
     emit_order(intent["restaurant_id"], order["id"], intent["order_patch"].get("status"),
-               source=order.get("source"), payment_status=intent["status"])
+               source=order.get("source"), payment_status=intent["status"], branch_id=order.get("branch_id"))
     return await db.payments.find_one({"id": payment["id"], "restaurant_id": intent["restaurant_id"]}, {"_id": 0})
 
 
@@ -586,7 +624,7 @@ async def _verify_attention_void(order: dict, payment: dict) -> dict:
     if intent.get("movement"):
         expected = intent["movement"]
         movement = await db.cash_movements.find_one({"_id": expected["_id"]})
-        keys = ("cash_register_id", "restaurant_id", "type", "amount", "source_payment_id",
+        keys = ("cash_register_id", "restaurant_id", "branch_id", "type", "amount", "source_payment_id",
                 "created_by", "created_by_name", "description")
         if not movement or any(movement.get(key) != expected.get(key) for key in keys):
             raise HTTPException(status_code=409, detail="Falta o no coincide el movimiento de devolución")
@@ -618,10 +656,12 @@ async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: 
     owned = None
     if payment.get("cash_register_id"):
         owned = await db.cash_registers.find_one({
-            "id": payment["cash_register_id"], "restaurant_id": user["restaurant_id"]
+            "id": payment["cash_register_id"], "restaurant_id": user["restaurant_id"],
+            "branch_id": payment.get("branch_id", order.get("branch_id")),
         }, {"_id": 0})
     register = await db.cash_registers.find_one({
-        "restaurant_id": user["restaurant_id"], "status": "open"
+        "restaurant_id": user["restaurant_id"], "status": "open",
+        "branch_id": payment.get("branch_id", order.get("branch_id")),
     }, {"_id": 0})
     cash_amount = cash_portion(payment)
     record_refund = (not reversal_is_inside_open_shift(payment, owned, register)) and cash_amount > 0.009
@@ -655,6 +695,12 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     )
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    order = await _authorized_order(pay["order_id"], user)
+    if (not has_tenantwide_branch_access(user) and pay.get("branch_id") != order.get("branch_id")):
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    if (has_tenantwide_branch_access(user) and pay.get("branch_id") is not None
+            and pay.get("branch_id") != order.get("branch_id")):
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
     if order.get("attention_id"):
         return await _apply_attention_void(payment=pay, order=order, user=user, reason=reason, kind=kind)
 
@@ -707,10 +753,12 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     owned = None
     if pay.get("cash_register_id"):
         owned = await db.cash_registers.find_one(
-            {"id": pay["cash_register_id"], "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+            {"id": pay["cash_register_id"], "restaurant_id": user["restaurant_id"],
+             "branch_id": pay.get("branch_id", order.get("branch_id"))}, {"_id": 0}
         )
+    order_branch = pay.get("branch_id", order.get("branch_id"))
     open_reg = await db.cash_registers.find_one(
-        {"restaurant_id": user["restaurant_id"], "status": "open"}, {"_id": 0}
+        {"restaurant_id": user["restaurant_id"], "status": "open", "branch_id": order_branch}, {"_id": 0}
     )
     cash_out = cash_portion(pay)
     record_refund = (not reversal_is_inside_open_shift(pay, owned, open_reg)) and cash_out > 0.009
@@ -760,23 +808,27 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if record_refund:
         await db.cash_movements.insert_one({
             "id": str(uuid.uuid4()), "cash_register_id": open_reg["id"],
-            "restaurant_id": user["restaurant_id"], "type": "egreso", "amount": cash_out,
+            "restaurant_id": user["restaurant_id"], "branch_id": order_branch,
+            "type": "egreso", "amount": cash_out,
             "description": f"Devolución pedido {pay.get('order_number') or pay.get('order_id')}",
             "source_payment_id": payment_id, "created_by": user["id"],
             "created_by_name": user.get("full_name"), "created_at": _now(),
         })
-        emit_notice(user["restaurant_id"], "cash", status="movement", register_id=open_reg["id"])
+        emit_notice(user["restaurant_id"], "cash", status="movement", register_id=open_reg["id"], branch_id=order_branch)
     emit_order(
         user["restaurant_id"], order["id"], order_set.get("status", order.get("status")),
-        source=order.get("source"), payment_status="voided" if kind == "void" else "refunded",
+        source=order.get("source"), payment_status="voided" if kind == "void" else "refunded", branch_id=order.get("branch_id"),
     )
     if reopened and was_closed and order.get("table_id") and not order.get("attention_id"):
-        table = await db.tables.find_one({"id": order["table_id"]})
+        table_filter = {"id": order["table_id"], "restaurant_id": user["restaurant_id"]}
+        if order.get("branch_id"):
+            table_filter["branch_id"] = order["branch_id"]
+        table = await db.tables.find_one(table_filter)
         if table and table.get("status") == "pagada":
             await db.tables.update_one(
-                {"id": table["id"]}, {"$set": {"status": "ocupada", "updated_at": _now()}}
+                table_filter | {"status": "pagada"}, {"$set": {"status": "ocupada", "updated_at": _now()}}
             )
-            emit_notice(user["restaurant_id"], "table", table_id=table["id"], status="ocupada")
+            emit_notice(user["restaurant_id"], "table", table_id=table["id"], status="ocupada", branch_id=order.get("branch_id"))
 
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()), "restaurant_id": user["restaurant_id"], "user_id": user["id"],

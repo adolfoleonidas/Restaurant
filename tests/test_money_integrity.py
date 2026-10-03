@@ -229,6 +229,7 @@ def _open_register(reg_id="reg-open"):
     return {
         "id": reg_id,
         "restaurant_id": RID,
+        "branch_id": "branch-1",
         "status": "open",
         "opening_amount": 100.0,
         "opened_at": "2026-09-11T08:00:00+00:00",
@@ -693,7 +694,7 @@ def test_cash_close_rejects_open_orders_and_payment_proofs(status, payment_statu
         db.orders.docs.append(doc)
         _bind(db)
         with pytest.raises(HTTPException) as caught:
-            await close_register(CashClose(closing_amount=100), _cashier())
+            await close_register(CashClose(closing_amount=100, branch_id="branch-1"), _cashier())
         return caught.value, db.cash_registers.docs[0]
 
     caught, register = asyncio.run(run())
@@ -712,7 +713,7 @@ def test_cash_close_allows_settled_orders_and_ignores_other_restaurants():
             status="en_preparacion",
         ))
         _bind(db)
-        return await close_register(CashClose(closing_amount=100), _cashier())
+        return await close_register(CashClose(closing_amount=100, branch_id="branch-1"), _cashier())
 
     closed = asyncio.run(run())
     assert closed["status"] == "closed"

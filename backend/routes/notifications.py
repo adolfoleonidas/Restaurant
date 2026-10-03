@@ -40,7 +40,7 @@ async def notification_stream(user: dict = Depends(get_current_user)):
                     current_branch_id = await validate_user_branch(current, db.branches)
                 except HTTPException:
                     return
-                if not current_tenantwide and event.get("type") in ("order", "table"):
+                if not current_tenantwide and event.get("type") in ("order", "table", "cash"):
                     if not current_branch_id or event.get("branch_id") != current_branch_id:
                         continue
                 yield f"data: {json.dumps(event)}\n\n"

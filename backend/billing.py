@@ -82,17 +82,24 @@ def shift_payment_filter(register: dict) -> dict:
     created = {"$gte": register.get("opened_at") or ""}
     if register.get("closed_at"):
         created["$lt"] = register["closed_at"]
+    legacy_registerless = {
+        "created_at": created,
+        "$or": [
+            {"cash_register_id": {"$exists": False}},
+            {"cash_register_id": None},
+        ],
+    }
+    if register.get("branch_id"):
+        legacy_registerless["branch_id"] = register["branch_id"]
+    else:
+        legacy_registerless["$and"] = [{"$or": [
+            {"branch_id": {"$exists": False}}, {"branch_id": None},
+        ]}]
     return {
         "restaurant_id": register["restaurant_id"],
         "$or": [
             {"cash_register_id": register["id"]},
-            {
-                "created_at": created,
-                "$or": [
-                    {"cash_register_id": {"$exists": False}},
-                    {"cash_register_id": None},
-                ],
-            },
+            legacy_registerless,
         ],
     }
 

@@ -482,14 +482,17 @@ class OrderReassign(BaseModel):
 class CashOpen(BaseModel):
     opening_amount: float = Field(ge=0)
     notes: Optional[str] = None
+    branch_id: Optional[str] = None
 
 
 class CashClose(BaseModel):
     closing_amount: float = Field(ge=0)
     notes: Optional[str] = None
+    branch_id: Optional[str] = None
 
 
 class CashMovement(BaseModel):
     type: Literal["ingreso", "egreso"]
     amount: float = Field(gt=0)
     description: str
+    branch_id: Optional[str] = None

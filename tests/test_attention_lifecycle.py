@@ -330,11 +330,11 @@ def test_payment_route_cannot_change_order_after_close_claim():
         ))
         db.cash_registers = _Collection(db, "cash_registers")
         db.cash_movements = _Collection(db, "cash_movements")
-        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "status": "open"})
+        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"})
         payment_routes.db = db
         data = SimpleNamespace(order_id="order-1", idempotency_key=None)
         with pytest.raises(HTTPException) as exc:
-            await payment_routes.create_payment(data, {"id": "cashier-1", "restaurant_id": "restaurant-1"})
+            await payment_routes.create_payment(data, _user())
         assert exc.value.status_code in (400, 409)
         return db
 
@@ -413,11 +413,11 @@ def test_cash_close_rejects_paid_order_with_open_attention():
         db = _ready_db(_order(status="pagado", attention_state="open"))
         db.cash_registers = _Collection(db, "cash_registers")
         db.cash_movements = _Collection(db, "cash_movements")
-        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "status": "open"})
+        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"})
         cash_routes.db = db
         with pytest.raises(HTTPException) as exc:
-            await cash_routes.close_register(SimpleNamespace(closing_amount=25, notes=None), {
-                "id": "cashier-1", "restaurant_id": "restaurant-1", "full_name": "Cashier",
+            await cash_routes.close_register(SimpleNamespace(closing_amount=25, notes=None, branch_id="branch-1"), {
+                "id": "cashier-1", "restaurant_id": "restaurant-1", "role": "admin", "full_name": "Cashier",
             })
         assert exc.value.status_code == 400
         return db
@@ -621,9 +621,10 @@ def test_void_claims_order_before_ledger_change_and_close_waits():
 
         db = _ready_db()
         db.cash_registers = _Collection(db, "cash_registers")
-        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "status": "open"})
+        db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"})
         db.payments.docs[0].update({
             "cash_register_id": "register-1", "method": "tarjeta",
+            "branch_id": "branch-1",
             "lines": [{"item_id": "item-1", "quantity": 1}],
         })
         payment_routes.db = db
@@ -637,7 +638,7 @@ def test_void_claims_order_before_ledger_change_and_close_waits():
             return await original_update(filt, patch)
         db.payments.update_one = delayed_update
         void = asyncio.create_task(payment_routes.apply_void_payment(
-            "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1"},
+            "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"},
             "duplicate charge", "void",
         ))
         await entered.wait()
@@ -665,10 +666,11 @@ def test_void_is_rejected_after_close_claim_without_changing_payment():
         import routes.payments as payment_routes
 
         db = _ready_db(_order(attention_state="closing"))
+        db.payments.docs[0]["branch_id"] = "branch-1"
         payment_routes.db = db
         with pytest.raises(HTTPException) as exc:
             await payment_routes.apply_void_payment(
-                "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1"},
+                "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"},
                 "duplicate charge", "void",
             )
         assert exc.value.status_code == 409
@@ -779,11 +781,11 @@ def test_refund_intent_recovers_every_projection_failure_exactly_once(failure_po
         db = _ready_db()
         db.cash_registers = _Collection(db, "cash_registers")
         db.cash_registers.docs.extend([
-            {"id": "old-register", "restaurant_id": "restaurant-1", "status": "closed"},
-            {"id": "new-register", "restaurant_id": "restaurant-1", "status": "open"},
+            {"id": "old-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "closed"},
+            {"id": "new-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"},
         ])
         db.payments.docs[0].update({
-            "cash_register_id": "old-register", "method": "efectivo",
+            "cash_register_id": "old-register", "method": "efectivo", "branch_id": "branch-1",
             "lines": [{"item_id": "item-1", "quantity": 1}],
         })
         payment_routes.db = db
@@ -831,8 +833,8 @@ def test_refund_intent_recovers_every_projection_failure_exactly_once(failure_po
             return await original(*args, **kwargs)
 
         setattr(collection, method, injected)
-        original_user = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1"}
-        retry_user = {"id": "cashier-2", "full_name": "Retry Clerk", "restaurant_id": "restaurant-1"}
+        original_user = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"}
+        retry_user = {"id": "cashier-2", "full_name": "Retry Clerk", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"}
         with pytest.raises(RuntimeError, match="injected"):
             await payment_routes.apply_void_payment("payment-1", original_user, "duplicate charge", "refund")
         assert failed
@@ -863,15 +865,15 @@ def test_simultaneous_refund_retries_write_one_movement_and_audit():
         db = _ready_db()
         db.cash_registers = _Collection(db, "cash_registers")
         db.cash_registers.docs.extend([
-            {"id": "old-register", "restaurant_id": "restaurant-1", "status": "closed"},
-            {"id": "new-register", "restaurant_id": "restaurant-1", "status": "open"},
+            {"id": "old-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "closed"},
+            {"id": "new-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"},
         ])
         db.payments.docs[0].update({
-            "cash_register_id": "old-register", "method": "efectivo",
+            "cash_register_id": "old-register", "method": "efectivo", "branch_id": "branch-1",
             "lines": [{"item_id": "item-1", "quantity": 1}],
         })
         payment_routes.db = db
-        operator = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1"}
+        operator = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"}
         results = await asyncio.gather(*[
             payment_routes.apply_void_payment("payment-1", operator, "duplicate charge", "refund")
             for _ in range(2)
@@ -913,11 +915,11 @@ def test_old_attention_void_without_recovery_intent_is_not_reported_as_success()
         import routes.payments as payment_routes
 
         db = _ready_db(_order(attention_state="open", status="entregado"))
-        db.payments.docs[0].update({"status": "refunded", "void_kind": "refund"})
+        db.payments.docs[0].update({"status": "refunded", "void_kind": "refund", "branch_id": "branch-1"})
         payment_routes.db = db
         with pytest.raises(HTTPException) as exc:
             await payment_routes.apply_void_payment(
-                "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1"},
+                "payment-1", {"id": "cashier-1", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"},
                 "duplicate charge", "refund",
             )
         assert exc.value.status_code == 409
@@ -967,15 +969,15 @@ def test_terminal_refund_retry_rejects_a_mismatched_existing_projection(projecti
         db = _ready_db()
         db.cash_registers = _Collection(db, "cash_registers")
         db.cash_registers.docs.extend([
-            {"id": "old-register", "restaurant_id": "restaurant-1", "status": "closed"},
-            {"id": "new-register", "restaurant_id": "restaurant-1", "status": "open"},
+            {"id": "old-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "closed"},
+            {"id": "new-register", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"},
         ])
         db.payments.docs[0].update({
-            "cash_register_id": "old-register", "method": "efectivo",
+            "cash_register_id": "old-register", "method": "efectivo", "branch_id": "branch-1",
             "lines": [{"item_id": "item-1", "quantity": 1}],
         })
         payment_routes.db = db
-        operator = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1"}
+        operator = {"id": "cashier-1", "full_name": "Original Clerk", "restaurant_id": "restaurant-1", "role": "cajero", "branch_id": "branch-1"}
         await payment_routes.apply_void_payment("payment-1", operator, "duplicate charge", "refund")
         if projection == "movement":
             db.cash_movements.docs[0]["cash_register_id"] = "wrong-register"
