@@ -8,7 +8,7 @@ from models import TableCreate, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
 from attention import AttentionBlocked, open_table_attention, recover_opening_intent
-from branch_access import record_branch_filter, validate_user_branch
+from branch_access import read_branch_filter, record_branch_filter, validate_user_branch
 
 router = APIRouter()
 
@@ -58,48 +58,46 @@ async def _table_lookup_scope(table_id: str, user: dict) -> dict:
 
 
 @router.get("")
-async def list_tables(user: dict = Depends(get_current_user)):
-    branch_id = await validate_user_branch(user, db.branches)
-    branch_filter = {"branch_id": branch_id} if branch_id is not None else {}
+async def list_tables(
+    user: dict = Depends(get_current_user),
+    branch_id: str | None = None,
+    legacy_only: bool = False,
+):
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     items = await db.tables.find(
-        {"restaurant_id": user["restaurant_id"], **branch_filter},
-        {"_id": 0}
+        {"restaurant_id": user["restaurant_id"], **branch_filter}, {"_id": 0}
     ).sort("number", 1).to_list(1000)
-    # Attach active order id if any
-    proj = {
-        "_id": 0, "id": 1, "table_id": 1, "created_at": 1,
-        "source": 1, "order_type": 1, "customer_name": 1, "status": 1, "items": 1,
-        "attention_id": 1, "attention_state": 1,
-    }
+    proj = {"_id": 0, "id": 1, "table_id": 1, "created_at": 1, "source": 1,
+            "order_type": 1, "customer_name": 1, "status": 1, "items": 1,
+            "attention_id": 1, "attention_state": 1}
     if user.get("role") != "cocina":
         proj["total"] = 1
-    active_orders = await db.orders.find(
-        {
-            "restaurant_id": user["restaurant_id"],
-            **branch_filter,
-            "$or": [
-                {"status": {"$nin": ["pagado", "cancelado"]}},
-                {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
-            ]
-        },
-        proj,
-    ).to_list(1000)
+    active_filter = {"$or": [
+        {"status": {"$nin": ["pagado", "cancelado"]}},
+        {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
+    ]}
+    active_query = {"restaurant_id": user["restaurant_id"], **branch_filter}
+    if "$or" in active_query:
+        active_query = {"restaurant_id": user["restaurant_id"], "$and": [branch_filter, active_filter]}
+    else:
+        active_query.update(active_filter)
+    active_orders = await db.orders.find(active_query, proj).to_list(1000)
     by_table = {o["table_id"]: o for o in active_orders if o.get("table_id")}
-    for t in items:
+    for table in items:
         for field in _PRIVATE_OPENING_FIELDS:
-            t.pop(field, None)
-        active = by_table.get(t["id"])
+            table.pop(field, None)
+        active = by_table.get(table["id"])
         if active:
             raw_items = active.pop("items", None) or []
-            active["item_count"] = sum(int(i.get("quantity") or 0) for i in raw_items)
-        t["active_order"] = active
-        nonce = t.pop("qr_nonce", None)
-        if t.pop("qr_revoked", False):
-            t["qr_status"] = "revoked"
+            active["item_count"] = sum(int(item.get("quantity") or 0) for item in raw_items)
+        table["active_order"] = active
+        nonce = table.pop("qr_nonce", None)
+        if table.pop("qr_revoked", False):
+            table["qr_status"] = "revoked"
         elif nonce:
-            t["qr_status"] = "active"
+            table["qr_status"] = "active"
         else:
-            t["qr_status"] = "none"
+            table["qr_status"] = "none"
     return items
 
 

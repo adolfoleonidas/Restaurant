@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import uuid
 from database import db
 from auth import get_current_user, require_roles
-from branch_access import has_tenantwide_branch_access, validate_user_branch
+from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
 from models import CashOpen, CashClose, CashMovement
 from billing import method_amounts, shift_payment_filter
 from pymongo.errors import DuplicateKeyError
@@ -150,16 +150,14 @@ async def _open_register_for_branch(restaurant_id: str, branch_id: str | None, *
 async def current_register(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     branch_id: str | None = Query(None),
+    legacy_only: bool = False,
 ):
-    branch = await _cash_branch(user, branch_id)
-    query = {"restaurant_id": user["restaurant_id"], "status": "open"}
-    if branch is not None or not has_tenantwide_branch_access(user):
-        query.update(_branch_query(branch, legacy=branch is None))
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
+    query = {"restaurant_id": user["restaurant_id"], "status": "open", **branch_filter}
     reg = await db.cash_registers.find_one(query, {"_id": 0})
     if not reg:
         return None
-    totals = await _shift_totals(reg)
-    return _attach_shift(reg, totals)
+    return _attach_shift(reg, await _shift_totals(reg))
 
 
 @router.get("/history")
@@ -167,33 +165,31 @@ async def cash_history(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     period: str = Query("day", regex="^(day|week|month)$"),
     branch_id: str | None = Query(None),
+    legacy_only: bool = False,
 ):
-    branch = await _cash_branch(user, branch_id)
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     start = await _period_start(period, user["restaurant_id"])
-    query = {"restaurant_id": user["restaurant_id"], "opened_at": {"$gte": start}}
-    if branch is not None or not has_tenantwide_branch_access(user):
-        query.update(_branch_query(branch, legacy=branch is None))
+    query = {"restaurant_id": user["restaurant_id"], "opened_at": {"$gte": start}, **branch_filter}
     regs = await db.cash_registers.find(query, {"_id": 0}).sort("opened_at", -1).to_list(200)
-    closed = [r for r in regs if r.get("status") == "closed"]
-    total_sales = sum(float(r.get("total_sales") or 0) for r in closed)
-    cash_sales = sum(float(r.get("cash_sales") or 0) for r in closed)
-    difference = sum(float(r.get("difference") or 0) for r in closed)
+    closed = [reg for reg in regs if reg.get("status") == "closed"]
     return {
         "period": period, "from": start, "sessions": len(regs), "closed": len(closed),
-        "total_sales": round(total_sales, 2), "cash_sales": round(cash_sales, 2),
-        "difference": round(difference, 2), "registers": regs,
+        "total_sales": round(sum(float(reg.get("total_sales") or 0) for reg in closed), 2),
+        "cash_sales": round(sum(float(reg.get("cash_sales") or 0) for reg in closed), 2),
+        "difference": round(sum(float(reg.get("difference") or 0) for reg in closed), 2),
+        "registers": regs,
     }
 
 
 @router.get("")
 async def list_registers(
-    user: dict = Depends(require_roles(["admin", "cajero"])), limit: int = 60,
+    user: dict = Depends(require_roles(["admin", "cajero"])),
+    limit: int = 60,
     branch_id: str | None = Query(None),
+    legacy_only: bool = False,
 ):
-    branch = await _cash_branch(user, branch_id)
-    query = {"restaurant_id": user["restaurant_id"]}
-    if branch is not None or not has_tenantwide_branch_access(user):
-        query.update(_branch_query(branch, legacy=branch is None))
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
+    query = {"restaurant_id": user["restaurant_id"], **branch_filter}
     return await db.cash_registers.find(query, {"_id": 0}).sort("opened_at", -1).limit(limit).to_list(limit)
 
 

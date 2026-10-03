@@ -10,7 +10,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from branch_access import has_tenantwide_branch_access, validate_user_branch
+from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
 from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
@@ -172,21 +172,25 @@ async def list_payments(
     limit: int = 200,
     q: Optional[str] = None,
     period: Optional[str] = Query(None, regex="^(day|week|month)$"),
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
 ):
-    filt = await _payment_branch_scope(user)
+    filt = {"restaurant_id": user["restaurant_id"], **await read_branch_filter(
+        user, db.branches, branch_id, legacy_only=legacy_only
+    )}
     if period:
         filt["created_at"] = {"$gte": _period_start(period)}
     items = await db.payments.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     needle = (q or "").strip().lower()
     if needle:
         items = [
-            p for p in items
+            payment for payment in items
             if needle in " ".join([
-                str(p.get("order_number") or ""),
-                str(p.get("method") or ""),
-                str(p.get("paid_by_name") or ""),
-                str(p.get("notes") or ""),
-                str(p.get("id") or ""),
+                str(payment.get("order_number") or ""),
+                str(payment.get("method") or ""),
+                str(payment.get("paid_by_name") or ""),
+                str(payment.get("notes") or ""),
+                str(payment.get("id") or ""),
             ]).lower()
         ]
     return items

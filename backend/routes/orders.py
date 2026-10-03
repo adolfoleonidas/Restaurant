@@ -25,6 +25,7 @@ from attention import AttentionBlocked, open_table_attention, close_table_attent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from branch_access import (
     assert_record_branch_access,
+    read_branch_filter,
     record_branch_filter,
     validate_user_branch,
 )
@@ -191,20 +192,28 @@ async def list_orders(
     table_id: Optional[str] = None,
     active_only: bool = False,
     limit: int = 200,
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
 ):
-    branch_id = await validate_user_branch(user, db.branches)
-    q = {"restaurant_id": user["restaurant_id"]}
-    if branch_id is not None:
-        q["branch_id"] = branch_id
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
+    q = {"restaurant_id": user["restaurant_id"], **branch_filter}
     if status:
         q["status"] = status
     if table_id:
         q["table_id"] = table_id
     if active_only:
-        q["$or"] = [
+        active_filter = {"$or": [
             {"status": {"$nin": ["pagado", "cancelado"]}},
             {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
-        ]
+        ]}
+        if "$or" in q:
+            q = {"restaurant_id": user["restaurant_id"], "$and": [branch_filter, active_filter]}
+            if status:
+                q["status"] = status
+            if table_id:
+                q["table_id"] = table_id
+        else:
+            q.update(active_filter)
     items = await db.orders.find(q, _order_projection(user)).sort("created_at", -1).limit(limit).to_list(limit)
     return items
 
