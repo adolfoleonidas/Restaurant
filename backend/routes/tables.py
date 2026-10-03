@@ -8,6 +8,7 @@ from models import TableCreate, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
 from attention import AttentionBlocked, open_table_attention, recover_opening_intent
+from branch_access import record_branch_filter, validate_user_branch
 
 router = APIRouter()
 
@@ -48,10 +49,20 @@ async def _get_zone_branch(restaurant_id: str, area: str) -> str | None:
     return zone.get("branch_id") if zone else None
 
 
+async def _table_lookup_scope(table_id: str, user: dict) -> dict:
+    branch_id = await validate_user_branch(user, db.branches)
+    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    if branch_id is not None:
+        scope["branch_id"] = branch_id
+    return scope
+
+
 @router.get("")
 async def list_tables(user: dict = Depends(get_current_user)):
+    branch_id = await validate_user_branch(user, db.branches)
+    branch_filter = {"branch_id": branch_id} if branch_id is not None else {}
     items = await db.tables.find(
-        {"restaurant_id": user["restaurant_id"]},
+        {"restaurant_id": user["restaurant_id"], **branch_filter},
         {"_id": 0}
     ).sort("number", 1).to_list(1000)
     # Attach active order id if any
@@ -65,6 +76,7 @@ async def list_tables(user: dict = Depends(get_current_user)):
     active_orders = await db.orders.find(
         {
             "restaurant_id": user["restaurant_id"],
+            **branch_filter,
             "$or": [
                 {"status": {"$nin": ["pagado", "cancelado"]}},
                 {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
@@ -134,7 +146,7 @@ def _qr_payload(table: dict, nonce: str) -> dict:
 @router.get("/{table_id}/guest-link")
 async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
     table = await db.tables.find_one(
-        {"id": table_id, "restaurant_id": user["restaurant_id"]},
+        await _table_lookup_scope(table_id, user),
         {"_id": 0, "id": 1, "number": 1, "qr_nonce": 1, "qr_revoked": 1},
     )
     if not table:
@@ -145,7 +157,7 @@ async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin",
     if not nonce:
         nonce = secrets.token_urlsafe(16)
         await db.tables.update_one(
-            {"id": table_id, "restaurant_id": user["restaurant_id"]},
+            await _table_lookup_scope(table_id, user),
             {"$set": {"qr_nonce": nonce, "updated_at": _now()}},
         )
     return _qr_payload(table, nonce)
@@ -180,7 +192,7 @@ async def revoke_qr(table_id: str, user: dict = Depends(require_roles(["admin"])
 
 @router.post("/{table_id}/seat")
 async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    scope = await _table_lookup_scope(table_id, user)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -189,6 +201,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     active = await db.orders.find_one({
         "restaurant_id": user["restaurant_id"], "table_id": table_id,
         "status": {"$nin": ["pagado", "cancelado"]},
+        **record_branch_filter(user),
     })
     if active:
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
@@ -200,7 +213,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
         {"$set": {"status": "ocupada", "updated_at": _now()}})
     if getattr(claim, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
-    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada")
+    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada", branch_id=table.get("branch_id"))
     result = await db.tables.find_one(scope, {"_id": 0})
     result["active_order"] = None
     return _table_response(result)
@@ -208,7 +221,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
 
 @router.post("/{table_id}/release")
 async def release_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    scope = await _table_lookup_scope(table_id, user)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -217,6 +230,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
     active = await db.orders.find_one({
         "restaurant_id": user["restaurant_id"], "table_id": table_id,
         "status": {"$nin": ["pagado", "cancelado"]},
+        **record_branch_filter(user),
     })
     if active:
         raise HTTPException(status_code=400, detail="Hay un pedido enviado. No se puede liberar como borrador.")
@@ -224,7 +238,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
         {"$set": {"status": "disponible", "updated_at": _now()}})
     if getattr(claim, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
-    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible")
+    emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible", branch_id=table.get("branch_id"))
     result = await db.tables.find_one(scope, {"_id": 0})
     result["active_order"] = None
     return _table_response(result)
@@ -232,7 +246,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
 
 @router.post("/{table_id}/resume-opening")
 async def resume_table_opening(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
+    scope = await _table_lookup_scope(table_id, user)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")

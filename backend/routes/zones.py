@@ -4,6 +4,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import ZoneCreate, ZoneUpdate
+from branch_access import validate_user_branch
 
 router = APIRouter()
 
@@ -26,8 +27,12 @@ async def _validate_branch(restaurant_id: str, branch_id: str | None):
 
 @router.get("")
 async def list_zones(user: dict = Depends(get_current_user)):
+    branch_id = await validate_user_branch(user, db.branches)
+    scope = {"restaurant_id": user["restaurant_id"]}
+    if branch_id is not None:
+        scope["branch_id"] = branch_id
     return await db.zones.find(
-        {"restaurant_id": user["restaurant_id"]},
+        scope,
         {"_id": 0}
     ).sort("sort_order", 1).sort("name", 1).to_list(1000)
 
@@ -77,15 +82,39 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
                 raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
         update["name"] = new_name
     
-    # Validate branch if being updated
+    # Validate branch if being updated before touching the zone or its tables.
     if "branch_id" in update:
         await _validate_branch(user["restaurant_id"], update["branch_id"])
+
+    branch_tables = []
+    if "branch_id" in update and update["branch_id"] != z.get("branch_id"):
+        branch_tables = await db.tables.find({
+            "restaurant_id": user["restaurant_id"], "area": z["name"],
+        }, {"_id": 0}).to_list(1000)
+        for table in branch_tables:
+            if (table.get("status") != "disponible" or table.get("active_attention_id")
+                    or table.get("opening_order_id") or table.get("opening_intent")):
+                raise HTTPException(status_code=409, detail="No se puede cambiar la sucursal de una mesa ocupada o en apertura")
+            active_order = await db.orders.find_one({
+                "restaurant_id": user["restaurant_id"], "table_id": table["id"],
+                "$or": [
+                    {"status": {"$nin": ["pagado", "cancelado"]}},
+                    {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
+                ],
+            })
+            if active_order:
+                raise HTTPException(status_code=409, detail="La mesa conserva un pedido o una visita")
     
     update["updated_at"] = _now()
-    await db.zones.update_one(
-        {"id": zone_id, "restaurant_id": user["restaurant_id"]},
-        {"$set": update}
-    )
+    zone_filter = {"id": zone_id, "restaurant_id": user["restaurant_id"]}
+    if "branch_id" in update:
+        if z.get("branch_id") is None:
+            zone_filter["branch_id"] = {"$exists": False}
+        else:
+            zone_filter["branch_id"] = z["branch_id"]
+    zone_result = await db.zones.update_one(zone_filter, {"$set": update})
+    if getattr(zone_result, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La zona cambió; volvé a cargarla")
     
     # Propagate name change to tables
     if "name" in update and update["name"] != z["name"]:
@@ -94,12 +123,32 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
             {"$set": {"area": update["name"], "updated_at": _now()}}
         )
     
-    # Propagate branch_id change to tables in this zone
-    if "branch_id" in update:
-        await db.tables.update_many(
-            {"restaurant_id": user["restaurant_id"], "area": update.get("name", z["name"])},
+    # Only tables inheriting the old zone branch move; individually assigned tables stay put.
+    inheriting_table_ids = [
+        table["id"] for table in branch_tables if table.get("branch_id") == z.get("branch_id")
+    ]
+    if "branch_id" in update and inheriting_table_ids and z.get("branch_id") is not None:
+        expected = len(inheriting_table_ids)
+        result = await db.tables.update_many(
+            {"id": {"$in": inheriting_table_ids},
+             "restaurant_id": user["restaurant_id"], "area": update.get("name", z["name"]),
+             "branch_id": z["branch_id"], "status": "disponible",
+             "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
             {"$set": {"branch_id": update["branch_id"], "updated_at": _now()}}
         )
+        if getattr(result, "matched_count", 0) != expected:
+            await db.tables.update_many(
+                {"id": {"$in": inheriting_table_ids},
+                 "restaurant_id": user["restaurant_id"], "area": update.get("name", z["name"]),
+                 "branch_id": update["branch_id"], "status": "disponible",
+                 "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
+                {"$set": {"branch_id": z["branch_id"], "updated_at": _now()}}
+            )
+            await db.zones.update_one(
+                {"id": zone_id, "restaurant_id": user["restaurant_id"], "branch_id": update["branch_id"]},
+                {"$set": {"branch_id": z["branch_id"], "updated_at": _now()}},
+            )
+            raise HTTPException(status_code=409, detail="Una mesa cambió durante la reasignación de sucursal")
     
     return await db.zones.find_one({"id": zone_id}, {"_id": 0})
 
