@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from database import db
 from auth import require_roles, get_current_user
 from billing import rank_products, summarize_payments
+from branch_access import read_branch_filter
 
 _OPEN_END = "9999-12-31T23:59:59+00:00"
 BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
@@ -34,6 +35,25 @@ async def _today_range(restaurant_id: str):
     now = datetime.now(tz)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     return start.astimezone(timezone.utc).isoformat(), now.astimezone(timezone.utc).isoformat()
+
+
+async def _report_branch_filter(user: dict, branch_id: Optional[str], legacy_only: bool) -> dict:
+    return await read_branch_filter(
+        user,
+        db.branches,
+        branch_id,
+        legacy_only=legacy_only,
+    )
+
+
+def _scoped_report_query(restaurant_id: str, branch_filter: dict, time_filter: dict) -> dict:
+    query = {"restaurant_id": restaurant_id}
+    if "$or" in branch_filter:
+        query["$and"] = [branch_filter, time_filter]
+    else:
+        query.update(branch_filter)
+        query.update(time_filter)
+    return query
 
 
 @router.get("/dashboard")
@@ -96,6 +116,8 @@ async def sales_report(
     period: str = Query("day", regex="^(day|week|month)$"),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
 ):
     rid = user["restaurant_id"]
     if date_from and date_to:
@@ -111,11 +133,13 @@ async def sales_report(
             s = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
         start = s.astimezone(timezone.utc).isoformat()
         end = now.astimezone(timezone.utc).isoformat()
+    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    date_filter = {"$or": [
+        {"created_at": {"$gte": start, "$lte": end}},
+        {"voided_at": {"$gte": start, "$lte": end}},
+    ]}
     payments = await db.payments.find(
-        {"restaurant_id": rid, "$or": [
-            {"created_at": {"$gte": start, "$lte": end}},
-            {"voided_at": {"$gte": start, "$lte": end}},
-        ]},
+        _scoped_report_query(rid, branch_filter, date_filter),
         {"_id": 0}
     ).to_list(20000)
     summary = summarize_payments(payments, start, end)
@@ -128,11 +152,14 @@ async def sales_report(
     sales_by_day = summary["sales_by_day"]
 
     # Cancelled orders count
-    cancelled = await db.orders.count_documents({
-        "restaurant_id": rid,
-        "status": "cancelado",
-        "created_at": {"$gte": start, "$lte": end}
-    })
+    cancelled = await db.orders.count_documents(_scoped_report_query(
+        rid,
+        branch_filter,
+        {
+            "status": "cancelado",
+            "created_at": {"$gte": start, "$lte": end},
+        },
+    ))
 
     return {
         "period": period,
@@ -152,14 +179,18 @@ async def sales_report(
 async def product_sales(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     period: str = Query("day", regex="^(day|week|month)$"),
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
 ):
     rid = user["restaurant_id"]
     start = await _period_start(period, rid)
+    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    date_filter = {"$or": [
+        {"created_at": {"$gte": start}},
+        {"voided_at": {"$gte": start}},
+    ]}
     payments = await db.payments.find(
-        {"restaurant_id": rid, "$or": [
-            {"created_at": {"$gte": start}},
-            {"voided_at": {"$gte": start}},
-        ]},
+        _scoped_report_query(rid, branch_filter, date_filter),
         {"_id": 0, "sold_lines": 1, "status": 1, "created_at": 1, "voided_at": 1},
     ).to_list(20000)
     products = rank_products(payments, start, _OPEN_END)
