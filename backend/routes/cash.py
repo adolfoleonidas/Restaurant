@@ -10,21 +10,12 @@ from billing import method_amounts, shift_payment_filter
 from pymongo.errors import DuplicateKeyError
 from notify import emit_notice
 
+BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
+
+
 async def _resolve_timezone(restaurant_id: str) -> ZoneInfo:
-    """Resolve the restaurant's timezone from its default branch, fallback to UTC."""
-    branch = await db.branches.find_one(
-        {"restaurant_id": restaurant_id},
-        {"_id": 0, "timezone": 1},
-        sort=[("created_at", 1)],
-        limit=1,
-    )
-    tz_name = (branch or {}).get("timezone")
-    if tz_name:
-        try:
-            return ZoneInfo(tz_name)
-        except Exception:
-            pass
-    return ZoneInfo("UTC")
+    """Use the fixed Peru business timezone for cash reporting periods."""
+    return BUSINESS_TIMEZONE
 
 
 async def _period_start(period: str, restaurant_id: str) -> str:

@@ -7,25 +7,14 @@ from auth import require_roles, get_current_user
 from billing import rank_products, summarize_payments
 
 _OPEN_END = "9999-12-31T23:59:59+00:00"
+BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
 
 router = APIRouter()
 
 
 async def _resolve_timezone(restaurant_id: str) -> ZoneInfo:
-    """Resolve the restaurant's timezone from its default branch, fallback to UTC."""
-    branch = await db.branches.find_one(
-        {"restaurant_id": restaurant_id},
-        {"_id": 0, "timezone": 1},
-        sort=[("created_at", 1)],
-        limit=1,
-    )
-    tz_name = (branch or {}).get("timezone")
-    if tz_name:
-        try:
-            return ZoneInfo(tz_name)
-        except Exception:
-            pass
-    return ZoneInfo("UTC")
+    """Use the fixed Peru business timezone for report periods."""
+    return BUSINESS_TIMEZONE
 
 
 async def _period_start(period: str, restaurant_id: str) -> str:
@@ -109,20 +98,19 @@ async def sales_report(
     date_to: Optional[str] = None,
 ):
     rid = user["restaurant_id"]
-    now = datetime.now(timezone.utc)
     if date_from and date_to:
         start = date_from
         end = date_to
-    elif period == "day":
-        s = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start, end = s.isoformat(), now.isoformat()
-    elif period == "week":
-        s = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
-        start, end = s.isoformat(), now.isoformat()
     else:
-        s = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
-        start, end = s.isoformat(), now.isoformat()
-
+        now = datetime.now(BUSINESS_TIMEZONE)
+        if period == "day":
+            s = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif period == "week":
+            s = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+        else:
+            s = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = s.astimezone(timezone.utc).isoformat()
+        end = now.astimezone(timezone.utc).isoformat()
     payments = await db.payments.find(
         {"restaurant_id": rid, "$or": [
             {"created_at": {"$gte": start, "$lte": end}},
