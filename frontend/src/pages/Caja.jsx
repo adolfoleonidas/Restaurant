@@ -27,7 +27,7 @@ function round2(n) {
     return Math.round(Number(n || 0) * 100) / 100;
 }
 
-function WebOrderRow({ order, onConfirm }) {
+function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
     const [proof, setProof] = useState(null);
     const [showProof, setShowProof] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -35,7 +35,8 @@ function WebOrderRow({ order, onConfirm }) {
     const openProof = async () => {
         setLoading(true);
         try {
-            const { data } = await api.get(`/orders/${order.id}`);
+            const options = Object.keys(scopeParams).length ? { params: scopeParams } : undefined;
+            const { data } = await api.get(`/orders/${order.id}`, options);
             setProof(data.payment_proof_url || null);
             setShowProof(true);
         } catch (e) {
@@ -1069,8 +1070,9 @@ function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     );
 }
 
-function PaymentHistory({ refreshKey }) {
+function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     const { user } = useAuth();
+    const scopeOptions = useCallback(() => Object.keys(scopeParams).length ? { params: scopeParams } : undefined, [scopeParams]);
     const canVoid = user?.role === 'admin' || !!user?.can_void;
     const [period, setPeriod] = useState('day');
     const [q, setQ] = useState('');
@@ -1081,15 +1083,15 @@ function PaymentHistory({ refreshKey }) {
     const [reload, setReload] = useState(0);
 
     useEffect(() => {
-        const params = { period, limit: 200 };
+        const params = { period, limit: 200, ...scopeParams };
         if (q.trim()) params.q = q.trim();
         api.get('/payments', { params }).then((r) => setItems(r.data)).catch(() => setItems([]));
-    }, [period, q, refreshKey, reload]);
+    }, [period, q, refreshKey, reload, scopeParams]);
 
     const reprint = async (p) => {
         let order = null;
         try {
-            const { data } = await api.get(`/orders/${p.order_id}`);
+            const { data } = await api.get(`/orders/${p.order_id}`, scopeOptions());
             order = data;
         } catch { /* payment still reprints from its own lines */ }
         const ok = printCajaReceipt({
@@ -1111,15 +1113,17 @@ function PaymentHistory({ refreshKey }) {
             return;
         }
         try {
-            if (canVoid) {
-                const { data } = await api.post(`/payments/${detail.id}/void`, { kind: voidKind, reason: voidReason.trim() });
-                toast.success(voidKind === 'refund' ? 'Devolución registrada. El cobro sigue en el historial.' : 'Anulación registrada. El cobro no se eliminó.');
-                setDetail(data);
-            } else {
-                await api.post('/approvals', { kind: voidKind, reason: voidReason.trim(), payment_id: detail.id });
-                toast.success('Solicitud enviada al encargado. No cobres de nuevo mientras tanto.');
-                setDetail(null);
-            }
+            await runMutation(async () => {
+                if (canVoid) {
+                    const { data } = await api.post(`/payments/${detail.id}/void`, { kind: voidKind, reason: voidReason.trim() });
+                    toast.success(voidKind === 'refund' ? 'Devolución registrada. El cobro sigue en el historial.' : 'Anulación registrada. El cobro no se eliminó.');
+                    setDetail(data);
+                } else {
+                    await api.post('/approvals', { kind: voidKind, reason: voidReason.trim(), payment_id: detail.id });
+                    toast.success('Solicitud enviada al encargado. No cobres de nuevo mientras tanto.');
+                    setDetail(null);
+                }
+            });
             setVoidKind(null);
             setVoidReason('');
             setReload((n) => n + 1);
@@ -1271,7 +1275,7 @@ function PaymentHistory({ refreshKey }) {
     );
 }
 
-function SoldDishes({ refreshKey }) {
+function SoldDishes({ refreshKey, consolidated = false }) {
     const [period, setPeriod] = useState('day');
     const [data, setData] = useState(null);
 
@@ -1292,6 +1296,7 @@ function SoldDishes({ refreshKey }) {
                         </TabsList>
                     </Tabs>
                 </div>
+                {consolidated && <p className="text-xs text-muted-foreground">Este reporte incluye todas las sucursales y no está filtrado por la selección de caja.</p>}
                 {data && (
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1326,13 +1331,13 @@ function SoldDishes({ refreshKey }) {
     );
 }
 
-function CashHistory({ refreshKey }) {
+function CashHistory({ refreshKey, scopeParams = {} }) {
     const [period, setPeriod] = useState('day');
     const [data, setData] = useState(null);
 
     useEffect(() => {
-        api.get('/cash/history', { params: { period } }).then((r) => setData(r.data)).catch(() => setData({ registers: [] }));
-    }, [period, refreshKey]);
+        api.get('/cash/history', { params: { period, ...scopeParams } }).then((r) => setData(r.data)).catch(() => setData({ registers: [] }));
+    }, [period, refreshKey, scopeParams]);
 
     const grouped = useMemo(() => {
         const map = {};
@@ -1417,7 +1422,7 @@ function CashHistory({ refreshKey }) {
     );
 }
 
-function OpenCajaCard({ onOpened }) {
+function OpenCajaCard({ onOpened, branchId, canOpen = true, runMutation }) {
     const [amount, setAmount] = useState('');
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
@@ -1425,7 +1430,10 @@ function OpenCajaCard({ onOpened }) {
         if (!amount) { toast.error('Indica monto inicial'); return; }
         setLoading(true);
         try {
-            await api.post('/cash/open', { opening_amount: Number(amount), notes });
+            await runMutation(() => api.post('/cash/open', {
+                opening_amount: Number(amount), notes,
+                ...(branchId ? { branch_id: branchId } : {}),
+            }));
             toast.success('Caja abierta');
             onOpened && onOpened();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
@@ -1439,12 +1447,12 @@ function OpenCajaCard({ onOpened }) {
                 <div><Label>Monto inicial (S/)</Label><Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-11" data-testid="caja-apertura-monto" /></div>
                 <div><Label>Notas (opcional)</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} className="h-11" /></div>
             </div>
-            <Button onClick={open} disabled={loading} className="mt-4 h-11" data-testid="caja-apertura-submit"><LockOpen className="h-4 w-4 mr-2" /> Abrir caja</Button>
+            <Button onClick={open} disabled={loading || !canOpen} className="mt-4 h-11" data-testid="caja-apertura-submit"><LockOpen className="h-4 w-4 mr-2" /> Abrir caja</Button>
         </CardContent></Card>
     );
 }
 
-function CloseCajaDialog({ open, onOpenChange, register, onClosed }) {
+function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }) {
     const [closing, setClosing] = useState('');
     const [notes, setNotes] = useState('');
     React.useEffect(() => {
@@ -1459,7 +1467,7 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed }) {
     const submit = async () => {
         if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indicá el efectivo contado'); return; }
         try {
-            const { data } = await api.post('/cash/close', { closing_amount: Number(closing), notes });
+            const { data } = await runMutation(() => api.post('/cash/close', { closing_amount: Number(closing), notes }));
             const delta = Number(data.difference || 0);
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
@@ -1507,14 +1515,14 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed }) {
     );
 }
 
-function MovementCard({ register, onAdded }) {
+function MovementCard({ register, onAdded, runMutation }) {
     const [type, setType] = useState('ingreso');
     const [amount, setAmount] = useState('');
     const [desc, setDesc] = useState('');
     const submit = async () => {
         if (!amount || !desc) { toast.error('Completa los campos'); return; }
         try {
-            await api.post('/cash/movements', { type, amount: Number(amount), description: desc });
+            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc }));
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
@@ -1552,7 +1560,7 @@ function MovementCard({ register, onAdded }) {
     );
 }
 
-export default function Caja() {
+function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams = {}, selectedBranchId = null, branches = [], canOpen = true, runMutation, onCollectionChange }) {
     const [params] = useSearchParams();
     const [pendingOrder, setPendingOrder] = useState(null);
     const [closeDialog, setCloseDialog] = useState(false);
@@ -1561,20 +1569,39 @@ export default function Caja() {
     const [query, setQuery] = useState('');
 
     const { generation } = useNotify();
-    const { data: register, loading, refetch: refetchReg } = usePolling(() => api.get('/cash/current').then((r) => r.data), 12000, [generation]);
-    const { data: pending, refetch: refetchPending } = usePolling(
-        () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
-        12000,
-        [generation]
+    const scopeOptions = useCallback((baseParams = {}) => {
+        const params = { ...baseParams, ...scopeParams };
+        return Object.keys(params).length ? { params } : undefined;
+    }, [scopeParams]);
+    const scopedGet = useCallback((path, baseParams) => {
+        const options = scopeOptions(baseParams);
+        return options ? api.get(path, options) : api.get(path);
+    }, [scopeOptions]);
+    const { data: register, loading, refetch: refetchReg } = usePolling(
+        () => scopedGet('/cash/current').then((r) => r.data), 12000, [generation, contextKey]
     );
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+    const { data: pending, refetch: refetchPending } = usePolling(
+        () => scopedGet('/orders', { active_only: true }).then((r) => r.data),
+        12000,
+        [generation, contextKey]
+    );
+    const { data: tables } = usePolling(() => scopedGet('/tables').then((r) => r.data), 20000, [generation, contextKey]);
+
+    const selectOrder = useCallback((order) => {
+        setPendingOrder(order);
+        onCollectionChange?.(!!order);
+    }, [onCollectionChange]);
+    const closeCollection = useCallback(() => {
+        setPendingOrder(null);
+        onCollectionChange?.(false);
+    }, [onCollectionChange]);
 
     useEffect(() => {
         const id = params.get('order');
         if (!id || !pending) return;
         const hit = pending.find((o) => o.id === id);
-        if (hit) setPendingOrder(hit);
-    }, [params, pending]);
+        if (hit) selectOrder(hit);
+    }, [params, pending, selectOrder]);
 
     const cobrables = useMemo(() => {
         const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
@@ -1606,7 +1633,7 @@ export default function Caja() {
 
     const confirmWeb = async (order) => {
         try {
-            await api.post(`/orders/${order.id}/confirm-payment`);
+            await runMutation(() => api.post(`/orders/${order.id}/confirm-payment`));
             toast.success(`Pedido #${order.order_number}: pago web confirmado`);
             refetchPending();
         } catch (e) {
@@ -1621,7 +1648,9 @@ export default function Caja() {
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
             <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
-            <OpenCajaCard onOpened={refetchReg} />
+                {ownerContext && scopeParams.legacy_only ? (
+                    <p className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">No hay una caja histórica abierta</p>
+                ) : <OpenCajaCard onOpened={refetchReg} branchId={selectedBranchId} canOpen={canOpen} runMutation={runMutation} />}
             {cobrables.length > 0 && (
                 <Card data-testid="caja-cuentas-cerradas">
                     <CardContent className="p-4">
@@ -1642,7 +1671,7 @@ export default function Caja() {
                     </CardContent>
                 </Card>
             )}
-            <CashHistory refreshKey="closed" />
+            <CashHistory refreshKey={contextKey} scopeParams={scopeParams} />
         </div>
     );
 
@@ -1655,7 +1684,7 @@ export default function Caja() {
                 </div>
                 <div className="flex gap-2">
                     {['cobrar', 'historial', 'turno'].map((k) => (
-                        <Button key={k} variant={tab === k ? 'default' : 'outline'} className="h-11" onClick={() => setTab(k)}>
+                <Button key={k} variant={tab === k ? 'default' : 'outline'} className="h-11" onClick={() => setTab(k)}>
                             {k === 'cobrar' ? 'Cobrar' : k === 'historial' ? 'Historial' : 'Mi turno'}
                         </Button>
                     ))}
@@ -1674,7 +1703,7 @@ export default function Caja() {
                     <h2 className="font-display text-lg font-semibold mb-3">Pedidos web ({webPending.length})</h2>
                     <div className="divide-y">
                         {webPending.map((o) => (
-                            <WebOrderRow key={o.id} order={o} onConfirm={() => confirmWeb(o)} />
+                            <WebOrderRow key={o.id} order={o} scopeParams={scopeParams} onConfirm={() => confirmWeb(o)} />
                         ))}
                     </div>
                 </CardContent></Card>
@@ -1699,7 +1728,7 @@ export default function Caja() {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                 </div>
                             </div>
                         ))}
@@ -1723,7 +1752,7 @@ export default function Caja() {
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => setPendingOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                 </div>
                             </div>
                         ))}
@@ -1742,9 +1771,9 @@ export default function Caja() {
                         </Button>
                     ))}
                 </div>
-                {histKind === 'pagos' && <PaymentHistory refreshKey={register?.id} />}
-                {histKind === 'platos' && <SoldDishes refreshKey={register?.id} />}
-                {histKind === 'turnos' && <CashHistory refreshKey={register?.id} />}
+                {histKind === 'pagos' && <PaymentHistory refreshKey={register?.id} scopeParams={scopeParams} runMutation={runMutation} />}
+                {histKind === 'platos' && <SoldDishes refreshKey={register?.id} consolidated={ownerContext} />}
+                {histKind === 'turnos' && <CashHistory refreshKey={register?.id} scopeParams={scopeParams} />}
             </div>
             )}
 
@@ -1760,12 +1789,155 @@ export default function Caja() {
                         ) : null
                     ))}
                 </CardContent></Card>
-                <MovementCard register={register} onAdded={refetchReg} />
+                <MovementCard register={register} onAdded={refetchReg} runMutation={runMutation} />
                 <Button variant="outline" onClick={() => { refetchReg(); setCloseDialog(true); }} className="h-12 w-full" data-testid="caja-cerrar-button"><Lock className="h-4 w-4 mr-2" /> Cerrar turno</Button>
             </div>
             )}
-            <OrderCollectionDialog open={!!pendingOrder} onOpenChange={(o) => !o && setPendingOrder(null)} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); }} />
-            <CloseCajaDialog open={closeDialog} onOpenChange={setCloseDialog} register={register} onClosed={refetchReg} />
+            <OrderCollectionDialog open={!!pendingOrder} onOpenChange={(o) => !o && closeCollection()} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); }} />
+            <CloseCajaDialog open={closeDialog} onOpenChange={setCloseDialog} register={register} onClosed={refetchReg} runMutation={runMutation} />
+        </div>
+    );
+}
+
+function ConsolidatedCashView({ branches, userKey }) {
+    const { data: registers, loading, error } = usePolling(
+        () => api.get('/cash').then((r) => r.data),
+        12000,
+        [userKey]
+    );
+
+    return (
+        <Card data-testid="caja-consolidated">
+            <CardContent className="space-y-4 p-5">
+                <div>
+                    <h2 className="font-display text-xl font-semibold">Caja consolidada</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Vista de solo lectura de las cajas del negocio. Seleccione una sucursal para operar.</p>
+                </div>
+                {error && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las cajas consolidadas.</p>}
+                {loading && !registers ? <p className="text-sm text-muted-foreground">Cargando cajas…</p>
+                    : !(registers || []).length ? <p className="text-sm text-muted-foreground">No hay cajas para mostrar.</p>
+                        : <div className="divide-y rounded-sm border border-border">
+                            {registers.map((register) => {
+                                const branch = branches.find((item) => String(item.id) === String(register.branch_id));
+                                const branchName = branch?.name || register.branch_name || (register.branch_id ? 'Sucursal no disponible' : 'Registro histórico sin sucursal');
+                                return (
+                                    <div key={register.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-3" data-testid={`caja-consolidated-${register.id}`}>
+                                        <div>
+                                            <div className="font-medium">{branchName}</div>
+                                            <div className="text-xs text-muted-foreground">{register.status === 'open' ? 'Abierta' : 'Cerrada'} · {register.opened_by_name || 'Responsable no disponible'}</div>
+                                        </div>
+                                        <div className="text-right text-sm">
+                                            <div>Fondo inicial: <span className="font-mono">{fmtMoney(register.opening_amount)}</span></div>
+
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>}
+            </CardContent>
+        </Card>
+    );
+}
+
+export default function Caja() {
+    const { user } = useAuth();
+    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const userKey = user?.id || user?.email || user?.role || 'signed-in';
+    const [branches, setBranches] = useState([]);
+    const [branchesLoading, setBranchesLoading] = useState(false);
+    const [branchesError, setBranchesError] = useState(false);
+    const [context, setContext] = useState('all');
+    const [mutationsInFlight, setMutationsInFlight] = useState(0);
+    const [collectionOpen, setCollectionOpen] = useState(false);
+
+    useEffect(() => {
+        setContext('all');
+        setCollectionOpen(false);
+        if (!isOwner) {
+            setBranches([]);
+            setBranchesLoading(false);
+            setBranchesError(false);
+            return undefined;
+        }
+        let active = true;
+        setBranchesLoading(true);
+        setBranchesError(false);
+        api.get('/branches').then(({ data }) => {
+            if (active) setBranches(Array.isArray(data) ? data : []);
+        }).catch(() => {
+            if (active) {
+                setBranches([]);
+                setBranchesError(true);
+            }
+        }).finally(() => {
+            if (active) setBranchesLoading(false);
+        });
+        return () => { active = false; };
+    }, [isOwner, userKey]);
+
+    const runMutation = useCallback(async (operation) => {
+        setMutationsInFlight((count) => count + 1);
+        try {
+            return await operation();
+        } finally {
+            setMutationsInFlight((count) => Math.max(0, count - 1));
+        }
+    }, []);
+    const busy = mutationsInFlight > 0 || collectionOpen;
+    const changeContext = (value) => {
+        if (!busy) setContext(value);
+    };
+
+    const selectedBranchId = isOwner && context.startsWith('branch:') ? context.slice('branch:'.length) : null;
+    const branchIsRegistered = selectedBranchId && branches.some((branch) => String(branch.id) === selectedBranchId);
+    const scopeParams = useMemo(
+        () => context === 'legacy' ? { legacy_only: true } : selectedBranchId ? { branch_id: selectedBranchId } : {},
+        [context, selectedBranchId]
+    );
+    const contextKey = `${userKey}:${context}`;
+
+    if (!isOwner) {
+        const staffKey = `staff:${userKey}`;
+        return <CajaWorkspace key={staffKey} contextKey={staffKey} scopeParams={{}} runMutation={runMutation} onCollectionChange={setCollectionOpen} />;
+    }
+
+    return (
+        <div className="space-y-4" data-testid="caja-owner-context">
+            <Card>
+                <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <label htmlFor="caja-branch-context" className="text-sm font-medium">Contexto de caja</label>
+                        <p className="text-xs text-muted-foreground">La vista consolidada es de solo lectura.</p>
+                    </div>
+                    <select
+                        id="caja-branch-context"
+                        data-testid="caja-branch-context"
+                        className="h-11 min-w-56 rounded-md border border-border bg-background px-3 text-sm"
+                        value={context}
+                        disabled={busy}
+                        onChange={(event) => changeContext(event.target.value)}
+                    >
+                        <option value="all">Todas las sucursales · consolidado</option>
+                        {branches.map((branch) => <option key={branch.id} value={`branch:${branch.id}`}>{branch.name}</option>)}
+                        <option value="legacy">Registros históricos sin sucursal</option>
+                    </select>
+                </CardContent>
+            </Card>
+            {branchesLoading && <p className="text-sm text-muted-foreground">Cargando sucursales…</p>}
+            {branchesError && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las sucursales. Las operaciones por sucursal no están disponibles.</p>}
+            {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-sm text-muted-foreground">No hay sucursales registradas para operar.</p>}
+            {context === 'all' ? <ConsolidatedCashView key={contextKey} branches={branches} userKey={userKey} />
+                : <CajaWorkspace
+                    key={contextKey}
+                    ownerContext
+                    contextKey={contextKey}
+                    scopeParams={scopeParams}
+                    selectedBranchId={selectedBranchId}
+                    branches={branches}
+                    canOpen={!branchesError && !!branchIsRegistered}
+                    runMutation={runMutation}
+                    onCollectionChange={setCollectionOpen}
+                />}
         </div>
     );
 }

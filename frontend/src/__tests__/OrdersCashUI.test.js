@@ -5,7 +5,8 @@ import Caja from '@/pages/Caja';
 import { api } from '@/lib/api';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
+let mockRole = 'admin';
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: mockRole } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
 jest.mock('react-router-dom', () => ({
     Link: ({ children, to, ...p }) => <a href={to} {...p}>{children}</a>,
@@ -160,6 +161,7 @@ describe('T05 Caja payment history clarity', () => {
     let host, root;
 
     beforeEach(() => {
+        mockRole = 'cajero';
         api.get.mockReset().mockImplementation((path) => {
             if (path === '/cash/current') return Promise.resolve({ data: mockRegister });
             if (path.startsWith('/payments')) return Promise.resolve({ data: mockPayments });
@@ -177,6 +179,7 @@ describe('T05 Caja payment history clarity', () => {
         await act(async () => root.unmount());
         host.remove();
         document.body.innerHTML = '';
+        mockRole = 'admin';
     });
 
     it('shows totals by payment method in the payment history', async () => {
