@@ -161,8 +161,8 @@ async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
         raise HTTPException(status_code=409, detail="La solicitud requiere conciliación")
     if not existing_audit:
         if order.get("table_id"):
-            emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status="ocupada")
-        emit_order(order["restaurant_id"], order["id"], order["status"], source="public", order_number=order["order_number"])
+            emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status="ocupada", branch_id=order.get("branch_id"))
+        emit_order(order["restaurant_id"], order["id"], order["status"], source="public", order_number=order["order_number"], branch_id=order.get("branch_id"))
         audit = {
             "id": str(uuid.uuid4()),
             "restaurant_id": order["restaurant_id"],
@@ -621,7 +621,7 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd):
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
     await _save_public_order(o, {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
-    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"))
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
         "restaurant_id": r["id"],
@@ -652,7 +652,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     subtotal, total = _money_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
-    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"))
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
         "restaurant_id": r["id"],
@@ -682,7 +682,7 @@ async def public_remove_item(tracking_code: str, item_id: str):
     subtotal, total = _money_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
     await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
-    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"))
+    emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
         "restaurant_id": r["id"],
@@ -781,5 +781,5 @@ async def upload_proof(tracking_code: str, data: PublicProofUpload):
         "payment_status": "comprobante_subido",
         "updated_at": _now(),
     })
-    emit_order(o["restaurant_id"], o["id"], o.get("status"), source="public", payment_status="comprobante_subido")
+    emit_order(o["restaurant_id"], o["id"], o.get("status"), source="public", payment_status="comprobante_subido", branch_id=o.get("branch_id"))
     return {"ok": True}

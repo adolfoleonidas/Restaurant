@@ -29,6 +29,8 @@ async def claim_order(orders, order: dict, fields: dict):
         "restaurant_id": order.get("restaurant_id"),
         "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
     }
+    if order.get("branch_id") is not None:
+        filt["branch_id"] = order["branch_id"]
     if stamp is None:
         filt["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
     else:

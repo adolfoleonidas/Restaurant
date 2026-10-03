@@ -161,6 +161,8 @@ class _DB:
         self.tables = _Collection()
         self.attentions = _Collection()
         self.products = _Collection()
+        self.branches = _Collection()
+        self.branches.docs.append({"id": "branch-1", "restaurant_id": RID})
 
 
 def _bind(db):
@@ -182,11 +184,11 @@ def _cashier():
 
 
 def _mozo():
-    return {**_cashier(), "id": "mozo-1", "role": "mozo", "full_name": "Mozo"}
+    return {**_cashier(), "id": "mozo-1", "role": "mozo", "full_name": "Mozo", "branch_id": "branch-1"}
 
 
 def _cocina():
-    return {**_cashier(), "id": "cocina-1", "role": "cocina", "full_name": "Cocina"}
+    return {**_cashier(), "id": "cocina-1", "role": "cocina", "full_name": "Cocina", "branch_id": "branch-1"}
 
 
 def _flow(name):
@@ -197,6 +199,7 @@ def _order(**extra):
     doc = {
         "id": "order-1",
         "restaurant_id": RID,
+        "branch_id": "branch-1",
         "order_number": 12,
         "status": "entregado",
         "order_type": "delivery",
@@ -561,7 +564,7 @@ def test_paying_the_bill_does_not_pull_food_out_of_the_kitchen():
         cooking["items"][0]["status"] = "pendiente"
         cooking["table_id"] = "mesa-1"
         db.orders.docs.append(cooking)
-        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "status": "ocupada"})
+        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"})
         db.restaurants.docs.append({"id": RID, "auto_release_table": False})
         db.cash_registers.docs.append(_open_register())
         _bind(db)
@@ -598,7 +601,7 @@ def test_request_bill_then_pay_ready_order_keeps_ready_food_serviceable():
         ready["items"][0]["status"] = "listo"
         ready["table_id"] = "mesa-1"
         db.orders.docs.append(ready)
-        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "status": "ocupada"})
+        db.tables.docs.append({"id": "mesa-1", "restaurant_id": RID, "branch_id": "branch-1", "status": "ocupada"})
         db.restaurants.docs.append({"id": RID, "auto_release_table": False})
         db.cash_registers.docs.append(_open_register())
         _bind(db)

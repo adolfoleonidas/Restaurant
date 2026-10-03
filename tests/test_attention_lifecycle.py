@@ -138,6 +138,7 @@ def _order(**changes):
     order = {
         "id": "order-1",
         "restaurant_id": "restaurant-1",
+        "branch_id": "branch-1",
         "table_id": "table-1",
         "attention_id": "attention-1",
         "attention_state": "open",
@@ -157,6 +158,7 @@ def _attention(**changes):
     row = {
         "id": "attention-1",
         "restaurant_id": "restaurant-1",
+        "branch_id": "branch-1",
         "table_id": "table-1",
         "order_id": "order-1",
         "status": "open",
@@ -168,16 +170,18 @@ def _attention(**changes):
 
 
 def _user():
-    return {"id": "waiter-1", "restaurant_id": "restaurant-1", "role": "mozo"}
+    return {"id": "waiter-1", "restaurant_id": "restaurant-1", "role": "mozo", "branch_id": "branch-1"}
 
 
 def _ready_db(order=None, attention=None):
     db = _DB()
+    db.branches.docs.append({"id": "branch-1", "restaurant_id": "restaurant-1"})
     db.orders.docs.append(order or _order())
     db.attentions.docs.append(attention or _attention())
     db.tables.docs.append({
         "id": "table-1",
         "restaurant_id": "restaurant-1",
+        "branch_id": "branch-1",
         "status": "ocupada",
         "active_attention_id": "attention-1",
     })
@@ -263,8 +267,9 @@ def test_close_retry_finishes_table_projection_after_failure_without_duplicate_a
 def test_open_attention_retries_after_table_claim_when_record_insert_fails():
     async def run():
         db = _DB()
+        db.branches.docs.append({"id": "branch-1", "restaurant_id": "restaurant-1"})
         db.orders.docs.append(_order(status="nuevo", attention_state="opening"))
-        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "status": "disponible"})
+        db.tables.docs.append({"id": "table-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "disponible"})
         db.fail_attention_insert = True
         with pytest.raises(RuntimeError, match="insert failure"):
             await open_table_attention(db, order=db.orders.docs[0], user=_user(), now="2026-09-30T12:00:00+00:00")
@@ -388,7 +393,7 @@ def test_open_and_paid_order_cannot_admit_second_table_visit(monkeypatch):
         monkeypatch.setattr(order_routes, "_compute_total", no_items)
         order_routes._next_order_number = order_number
         order_routes._audit = no_audit
-        data = SimpleNamespace(order_type="mesa", table_id="table-1", items=[], notes=None)
+        data = SimpleNamespace(order_type="mesa", table_id="table-1", branch_id=None, items=[], notes=None)
         with pytest.raises(HTTPException) as exc:
             await order_routes.create_order(data, {**_user(), "full_name": "Waiter"})
         assert exc.value.status_code == 400
@@ -485,7 +490,9 @@ def test_close_route_rejects_another_restaurants_order():
         db = _ready_db()
         order_routes.db = db
         with pytest.raises(HTTPException) as exc:
-            await order_routes.close_attention("order-1", {**_user(), "restaurant_id": "restaurant-2"})
+            await order_routes.close_attention(
+                "order-1", {**_user(), "role": "admin", "restaurant_id": "restaurant-2"}
+            )
         assert exc.value.status_code == 404
         return db
 
@@ -691,7 +698,7 @@ def test_staff_table_order_creation_opens_visit_before_returning():
         order_routes._audit = no_audit
         order_routes.emit_order = lambda *args, **kwargs: None
         created = await order_routes.create_order(
-            SimpleNamespace(order_type="mesa", table_id="table-1", items=[], notes=None),
+            SimpleNamespace(order_type="mesa", table_id="table-1", branch_id=None, items=[], notes=None),
             {**_user(), "full_name": "Waiter"},
         )
         return db, created

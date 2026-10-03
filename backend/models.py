@@ -342,9 +342,15 @@ class OrderItemInput(BaseModel):
 
 class OrderCreate(BaseModel):
     table_id: Optional[str] = None
+    branch_id: Optional[str] = None
     order_type: OrderType = "mesa"
     items: List[OrderItemInput] = []
     notes: Optional[str] = None
+
+    @field_validator("branch_id")
+    @classmethod
+    def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
+        return _user_branch_id(value) if value is not None else None
 
 
 class PublicOrderCreate(BaseModel):

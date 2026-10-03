@@ -289,7 +289,7 @@ def test_staff_pickup_uses_fresh_user_branch_and_real_order_cas(monkeypatch):
 
     branch = {"id": "branch-a", "restaurant_id": "tenant-a", "timezone": "America/Lima",
               "business_day_cutoff": "04:00"}
-    draft = {"id": "pickup-order", "restaurant_id": "tenant-a", "order_type": "recojo",
+    draft = {"id": "pickup-order", "restaurant_id": "tenant-a", "branch_id": "branch-a", "order_type": "recojo",
              "status": "nuevo", "updated_at": "draft-v1", "items": [{"id": "item-a", "status": "nuevo"}],
              "order_number": 53, "attention_state": "open"}
     db = Database(branches=[branch], orders=[draft])

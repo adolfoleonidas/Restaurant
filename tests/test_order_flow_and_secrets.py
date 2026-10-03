@@ -74,6 +74,8 @@ class _DB:
         self.orders = _Collection()
         self.audit_logs = _Collection()
         self.tables = _Collection()
+        self.branches = _Collection()
+        self.branches.docs.append({"id": "branch-1", "restaurant_id": RID})
 
 
 def _bind(db):
@@ -81,13 +83,14 @@ def _bind(db):
 
 
 def _user(role):
-    return {"id": role, "restaurant_id": RID, "role": role, "full_name": role}
+    return {"id": role, "restaurant_id": RID, "role": role, "full_name": role, "branch_id": "branch-1"}
 
 
 def _order(status, item_status):
     return {
         "id": "order-1",
         "restaurant_id": RID,
+        "branch_id": "branch-1",
         "status": status,
         "updated_at": "2026-09-23T12:00:00+00:00",
         "items": [{

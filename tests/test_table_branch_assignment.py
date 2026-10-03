@@ -264,7 +264,7 @@ def test_staff_order_opening_uses_branch_reservation_before_insert(monkeypatch):
         monkeypatch.setattr(order_routes, "_current_order_response", response)
         result = await order_routes.create_order(
             OrderCreate(table_id="table-1", order_type="mesa", items=[]),
-            {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1"},
+            {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"},
         )
         assert result["branch_id"] == "branch-1"
         assert db.attentions.rows[0]["branch_id"] == "branch-1"
@@ -346,7 +346,7 @@ def test_staff_stale_table_snapshot_cannot_open_after_branch_assignment(monkeypa
         monkeypatch.setattr(order_routes, "_next_order_number", next_number)
         create_task = asyncio.create_task(order_routes.create_order(
             OrderCreate(table_id="table-1", order_type="mesa", items=[]),
-            {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1"},
+            {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"},
         ))
         await reached_number.wait()
         admin = {"id": "admin", "role": "admin", "restaurant_id": "tenant-1"}
@@ -428,7 +428,7 @@ def test_staff_insert_uncertainty_releases_only_confirmed_absence_and_preserves_
                 await original(row)
             raise RuntimeError("injected ambiguous insert outcome")
         db.orders.insert_one = uncertain_insert
-        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1"}
+        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"}
         with pytest.raises(RuntimeError, match="ambiguous"):
             await order_routes.create_order(OrderCreate(table_id="table-1", order_type="mesa", items=[]), user)
         assert db.tables.rows[0]["opening_order_id"]
@@ -491,7 +491,7 @@ def test_staff_reservation_persists_private_intent_before_order_insert(monkeypat
         monkeypatch.setattr(order_routes, "db", db)
         monkeypatch.setattr(order_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=17))
         monkeypatch.setattr(order_routes, "_compute_total", lambda items, *_: asyncio.sleep(0, result=(items, 12.5)))
-        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1"}
+        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"}
         async def stop_before_insert(_):
             raise SystemExit("simulated process stop before insert")
         original = db.orders.insert_one
@@ -536,11 +536,11 @@ def test_attention_claim_fallback_rejects_active_marker_with_wrong_branch_or_sta
 
 def test_legacy_opening_marker_without_intent_stays_fail_closed(monkeypatch):
     async def run():
-        db = _DB([_table(opening_order_id="legacy-order", opening_branch_id="branch-1")])
+        db = _DB([_table(branch_id="branch-1", opening_order_id="legacy-order", opening_branch_id="branch-1")], branches=[_branch()])
         monkeypatch.setattr(order_routes, "db", db)
         with pytest.raises(HTTPException) as error:
             await order_routes.resume_attention_open(
-                "legacy-order", {"id": "waiter", "role": "mozo", "restaurant_id": "tenant-1"}
+                "legacy-order", {"id": "waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"}
             )
         assert error.value.status_code == 409
         assert not db.orders.rows
@@ -581,7 +581,7 @@ def test_staff_can_resume_preinsert_crash_using_only_owned_table_id(monkeypatch)
             numbers.append(1)
             return 19
         monkeypatch.setattr(order_routes, "_next_order_number", next_number)
-        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1"}
+        user = {"id": "waiter", "full_name": "Waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"}
         original_insert = db.orders.insert_one
         async def stop_before_insert(_):
             raise SystemExit("simulated process restart")
@@ -630,11 +630,11 @@ def test_staff_table_id_recovery_rejects_unowned_or_unrecoverable_markers_withou
         else:
             row = _table(branch_id="branch-1", status="pagada", opening_order_id="order-1",
                          opening_branch_id="branch-1", opening_intent=intent)
-        db = _DB([row])
+        db = _DB([row], branches=[_branch()])
         monkeypatch.setattr(table_routes, "db", db)
         before = copy.deepcopy(db.tables.rows)
         with pytest.raises(HTTPException) as error:
-            await table_routes.resume_table_opening("table-1", {"id": "waiter", "role": "mozo", "restaurant_id": "tenant-1"})
+            await table_routes.resume_table_opening("table-1", {"id": "waiter", "role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"})
         assert error.value.status_code == expected
         assert db.tables.rows == before
         assert db.orders.rows == []
@@ -678,7 +678,7 @@ def test_public_crash_recovers_only_exact_request_intent_and_keeps_it_private(mo
         listed = await table_routes.list_tables({"role": "admin", "restaurant_id": "tenant-1"})
         assert "opening_intent" not in listed[0]
         assert "opening_order_id" not in listed[0]
-        link = await table_routes.guest_link("table-1", {"role": "mozo", "restaurant_id": "tenant-1"})
+        link = await table_routes.guest_link("table-1", {"role": "mozo", "restaurant_id": "tenant-1", "branch_id": "branch-1"})
         assert set(link) == {"token", "path", "table_number"}
         assert "opening_intent" not in link["token"]
     asyncio.run(run())

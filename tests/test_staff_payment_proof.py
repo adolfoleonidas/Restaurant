@@ -217,6 +217,9 @@ def test_non_table_legacy_order_remains_collectible():
 def test_submitted_proof_blocks_exact_visit_closure_and_keeps_table_claimed():
     async def run():
         db = _attention_world()
+        # This regression keeps its historical branchless admin visit shape;
+        # the shared order factory now defaults new records to branch-1.
+        db.orders.docs[0].pop("branch_id", None)
         payment_routes.db = db
         await payment_routes.upload_staff_proof(
             "order-1", StaffPaymentProof(payment_proof=_png_data_url(), method="yape"), user=_cashier()
