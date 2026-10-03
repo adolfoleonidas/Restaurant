@@ -114,7 +114,7 @@ def _public_order_view(o: dict) -> dict:
 
 def _public_order_fingerprint(data: PublicOrderCreate, restaurant_id: str, table_id: str | None) -> str:
     request_payload = data.model_dump(exclude={"request_id", "branch_id"})
-    if data.order_type == "recojo" and data.branch_id is not None:
+    if data.order_type in ("recojo", "delivery") and data.branch_id is not None:
         request_payload["branch_id"] = data.branch_id
     payload = {
         "restaurant_id": restaurant_id,
@@ -255,6 +255,16 @@ async def public_pickup_branches():
     restaurant = await _get_restaurant()
     branches = await db.branches.find(
         {"restaurant_id": restaurant["id"], "pickup_enabled": True},
+        {"_id": 0, "id": 1, "name": 1},
+    ).sort("name", 1).to_list(500)
+    return [{"id": branch["id"], "name": branch["name"]} for branch in branches]
+
+
+@router.get("/delivery-branches")
+async def public_delivery_branches():
+    restaurant = await _get_restaurant()
+    branches = await db.branches.find(
+        {"restaurant_id": restaurant["id"]},
         {"_id": 0, "id": 1, "name": 1},
     ).sort("name", 1).to_list(500)
     return [{"id": branch["id"], "name": branch["name"]} for branch in branches]
@@ -467,6 +477,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             return await _finish_public_order(previous, data)
 
     pickup_branch = None
+    delivery_branch = None
     if data.order_type == "recojo":
         if not data.branch_id:
             raise HTTPException(status_code=400, detail="Selecciona una sucursal habilitada para recojo")
@@ -476,6 +487,15 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         )
         if not pickup_branch:
             raise HTTPException(status_code=400, detail="La sucursal seleccionada no está disponible para recojo")
+    elif data.order_type == "delivery":
+        if not data.branch_id:
+            raise HTTPException(status_code=400, detail="Selecciona una sucursal para delivery")
+        delivery_branch = await db.branches.find_one(
+            {"id": data.branch_id, "restaurant_id": r["id"]},
+            {"_id": 0, "id": 1, "name": 1, "restaurant_id": 1},
+        )
+        if not delivery_branch:
+            raise HTTPException(status_code=400, detail="La sucursal seleccionada no está disponible para delivery")
 
     enriched, subtotal = await _enrich_items(data.items, r)
 
@@ -536,6 +556,8 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     }
     if pickup_branch:
         order["branch_id"] = pickup_branch["id"]
+    elif delivery_branch:
+        order["branch_id"] = delivery_branch["id"]
     if attention_id:
         order.update({
             "attention_id": attention_id,

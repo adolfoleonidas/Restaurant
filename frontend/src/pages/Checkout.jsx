@@ -42,6 +42,10 @@ export default function Checkout() {
     const [pickupBranchId, setPickupBranchId] = useState('');
     const [pickupBranchesLoading, setPickupBranchesLoading] = useState(false);
     const [pickupBranchesError, setPickupBranchesError] = useState(false);
+    const [deliveryBranches, setDeliveryBranches] = useState([]);
+    const [deliveryBranchId, setDeliveryBranchId] = useState('');
+    const [deliveryBranchesLoading, setDeliveryBranchesLoading] = useState(false);
+    const [deliveryBranchesError, setDeliveryBranchesError] = useState(false);
     const [customer, setCustomer] = useState({ name: '', phone: '', address: '', email: '' });
     const [notes, setNotes] = useState('');
     const [method, setMethod] = useState('yape');
@@ -85,6 +89,23 @@ export default function Checkout() {
         }).catch(() => {
             if (active) { setPickupBranches([]); setPickupBranchesError(true); }
         }).finally(() => { if (active) setPickupBranchesLoading(false); });
+        return () => { active = false; };
+    }, [orderType]);
+
+    useEffect(() => {
+        let active = true;
+        if (orderType !== 'delivery') {
+            setDeliveryBranchId('');
+            setDeliveryBranchesError(false);
+            return () => { active = false; };
+        }
+        setDeliveryBranchesLoading(true);
+        setDeliveryBranchesError(false);
+        api.get('/public/delivery-branches').then((r) => {
+            if (active) setDeliveryBranches(r.data || []);
+        }).catch(() => {
+            if (active) { setDeliveryBranches([]); setDeliveryBranchesError(true); }
+        }).finally(() => { if (active) setDeliveryBranchesLoading(false); });
         return () => { active = false; };
     }, [orderType]);
 
@@ -145,6 +166,9 @@ export default function Checkout() {
         if (orderType === 'recojo' && !pickupBranches.some((branch) => branch.id === pickupBranchId)) {
             toast.error('Selecciona una sucursal habilitada para recojo'); return;
         }
+        if (orderType === 'delivery' && !deliveryBranches.some((branch) => branch.id === deliveryBranchId)) {
+            toast.error('Selecciona una sucursal para delivery'); return;
+        }
         if (orderType === 'local' && tableToken && !tableInfo) {
             toast.error('Escaneá el QR de tu mesa'); return;
         }
@@ -165,6 +189,7 @@ export default function Checkout() {
                 table_token: orderType === 'local' && tableToken ? tableToken : null,
                 table_id: orderType === 'local' && !tableToken ? tableId : null,
                 ...(orderType === 'recojo' ? { branch_id: pickupBranchId } : {}),
+                ...(orderType === 'delivery' ? { branch_id: deliveryBranchId } : {}),
             };
             await submitPublicOrder({
                 storage: window.sessionStorage,
@@ -176,7 +201,8 @@ export default function Checkout() {
                     setConfirmed({
                         ...data,
                         order_type: orderType,
-                        branchName: pickupBranches.find((branch) => branch.id === pickupBranchId)?.name || null,
+                        branchName: (orderType === 'recojo' ? pickupBranches : deliveryBranches)
+                            .find((branch) => branch.id === (orderType === 'recojo' ? pickupBranchId : deliveryBranchId))?.name || null,
                     });
                     if (!isActive) {
                         setMeta({
@@ -341,6 +367,18 @@ export default function Checkout() {
                         </CardContent></Card>
                     )}
 
+                    {orderType === 'delivery' && (
+                        <Card><CardContent className="p-5 space-y-2">
+                            <Label htmlFor="checkout-delivery-branch">Sucursal de entrega *</Label>
+                            {deliveryBranchesLoading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : deliveryBranchesError ? <p role="alert" className="text-sm text-destructive">No se pudieron cargar las sucursales. Intenta nuevamente.</p> : deliveryBranches.length === 0 ? <p className="text-sm text-muted-foreground">No hay sucursales disponibles para delivery</p> : (
+                                <select id="checkout-delivery-branch" className="h-11 w-full rounded-md border bg-background px-3" value={deliveryBranchId} onChange={(e) => setDeliveryBranchId(e.target.value)} data-testid="checkout-delivery-branch">
+                                    <option value="">Selecciona una sucursal</option>
+                                    {deliveryBranches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                                </select>
+                            )}
+                        </CardContent></Card>
+                    )}
+
                     {/* Customer data */}
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-1">Tus datos</h2>
@@ -449,7 +487,7 @@ export default function Checkout() {
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
                 <div className="max-w-5xl mx-auto">
-                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0 || (orderType === 'recojo' && (pickupBranchesLoading || pickupBranchesError || !pickupBranches.some((branch) => branch.id === pickupBranchId)))} className="w-full h-12" data-testid="checkout-confirmar-button">
+                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0 || (orderType === 'recojo' && (pickupBranchesLoading || pickupBranchesError || !pickupBranches.some((branch) => branch.id === pickupBranchId))) || (orderType === 'delivery' && (deliveryBranchesLoading || deliveryBranchesError || !deliveryBranches.some((branch) => branch.id === deliveryBranchId)))} className="w-full h-12" data-testid="checkout-confirmar-button">
                         {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
                     </Button>
                 </div>

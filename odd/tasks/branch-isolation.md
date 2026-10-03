@@ -1,13 +1,13 @@
 # Isolate restaurant operations by branch
 
-Implement operational branch isolation across orders, kitchen/table flows, checkout, cash registers, and reporting while preserving tenant-level ownership and consolidated owner visibility. The human authorized independent per-branch registers, a consolidated owner view, and inclusion of the existing delivery flow; this document tracks that bounded feature. No implementation has started.
+Implement operational branch isolation across orders, kitchen/table flows, checkout, cash registers, and reporting while preserving tenant-level ownership and consolidated owner visibility. The human authorized independent per-branch registers, a consolidated owner view, and inclusion of the existing delivery flow; this document tracks that bounded feature. T1 delivery routing is in progress; T2–T4 remain unstarted.
 
 ## Outcome and constraints
 
 - **Problem:** the system has tenant identity and branch assignment, but operational records and workflows must not let one branch inspect or mutate another branch's work or cash.
 - **Outcome:** staff and cash operations are constrained to their current assigned branch; owners retain explicit tenant-wide consolidated visibility and can select a branch for operations. Delivery orders are bound to an explicitly selected tenant branch.
 - **Source root:** `C:\Users\adolf\.codex\worktrees\restaurant-ui-redesign\Restaurant`.
-- **Planning base:** `1862c7aa06b4acb56b8d3240437bffb838491aaa` on `codex/backend-test-stability`. Tracker branch `codex/branch-isolation` is created from this base. The human approved `feature-branch-chain`; T1 will use child `codex/branch-isolation-delivery`.
+- **Planning base:** `1862c7aa06b4acb56b8d3240437bffb838491aaa` on `codex/backend-test-stability`; planning checkpoint `53e7f7768ec66cb16cc4f8a76435e701589873d9`. Tracker branch `codex/branch-isolation` exists. T1 runs on child `codex/branch-isolation-delivery` from `53e7f7768ec66cb16cc4f8a76435e701589873d9`.
 - **Authorization:** local branch-isolation implementation, tests, documentation, and conventional work-unit commits. No remote work, push, PR, merge, deployment, or live data operation is authorized.
 - **Forecast:** approximately 1,720–2,550 authored changed lines across the four work units below; generated files excluded. This is an estimate, not proof or a cap. The roughly 400-line PR budget requires one honest slicing pass; never omit tests or reduce behavior to fit.
 - **Delivery:** `ask-on-risk`, with human-approved `feature-branch-chain`: review work units separately and integrate the complete feature into the tracker before any eventual main delivery. Child 1 targets the tracker; later children target their immediate parent. No push, PR, merge, or deployment was authorized by this strategy choice. Keep each future PR within 400 authored changed lines or obtain a specific exception after one honest slicing pass.
@@ -30,11 +30,11 @@ All four tasks are **delegated direct**: each includes multi-file behavior and t
 
 ### T1 — Bind delivery orders to an explicit branch (220–350 lines)
 
-- [ ] Require an explicit, tenant-owned branch for delivery creation, reject missing/foreign/disabled selections before order or counter writes, and include branch identity in idempotency/fingerprint behavior.
-- [ ] Reuse the existing branch selector pattern in checkout without treating `pickup_enabled` as delivery eligibility or defaulting to a sole branch. Keep pickup and dine-in behavior unchanged.
-- [ ] Preserve the accepted branch snapshot on the order and exact retries; reject changed-branch reuse of the same request key.
+- [x] Require an explicit, tenant-owned branch for delivery creation, reject missing/foreign selections before order or counter writes; reject disabled branches only where an existing explicit eligibility field supports that rule, and include branch identity in idempotency/fingerprint behavior.
+- [x] Reuse the existing branch selector pattern in checkout without treating `pickup_enabled` as delivery eligibility or defaulting to a sole branch. Keep pickup and dine-in behavior unchanged.
+- [x] Preserve the accepted branch snapshot on the order and exact retries; reject changed-branch reuse of the same request key.
 - **Likely files:** `backend/routes/public.py`, `frontend/src/pages/Checkout.jsx`; `backend/models.py` only if inspection proves the optional field insufficient.
-- **Tests:** planned `tests/test_delivery_branch_routing.py` and `frontend/src/__tests__/CheckoutBranchSelection.test.js`; retain relevant pickup selector tests. These new test paths do not yet exist.
+- **Tests:** `tests/test_delivery_branch_routing.py` and `frontend/src/__tests__/CheckoutBranchSelection.test.js`; retain relevant pickup selector tests. Both new test paths now exist.
 - **Dependencies:** none. T2 will later enforce operational branch scope on this branch-bound order.
 - **Rollback boundary:** remove the delivery branch requirement, fingerprint binding, and selector changes with their tests; leave existing pickup and table selection intact.
 - **Verification:** RED/GREEN exact named Python tests with the safe fake-only runner below; targeted frontend command below. No live public endpoint or database test.
@@ -78,15 +78,31 @@ All four tasks are **delegated direct**: each includes multi-file behavior and t
 
 Use the existing `.venv-oc5\Scripts\python.exe -I -B` only, with process-only `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, `PYTHONDONTWRITEBYTECODE=1`, `MONGO_URL=mongodb://127.0.0.1:1`, and `DB_NAME=audit_in_memory_only`. Add the isolated `backend` directory explicitly; invoke pytest with `-vv --tb=short -p no:cacheprovider` and exact named test paths. Inspect each selected test's safety before execution. Do not invoke generic pytest discovery, `conftest` routes with external access, live HTTP, MongoDB, server startup, or install/global-setting operations.
 
-For focused checkout selection tests, use `npm test -- --watchAll=false --runInBand --runTestsByPath src/__tests__/CheckoutBranchSelection.test.js src/__tests__/PickupBranchSelection.test.js`. Final frontend checks are `npm test -- --watchAll=false --runInBand` and `npm run build`, delegated as execution checks. They have not been run for this feature yet. The ten approved fake-only regression modules recorded in `/odd/tasks/deterministic-backend-tests.md` previously passed 199/199; rerun them at feature closure alongside the new named tests. New test files listed above are planned and do not yet exist.
+For focused checkout selection tests, use `npm test -- --watchAll=false --runInBand --runTestsByPath src/__tests__/CheckoutBranchSelection.test.js src/__tests__/PickupBranchSelection.test.js`. The full frontend test command was run for T1 as recorded below. The build command began but did not complete; do not rerun without the parent bounded verification plan. The ten approved fake-only regression modules recorded in `/odd/tasks/deterministic-backend-tests.md` passed within the 204-test T1 closure.
 
 ## Progress and recovery
 
-- **Task state:** planning document created and read back before any feature source write. T1–T4 are unstarted. Tracker branch exists; the T1 child will be created after the planning checkpoint.
+- **Task state:** T1 functional outcome accepted after writer, independent verifier, and parent spot check; work-unit commit is being recorded. T2–T4 remain unstarted. Checkboxes are not native review or publication authority.
 - **TDD configuration:** strict TDD enabled by the project instructions; use RED → GREEN → REFACTOR for each testable task.
 - **Route:** delegated direct per task. Record the exact delegation trigger and observed result in progress updates.
-- **Feature branch and strategy:** `codex/branch-isolation` tracker; `feature-branch-chain` approved. Parent owns commits and native review transitions. Source edits and tests remain delegated per task.
-- **Checks:** no feature tests or builds have been run. Test and runtime evidence remains pending.
-- **Commit IDs:** none for this feature; record only actual commit identities after parent creates them.
+- **Feature branch and strategy:** `codex/branch-isolation` tracker; `feature-branch-chain` approved. T1 child is `codex/branch-isolation-delivery`, based on planning checkpoint `53e7f7768ec66cb16cc4f8a76435e701589873d9`. Child PRs would target the tracker and later children their immediate parent; no PR/push/merge is authorized. Parent owns commits and native review.
+- **RED:** before production changes, named backend tests had 4 failed / 6 passed (missing delivery branch enforcement, branch persistence, and fingerprint binding); existing pickup tests all passed. Named UI tests had 2 failed / 4 passed (delivery selector/availability absent); pickup UI tests passed. A first post-change focused UI run exposed the new helper using the input setter on a textarea; the helper was corrected and focused tests then passed. No assertion was weakened.
+- **Backend GREEN:** exact T1 delivery plus ten approved fake-only modules: 204 passed / 0 failed / 5 warnings in 1.49s.
+- **Focused frontend GREEN:** named checkout/pickup tests: 2 suites passed, 6 tests passed, 0 failed in 2.254s.
+- **Full frontend tests:** 21 suites passed, 1 suite skipped (22 total); 104 tests passed, 18 skipped (122 total) in 11.887s. Skips are reported, not represented as executed.
+- **Build:** `npm run build` began `craco build` and printed “Creating an optimized production build...” plus a Node deprecation warning, then showed no progress for 60 seconds. The owned foreground command received Ctrl-C once and returned exit code 1; build is incomplete/unverified. No retry was made. No separately owned child process was observed or left intentionally running; process-tree status was not independently inspected.
+- **Runtime harness:** N/A for T1 fake-only API tests and mocked Checkout UI; no real HTTP listener, database, or external service was used.
+- **Authored scope:** `backend/routes/public.py`, `frontend/src/pages/Checkout.jsx`, `tests/test_delivery_branch_routing.py`, and `frontend/src/__tests__/CheckoutBranchSelection.test.js`. Authored estimate: approximately 324 lines (tracked source diff 66 lines changed; new test files 232 lines; task-document diff 26 lines changed). `git diff --check` passed on the final working diff; only line-ending warnings were reported.
+- **Commit IDs:** none for T1; record only actual commit identities after parent creates them.
 - **Mirror:** `odd/branch-isolation/tasks` pending authoritative runtime session registration; this local file is the recovery source.
-- **Next step:** checkpoint the agreed scope and strategy locally, create the T1 child from that checkpoint, then dispatch its bounded writer.
+- **Next step:** parent structural readback and acceptance; resolve incomplete frontend build according to its verification policy, record actual diff count, then parent owns T1 commit and native assessment. Dispatch T2 only after T1 closure.
+
+### T1 independent closure evidence
+
+- Independent backend check: the exact eleven named fake-only modules passed 204/204 in 1.48s, with five existing deprecation warnings.
+- Independent focused frontend check: two suites and six tests passed in 1.733s.
+- One bounded independent build completed successfully in about 40 seconds. The earlier interrupted build remains historical incomplete evidence; it is not the final outcome. The successful build emitted ignored local `frontend/build` files and one Node `DEP0176` warning.
+- Parent spot check: `test_delivery_branch_routing.py` passed 5/5. Staged and unstaged diff checks passed; no unrelated source changes were observed.
+- Current branch schema has `pickup_enabled`, but no explicit delivery-enabled or active state. Delivery selection uses registered branches from the current restaurant, not the pickup eligibility flag; adding delivery availability controls is outside T1. Legacy exact branchless retries remain unchanged and do not infer ownership.
+- Live browser, HTTP, database, and deployment behavior remain unverified. The full frontend test run's 18 skipped tests remain skipped, not executed.
+- Prospective native risk: medium, 324 authored changed lines, `review_due=false`, `under_budget`. The planning checkpoint was passive; T1's review boundary remains `53e7f7768ec66cb16cc4f8a76435e701589873d9` until a due range is acknowledged.
