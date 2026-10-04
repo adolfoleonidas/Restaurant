@@ -27,7 +27,7 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 ## Task
 
-- [ ] M1: Implement and verify the four-lane mobile board while retaining desktop layout and existing kitchen behavior. Acceptance: visible mobile lanes, horizontal snap/overflow, readable cards, preserved statuses/actions/filtering, observed focused RED/GREEN, full frontend tests/build, independent verification, parent spot-check, and local work-unit commit.
+- [x] M1: Implement and verify the four-lane mobile board while retaining desktop layout and existing kitchen behavior. Acceptance: visible mobile lanes, horizontal snap/overflow, readable cards, preserved statuses/actions/filtering, observed focused RED/GREEN, full frontend tests/build, independent verification, parent spot-check, and local work-unit commit.
 
 ## Progress
 
@@ -42,7 +42,7 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 ## Next step
 
-Local implementation and functional acceptance are verified; create the work-unit commit, then record its identity. Actual mobile visual proof and remote delivery remain pending and require the appropriate human scope.
+M1 is complete locally. Request explicit repository/destination/credential authority before upload, integration and deployment, then verify actual mobile behavior in the same authorized browser. Keep the visual gap visible and do not advance live orders merely for proof.
 
 ## Parent acceptance checkpoint
 
@@ -51,3 +51,10 @@ Local implementation and functional acceptance are verified; create the work-uni
 - Read-only native risk assessment failed closed as high/unassessable because the new task document was untracked. This did not lower the verification tier: independent functional verification plus the parent spot-check were performed. RDD remains OFF (clone_local); no native STATUS/START, review lifecycle, receipt, or preference change occurred.
 - The complete candidate has only the two authorized frontend files and this document. All applicable local functional checks passed, but no actual mobile geometry or live-action verification is claimed. No remote upload/deployment or business-record operation occurred.
 - Parent accepts the local implementation. M1 remains unchecked only until its required local work-unit commit is observed. Engram mirror remains pending without runtime registration.
+
+## Local closure
+
+- M1 closed with observed work-unit commit 5b5a6105da0ac43ecc0dc9ab45ef56710f0e113e (feat(kitchen): keep mobile task board visible), 75 additions / 42 deletions across the exact three authorized files. The commit tree matches the prepared index and checkout was clean after commit. Source/test bytes are exactly those verified above.
+- Running authored count is 117 at the work-unit boundary, within the 100-200 forecast and below the delivery planning threshold. This closing passive documentation checkpoint adds no new behavior and requires no repeated source tests.
+- Mobile board implementation is local only, not uploaded, merged or deployed. Actual device geometry, swipe interaction and post-deploy checks remain pending. Missing-branch silent-error/seed fixes and the legacy reconciliation remain separate unfinished work; they were not included in this feature.
+- No authoritative runtime memory identity is registered; local full recovery record remains available and its Engram mirror is pending.
