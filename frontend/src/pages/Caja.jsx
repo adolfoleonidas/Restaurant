@@ -1275,13 +1275,23 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     );
 }
 
-function SoldDishes({ refreshKey, consolidated = false }) {
+function SoldDishes({ refreshKey, scopeParams = {}, contextKey = 'staff', branchName = null }) {
     const [period, setPeriod] = useState('day');
-    const [data, setData] = useState(null);
+    const [result, setResult] = useState(null);
+    const requestIdentity = JSON.stringify([contextKey, period, refreshKey, scopeParams]);
+    const currentResult = result?.identity === requestIdentity ? result : null;
+    const data = currentResult?.data || null;
+    const failed = currentResult?.failed || false;
 
     useEffect(() => {
-        api.get('/reports/products', { params: { period } }).then((r) => setData(r.data)).catch(() => setData({ products: [] }));
-    }, [period, refreshKey]);
+        let active = true;
+        api.get('/reports/products', { params: { period, ...scopeParams } }).then((r) => {
+            if (active) setResult({ identity: requestIdentity, data: r.data, failed: false });
+        }).catch(() => {
+            if (active) setResult({ identity: requestIdentity, data: null, failed: true });
+        });
+        return () => { active = false; };
+    }, [period, refreshKey, scopeParams, contextKey, requestIdentity]);
 
     return (
         <Card data-testid="caja-historial-platos">
@@ -1296,7 +1306,8 @@ function SoldDishes({ refreshKey, consolidated = false }) {
                         </TabsList>
                     </Tabs>
                 </div>
-                {consolidated && <p className="text-xs text-muted-foreground">Este reporte incluye todas las sucursales y no está filtrado por la selección de caja.</p>}
+                {scopeParams.branch_id && branchName && <p className="text-xs text-muted-foreground">Reporte de platos para la sucursal {branchName}.</p>}
+                {scopeParams.legacy_only && <p className="text-xs text-muted-foreground">Reporte de platos de registros históricos sin sucursal.</p>}
                 {data && (
                     <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1309,7 +1320,9 @@ function SoldDishes({ refreshKey, consolidated = false }) {
                         </div>
                     </div>
                 )}
-                {!data ? (
+                {failed ? (
+                    <div role="alert" className="text-sm text-destructive">No se pudo cargar el reporte de platos para este contexto.</div>
+                ) : !data ? (
                     <div className="text-sm text-muted-foreground">Cargando platos…</div>
                 ) : !(data.products || []).length ? (
                     <div className="py-8 text-center text-sm text-muted-foreground">Todavía no hay platos cobrados en este período.</div>
@@ -1772,7 +1785,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                     ))}
                 </div>
                 {histKind === 'pagos' && <PaymentHistory refreshKey={register?.id} scopeParams={scopeParams} runMutation={runMutation} />}
-                {histKind === 'platos' && <SoldDishes refreshKey={register?.id} consolidated={ownerContext} />}
+                {histKind === 'platos' && <SoldDishes refreshKey={register?.id} scopeParams={scopeParams} contextKey={contextKey} branchName={branches.find((branch) => String(branch.id) === String(selectedBranchId))?.name} />}
                 {histKind === 'turnos' && <CashHistory refreshKey={register?.id} scopeParams={scopeParams} />}
             </div>
             )}
