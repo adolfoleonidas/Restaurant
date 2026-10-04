@@ -49,10 +49,10 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
   - Depends: T3. DONE 2026-10-04 (writer B): import+mount swap only (+2/−2); guards/permissions/testids untouched. Deviation accepted: `PedidoDetalleCollection.test.js` tests 1–2 got +20 lines of new verify-gate interaction steps (submit → caja-verificar-check → caja-verificar-registrar + explicit cash recibido) — zero assertion/mock changes; parent spot-check re-ran trio: identical to baseline (21 tests, only the 2 pre-existing ChargeClose RED failures).
 - [x] **T6** — Retire `OrderCollectionDialog`: removed from PedidoDetalle and DELETED the file (486 lines). Grep: zero code references; one historical comment remains in CajaPaymentProof.test.js (T7 will sweep). Build −4.21 kB gzip.
   - Depends: T4, T5. DONE 2026-10-04.
-- [ ] **T7** — Un-skip and repair the 19 `CajaPaymentProof` tests against the wired `CobrarDialog`; fix structural mismatches (tests reference `caja-verificar-*` ids that only CobrarDialog has).
-  - Depends: T3, T4.
-- [ ] **T8** — Full green gate: cobro suites + entire frontend suite + `yarn build`.
-  - Commands: see Verification. Depends: T5, T6, T7.
+- [x] **T7** — Un-skip and repair the (18, not 19) `CajaPaymentProof` tests against the wired `CobrarDialog`.
+  - DONE 2026-10-04 (writer C): all 18 passed AS-IS after 2 suite-plumbing edits only (+5/−7): usePolling mock matchers relaxed to `includes(...)` (scopedGet never matched literal strings) + stale comment/skip sweep. Zero semantic assertions weakened; zero component defects found; CobrarDialog.jsx/lib/cash.js untouched by T7.
+- [x] **T8** — Full green gate: cobro suites + entire frontend suite + `yarn build`.
+  - DONE 2026-10-04: full suite 26/27 suites passed, 163/165 tests; only failure = documented pre-existing environmental `PedidoDetalleChargeClose.test.js` (2 user-owned RED tests, exit code 1 expected until charge-close feature lands). `yarn build` compiled successfully. Parent spot-check re-ran CajaPaymentProof targeted: 18/18 confirmed.
 - [ ] **T9** — Work-unit commits (conventional, tests alongside behavior), record commit ids here; ask delivery strategy at commit boundary; push per repo policy.
   - Depends: T8.
 
