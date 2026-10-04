@@ -1,0 +1,67 @@
+# Inspect account payments and proof state without mutation
+
+## Outcome and authority
+
+Human approved the proposed read-only per-account payment/proof consultation on 2026-10-04. Add a local application view so the six legacy test accounts can later be inspected safely. This approval does not authorize push, PR, merge, deployment, browser record mutation, new payment/proof, cancellation, fulfillment, or cash close. Existing legacy reconciliation remains a separate pending operation.
+
+## Scope and design
+
+- Sole checkout: C:/Users/adolf/.codex/worktrees/restaurant-ui-redesign/Restaurant; branch codex/branch-isolation-deployment; base c8e85348f40dc5efeb49fe5fda8a2cf10752bb7e.
+- Reuse authenticated GET /orders/{id} and GET /payments/by-order/{id}; preserve backend tenant/branch/RBAC rules and API compatibility. No backend/API permission expansion or production access.
+- Put an explicit read-only action on both requested and other Caja account cards, including paid cards. Load the exact selected order ID in a separate audit dialog, never the collection dialog.
+- Show recorded paid balance, completed payment count/total, individual historical payment statuses/methods/amounts/timestamps, retained reversal information, and proof presence/status/metadata. Never render raw proof image/data URL or credential/internal actor data.
+- Existing payment endpoint caps results at 50. Below that cap its unfiltered per-order response is lifetime history, not period history. At 50 records, mark completeness unknown and explicitly warn that the audit cannot be used as full evidence. Do not silently present a truncated list as complete.
+- Loading, malformed/missing data, unauthorized access, failed request, amount/status inconsistency, and changed-selection stale responses must never appear as a verified empty history. No safe-to-cancel automation or enabling of financial actions.
+- UI extends existing Spanish copy in neutral professional Spanish; code/tests/documentation remain English. No dependencies, installations, package/lockfile changes, large source refactors, or unrelated edits.
+
+## Route and checks
+
+- Substantial recoverable UI work, one cohesive work unit. Delegated direct: local source/API mapping completed; writer required because implementation spans component, Caja integration, and tests. Parent structural spot check plus independent verification if native assessment is high/unavailable or required for the small-model writer.
+- Strict TDD enabled by supplied AGENTS.md. Runner verified from frontend/package.json: npm.cmd test (craco test), existing node_modules/.bin/craco.cmd present. Observe focused RED before production implementation, GREEN, then REFACTOR and regression. Fake/mock-only local tests; no live API/database fixtures or browser/server/network access.
+- Foreground commands from frontend: $env:CI='true'; npm.cmd test -- --watchAll=false --runInBand --runTestsByPath src/components/AccountPaymentAudit.test.jsx; npm.cmd test -- --watchAll=false --runInBand; npm.cmd run build. Report exact results, failures/skips/warnings, not invented PASS. No auto install if environment fails.
+- RDD confirmed OFF (clone_local), global ON unchanged: disabled/unmanaged. Do not START/re-enable native review. Read-only native risk assessment determines verification tier only; independent verifier and parent focused spot check remain available.
+- Initial forecast 250-380 authored lines; final checked candidate was 520 lines including tests/docs. Human explicitly answered si autorizo to keeping this cohesive change together as an exception to the 400-line limit. Delivery strategy is exception-ok; record size:exception for any later authorized PR. No size-only code golfing, omitted tests, or automatic remote delivery.
+- Local conventional work-unit commit on feature branch after observed checks, no AI attribution. Parent records resulting commit identity. Rollback boundary is only the new audit component/tests and its Caja entry/import/state integration; unrelated application/payment history is untouched.
+- Engram mirror odd/account-payment-read-view/tasks PENDING because authoritative runtime identity is unavailable. No agent-attributed memory tools; preserve local full document. Project skill registry absent; installed exact skill paths were passed and loaded.
+
+## Task
+
+- [x] A1: Implement and verify the standalone read-only account audit and its two Caja entry points. Acceptance: completed and reversed entries retained; pending/confirmed proof visible without image rendering; zero history distinguished from unknown/error/truncated; both paid and unpaid cards usable; stale results isolated; only GET requests; existing RBAC unchanged; focused RED/GREEN, full frontend tests, build, structural readback, and local work-unit commit evidence recorded.
+
+- [ ] A2: Publish the authorized audit change to adolfoleonidas/Restaurant, link an approved issue, create/attach a PR with one type label and size:exception, verify its exact scope and checks, then integrate into main. Full six-file branch scope and recovery documentation are covered by the explicit extended size exception.
+- [ ] A3: Observe the existing main-push deployment and run its read-only preflight; verify exact integrated SHA, backend health, preserved cash state, and new audit UI through the original authorized browser session. No order/payment/register mutation or migration.
+
+## Progress
+
+- Source contract readback: `backend/routes/orders.py` returns the stored order projection (removing proof fields only for unauthorized roles); newly staff-created order records omit `amount_paid`, `payment_status`, and proof fields. Cash payment records are generated with string `id`, `order_id`, `amount`, `method`, `status`, and `created_at`. `confirm_public_payment` can set `payment_status=confirmado` without adding a payment record or proof. These source facts justify narrow absence defaults and unverified confirmed-without-evidence handling; no backend behavior was changed.
+- Strict-TDD RED observed before implementation when the component module was missing (1 suite failed to load, 0 tests ran). A further correction RED exposed authentic omitted fields, confirmed/zero/no-proof being called empty, and duplicate payment IDs. The final focused suite uses active-dialog-scoped assertions to avoid false passes from retained portal content.
+- Final renderer regression RED reproduced malformed/duplicate-ID data as “Registros (0)” and “No hay registros de pago.” The component now renders the ledger/count only when inspection supplied a validated payment array; otherwise it presents an unknown-state message. Valid arrays retained for aggregate-mismatch results remain visible.
+- Focused verification: `$env:CI='true'; npm.cmd test -- --watchAll=false --runInBand --runTestsByPath src/components/AccountPaymentAudit.test.jsx` — 1 suite passed, 12 tests passed.
+- Full frontend Jest: `$env:CI='true'; npm.cmd test -- --watchAll=false --runInBand` — 25 suites passed, 1 skipped; 143 tests passed, 18 skipped. Existing Radix `DialogContent` description console warnings remain.
+- Build: `npm.cmd run build` — compiled successfully; Node emitted an `fs.F_OK` deprecation warning.
+- Dialog uses only both authorized GET paths; failed/forbidden requests remain unverified. No actual API/browser/database check was run. No payment state, backend, RBAC, or dependency files changed.
+- Size checkpoint before parent readback: four allowed files, 514 authored additions (193 component, 274 tests, 3 Caja wiring, 44 tracker); above the approximate 400-line delivery threshold. Preserve the complete behavior/tests/docs; no code-golfing. Human delivery decision and local work-unit commit remain pending. Engram mirror remains pending without runtime identity.
+
+## Next step
+
+Proceed with A2 then A3 under the explicit repository/Actions authority and full six-file size exception. Preserve history, use no force push or alternate credentials, and leave every business record unchanged.
+
+## Parent final checkpoint
+
+- Parent re-ran the final focused command from frontend: 12/12 tests passed. Structural readback verifies both Caja entry points and GET-only access; backend, RBAC, dependencies, payment/order/register records remain untouched. Full frontend/build results above are writer-observed; the earlier independent full run passed before the final renderer correction.
+- Independent verifier confirmed the corrected defaults, completed count, confirmation qualification, duplicate-ID handling, scoped tests, and final unknown-versus-empty rendering; its last renderer closure was structural only. No browser/API/database end-to-end verification is claimed. Existing 18 skipped frontend tests and Radix/Node warnings remain disclosed. An initial focused invocation from the wrong repository directory failed with Missing script and was corrected to the declared frontend runner.
+- Native risk assessment: medium; small-model writer raises functional verification tier to high. Independent checks and parent spot-check were performed; RDD remains OFF/disabled-unmanaged, no review lifecycle/receipt or remote delivery. A1 is implemented and locally checked, but its checkbox stays open pending the required local commit and human size decision. Memory mirror pending runtime identity; this local document preserves recovery state.
+- Size exception approved explicitly by the human on the current turn. Existing staged application/test bytes match the previously verified candidate; only this passive recovery document changed for the authorization. RDD remains OFF, no agent-attributed memory identity is available, and all remote actions remain out of scope.
+
+- A1 closed locally with work-unit commit f16857b45df3c674b835c0ba69cd5720ec9e2a83 (feat(cash): add read-only account payment audit): 521 authored additions including the authorization record. Commit tree exactly matched the prepared index, and the checkout was clean. Functional source/test bytes were unchanged since the recorded focused/full/build checks; this closing update is passive documentation only. The approved size:exception retains view, tests, and documentation together; no remote Git, browser, server, credential, or business-record action occurred.
+
+## Delivery authority and scope checkpoint
+
+- Human explicitly authorized upload to adolfoleonidas/Restaurant, integration into main, and deployment to 93.127.214.26:8081 through existing GitHub Actions using the configured repository GitHub credential. Use that credential only in process memory; no alternate connector identity, ambient SSH session, secret extraction/output/storage, migration, or business-record operation.
+- Authorized fetch verified origin/main remains 79ffb5475e83e742646258f5f6379844ff3039f1 and is an ancestor. Before this delivery record, the full outgoing branch is six files / 623 changed lines (+622/-1), not the 520-line audit candidate: it also carries branch-isolation rollout and legacy-test-reconciliation recovery documents. Backend, workflow, dependencies, and Compose are unchanged. Scoped outgoing secret-pattern scan found no matches; not a security certification.
+- Configured credential successfully accessed only repository metadata, labels, targeted issue/PR lists, and main branch metadata. No remote write, push, PR, merge, workflow dispatch, browser, or server operation occurred. Required issue/type/size labels already exist; no open branch PR was found.
+- A2 publication is paused for one real scope decision: confirm inclusion of the earlier operational documentation in the same size exception, or narrow the delivery scope without destructive history operations. No additional source implementation or repeated test cycle is needed for that decision. RDD remains OFF; memory mirror pending runtime identity.
+- Full delivery exception resolved: the human explicitly answered si to including the whole branch and previous operational recovery documents. This covers the same six-file delivery plus its status bookkeeping, not unrelated application changes. Final approved functional bytes remain those verified in A1; current main is still 79ffb5475e83e742646258f5f6379844ff3039f1. Scoped audit-title issue lookup and branch-PR lookup returned no existing delivery artifact. The repository has no issue/PR template files or PR test workflow; use the complete feature-request/PR structures from installed skills, without pretending missing CI ran.
+
+- A2 artifacts created and read back: approved feature issue https://github.com/adolfoleonidas/Restaurant/issues/22 and attached PR https://github.com/adolfoleonidas/Restaurant/pull/23. PR has exactly one type label (type:feature) and the explicitly approved size:exception. The six-file remote diff is +633/-1, and base main remains the previously deployed 79ffb5475e83e742646258f5f6379844ff3039f1. No backend/workflow/dependency or business-record change.
+- GitHub reports PR OPEN / MERGEABLE / CLEAN. Check runs and status contexts both total zero; the combined-status pending value is not evidence of a running/failed check. No PR CI is configured, so local functional proof is the applicable evidence and no CI PASS is invented. Main integration and deployment are still pending; preserve exact head binding for the merge.

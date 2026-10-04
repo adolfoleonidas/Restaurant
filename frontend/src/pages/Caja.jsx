@@ -19,6 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import PaymentProofCapture from '@/components/PaymentProofCapture';
 import OrderCollectionDialog from '@/components/OrderCollectionDialog';
+import AccountPaymentAudit from '@/components/AccountPaymentAudit';
 import '@/styles/cobro.css';
 
 const PAYMENT_METHODS = ['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto'];
@@ -1742,6 +1743,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>
                             </div>
                         ))}
@@ -1766,6 +1768,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>
                             </div>
                         ))}
