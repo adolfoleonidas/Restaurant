@@ -69,7 +69,7 @@ def test_verified_branch_indexes_allow_separate_branch_registers(monkeypatch):
                 {"key": {"restaurant_id": 1, "branch_id": 1}, "unique": True,
                  "partialFilterExpression": {"status": "open", "branch_id": {"$type": "string"}}},
                 {"key": {"restaurant_id": 1}, "unique": True,
-                 "partialFilterExpression": {"status": "open", "branch_id": {"$exists": False}}},
+                 "partialFilterExpression": {"status": "open", "branch_id": None}},
             ]
 
     async def run():
@@ -96,6 +96,63 @@ def test_verified_branch_indexes_allow_separate_branch_registers(monkeypatch):
     asyncio.run(run())
 
 
+def test_cash_indexes_use_supported_null_filter_for_legacy_branchless_registers(monkeypatch):
+    import database as database_module
+
+    supported_legacy_filter = {"status": "open", "branch_id": None}
+    unsupported_legacy_filter = {"status": "open", "branch_id": {"$exists": False}}
+
+    class IndexCollection:
+        def __init__(self):
+            self.created = []
+
+        async def create_index(self, keys, **options):
+            self.created.append((keys, options))
+
+        def list_indexes(self):
+            class Cursor:
+                async def to_list(self, length):
+                    return []
+            return Cursor()
+
+    class Database:
+        def __init__(self):
+            self.cash_registers = IndexCollection()
+
+        def __getattr__(self, name):
+            return IndexCollection()
+
+    async def run():
+        fake_db = Database()
+        monkeypatch.setattr(database_module, "db", fake_db)
+        await database_module.ensure_indexes()
+
+        legacy_index = next(
+            options for keys, options in fake_db.cash_registers.created
+            if options.get("name") == "uniq_open_legacy_cash_register"
+        )
+        assert legacy_index["partialFilterExpression"] == supported_legacy_filter
+
+        def indexes_for(filter_expression):
+            class Cursor:
+                async def to_list(self, length):
+                    return [
+                        {"key": {"restaurant_id": 1, "branch_id": 1}, "unique": True,
+                         "partialFilterExpression": {"status": "open", "branch_id": {"$type": "string"}}},
+                        {"key": {"restaurant_id": 1}, "unique": True,
+                         "partialFilterExpression": filter_expression},
+                    ]
+            return Cursor()
+
+        cash_routes.db = fake_db
+        fake_db.cash_registers.list_indexes = lambda: indexes_for(supported_legacy_filter)
+        assert await cash_routes._cash_register_index_state() == "branch_ready"
+        fake_db.cash_registers.list_indexes = lambda: indexes_for(unsupported_legacy_filter)
+        assert await cash_routes._cash_register_index_state() == "unready"
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("legacy_branch", ["missing", None])
 def test_legacy_open_register_blocks_new_branch_when_branch_register_is_also_open(legacy_branch):
     class IndexCursor:
@@ -104,7 +161,7 @@ def test_legacy_open_register_blocks_new_branch_when_branch_register_is_also_ope
                 {"key": {"restaurant_id": 1, "branch_id": 1}, "unique": True,
                  "partialFilterExpression": {"status": "open", "branch_id": {"$type": "string"}}},
                 {"key": {"restaurant_id": 1}, "unique": True,
-                 "partialFilterExpression": {"status": "open", "branch_id": {"$exists": False}}},
+                 "partialFilterExpression": {"status": "open", "branch_id": None}},
             ]
 
     async def run():
@@ -142,7 +199,7 @@ def test_same_branch_concurrent_register_open_has_one_index_guarded_winner():
                 {"key": {"restaurant_id": 1, "branch_id": 1}, "unique": True,
                  "partialFilterExpression": {"status": "open", "branch_id": {"$type": "string"}}},
                 {"key": {"restaurant_id": 1}, "unique": True,
-                 "partialFilterExpression": {"status": "open", "branch_id": {"$exists": False}}},
+                 "partialFilterExpression": {"status": "open", "branch_id": None}},
             ]
 
     async def run():

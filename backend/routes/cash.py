@@ -123,7 +123,7 @@ async def _cash_register_index_state() -> str:
             branch_unique = True
         if (index.get("unique") and key == [("restaurant_id", 1)]
                 and partial.get("status") == "open"
-                and partial.get("branch_id") == {"$exists": False}):
+                and "branch_id" in partial and partial["branch_id"] is None):
             legacy_unique = True
     if branch_unique and legacy_unique and not old_tenant_unique:
         return "branch_ready"

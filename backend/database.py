@@ -69,7 +69,7 @@ async def ensure_indexes():
         await db.cash_registers.create_index(
             [("restaurant_id", 1)],
             unique=True,
-            partialFilterExpression={"status": "open", "branch_id": {"$exists": False}},
+            partialFilterExpression={"status": "open", "branch_id": None},
             name="uniq_open_legacy_cash_register",
         )
     await db.attentions.create_index("id", unique=True, name="uniq_attention_id")
