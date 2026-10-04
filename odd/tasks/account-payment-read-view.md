@@ -28,6 +28,9 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 - [x] A1: Implement and verify the standalone read-only account audit and its two Caja entry points. Acceptance: completed and reversed entries retained; pending/confirmed proof visible without image rendering; zero history distinguished from unknown/error/truncated; both paid and unpaid cards usable; stale results isolated; only GET requests; existing RBAC unchanged; focused RED/GREEN, full frontend tests, build, structural readback, and local work-unit commit evidence recorded.
 
+- [ ] A2: Publish the authorized audit change to adolfoleonidas/Restaurant, link an approved issue, create/attach a PR with one type label and size:exception, verify its exact scope and checks, then integrate into main. Stop before publication while scope of the larger full-branch exception is unresolved.
+- [ ] A3: Observe the existing main-push deployment and run its read-only preflight; verify exact integrated SHA, backend health, preserved cash state, and new audit UI through the original authorized browser session. No order/payment/register mutation or migration.
+
 ## Progress
 
 - Source contract readback: `backend/routes/orders.py` returns the stored order projection (removing proof fields only for unauthorized roles); newly staff-created order records omit `amount_paid`, `payment_status`, and proof fields. Cash payment records are generated with string `id`, `order_id`, `amount`, `method`, `status`, and `created_at`. `confirm_public_payment` can set `payment_status=confirmado` without adding a payment record or proof. These source facts justify narrow absence defaults and unverified confirmed-without-evidence handling; no backend behavior was changed.
@@ -41,7 +44,7 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 ## Next step
 
-A1 is complete locally. Obtain separate explicit destination/operation/credential authorization before any GitHub delivery or deployment. The six legacy records and historical register remain untouched; resume their separate reconciliation only after this view is deployed and real evidence is inspected.
+Remote destination/operation/credential authorization is now explicit, but publication waits for the human decision about the full outgoing documentation scope. Preserve the local feature/history. Continue A2 then A3 only under that resolved scope; no legacy cleanup is authorized in these delivery tasks.
 
 ## Parent final checkpoint
 
@@ -51,3 +54,10 @@ A1 is complete locally. Obtain separate explicit destination/operation/credentia
 - Size exception approved explicitly by the human on the current turn. Existing staged application/test bytes match the previously verified candidate; only this passive recovery document changed for the authorization. RDD remains OFF, no agent-attributed memory identity is available, and all remote actions remain out of scope.
 
 - A1 closed locally with work-unit commit f16857b45df3c674b835c0ba69cd5720ec9e2a83 (feat(cash): add read-only account payment audit): 521 authored additions including the authorization record. Commit tree exactly matched the prepared index, and the checkout was clean. Functional source/test bytes were unchanged since the recorded focused/full/build checks; this closing update is passive documentation only. The approved size:exception retains view, tests, and documentation together; no remote Git, browser, server, credential, or business-record action occurred.
+
+## Delivery authority and scope checkpoint
+
+- Human explicitly authorized upload to adolfoleonidas/Restaurant, integration into main, and deployment to 93.127.214.26:8081 through existing GitHub Actions using the configured repository GitHub credential. Use that credential only in process memory; no alternate connector identity, ambient SSH session, secret extraction/output/storage, migration, or business-record operation.
+- Authorized fetch verified origin/main remains 79ffb5475e83e742646258f5f6379844ff3039f1 and is an ancestor. Before this delivery record, the full outgoing branch is six files / 623 changed lines (+622/-1), not the 520-line audit candidate: it also carries branch-isolation rollout and legacy-test-reconciliation recovery documents. Backend, workflow, dependencies, and Compose are unchanged. Scoped outgoing secret-pattern scan found no matches; not a security certification.
+- Configured credential successfully accessed only repository metadata, labels, targeted issue/PR lists, and main branch metadata. No remote write, push, PR, merge, workflow dispatch, browser, or server operation occurred. Required issue/type/size labels already exist; no open branch PR was found.
+- A2 publication is paused for one real scope decision: confirm inclusion of the earlier operational documentation in the same size exception, or narrow the delivery scope without destructive history operations. No additional source implementation or repeated test cycle is needed for that decision. RDD remains OFF; memory mirror pending runtime identity.
