@@ -45,10 +45,10 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
   - Depends: T2. DONE 2026-10-04: testids verified 26→26, none missing/added.
 - [x] **T4** — Wire Caja: replace `OrderCollectionDialog` mount in `CajaWorkspace` with `CobrarDialog` (identical props; deep-link `?order=`, refetch onPaid, busy-lock preserved). OrderCollectionDialog file kept (still mounted by PedidoDetalle until T5).
   - Depends: T3. DONE 2026-10-04: targeted suites `CajaBranchSelection + OrdersCashUI` = 21/21 pass, identical to pre-change baseline (parent spot-check confirmed); `yarn build` compiled successfully; throwaway smoke suite drove real mount 3/3 then removed.
-- [ ] **T5** — Wire PedidoDetalle: mount `CobrarDialog` at `PedidoDetalle.jsx:401` preserving active-register pre-check, epoch guards, settle-remainder/table-release flow.
-  - Depends: T3. Files: `PedidoDetalle.jsx`.
-- [ ] **T6** — Retire `OrderCollectionDialog`: remove both mounts and the component file (or leave file unreferenced if deletion breaks imports elsewhere); grep-verify zero references.
-  - Depends: T4, T5.
+- [x] **T5** — Wire PedidoDetalle: mount `CobrarDialog` at `PedidoDetalle.jsx:401` preserving active-register pre-check, epoch guards, settle-remainder/table-release flow.
+  - Depends: T3. DONE 2026-10-04 (writer B): import+mount swap only (+2/−2); guards/permissions/testids untouched. Deviation accepted: `PedidoDetalleCollection.test.js` tests 1–2 got +20 lines of new verify-gate interaction steps (submit → caja-verificar-check → caja-verificar-registrar + explicit cash recibido) — zero assertion/mock changes; parent spot-check re-ran trio: identical to baseline (21 tests, only the 2 pre-existing ChargeClose RED failures).
+- [x] **T6** — Retire `OrderCollectionDialog`: removed from PedidoDetalle and DELETED the file (486 lines). Grep: zero code references; one historical comment remains in CajaPaymentProof.test.js (T7 will sweep). Build −4.21 kB gzip.
+  - Depends: T4, T5. DONE 2026-10-04.
 - [ ] **T7** — Un-skip and repair the 19 `CajaPaymentProof` tests against the wired `CobrarDialog`; fix structural mismatches (tests reference `caja-verificar-*` ids that only CobrarDialog has).
   - Depends: T3, T4.
 - [ ] **T8** — Full green gate: cobro suites + entire frontend suite + `yarn build`.
@@ -69,6 +69,8 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
 - 2026-10-04: Repo synced to `origin/main` `451c7c2` (WIP preserved in `stash@{0}`). Feature doc + branch `feat/cobro-redesign-wiring` created. Exploration handoff complete: CobrarDialog dead-code confirmed by parent grep (Caja.jsx:85 definition vs :1812 old mount).
 - 2026-10-04: **T1–T4 complete** (delegated writer A; parent spot-check `CajaBranchSelection+OrdersCashUI` 21/21 pass, `yarn build` ok). Runner note: `yarn` not on PATH — use `corepack yarn ...` from `frontend/`.
 - Writer A notes for later tasks: skipped count in CajaPaymentProof is **18** (not 19). **T7 known blocker**: suite's `usePolling` mock matcher `'api.get(/cash/current)'` never matches `scopedGet` calls — relax to `includes('/cash/current')` (empirically verified). Text inputs need native value setter (React 19). **PedidoDetalleChargeClose.test.js (user's untracked file) fails 2/4 at baseline — pre-existing RED tests for unimplemented `pedido-cobrar-cerrar-button` feature; NOT caused by this work; do not "fix" by deleting.**
+- 2026-10-04: **Unit 1 committed `490e514`** (T1–T4, 5 files, +1474/−1127, incl. feature doc). Native assess on `451c7c2..490e514 --committed-only`: risk **medium** (`executable_change`), 2601 changed lines, `review_due: slice_budget_reached`; lifecycle preflight STATUS returned terminal `stop(rdd_disabled)` — receipt-driven development is **off in this clone (clone_local; global on)**. Review outcome for unit 1: declined-by-switch (off-path). Verification off-path for medium: writer self-verification + parent spot-check (21/21 + build) = satisfied; `general` agent runs default model (not a small profile), so no separate verifier required. Untracked inventory declared excluded (`sha256:2ee772d6…`).
+- Delivery: budget exceeded (2601 ≫ ~400, though ~2160 are moved/extraction lines). `ask-on-risk` → split-vs-`size:exception` question due at **push time (T9)**, with real per-commit counts.
 
 ## Next Step
 
