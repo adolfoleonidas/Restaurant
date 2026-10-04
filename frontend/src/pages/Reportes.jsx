@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,12 +40,82 @@ function exportCsv(data) {
 }
 
 export default function Reportes() {
+    const { user } = useAuth();
+    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const userKey = JSON.stringify([
+        user?.id || user?.email || 'signed-in',
+        user?.restaurant_id,
+        user?.role,
+        [...(user?.functions || [])].sort(),
+    ]);
+
+    return <ReportesView key={userKey} userKey={userKey} isOwner={isOwner} />;
+}
+
+function ReportesView({ userKey, isOwner }) {
     const [period, setPeriod] = useState('day');
-    const [data, setData] = useState(null);
+    const [context, setContext] = useState('all');
+    const [catalog, setCatalog] = useState({ userKey, branches: [], loading: isOwner, error: false });
+    const [result, setResult] = useState({ key: null, data: null, loading: true, error: null });
 
     useEffect(() => {
-        api.get('/reports/sales', { params: { period } }).then((r) => setData(r.data));
-    }, [period]);
+        if (!isOwner) {
+            setCatalog({ userKey, branches: [], loading: false, error: false });
+            return undefined;
+        }
+
+        let active = true;
+        setCatalog({ userKey, branches: [], loading: true, error: false });
+        api.get('/branches').then(({ data: branchData }) => {
+            if (!active) return;
+            setCatalog({ userKey, branches: Array.isArray(branchData) ? branchData : [], loading: false, error: false });
+        }).catch(() => {
+            if (active) setCatalog({ userKey, branches: [], loading: false, error: true });
+        });
+        return () => { active = false; };
+    }, [isOwner, userKey]);
+
+    const visibleCatalog = catalog.userKey === userKey
+        ? catalog : { userKey, branches: [], loading: true, error: false };
+    const selectedBranchId = context.startsWith('branch:') ? context.slice('branch:'.length) : null;
+    const selectedBranch = selectedBranchId && visibleCatalog.branches.find(
+        (branch) => String(branch.id) === selectedBranchId
+    );
+    const contextUnavailable = context === 'invalid' || !!selectedBranchId
+        && (visibleCatalog.loading || visibleCatalog.error || !selectedBranch);
+    const requestKey = `${userKey}:${context}:${period}`;
+    const visibleResult = result.key === requestKey ? result : { data: null, error: null };
+    const data = visibleResult.data;
+
+    useEffect(() => {
+        let active = true;
+        if (contextUnavailable) {
+            setResult({ key: requestKey, data: null, loading: false, error: null });
+            return () => { active = false; };
+        }
+
+        setResult({ key: requestKey, data: null, loading: true, error: null });
+        const params = { period };
+        if (context === 'legacy') params.legacy_only = true;
+        else if (selectedBranchId) params.branch_id = selectedBranchId;
+
+        api.get('/reports/sales', { params }).then(({ data: reportData }) => {
+            if (active) setResult({ key: requestKey, data: reportData, loading: false, error: null });
+        }).catch((error) => {
+            if (!active) return;
+            setResult({ key: requestKey, data: null, loading: false, error });
+            if (selectedBranchId && error?.response?.status === 404) {
+                setContext((current) => current === context ? 'invalid' : current);
+            }
+        });
+        return () => { active = false; };
+    }, [context, contextUnavailable, period, requestKey, selectedBranchId, userKey]);
+
+    const scopeDescription = context === 'legacy'
+        ? 'Este reporte incluye solo registros históricos sin sucursal.'
+        : selectedBranch
+            ? `Este reporte incluye las ventas de ${selectedBranch.name}.`
+            : 'Este reporte consolida las ventas de todas las sucursales.';
 
     return (
         <div className="space-y-5" data-testid="reportes-root">
@@ -55,8 +126,32 @@ export default function Reportes() {
                     <p className="text-muted-foreground text-sm">Ventas, productos y métodos de pago.</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                    {isOwner && (
+                        <label className="flex flex-col gap-1 text-sm">
+                            Contexto de sucursal
+                            <select
+                                data-testid="reportes-branch-context"
+                                className="h-10 min-w-52 rounded-md border border-border bg-background px-3"
+                                value={context}
+                                onChange={(event) => {
+                                    const next = event.target.value;
+                                    if (next === 'all' || next === 'legacy'
+                                        || visibleCatalog.branches.some((branch) => `branch:${branch.id}` === next)) {
+                                        setContext(next);
+                                    }
+                                }}
+                            >
+                                <option value="all">Todas las sucursales · consolidado</option>
+                                {visibleCatalog.branches.map((branch) => (
+                                    <option key={branch.id} value={`branch:${branch.id}`}>{branch.name}</option>
+                                ))}
+                                <option value="legacy">Registros históricos sin sucursal</option>
+                                {context === 'invalid' && <option value="invalid">Sucursal no disponible</option>}
+                            </select>
+                        </label>
+                    )}
                     <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Imprimir</Button>
-                    <Button variant="outline" onClick={() => exportCsv(data)} disabled={!data}><FileDown className="h-4 w-4 mr-2" />Exportar CSV</Button>
+                    <Button data-testid="reportes-export" variant="outline" onClick={() => exportCsv(data)} disabled={!data}><FileDown className="h-4 w-4 mr-2" />Exportar CSV</Button>
                     <Tabs value={period} onValueChange={setPeriod}>
                         <TabsList>
                             <TabsTrigger value="day" data-testid="reportes-periodo-day">Hoy</TabsTrigger>
@@ -67,8 +162,19 @@ export default function Reportes() {
                 </div>
             </div>
 
-            {!data ? (
-                <div className="text-muted-foreground">Cargando reporte…</div>
+            {isOwner && visibleCatalog.loading && <p className="text-sm text-muted-foreground">Cargando sucursales…</p>}
+            {isOwner && visibleCatalog.error && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las sucursales. La selección por sucursal no está disponible.</p>}
+            {isOwner && !contextUnavailable && (
+                <p className="text-sm text-muted-foreground" data-testid="reportes-scope-description">
+                    {scopeDescription}
+                </p>
+            )}
+            {contextUnavailable ? (
+                <p role="alert" className="text-sm text-destructive">No se puede consultar esta sucursal con la información disponible.</p>
+            ) : !data ? (
+                visibleResult.error
+                    ? <p role="alert" className="text-sm text-destructive">No se pudo cargar el reporte de ventas.</p>
+                    : <div className="text-muted-foreground">Cargando reporte…</div>
             ) : (
                 <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
