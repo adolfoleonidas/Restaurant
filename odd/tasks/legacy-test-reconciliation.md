@@ -59,3 +59,10 @@ Delegate R1 only, wait for a terminal handoff, verify its evidence and commit th
 - All R1/R2/R3 boxes remain unchecked. Eligibility, the current historical register state, and active account/context require clarification; no unsupported financial result is inferred. Source tests/build are N/A and no app source changed.
 - The worker surface-unavailability note is preserved as its observed result, not assumed to apply to the parent. Stop affected record operations and ask which account is currently active before resuming; do not reuse another authenticated account or broaden the target scope implicitly.
 - Local scope/progress is preserved in this document; Engram mirror remains pending runtime identity. No remote Git delivery is performed.
+
+### Active role verified — historical session handoff pending
+
+- Human reports testing cashier, waiter, and administrator accounts. The parent read-only sidebar inspection confirms that the currently active session displays role Cajero, not the former administrator context. This is current UI evidence only, not a claim about other sessions.
+- Only the navigation drawer was opened/closed. The seven-account opening form and its pre-entered amount 123 remained unchanged; no logout, login, cancellation, payment, new-register opening, or cash-close was submitted.
+- The historical context selector is absent in this staff view. Resume requires the human to restore the previous administrator session; do not change accounts, enter credentials, or operate these different waiting records on their behalf. R1/R2/R3 remain incomplete.
+- Prior scope-preservation evidence commit: ddf953e1a0cb6b3847bdbd64a65c67b4455b36aa. This clarification is passive documentation only; application checks are N/A, RDD remains OFF, memory mirror remains pending runtime identity, and no remote Git operation is authorized/performed.
