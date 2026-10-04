@@ -17,7 +17,7 @@ Resolve the specifically reviewed legacy test accounts through normal supported 
 
 ## Route, verification, and delivery
 
-- Substantial operational work: three recoverable steps. Route per task is delegated direct, one bounded UI executor at a time; the parent owns structural readback/spot checks and local evidence commits. Delegate broad source/UI reading to keep the parent context bounded.
+- Substantial operational work: three recoverable steps. Route is delegated read-only UI/source preparation plus bounded parent-operated UI actions, because the child cannot access the authorized IAB surface. Never substitute another browser session. The parent records actual UI outcomes and local evidence commits; heavy mapping/proof checks remain delegated.
 - Source checkout: C:/Users/adolf/.codex/worktrees/restaurant-ui-redesign/Restaurant, branch codex/branch-isolation-deployment, initial HEAD 9c60a55cab9eb9c04ed8948bebd4e7853cb958d1. Deployed source 79ffb5475e83e742646258f5f6379844ff3039f1.
 - Strict TDD remains enabled by AGENTS.md for source changes. No application source is changed here, so RED/GREEN source tests are N/A. Verification of record is observed UI state/ledger/proofs, confirmation messages, pending lists, and before/after screenshots for each authorized operation. Do not run local or live test scripts to change records.
 - RDD clone-local OFF, global unchanged, disabled/unmanaged. No native review lifecycle or receipt. Source normalization/build/tests are N/A for this record-only operation; whitespace and structural readback apply to this evidence document.
@@ -73,3 +73,17 @@ Delegate R1 only, wait for a terminal handoff, verify its evidence and commit th
 - The refresh reset the unsubmitted draft amount 123 to blank and the history-period tab to its default. No opening form, order cancellation, service completion, payment, or cash-close was submitted; live business records remain untouched by this task.
 - Current-role screenshot: C:/Users/adolf/.codex/visualizations/2026/10/02/01a0fa09-117d-7212-ab8d-ba8293258612/cash-current-role.jpg. The drawer was closed and the same tab was retained for human handoff. User must log in as administrator in this exact integrated tab, without sharing credentials, before mutation can resume.
 - R1/R2/R3 remain incomplete; mirror pending runtime identity, no source/build/test/review/remote-Git operation. Prior passive-role checkpoint is 86a80a0bc890c10215a10b5e7c36ab530d98d1bf.
+
+### Authorized administrator session restored
+
+- On 2026-10-04 the original tab at /servicio now visibly shows Carlos Administrador / Administrador. This verifies the human handoff in the exact authorized destination and browser; no account/credential switch was performed by the agent.
+- Delegated local UI-path mapping found no lifetime order-payment-ledger view: legacy Caja cards only open a charge dialog, order detail does not show the ledger, and Caja history is period-limited. R1 cannot proceed on absence of recent payments alone. Fresh supported views may supply affirmative evidence, but all five records must remain unchanged while the required evidence is unavailable.
+- R2 may proceed independently only after exact paid-order and completed-payment identification. R3 still requires all closure blockers absent and expected 1484.00 unchanged. R1/R2/R3 remain unchecked; no record mutation has occurred.
+- Route adjustment is operational, not source implementation: root is the only available operator of the exact authorized IAB; the delegated mapper accessed local source only. Previous local checkpoint: 91372679c0a79ede1e2c8c2921e77aca0f5402d0. Memory mirror remains pending runtime identity.
+### Fresh historical UI evidence after administrator handoff
+
+- The historical context now loads the same six authorized cards. Mi turno still shows initial 444.00, cash collected 1040.00, expected cash 1484.00, Yape 182.00, Plin 45.00, and card 56.00. No closing form was submitted.
+- Historial / Mes shows no payments in that period; this is not lifetime evidence and does not contradict the paid S/45 card. Its completed-payment record cannot yet be independently identified in the available view, so R2 fulfillment/finalization was not submitted.
+- Read-only opening of Mesa b22a's collection dialog shows Pagado 0.00 and Pendiente 6.00, but no complete lifetime payment/proof ledger. The dialog was closed without editing fields or confirming a charge. This proves the displayed aggregate only, not the full R1 acceptance condition; all five cancellations remain unsubmitted.
+- Screenshot C:/Users/adolf/.codex/visualizations/2026/10/02/01a0fa09-117d-7212-ab8d-ba8293258612/legacy-admin-restored.jpg was visually inspected and shows the six unchanged cards in the selected historical context. No source, credential, payment, order state, attention, or register record changed.
+- R1/R2 remain blocked by missing supported order-specific lifetime payment/proof evidence; R3 is pending them. Recommend a read-only per-account payment/proof view as a separately authorized implementation, not an inferred scope expansion. All task checkboxes remain open; source tests/build are N/A, passive document whitespace/readback passed, RDD OFF, no push/PR/merge/deploy, memory mirror pending.
