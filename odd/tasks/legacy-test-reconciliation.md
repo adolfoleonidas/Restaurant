@@ -66,3 +66,10 @@ Delegate R1 only, wait for a terminal handoff, verify its evidence and commit th
 - Only the navigation drawer was opened/closed. The seven-account opening form and its pre-entered amount 123 remained unchanged; no logout, login, cancellation, payment, new-register opening, or cash-close was submitted.
 - The historical context selector is absent in this staff view. Resume requires the human to restore the previous administrator session; do not change accounts, enter credentials, or operate these different waiting records on their behalf. R1/R2/R3 remain incomplete.
 - Prior scope-preservation evidence commit: ddf953e1a0cb6b3847bdbd64a65c67b4455b36aa. This clarification is passive documentation only; application checks are N/A, RDD remains OFF, memory mirror remains pending runtime identity, and no remote Git operation is authorized/performed.
+
+### Administrator-login claim checked in the original tab
+
+- Human reports returning as administrator. The original authorized in-app tab still showed Cajero. After announcing and performing exactly one read-only page refresh, a fresh sidebar again showed Cajero; no administrator/historical context was available. Do not conclude that the human failed to log in elsewhere or switch browser profiles automatically.
+- The refresh reset the unsubmitted draft amount 123 to blank and the history-period tab to its default. No opening form, order cancellation, service completion, payment, or cash-close was submitted; live business records remain untouched by this task.
+- Current-role screenshot: C:/Users/adolf/.codex/visualizations/2026/10/02/01a0fa09-117d-7212-ab8d-ba8293258612/cash-current-role.jpg. The drawer was closed and the same tab was retained for human handoff. User must log in as administrator in this exact integrated tab, without sharing credentials, before mutation can resume.
+- R1/R2/R3 remain incomplete; mirror pending runtime identity, no source/build/test/review/remote-Git operation. Prior passive-role checkpoint is 86a80a0bc890c10215a10b5e7c36ab530d98d1bf.
