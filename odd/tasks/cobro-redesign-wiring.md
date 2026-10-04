@@ -53,8 +53,8 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
   - DONE 2026-10-04 (writer C): all 18 passed AS-IS after 2 suite-plumbing edits only (+5/−7): usePolling mock matchers relaxed to `includes(...)` (scopedGet never matched literal strings) + stale comment/skip sweep. Zero semantic assertions weakened; zero component defects found; CobrarDialog.jsx/lib/cash.js untouched by T7.
 - [x] **T8** — Full green gate: cobro suites + entire frontend suite + `yarn build`.
   - DONE 2026-10-04: full suite 26/27 suites passed, 163/165 tests; only failure = documented pre-existing environmental `PedidoDetalleChargeClose.test.js` (2 user-owned RED tests, exit code 1 expected until charge-close feature lands). `yarn build` compiled successfully. Parent spot-check re-ran CajaPaymentProof targeted: 18/18 confirmed.
-- [ ] **T9** — Work-unit commits (conventional, tests alongside behavior), record commit ids here; ask delivery strategy at commit boundary; push per repo policy.
-  - Depends: T8.
+- [ ] **T9** — Work-unit commits ✅: `490e514` (T1–T4, 2601 lines, medium/slice_budget_reached, review stopped by clone-local `rdd_disabled` → off-path verification satisfied), `ed05453` (T5–T6, +28/−492), `4a878bb` (T7–T8, 20 lines, medium/under_budget, review_due false). REMAINING: push/PR execution per user delivery decision (running total ~3140 ≫ 400 → `ask-on-risk` question presented 2026-10-04).
+  - Depends: T8. IN PROGRESS.
 
 ## Verification (all tasks)
 
@@ -72,6 +72,8 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
 - 2026-10-04: **Unit 1 committed `490e514`** (T1–T4, 5 files, +1474/−1127, incl. feature doc). Native assess on `451c7c2..490e514 --committed-only`: risk **medium** (`executable_change`), 2601 changed lines, `review_due: slice_budget_reached`; lifecycle preflight STATUS returned terminal `stop(rdd_disabled)` — receipt-driven development is **off in this clone (clone_local; global on)**. Review outcome for unit 1: declined-by-switch (off-path). Verification off-path for medium: writer self-verification + parent spot-check (21/21 + build) = satisfied; `general` agent runs default model (not a small profile), so no separate verifier required. Untracked inventory declared excluded (`sha256:2ee772d6…`).
 - Delivery: budget exceeded (2601 ≫ ~400, though ~2160 are moved/extraction lines). `ask-on-risk` → split-vs-`size:exception` question due at **push time (T9)**, with real per-commit counts.
 
+- 2026-10-04: **Units 2–3 committed** (`ed05453`, `4a878bb`). Full-suite state: 26/27 suites, 163/165 tests green (only the known user-owned charge-close RED failures). Working tree clean except the two user untracked files.
+
 ## Next Step
 
-Writer B for **T5–T6** (wire CobrarDialog into PedidoDetalle preserving register pre-check + epoch guards; retire OrderCollectionDialog). Then writer C for T7 (un-skip/repair 18 tests), T8 full gate, T9 commits/push with delivery decision.
+T9 delivery decision: single PR + `size:exception` vs direct push to main vs chained split. Flagged for user: untracked `PedidoDetalleChargeClose` RED tests define an unimplemented one-tap settle+free-table feature (`pedido-cobrar-cerrar-button`) — candidate for the next cycle.
