@@ -28,7 +28,7 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 - [x] A1: Implement and verify the standalone read-only account audit and its two Caja entry points. Acceptance: completed and reversed entries retained; pending/confirmed proof visible without image rendering; zero history distinguished from unknown/error/truncated; both paid and unpaid cards usable; stale results isolated; only GET requests; existing RBAC unchanged; focused RED/GREEN, full frontend tests, build, structural readback, and local work-unit commit evidence recorded.
 
-- [ ] A2: Publish the authorized audit change to adolfoleonidas/Restaurant, link an approved issue, create/attach a PR with one type label and size:exception, verify its exact scope and checks, then integrate into main. Stop before publication while scope of the larger full-branch exception is unresolved.
+- [ ] A2: Publish the authorized audit change to adolfoleonidas/Restaurant, link an approved issue, create/attach a PR with one type label and size:exception, verify its exact scope and checks, then integrate into main. Full six-file branch scope and recovery documentation are covered by the explicit extended size exception.
 - [ ] A3: Observe the existing main-push deployment and run its read-only preflight; verify exact integrated SHA, backend health, preserved cash state, and new audit UI through the original authorized browser session. No order/payment/register mutation or migration.
 
 ## Progress
@@ -44,7 +44,7 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 ## Next step
 
-Remote destination/operation/credential authorization is now explicit, but publication waits for the human decision about the full outgoing documentation scope. Preserve the local feature/history. Continue A2 then A3 only under that resolved scope; no legacy cleanup is authorized in these delivery tasks.
+Proceed with A2 then A3 under the explicit repository/Actions authority and full six-file size exception. Preserve history, use no force push or alternate credentials, and leave every business record unchanged.
 
 ## Parent final checkpoint
 
@@ -61,3 +61,4 @@ Remote destination/operation/credential authorization is now explicit, but publi
 - Authorized fetch verified origin/main remains 79ffb5475e83e742646258f5f6379844ff3039f1 and is an ancestor. Before this delivery record, the full outgoing branch is six files / 623 changed lines (+622/-1), not the 520-line audit candidate: it also carries branch-isolation rollout and legacy-test-reconciliation recovery documents. Backend, workflow, dependencies, and Compose are unchanged. Scoped outgoing secret-pattern scan found no matches; not a security certification.
 - Configured credential successfully accessed only repository metadata, labels, targeted issue/PR lists, and main branch metadata. No remote write, push, PR, merge, workflow dispatch, browser, or server operation occurred. Required issue/type/size labels already exist; no open branch PR was found.
 - A2 publication is paused for one real scope decision: confirm inclusion of the earlier operational documentation in the same size exception, or narrow the delivery scope without destructive history operations. No additional source implementation or repeated test cycle is needed for that decision. RDD remains OFF; memory mirror pending runtime identity.
+- Full delivery exception resolved: the human explicitly answered si to including the whole branch and previous operational recovery documents. This covers the same six-file delivery plus its status bookkeeping, not unrelated application changes. Final approved functional bytes remain those verified in A1; current main is still 79ffb5475e83e742646258f5f6379844ff3039f1. Scoped audit-title issue lookup and branch-PR lookup returned no existing delivery artifact. The repository has no issue/PR template files or PR test workflow; use the complete feature-request/PR structures from installed skills, without pretending missing CI ran.
