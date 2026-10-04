@@ -53,8 +53,8 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
   - DONE 2026-10-04 (writer C): all 18 passed AS-IS after 2 suite-plumbing edits only (+5/−7): usePolling mock matchers relaxed to `includes(...)` (scopedGet never matched literal strings) + stale comment/skip sweep. Zero semantic assertions weakened; zero component defects found; CobrarDialog.jsx/lib/cash.js untouched by T7.
 - [x] **T8** — Full green gate: cobro suites + entire frontend suite + `yarn build`.
   - DONE 2026-10-04: full suite 26/27 suites passed, 163/165 tests; only failure = documented pre-existing environmental `PedidoDetalleChargeClose.test.js` (2 user-owned RED tests, exit code 1 expected until charge-close feature lands). `yarn build` compiled successfully. Parent spot-check re-ran CajaPaymentProof targeted: 18/18 confirmed.
-- [ ] **T9** — Work-unit commits ✅: `490e514` (T1–T4, 2601 lines, medium/slice_budget_reached, review stopped by clone-local `rdd_disabled` → off-path verification satisfied), `ed05453` (T5–T6, +28/−492), `4a878bb` (T7–T8, 20 lines, medium/under_budget, review_due false). REMAINING: push/PR execution per user delivery decision (running total ~3140 ≫ 400 → `ask-on-risk` question presented 2026-10-04).
-  - Depends: T8. IN PROGRESS.
+- [x] **T9** — Work-unit commits: `490e514` (T1–T4, 2601 lines, medium/slice_budget_reached, review stopped by clone-local `rdd_disabled` → off-path verification satisfied), `ed05453` (T5–T6, +28/−492), `4a878bb` (T7–T8, 20 lines, medium/under_budget, review_due false), bookkeeping `70eb1c5`. Delivery: user chose **single PR + size:exception** → branch pushed; approved issue **#26** (`enhancement`,`status:approved`); **PR #27** opened (`type:feature`,`size:exception`, MERGEABLE). Merge + main-push deploy = maintainer's call.
+  - Depends: T8. DONE 2026-10-04.
 
 ## Verification (all tasks)
 
@@ -76,4 +76,4 @@ Resolved: **off** (no `sdd-init`/strict-tdd record for this project; no explicit
 
 ## Next Step
 
-T9 delivery decision: single PR + `size:exception` vs direct push to main vs chained split. Flagged for user: untracked `PedidoDetalleChargeClose` RED tests define an unimplemented one-tap settle+free-table feature (`pedido-cobrar-cerrar-button`) — candidate for the next cycle.
+FEATURE COMPLETE — all T1–T9 done. Maintainer: review + merge **PR #27** (merge triggers the existing main-push deploy; then smoke-test Caja → Cobrar on a real phone). Follow-up candidate flagged for the user: their untracked `PedidoDetalleChargeClose` RED tests define an unimplemented one-tap settle+free-table feature (`pedido-cobrar-cerrar-button`) — natural next cycle; do not delete those tests or `stash@{0}` until that decision is made.
