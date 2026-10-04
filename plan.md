@@ -52,7 +52,7 @@
   - Apertura/Cierre de caja + movimientos
   - Productos/Categorías (admin)
   - Usuarios (admin)
-  - Reportes (admin/cajero según permiso)
+  - Reportes: la pantalla `/reportes` es solo para administradores; las APIs de ventas/productos conservan sus controles de rol para admin/cajero.
   - Configuración restaurante (admin)
 - Polling strategy:
   - Hook común `usePolling(queryKey, interval=3000)` para cocina/mesas/pedidos.
@@ -97,7 +97,7 @@
 
 ### Phase 4+ — V2/V3 (roadmap)
 - V2: clientes, delivery/takeout, QR menú, promos/descuentos avanzados, impresión de tickets.
-- V3: facturación electrónica, inventario/recetas/mermas, multi-sucursal real, loyalty, pasarela de pago.
+- V3: facturación electrónica, inventario/recetas/mermas, multi-sucursal real, loyalty, pasarela de pago. El aislamiento/reporting por sucursal de este proyecto ya está implementado y verificado localmente; las capacidades multi-sucursal más amplias siguen pendientes.
 
 ## 3) Next Actions
 1. Crear estructura de proyecto + configuración env (Mongo URI, JWT secret, CORS) + seed inicial.
@@ -125,5 +125,8 @@
 
 ## Próximos pasos posibles (V2/V3 a pedido del usuario):
 - Clientes, Delivery, QR menu, descuentos/promos, impresión de tickets, app Android empaquetada (Capacitor)
-- Facturación electrónica, inventario, recetas, stock, multi-sucursal, fidelización, pasarelas de pago
+- Facturación electrónica, inventario, recetas, stock, capacidades multi-sucursal más amplias, fidelización y pasarelas de pago
 
+## Estado local de aislamiento por sucursal (2026-10-03)
+
+La implementación T1–T4 de aislamiento operativo y contexto de reportes está guardada en commits locales y cuenta con regresiones locales verificadas; el [tracker de aislamiento por sucursal](odd/tasks/branch-isolation.md) conserva el alcance y la evidencia detallada. Esto no certifica autenticación en vivo, navegación en navegador, migración/índice de base de datos ni despliegue. La transición controlada de índice y rollout sigue pendiente de autorización. El roadmap V3 conserva otras capacidades multi-sucursal aún no implementadas.
