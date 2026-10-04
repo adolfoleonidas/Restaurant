@@ -29,8 +29,8 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 - [x] M1: Implement and verify the four-lane mobile board while retaining desktop layout and existing kitchen behavior. Acceptance: visible mobile lanes, horizontal snap/overflow, readable cards, preserved statuses/actions/filtering, observed focused RED/GREEN, full frontend tests/build, independent verification, parent spot-check, and local work-unit commit.
 
-- [ ] M2: Publish this three-file mobile board change to adolfoleonidas/Restaurant with an approved issue and attached PR, exactly one type label, applicable checks, and history-preserving main integration.
-- [ ] M3: Observe the exact-main deployment, run one read-only preflight if needed for server identity, and verify the mobile four-lane board/desktop layout through the original authorized browser. Reset temporary viewport changes and do not alter live orders.
+- [x] M2: Publish this three-file mobile board change to adolfoleonidas/Restaurant with an approved issue and attached PR, exactly one type label, applicable checks, and history-preserving main integration.
+- [x] M3: Observe the exact-main deployment, run one read-only preflight if needed for server identity, and verify the mobile four-lane board/desktop layout through the original authorized browser. Reset temporary viewport changes and do not alter live orders.
 
 ## Progress
 
@@ -45,7 +45,7 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 ## Next step
 
-Proceed with M2 then M3 under the explicit repository/Actions authority. Preserve commit history; no force push, alternate credentials, direct SSH/database access, duplicated deploy dispatch, or business-record actions. Verify the exact deployed revision and mobile board through the original authorized browser session.
+The mobile board is published, integrated, deployed and checked in the authorized browser at mobile/desktop widths. The human can test it on their own phone. Physical touch-device behavior was not tested; the missing-branch error/seed and legacy-reconciliation work remain separate. Do not redeploy merely to save recovery documentation.
 
 ## Parent acceptance checkpoint
 
@@ -67,3 +67,16 @@ Proceed with M2 then M3 under the explicit repository/Actions authority. Preserv
 - Explicit human confirmation covers adolfoleonidas/Restaurant upload/integration and 93.127.214.26:8081 deployment via existing GitHub Actions using the configured repository credential. Keep credential material only in process memory; no connector identity or ambient SSH/session reuse.
 - Scope remains Cocina.jsx, Cocina.test.js, and this feature recovery document. The previous payment-audit feature and its post-merge recovery branch are preserved separately; they are not additional changes in this delivery.
 - Local functional proof remains unchanged. RDD stays OFF/disabled-unmanaged, memory mirror pending runtime registration. Physical mobile/deployed proof remains pending. Do not assume main stayed unchanged until the authorized remote readback.
+
+## Verified delivery and responsive-browser closure
+
+- M2 completed: issue https://github.com/adolfoleonidas/Restaurant/issues/24 was created and approved with enhancement/status:approved, based on explicit maintainer authorization. Attached PR https://github.com/adolfoleonidas/Restaurant/pull/25 carried exactly type:feature and the exact three-file diff (+91/-42). Its head was 45430720619d753ffe5ae841745cfbf71d75b50a. No size exception was required.
+- PR #25 was OPEN/MERGEABLE/CLEAN before integration. Check runs and status contexts both totaled zero; combined-status pending with total zero was not treated as a running check or CI pass. GitHub confirmed MERGED at 2026-10-04T16:52:23Z using merge_method=merge, yielding main 451c7c290caaf8023f987a25cb60c03133983091 with parents ccc938f443aa3baea71685643411263112e687ea and the approved head. No bypass, rewrite, force push, or RDD preference change.
+- Exact-main automatic deployment https://github.com/adolfoleonidas/Restaurant/actions/runs/37218368945 completed successfully. No duplicate deploy dispatch was issued. Exactly one operation=preflight dispatch ran successfully at https://github.com/adolfoleonidas/Restaurant/actions/runs/37218541516.
+- Actual structured preflight confirms status=ok, server.main=true, commit=451c7c290caaf8023f987a25cb60c03133983091, clean_tracked=true, backend_running=true, index_readiness=branch_ready. Cash aggregates remain open=1, missing_branch_open=1, explicit_null_branch_open=0, duplicate group counts=0. Aggregate counters do not prove individual records unchanged. No migration, cash close, payment/proof, assignment, or kitchen transition was performed.
+- First post-merge Git fetch failed with a transient GitHub port-443 connection error. Read-only API checks confirmed the merge and completed deployment, and a later bounded fetch succeeded. Parent and independent verifier confirmed local origin/main, merge parents, feature ancestry and equality of executable frontend/backend/workflow/Compose bytes. The initial log extractor matched echoed script markers; a corrected JSON-only parser isolated exactly one actual server report with a concrete commit. No dispatch or mutation was retried.
+- Original authorized browser was authenticated as Pedro Cocinero / Cocina. After reload, a 390x844 requested viewport showed all four lanes without tabs. DOM measurements: viewport/page width=390, board client width=333, scroll width=1234, each lane=300px/display:block/snap-start, overflow-x:auto and scroll-snap-type:x mandatory. Native horizontal scroll moved scrollLeft from 0 to 623.2; the ready lane began at x=29. This is a resized-browser check, not a physical touch-phone test.
+- Desktop check at requested 1280x800 yielded actual document width=1270 (vertical scrollbar), equal page width, display:grid, four columns approximately 258/258/172/193px, overflow visible and snap none. The existing desktop grid is preserved. Temporary viewport overrides were reset successfully and the same tab was retained for human handoff.
+- Saved and visually inspected local proof: kitchen-mobile-board.jpg (initial mobile board with next-lane edge) and kitchen-desktop-board.jpg under C:/Users/adolf/.codex/visualizations/2026/10/02/01a0fa09-117d-7212-ab8d-ba8293258612/. Screenshots taken during scroll animation were not used as stable card-position proof. An offscreen heading click failed the browser tool after automatic scrolling; state was inspected and native scroll used instead. No business button was clicked. Screenshots are local only, not included in Git.
+- Writer/independent/parent local checks recorded above remain the source verification; no source bytes changed during delivery. Existing 18 skipped tests and Radix/Node warnings remain. M3 is complete for deployment/server identity and resized-browser responsive checks; physical touch and real-phone coverage remain unexecuted rather than falsely passed.
+- This post-merge recovery checkpoint is documentation only. Upload it to the existing feature branch if needed, not another main merge/redeployment. RDD remains OFF/disabled-unmanaged; Engram mirror remains pending without authoritative runtime registration.
