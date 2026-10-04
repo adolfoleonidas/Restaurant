@@ -6,11 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Read-only cash configuration check or deploy
+        description: Read-only cash check, controlled cash-index migration, or deploy
         type: choice
-        options: [preflight, deploy]
+        options: [preflight, deploy, migrate_cash]
         default: deploy
         required: true
+      expected_server_commit:
+        description: Exact currently deployed main SHA required only for migrate_cash
+        type: string
+        default: ''
+        required: false
 
 concurrency:
   group: restaurant-deploy
@@ -34,16 +39,18 @@ jobs:
         env:
           DEPLOY_OPERATION: ${{ github.event.inputs.operation || 'deploy' }}
           EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_SERVER_COMMIT: ${{ github.event.inputs.expected_server_commit || '' }}
+          MIGRATION_RUN_ID: ${{ github.run_id }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: root
           key_path: /home/runner/.ssh/vps_key
           command_timeout: 20m
-          envs: DEPLOY_OPERATION,EXPECTED_COMMIT
+          envs: DEPLOY_OPERATION,EXPECTED_COMMIT,EXPECTED_SERVER_COMMIT,MIGRATION_RUN_ID
           script: |
             set -eu
             case "$DEPLOY_OPERATION" in
-              preflight|deploy) ;;
+              preflight|deploy|migrate_cash) ;;
               *) printf 'CASH_PREFLIGHT_JSON={"status":"failed","reason":"invalid_operation"}\n'; exit 1 ;;
             esac
             if ! printf '%s' "$EXPECTED_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
@@ -230,6 +237,452 @@ jobs:
                   "$server_main" "$server_head_json" "$server_clean"
               fi
               exit 0
+            fi
+            if [ "$DEPLOY_OPERATION" = migrate_cash ]; then
+              backup_marker_printed=false
+              migration_reported=false
+              backend_paused=false
+              backup_status=not_started
+              backup_id=cash-index-unassigned
+              backup_sha=
+              backup_bytes=0
+              backup_verified=false
+              rollback_protection=false
+              emit_backup() {
+                if [ "$backup_marker_printed" = true ]; then return; fi
+                backup_marker_printed=true
+                if [ -n "$backup_sha" ]; then sha_json="\"$backup_sha\""; else sha_json=null; fi
+                printf 'CASH_BACKUP_JSON={"status":"%s","backup_id":"%s","sha256":%s,"bytes":%s,"verified":%s}\n' \
+                  "$backup_status" "$backup_id" "$sha_json" "$backup_bytes" "$backup_verified"
+              }
+              emit_failure() {
+                printf 'CASH_MIGRATION_JSON={"status":"failed","reason":"%s","backup_verified":%s,"rollback_protection":%s}\n' \
+                  "$1" "$backup_verified" "$rollback_protection"
+                migration_reported=true
+              }
+              cleanup_migration() {
+                cleanup_status=$?
+                trap - EXIT HUP INT TERM
+                if [ "$backend_paused" = true ]; then
+                  if docker compose unpause backend >/dev/null 2>&1; then
+                    backend_paused=false
+                  else
+                    cleanup_status=1
+                  fi
+                fi
+                if [ "$migration_reported" != true ]; then
+                  backup_status=not_verified
+                  backup_verified=false
+                  [ "$cleanup_status" -ne 0 ] || cleanup_status=1
+                  if [ "$backend_paused" = true ]; then emit_failure backend_unpause_failed; else emit_failure migration_interrupted; fi
+                  emit_backup
+                fi
+                exit "$cleanup_status"
+              }
+              abort_migration() {
+                abort_reason="$1"
+                if [ "$backend_paused" = true ]; then
+                  if docker compose unpause backend >/dev/null 2>&1; then
+                    backend_paused=false
+                  else
+                    abort_reason=backend_unpause_failed
+                  fi
+                fi
+                emit_backup
+                emit_failure "$abort_reason"
+                exit 1
+              }
+              trap cleanup_migration EXIT
+              trap 'exit 1' HUP INT TERM
+
+              if ! printf '%s' "$EXPECTED_SERVER_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+                abort_migration invalid_expected_server_commit
+              fi
+              if ! printf '%s' "$MIGRATION_RUN_ID" | grep -Eq '^[0-9]{1,20}$'; then
+                abort_migration invalid_migration_run_id
+              fi
+              server_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+              if [ "$server_branch" != main ]; then abort_migration server_not_main; fi
+              server_head=$(git rev-parse --verify HEAD 2>/dev/null || true)
+              if [ "$server_head" != "$EXPECTED_SERVER_COMMIT" ]; then abort_migration server_commit_mismatch; fi
+              if ! tracked_status=$(git status --porcelain --untracked-files=no 2>/dev/null) \
+                  || [ -n "$tracked_status" ]; then
+                abort_migration server_worktree_not_clean
+              fi
+              if ! docker compose ps --status running --services 2>/dev/null | grep -qx backend; then
+                abort_migration backend_not_running
+              fi
+              if ! docker compose ps --status running --services 2>/dev/null | grep -qx mongo; then
+                abort_migration mongo_not_running
+              fi
+              db_name=$(docker compose exec -T backend python -c \
+                'import os,re; value=os.environ.get("DB_NAME", "restaurant_db"); print(value) if re.fullmatch(r"[A-Za-z0-9_-]{1,63}", value) else exit(1)' \
+                2>/dev/null) || abort_migration database_name_unavailable
+              if ! printf '%s' "$db_name" | grep -Eq '^[A-Za-z0-9_-]{1,63}$'; then
+                abort_migration invalid_database_name
+              fi
+              if ! command -v mkdir >/dev/null 2>&1 || ! command -v stat >/dev/null 2>&1 \
+                  || ! command -v id >/dev/null 2>&1 || ! command -v gzip >/dev/null 2>&1 \
+                  || ! command -v sha256sum >/dev/null 2>&1 || ! command -v chmod >/dev/null 2>&1; then
+                abort_migration host_backup_tool_unavailable
+              fi
+              if ! docker compose exec -T mongo sh -c \
+                  'command -v mongodump >/dev/null && command -v mongorestore >/dev/null && command -v mongosh >/dev/null && command -v gzip >/dev/null && command -v sha256sum >/dev/null' \
+                  >/dev/null 2>&1; then
+                abort_migration mongo_backup_tool_unavailable
+              fi
+              if [ "$(id -u 2>/dev/null || true)" != 0 ]; then abort_migration backup_requires_root; fi
+              backup_id="cash-index-${EXPECTED_COMMIT}-${MIGRATION_RUN_ID}"
+              backup_root=/docker/restaurant-backups
+              if [ ! -e "$backup_root" ]; then
+                if ! mkdir -m 700 -- "$backup_root" 2>/dev/null; then abort_migration backup_root_unavailable; fi
+              fi
+              if [ ! -d "$backup_root" ] \
+                  || [ "$(stat -c '%u:%a' "$backup_root" 2>/dev/null || true)" != 0:700 ]; then
+                abort_migration backup_root_permissions_invalid
+              fi
+              backup_dir="$backup_root/$backup_id"
+              if ! mkdir -m 700 -- "$backup_dir" 2>/dev/null; then
+                abort_migration backup_already_exists_or_unavailable
+              fi
+              if [ "$(stat -c '%u:%a' "$backup_dir" 2>/dev/null || true)" != 0:700 ]; then
+                abort_migration backup_directory_permissions_invalid
+              fi
+              archive_path="$backup_dir/cash.archive.gz"
+              (umask 077; : > "$archive_path") 2>/dev/null || abort_migration backup_file_unavailable
+              chmod 600 "$archive_path" 2>/dev/null || abort_migration backup_file_permissions_invalid
+
+              backend_paused=true
+              if ! docker compose pause backend >/dev/null 2>&1; then abort_migration backend_pause_failed; fi
+              backend_container=$(docker compose ps -q backend 2>/dev/null || true)
+              if [ -z "$backend_container" ] \
+                  || [ "$(docker inspect --format '{{.State.Paused}}' "$backend_container" 2>/dev/null || true)" != true ]; then
+                abort_migration backend_pause_not_verified
+              fi
+              if ! docker compose exec -T mongo mongodump --db="$db_name" --archive --gzip --quiet \
+                  >"$archive_path" 2>/dev/null; then
+                backup_status=failed
+                backup_bytes=$(stat -c '%s' "$archive_path" 2>/dev/null || printf 0)
+                abort_migration backup_dump_failed
+              fi
+              backup_bytes=$(stat -c '%s' "$archive_path" 2>/dev/null || printf 0)
+              if ! printf '%s' "$backup_bytes" | grep -Eq '^[0-9]+$' || [ "$backup_bytes" -le 0 ]; then
+                backup_status=failed
+                abort_migration backup_archive_empty
+              fi
+              if ! gzip -t "$archive_path" >/dev/null 2>&1; then
+                backup_status=failed
+                abort_migration backup_gzip_invalid
+              fi
+              if ! docker compose exec -T mongo mongorestore --dryRun --gzip --archive \
+                  --nsInclude="$db_name.*" <"$archive_path" >/dev/null 2>&1; then
+                backup_status=failed
+                abort_migration backup_restore_dryrun_failed
+              fi
+              backup_sha=$(sha256sum "$archive_path" 2>/dev/null | cut -d' ' -f1 || true)
+              if ! printf '%s' "$backup_sha" | grep -Eq '^[0-9a-f]{64}$'; then
+                backup_sha=
+                backup_status=failed
+                abort_migration backup_hash_failed
+              fi
+              if [ "$(stat -c '%u:%a' "$archive_path" 2>/dev/null || true)" != 0:600 ]; then
+                backup_status=failed
+                abort_migration backup_archive_permissions_invalid
+              fi
+              backup_status=verified
+              backup_verified=true
+              emit_backup
+
+              migration_output=
+            if migration_output=$(docker compose exec -T \
+                  -e CASH_BACKUP_ID="$backup_id" -e CASH_BACKUP_SHA256="$backup_sha" \
+                  -e CASH_BACKUP_BYTES="$backup_bytes" -e CASH_BACKUP_VERIFIED=true \
+                  mongo mongosh --quiet --norc "mongodb://127.0.0.1:27017/$db_name" --file /dev/stdin 2>/dev/null <<'CASH_MIGRATION_JS'
+            'use strict';
+            (async () => {
+              const branchName = "uniq_open_cash_register_by_branch";
+              const legacyName = "uniq_open_legacy_cash_register";
+              const allowedMetadata = new Set(["v", "name", "key", "ns", "unique", "partialFilterExpression"]);
+              let oldIndex = null;
+              let mutationAttempted = false;
+              let countsBefore = null;
+              let countsAfter = null;
+              const backupId = process.env.CASH_BACKUP_ID || "";
+              const backupHash = process.env.CASH_BACKUP_SHA256 || "";
+              const backupBytes = process.env.CASH_BACKUP_BYTES || "";
+              const backupVerified = process.env.CASH_BACKUP_VERIFIED === "true"
+                && /^cash-index-[0-9a-f]{40}-[0-9]{1,20}$/.test(backupId)
+                && /^[0-9a-f]{64}$/.test(backupHash)
+                && /^[1-9][0-9]*$/.test(backupBytes);
+
+              function good(response) { return response && response.ok === 1; }
+              async function run(command) {
+                const response = await db.runCommand(command);
+                if (!good(response)) throw new Error("command_failed");
+                return response;
+              }
+              function canonical(value) {
+                if (Array.isArray(value)) return value.map(canonical);
+                if (value && typeof value === "object") {
+                  const normalized = {};
+                  for (const key of Object.keys(value).sort()) normalized[key] = canonical(value[key]);
+                  return normalized;
+                }
+                return value;
+              }
+              function same(left, right) {
+                return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+              }
+              function cursorDone(id) { return !id || id.toString() === "0"; }
+              async function closeCursor(id) {
+                if (!cursorDone(id)) {
+                  try { await db.runCommand({ killCursors: "cash_registers", cursors: [id] }); } catch (_) { }
+                }
+              }
+              async function readIndexes() {
+                const first = await run({ listIndexes: "cash_registers", cursor: { batchSize: 101 } });
+                if (!first.cursor || !Array.isArray(first.cursor.firstBatch)) throw new Error("invalid_index_cursor");
+                const rows = first.cursor.firstBatch.slice();
+                let cursorId = first.cursor.id;
+                try {
+                  if (rows.length > 100) throw new Error("index_metadata_overflow");
+                  while (!cursorDone(cursorId)) {
+                    const more = await run({ getMore: cursorId, collection: "cash_registers",
+                      batchSize: 101 - rows.length });
+                    if (!more.cursor || !Array.isArray(more.cursor.nextBatch)) throw new Error("invalid_index_cursor");
+                    rows.push(...more.cursor.nextBatch);
+                    cursorId = more.cursor.id;
+                    if (rows.length > 100) throw new Error("index_metadata_overflow");
+                  }
+                  return rows;
+                } catch (error) {
+                  await closeCursor(cursorId);
+                  throw error;
+                }
+              }
+              async function count(query) {
+                const response = await run({ count: "cash_registers", query, maxTimeMS: 10000 });
+                if (!Number.isSafeInteger(response.n) || response.n < 0) throw new Error("invalid_count");
+                return response.n;
+              }
+              async function counts() {
+                return {
+                  total: await count({}),
+                  open: await count({ status: "open" }),
+                  stringOpen: await count({ status: "open", branch_id: { $type: "string" } }),
+                  missingOpen: await count({ status: "open", branch_id: { $exists: false } }),
+                  nullOpen: await count({ status: "open", branch_id: { $exists: true, $type: 10 } }),
+                };
+              }
+              async function duplicateGroups(branchFilter, includeBranch) {
+                const response = await run({ aggregate: "cash_registers", pipeline: [
+                  { $match: Object.assign({ status: "open" }, branchFilter) },
+                  { $group: { _id: includeBranch ? { restaurant_id: "$restaurant_id", branch_id: "$branch_id" } : "$restaurant_id", count: { $sum: 1 } } },
+                  { $match: { count: { $gt: 1 } } }, { $count: "groups" },
+                ], cursor: { batchSize: 1 }, maxTimeMS: 10000 });
+                if (!response.cursor || !Array.isArray(response.cursor.firstBatch)) throw new Error("invalid_duplicate_result");
+                const rows = response.cursor.firstBatch;
+                if (rows.length > 1 || (rows.length === 1 && (!Number.isSafeInteger(rows[0].groups) || rows[0].groups < 0))) {
+                  throw new Error("invalid_duplicate_result");
+                }
+                return rows.length ? rows[0].groups : 0;
+              }
+              async function duplicateCounts() {
+                return {
+                  branches: await duplicateGroups({ branch_id: { $type: "string" } }, true),
+                  legacy: await duplicateGroups({ branch_id: null }, false),
+                };
+              }
+              function duplicatesClear(value) { return value.branches === 0 && value.legacy === 0; }
+              function exactCore(index, name, key, partial) {
+                return index && index.name === name && index.unique === true && same(index.key, key)
+                  && same(index.partialFilterExpression, partial)
+                  && Object.keys(index).every(field => allowedMetadata.has(field));
+              }
+              function oldCandidate(index) {
+                return index && index.unique === true && same(index.key, { restaurant_id: 1 })
+                  && same(index.partialFilterExpression, { status: "open" });
+              }
+              function validateRows(rows) {
+                for (const index of rows) {
+                  if (!index || typeof index !== "object" || Array.isArray(index)
+                      || typeof index.name !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(index.name)
+                      || !index.key || typeof index.key !== "object" || Array.isArray(index.key)) {
+                    throw new Error("invalid_index_metadata");
+                  }
+                }
+              }
+              function canonicalState(rows) {
+                const specs = [
+                  { name: branchName, key: { restaurant_id: 1, branch_id: 1 },
+                    partial: { status: "open", branch_id: { $type: "string" } } },
+                  { name: legacyName, key: { restaurant_id: 1 },
+                    partial: { status: "open", branch_id: null } },
+                ];
+                return specs.map(spec => {
+                  const byName = rows.filter(index => index.name === spec.name);
+                  const byShape = rows.filter(index => index.unique === true && same(index.key, spec.key)
+                    && same(index.partialFilterExpression, spec.partial));
+                  if (byName.length > 1 || byShape.length > 1
+                      || (byShape.length === 1 && byShape[0].name !== spec.name)) {
+                    throw new Error("canonical_index_ambiguous");
+                  }
+                  if (byName.length === 1 && !exactCore(byName[0], spec.name, spec.key, spec.partial)) {
+                    throw new Error("canonical_index_mismatch");
+                  }
+                  return byName.length === 1;
+                });
+              }
+              async function inspect() {
+                const build = await run({ buildInfo: 1 });
+                if (typeof build.version !== "string" || !build.version.startsWith("7.")) {
+                  throw new Error("unsupported_mongo_version");
+                }
+                const rows = await readIndexes();
+                validateRows(rows);
+                const oldRows = rows.filter(oldCandidate);
+                if (oldRows.length > 1) throw new Error("old_index_ambiguous");
+                if (oldRows.length === 1) {
+                  const candidate = oldRows[0];
+                  if (!Object.keys(candidate).every(field => allowedMetadata.has(field))) {
+                    throw new Error("old_index_options_unsupported");
+                  }
+                  oldIndex = { name: candidate.name, key: { restaurant_id: 1 }, unique: true,
+                    partialFilterExpression: { status: "open" } };
+                }
+                return { rows, canonical: canonicalState(rows) };
+              }
+              async function createAndVerify(spec) {
+                await run({ createIndexes: "cash_registers", indexes: [spec] });
+                const state = await inspect();
+                if (!state.rows.some(index => exactCore(index, spec.name, spec.key, spec.partialFilterExpression))) {
+                  throw new Error("index_create_unverified");
+                }
+              }
+              async function countsEqual(left, right) {
+                return left && right && left.total === right.total && left.open === right.open
+                  && left.stringOpen === right.stringOpen
+                  && left.missingOpen === right.missingOpen && left.nullOpen === right.nullOpen;
+              }
+              async function restoreOldIfMissing() {
+                if (!oldIndex) return false;
+                try {
+                  const current = await inspect();
+                  if (current.rows.some(index => index.name === oldIndex.name && oldCandidate(index)
+                      && Object.keys(index).every(field => allowedMetadata.has(field)))) return true;
+                  if (!mutationAttempted) return false;
+                  await run({ createIndexes: "cash_registers", indexes: [oldIndex] });
+                  const restored = await inspect();
+                  return restored.rows.some(index => index.name === oldIndex.name && oldCandidate(index));
+                } catch (_) { return false; }
+              }
+
+              let result = { status: "failed", reason: "migration_failed", backup_verified: backupVerified,
+                index_readiness: "unready", documents_preserved: false, legacy_open_count: null, legacy_open_preserved: false,
+                rollback_protection: false, backup_id: backupVerified ? backupId : null,
+                backup_sha256: backupVerified ? backupHash : null,
+                backup_bytes: backupVerified ? Number(backupBytes) : null };
+              try {
+                if (!backupVerified) throw new Error("backup_not_verified");
+                const initial = await inspect();
+                countsBefore = await counts();
+                const duplicateBefore = await duplicateCounts();
+                if (!duplicatesClear(duplicateBefore)) throw new Error("duplicate_open_groups_present");
+                const legacyOpen = countsBefore.missingOpen + countsBefore.nullOpen;
+                result.legacy_open_count = legacyOpen;
+                result.legacy_open_preserved = legacyOpen === 1;
+                if (legacyOpen !== 1 || countsBefore.open !== legacyOpen + countsBefore.stringOpen) {
+                  throw new Error("legacy_open_count_changed");
+                }
+                let [branchReady, legacyReady] = initial.canonical;
+                if (!oldIndex) {
+                  if (!branchReady || !legacyReady) throw new Error("old_index_missing");
+                  countsAfter = await counts();
+                  if (!await countsEqual(countsBefore, countsAfter) || !duplicatesClear(await duplicateCounts())) {
+                    throw new Error("document_counts_changed");
+                  }
+                  result = Object.assign(result, { status: "ok", reason: "already_ready",
+                    index_readiness: "branch_ready", documents_preserved: true,
+                    legacy_open_count: legacyOpen, legacy_open_preserved: true, rollback_protection: true });
+                } else {
+                  const specs = [
+                    { name: branchName, key: { restaurant_id: 1, branch_id: 1 }, unique: true,
+                      partialFilterExpression: { status: "open", branch_id: { $type: "string" } } },
+                    { name: legacyName, key: { restaurant_id: 1 }, unique: true,
+                      partialFilterExpression: { status: "open", branch_id: null } },
+                  ];
+                  for (let i = 0; i < specs.length; i++) {
+                    if (!initial.canonical[i]) {
+                      mutationAttempted = true;
+                      await createAndVerify(specs[i]);
+                    }
+                  }
+                  let state = await inspect();
+                  [branchReady, legacyReady] = state.canonical;
+                  if (!branchReady || !legacyReady) throw new Error("canonical_indexes_not_ready");
+                  countsAfter = await counts();
+                  if (!await countsEqual(countsBefore, countsAfter)) throw new Error("document_counts_changed_before_drop");
+                  if (!state.rows.some(index => index.name === oldIndex.name && oldCandidate(index))) {
+                    throw new Error("matched_old_index_disappeared");
+                  }
+                  mutationAttempted = true;
+                  await run({ dropIndexes: "cash_registers", index: oldIndex.name });
+                  state = await inspect();
+                  countsAfter = await counts();
+                  [branchReady, legacyReady] = state.canonical;
+                  if (!branchReady || !legacyReady || state.rows.some(index => index.name === oldIndex.name)
+                      || !await countsEqual(countsBefore, countsAfter) || !duplicatesClear(await duplicateCounts())) {
+                    throw new Error("post_migration_verification_failed");
+                  }
+                  result = Object.assign(result, { status: "ok", reason: "migrated",
+                    index_readiness: "branch_ready", documents_preserved: true,
+                    legacy_open_count: legacyOpen, legacy_open_preserved: true, rollback_protection: true });
+                }
+              } catch (_) {
+                const oldRestored = await restoreOldIfMissing();
+                let canonicalReady = false;
+                try { canonicalReady = (await inspect()).canonical.every(Boolean); } catch (_) { }
+                result.status = "failed";
+                result.reason = "migration_failed";
+                result.rollback_protection = oldRestored || canonicalReady;
+                result.index_readiness = canonicalReady ? "branch_ready" : "unready";
+                if (countsBefore) {
+                  try {
+                    countsAfter = await counts();
+                    result.documents_preserved = await countsEqual(countsBefore, countsAfter);
+                    result.legacy_open_preserved = countsAfter.missingOpen + countsAfter.nullOpen === result.legacy_open_count;
+                  } catch (_) { result.documents_preserved = false; result.legacy_open_preserved = false; }
+                }
+              }
+              print("CASH_MIGRATION_JSON=" + JSON.stringify(result));
+            })().catch(() => print("CASH_MIGRATION_JSON=" + JSON.stringify({
+              status: "failed", reason: "migration_failed", backup_verified: false,
+              index_readiness: "unready", documents_preserved: false, legacy_open_count: null, legacy_open_preserved: false,
+              rollback_protection: false,
+            })));
+            CASH_MIGRATION_JS
+                  ); then
+                case "$migration_output" in
+                  CASH_MIGRATION_JSON='{"status":"ok"'*) ;;
+                  CASH_MIGRATION_JSON='{"status":"failed"'*) ;;
+                  *) abort_migration migration_output_invalid ;;
+                esac
+              else
+                abort_migration migration_command_failed
+              fi
+              if [ "$(printf '%s\n' "$migration_output" | wc -l | tr -d ' ')" != 1 ]; then
+                abort_migration migration_output_invalid
+              fi
+              if [ "$backend_paused" = true ]; then
+                if ! docker compose unpause backend >/dev/null 2>&1; then abort_migration backend_unpause_failed; fi
+                backend_paused=false
+              fi
+              printf '%s\n' "$migration_output"
+              migration_reported=true
+              case "$migration_output" in
+                CASH_MIGRATION_JSON='{"status":"ok"'*) exit 0 ;;
+                *) exit 1 ;;
+              esac
             fi
             server_branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
             if [ "$server_branch" != main ]; then

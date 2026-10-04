@@ -124,7 +124,7 @@ class DeployPreflightTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", self.workflow)
         self.assertIn("operation:", self.workflow)
         self.assertIn("type: choice", self.workflow)
-        self.assertIn("options: [preflight, deploy]", self.workflow)
+        self.assertIn("options: [preflight, deploy, migrate_cash]", self.workflow)
         self.assertIn("default: deploy", self.workflow)
 
     def test_preflight_branch_precedes_every_deploy_mutation(self):
