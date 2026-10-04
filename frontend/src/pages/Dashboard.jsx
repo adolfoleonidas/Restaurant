@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
@@ -13,6 +13,117 @@ import { AlertTriangle, ArrowRight, ChefHat, Clock, Wallet } from 'lucide-react'
 
 export default function Dashboard() {
     const { user } = useAuth();
+    if (user?.role === 'mozo') return <Navigate to="/mesas" replace />;
+    if (user?.role === 'cocina') return <Navigate to="/cocina" replace />;
+    if (user?.role === 'cajero') return <Navigate to="/caja" replace />;
+
+    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const userKey = JSON.stringify([
+        user?.id || user?.email || 'signed-in',
+        user?.restaurant_id,
+        user?.role,
+        [...(user?.functions || [])].sort(),
+    ]);
+    return <DashboardContext key={userKey} userKey={userKey} isOwner={isOwner} />;
+}
+
+function DashboardContext({ user, userKey, isOwner }) {
+    const [context, setContext] = useState('all');
+    const [branchState, setBranchState] = useState({ userKey, branches: [], loading: true, error: false });
+
+    useEffect(() => {
+        if (!isOwner) {
+            setBranchState({ userKey, branches: [], loading: false, error: false });
+            return undefined;
+        }
+
+        let active = true;
+        setBranchState({ userKey, branches: [], loading: true, error: false });
+        api.get('/branches').then(({ data }) => {
+            if (!active) return;
+            const branches = Array.isArray(data) ? data : [];
+            setBranchState({ userKey, branches, loading: false, error: false });
+            setContext((current) => current.startsWith('branch:')
+                && !branches.some((branch) => String(branch.id) === current.slice('branch:'.length))
+                ? 'invalid' : current);
+        }).catch(() => {
+            if (active) setBranchState({ userKey, branches: [], loading: false, error: true });
+        });
+        return () => { active = false; };
+    }, [isOwner, userKey]);
+
+    const catalog = branchState.userKey === userKey
+        ? branchState
+        : { userKey, branches: [], loading: true, error: false };
+    const selectedBranchId = context.startsWith('branch:') ? context.slice('branch:'.length) : null;
+    const selectedBranch = selectedBranchId && catalog.branches.find(
+        (branch) => String(branch.id) === selectedBranchId
+    );
+    const contextUnavailable = context === 'invalid' || !!selectedBranchId
+        && (catalog.loading || catalog.error || !selectedBranch);
+    const scopeParams = context === 'legacy' ? { legacy_only: true }
+        : selectedBranch ? { branch_id: selectedBranchId } : {};
+    const scopeKey = `${userKey}:${context}`;
+    const onBranchUnavailable = useCallback(() => {
+        setContext((current) => current === context ? 'invalid' : current);
+    }, [context]);
+
+    return (
+        <div className="space-y-4" data-testid="dashboard-context-root">
+            {isOwner && (
+                <Card data-testid="dashboard-owner-context">
+                    <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <label htmlFor="dashboard-branch-context" className="text-sm font-medium">Contexto operativo</label>
+                            <p className="text-xs text-muted-foreground">La vista consolidada incluye todas las sucursales y registros históricos.</p>
+                        </div>
+                        <select
+                            id="dashboard-branch-context"
+                            data-testid="dashboard-branch-context"
+                            className="h-11 min-w-56 rounded-md border border-border bg-background px-3 text-sm"
+                            value={context}
+                            onChange={(event) => {
+                                const next = event.target.value;
+                                if (next === 'all' || next === 'legacy'
+                                    || catalog.branches.some((branch) => `branch:${branch.id}` === next)) {
+                                    setContext(next);
+                                }
+                            }}
+                        >
+                            <option value="all">Todas las sucursales · consolidado</option>
+                            {catalog.branches.map((branch) => (
+                                <option key={branch.id} value={`branch:${branch.id}`}>{branch.name}</option>
+                            ))}
+                            <option value="legacy">Registros históricos sin sucursal</option>
+                            {context === 'invalid' && <option value="invalid">Sucursal no disponible</option>}
+                        </select>
+                    </CardContent>
+                </Card>
+            )}
+            {isOwner && catalog.loading && <p className="text-sm text-muted-foreground">Cargando sucursales…</p>}
+            {isOwner && catalog.error && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las sucursales. La selección por sucursal no está disponible.</p>}
+            {isOwner && !catalog.loading && !catalog.error && catalog.branches.length === 0
+                && <p className="text-sm text-muted-foreground">No hay sucursales registradas.</p>}
+            {isOwner && !contextUnavailable && (
+                <p className="text-sm text-muted-foreground" data-testid="dashboard-tenant-wide-disclosure">
+                    La disponibilidad de productos y las autorizaciones pendientes corresponden a todo el negocio y no se filtran por sucursal.
+                </p>
+            )}
+            {contextUnavailable ? (
+                <p role="alert" className="text-sm text-destructive">No se puede consultar esta sucursal con la información disponible.</p>
+            ) : (
+                <DashboardReport
+                    key={scopeKey}
+                    scopeKey={scopeKey}
+                    scopeParams={scopeParams}
+                    onBranchUnavailable={onBranchUnavailable}
+                />
+            )}
+        </div>
+    );
+}
+
+function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
     const { generation } = useNotify();
     const [params, setParams] = useSearchParams();
     const [fetchedAt, setFetchedAt] = useState(Date.now());
@@ -21,13 +132,20 @@ export default function Dashboard() {
     const [note, setNote] = useState('');
 
     const { data, error } = usePolling(
-        () => api.get('/reports/today').then((r) => {
-            setFetchedAt(Date.now());
-            return r.data;
-        }),
+        () => Object.keys(scopeParams).length
+            ? api.get('/reports/today', { params: scopeParams }).then((r) => r.data)
+            : api.get('/reports/today').then((r) => r.data),
         12000,
-        [generation]
+        [generation, scopeKey]
     );
+
+    useEffect(() => {
+        if (data) setFetchedAt(Date.now());
+    }, [data]);
+
+    useEffect(() => {
+        if (scopeParams.branch_id && error?.response?.status === 404) onBranchUnavailable();
+    }, [error, onBranchUnavailable, scopeParams.branch_id]);
 
     useEffect(() => {
         const t = setInterval(() => setNow(Date.now()), 15000);
@@ -40,10 +158,6 @@ export default function Dashboard() {
         const hit = data.attention.find((a) => a.kind === 'approval' && a.approval_id === id);
         if (hit) setApproval(hit.payload || hit);
     }, [params, data]);
-
-    if (user?.role === 'mozo') return <Navigate to="/mesas" replace />;
-    if (user?.role === 'cocina') return <Navigate to="/cocina" replace />;
-    if (user?.role === 'cajero') return <Navigate to="/caja" replace />;
 
     const staleMin = Math.floor((now - fetchedAt) / 60000);
     const stale = !!error || staleMin >= 2;
@@ -126,6 +240,7 @@ export default function Dashboard() {
                             <div className="text-xs text-muted-foreground">Caja</div>
                             <div className="font-semibold">{summary.cash_open ? 'Abierta' : 'Cerrada'}</div>
                             {summary.cash_opened_by && <div className="text-xs text-muted-foreground">{summary.cash_opened_by}</div>}
+                            {summary.cash_open && !summary.cash_opened_by && <div className="text-xs text-muted-foreground">Responsable no individualizado</div>}
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-4">
