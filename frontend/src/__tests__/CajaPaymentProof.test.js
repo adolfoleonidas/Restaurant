@@ -25,9 +25,10 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const source = fetcher.toString();
-        if (source.includes("api.get('/cash/current')")) return { data: mockRegister, refetch: jest.fn() };
-        if (source.includes("api.get('/orders'")) return { data: [mockOrder], refetch: jest.fn() };
-        if (source.includes("api.get('/tables')")) return { data: [], refetch: jest.fn() };
+        // CajaWorkspace builds its fetchers through scopedGet(...), so match on the path alone.
+        if (source.includes('/cash/current')) return { data: mockRegister, refetch: jest.fn() };
+        if (source.includes('/orders')) return { data: [mockOrder], refetch: jest.fn() };
+        if (source.includes('/tables')) return { data: [], refetch: jest.fn() };
         return { data: null, refetch: jest.fn() };
     },
 }));
@@ -74,10 +75,7 @@ async function cleanup(view) {
     document.body.innerHTML = '';
 }
 
-// NOTE: These tests were written for the previous OrderCollectionDialog component from Codex.
-// The CobrarDialog was redesigned with a new structure (cobro.css, pay-hero, method-rail, verification dialog).
-// These tests need to be rewritten for the new CobrarDialog structure. Skipping for now.
-describe.skip('Caja QR and payment-proof collection (needs rewrite for new CobrarDialog)', () => {
+describe('Caja QR and payment-proof collection', () => {
     let originalFileReader;
 
     beforeEach(() => {

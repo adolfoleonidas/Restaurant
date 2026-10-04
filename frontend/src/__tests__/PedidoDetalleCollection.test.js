@@ -58,6 +58,23 @@ async function click(element) {
     await flush();
 }
 
+// CobrarDialog (redesign) requires React-compatible text entry and an explicit
+// verify step: footer "Registrar" opens the confirmation sheet, then the checkbox
+// unlocks "caja-verificar-registrar", which finally POSTs /payments.
+async function typeValue(input, value) {
+    await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        setter.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await flush();
+}
+
+async function confirmVerifySheet() {
+    await click(document.body.querySelector('[data-testid="caja-verificar-check"]'));
+    await click(document.body.querySelector('[data-testid="caja-verificar-registrar"]'));
+}
+
 async function cleanup(view) {
     await act(async () => view.root.unmount());
     view.host.remove();
@@ -96,7 +113,9 @@ describe('PedidoDetalle collection entry', () => {
         expect(mockNavigate).not.toHaveBeenCalled();
         expect(document.body.querySelector('[data-testid="caja-cobrar-dialog"]')).not.toBeNull();
         expect(view.host.textContent).toContain('Atención 6 · 2026-10-02 · branch-1');
+        await typeValue(document.body.querySelector('[data-testid="caja-recibido-input"]'), '25');
         await click(document.body.querySelector('[data-testid="caja-cobrar-submit-button"]'));
+        await confirmVerifySheet();
         await flush();
         expect(api.post).toHaveBeenCalledWith('/payments', expect.objectContaining({
             order_id: 'order-1', method: 'efectivo', amount: 25, expected_updated_at: 'stamp', expected_total: 25,
@@ -146,6 +165,7 @@ describe('PedidoDetalle collection entry', () => {
             await flush();
         }
         await click(document.body.querySelector('[data-testid="caja-cobrar-submit-button"]'));
+        await confirmVerifySheet();
         const payment = api.post.mock.calls.find(([path]) => path === '/payments');
         expect(payment[1]).toMatchObject({ order_id: 'order-1', expected_updated_at: 'fresh-stamp', expected_total: 25, amount: 25 });
         expect(mockOrderRefetch).toHaveBeenCalled();

@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { useAuth } from '@/contexts/AuthContext';
 import { hasFn } from '@/lib/functions';
 import { useNotify } from '@/contexts/NotifyContext';
-import OrderCollectionDialog from '@/components/OrderCollectionDialog';
+import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
 
@@ -398,7 +398,7 @@ export default function PedidoDetalle() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-            <OrderCollectionDialog
+            <CobrarDialog
                 open={collectionOpen}
                 onOpenChange={(open) => !open && closeCollection()}
                 order={order}
