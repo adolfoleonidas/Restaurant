@@ -2,7 +2,7 @@
 
 ## Outcome and authority
 
-The human requested that mobile Cocina retain a task board instead of its current single-lane tab view. Implement this responsive UI change locally. Remote upload, PR creation, merge, deployment, live kitchen transitions, order/payment/register operations, permission changes, and the separate missing-branch error/seed fixes are not authorized by this request.
+The human requested that mobile Cocina retain a task board instead of its current single-lane tab view. After verified local implementation, the human explicitly answered si to upload to adolfoleonidas/Restaurant, integration into main, and deployment to 93.127.214.26:8081 through GitHub Actions with the configured repository GitHub credential. This does not authorize live kitchen transitions, order/payment/register operations, permission changes, or the separate missing-branch error/seed fixes.
 
 ## Problem and design
 
@@ -29,6 +29,9 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 - [x] M1: Implement and verify the four-lane mobile board while retaining desktop layout and existing kitchen behavior. Acceptance: visible mobile lanes, horizontal snap/overflow, readable cards, preserved statuses/actions/filtering, observed focused RED/GREEN, full frontend tests/build, independent verification, parent spot-check, and local work-unit commit.
 
+- [ ] M2: Publish this three-file mobile board change to adolfoleonidas/Restaurant with an approved issue and attached PR, exactly one type label, applicable checks, and history-preserving main integration.
+- [ ] M3: Observe the exact-main deployment, run one read-only preflight if needed for server identity, and verify the mobile four-lane board/desktop layout through the original authorized browser. Reset temporary viewport changes and do not alter live orders.
+
 ## Progress
 
 - CodeGraph mapped Cocina/KitchenCard; the page index flagged Cocina stale, so current named-file source was read directly. The page had one shared four-lane grid with three mobile-hidden lanes controlled by `selectedStage` tabs.
@@ -42,7 +45,7 @@ Current Cocina renders the four status lanes once, but hides three below the md 
 
 ## Next step
 
-M1 is complete locally. Request explicit repository/destination/credential authority before upload, integration and deployment, then verify actual mobile behavior in the same authorized browser. Keep the visual gap visible and do not advance live orders merely for proof.
+Proceed with M2 then M3 under the explicit repository/Actions authority. Preserve commit history; no force push, alternate credentials, direct SSH/database access, duplicated deploy dispatch, or business-record actions. Verify the exact deployed revision and mobile board through the original authorized browser session.
 
 ## Parent acceptance checkpoint
 
@@ -58,3 +61,9 @@ M1 is complete locally. Request explicit repository/destination/credential autho
 - Running authored count is 117 at the work-unit boundary, within the 100-200 forecast and below the delivery planning threshold. This closing passive documentation checkpoint adds no new behavior and requires no repeated source tests.
 - Mobile board implementation is local only, not uploaded, merged or deployed. Actual device geometry, swipe interaction and post-deploy checks remain pending. Missing-branch silent-error/seed fixes and the legacy reconciliation remain separate unfinished work; they were not included in this feature.
 - No authoritative runtime memory identity is registered; local full recovery record remains available and its Engram mirror is pending.
+
+## Delivery authority checkpoint
+
+- Explicit human confirmation covers adolfoleonidas/Restaurant upload/integration and 93.127.214.26:8081 deployment via existing GitHub Actions using the configured repository credential. Keep credential material only in process memory; no connector identity or ambient SSH/session reuse.
+- Scope remains Cocina.jsx, Cocina.test.js, and this feature recovery document. The previous payment-audit feature and its post-merge recovery branch are preserved separately; they are not additional changes in this delivery.
+- Local functional proof remains unchanged. RDD stays OFF/disabled-unmanaged, memory mirror pending runtime registration. Physical mobile/deployed proof remains pending. Do not assume main stayed unchanged until the authorized remote readback.
