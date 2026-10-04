@@ -26,7 +26,7 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 ## Task
 
-- [ ] A1: Implement and verify the standalone read-only account audit and its two Caja entry points. Acceptance: completed and reversed entries retained; pending/confirmed proof visible without image rendering; zero history distinguished from unknown/error/truncated; both paid and unpaid cards usable; stale results isolated; only GET requests; existing RBAC unchanged; focused RED/GREEN, full frontend tests, build, structural readback, and local work-unit commit evidence recorded.
+- [x] A1: Implement and verify the standalone read-only account audit and its two Caja entry points. Acceptance: completed and reversed entries retained; pending/confirmed proof visible without image rendering; zero history distinguished from unknown/error/truncated; both paid and unpaid cards usable; stale results isolated; only GET requests; existing RBAC unchanged; focused RED/GREEN, full frontend tests, build, structural readback, and local work-unit commit evidence recorded.
 
 ## Progress
 
@@ -41,7 +41,7 @@ Human approved the proposed read-only per-account payment/proof consultation on 
 
 ## Next step
 
-Create the verified local work-unit commit under the explicit size exception, then record its identity and close A1. No push/PR/merge/deployment or server record operation is authorized by the size decision; the legacy cleanup remains pending a separately authorized deployment and live verification.
+A1 is complete locally. Obtain separate explicit destination/operation/credential authorization before any GitHub delivery or deployment. The six legacy records and historical register remain untouched; resume their separate reconciliation only after this view is deployed and real evidence is inspected.
 
 ## Parent final checkpoint
 
@@ -49,3 +49,5 @@ Create the verified local work-unit commit under the explicit size exception, th
 - Independent verifier confirmed the corrected defaults, completed count, confirmation qualification, duplicate-ID handling, scoped tests, and final unknown-versus-empty rendering; its last renderer closure was structural only. No browser/API/database end-to-end verification is claimed. Existing 18 skipped frontend tests and Radix/Node warnings remain disclosed. An initial focused invocation from the wrong repository directory failed with Missing script and was corrected to the declared frontend runner.
 - Native risk assessment: medium; small-model writer raises functional verification tier to high. Independent checks and parent spot-check were performed; RDD remains OFF/disabled-unmanaged, no review lifecycle/receipt or remote delivery. A1 is implemented and locally checked, but its checkbox stays open pending the required local commit and human size decision. Memory mirror pending runtime identity; this local document preserves recovery state.
 - Size exception approved explicitly by the human on the current turn. Existing staged application/test bytes match the previously verified candidate; only this passive recovery document changed for the authorization. RDD remains OFF, no agent-attributed memory identity is available, and all remote actions remain out of scope.
+
+- A1 closed locally with work-unit commit f16857b45df3c674b835c0ba69cd5720ec9e2a83 (feat(cash): add read-only account payment audit): 521 authored additions including the authorization record. Commit tree exactly matched the prepared index, and the checkout was clean. Functional source/test bytes were unchanged since the recorded focused/full/build checks; this closing update is passive documentation only. The approved size:exception retains view, tests, and documentation together; no remote Git, browser, server, credential, or business-record action occurred.
