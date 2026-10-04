@@ -65,12 +65,20 @@ describe('Cocina priority board', () => {
 
     it('orders multiple incoming tickets oldest first while preserving mixed item stages and accessible priorities', () => {
         const markup = renderToStaticMarkup(<Cocina />);
-        expect(markup).toContain('role="tablist"');
-        expect(markup).toContain('aria-label="Tandas por estado"');
-        expect(markup).toContain('md:hidden');
+        expect(markup).toContain('data-testid="cocina-kanban"');
+        expect(markup).toContain('overflow-x-auto');
+        expect(markup).toContain('snap-x snap-mandatory');
+        expect(markup).toContain('w-[90%]');
+        expect(markup).toContain('snap-start');
         expect(markup).toContain('md:grid-cols-2');
-        expect(markup).toContain('md:block');
-        expect(markup).toContain('aria-selected="true"');
+        expect(markup).toContain('md:overflow-visible');
+        expect(markup).toContain('md:w-auto');
+        expect(markup).toContain('md:snap-none');
+        expect(markup).not.toContain('role="tablist"');
+        expect(markup).not.toContain('role="tab"');
+        expect(markup).not.toContain('role="tabpanel"');
+        expect(markup).not.toContain('aria-selected=');
+        expect(markup).not.toContain('class="hidden');
         expect(markup).toContain('data-testid="cocina-columna-llegan"');
         expect(markup).toContain('data-testid="cocina-columna-fuego"');
         expect(markup).toContain('data-testid="cocina-columna-listo"');
@@ -104,22 +112,13 @@ describe('Cocina priority board', () => {
         expect(markup).toContain('branch-b');
     });
 
-    it('switches the mobile priority panel by keyboard arrow', async () => {
-        const container = document.createElement('div');
-        document.body.appendChild(container);
-        const root = createRoot(container);
-        await act(async () => root.render(<Cocina />));
-
-        const lleganTab = container.querySelector('#cocina-tab-llegan');
-        await act(async () => {
-            lleganTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-        });
-
-        expect(container.querySelector('#cocina-tab-fuego').getAttribute('aria-selected')).toBe('true');
-        expect(container.querySelector('#cocina-panel-fuego').classList.contains('hidden')).toBe(false);
-        expect(container.querySelector('#cocina-panel-llegan').classList.contains('hidden')).toBe(true);
-        await act(async () => root.unmount());
-        container.remove();
+    it('keeps every task lane mounted and readable in one swipeable mobile board', () => {
+        const markup = renderToStaticMarkup(<Cocina />);
+        for (const lane of ['llegan', 'fuego', 'listo', 'retirado']) {
+            expect(markup).toContain(`data-testid="cocina-columna-${lane}"`);
+        }
+        expect(markup.match(/data-testid="cocina-columna-/g)).toHaveLength(4);
+        expect(markup.match(/data-testid="cocina-ticket-22-/g)).toHaveLength(3);
     });
 
     it('runs the existing order and per-item kitchen transitions from explicit controls', async () => {
@@ -134,9 +133,6 @@ describe('Cocina priority board', () => {
         });
         expect(api.post).toHaveBeenNthCalledWith(1, '/orders/order-22/bump', { from_status: 'pendiente' });
 
-        await act(async () => {
-            container.querySelector('#cocina-tab-fuego').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        });
         await act(async () => {
             container.querySelector('[aria-label="Marcar Lomo listo"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
         });
