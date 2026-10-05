@@ -457,6 +457,27 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ---
 
+---
+
+## 🔄 Ronda 7 del objetivo — antetítulo a 12 px (cierre del hallazgo de texto pequeño)
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R7-1 | .page-kicker a 11,2 px | La clase global de los antetítulos pasa de  .7rem (11,2 px) a  .75rem (**12 px**), que es el mínimo declarado en design_guidelines.md. Con esto desaparece la última fuente de texto por debajo de 12 px que apuntaba el hallazgo P3 de la ronda 6 | src/index.css |
+
+### Verificación
+
+- **Matriz de regresión** (4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe en toda la matriz** y sin desbordamientos horizontales — el antetítulo, que aparece en casi todas las pantallas, se mueve 0,8 px sin romper ningún layout.
+- Este es el cierre del hallazgo de texto pequeño: primero se eliminaron las 9 instancias de 	ext-[10px]/	ext-[11px] de los componentes operativos (ronda 6) y ahora la clase que alimentaba al resto de la interfaz.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)

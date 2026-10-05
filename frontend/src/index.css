@@ -169,7 +169,9 @@ body {
     transform: translateY(-0.28em);
 }
 .page-kicker {
-    font-size: 0.7rem;
+    /* 0.75rem (12 px) en vez de 0.7rem (11,2 px): era la fuente principal del
+       hallazgo de texto por debajo de 12 px de la ronda 6. */
+    font-size: 0.75rem;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: hsl(var(--muted-foreground));
