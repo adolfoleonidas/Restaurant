@@ -22,6 +22,10 @@ test.describe('smoke', () => {
     // The voice module ships disabled: nothing appears until Ajustes turns it on.
     await expect(page.getByTestId('assistant-toggle')).toHaveCount(0);
 
+    // The owner gets a direct link to the public site from the panel.
+    await expect(page.getByTestId('nav-mi-web')).toBeVisible();
+    await expect(page.getByTestId('nav-mi-web')).toHaveAttribute('href', '/');
+
     // Admin management modules are reachable (Local holds sedes/zonas/mesas).
     await page.goto('/local');
     await expect(page.getByTestId('local-root')).toBeVisible({ timeout: 15_000 });
@@ -73,6 +77,8 @@ test.describe('smoke', () => {
 
     // Branding controls render, and the public description round-trips to the menu.
     await expect(page.getByTestId('marca-save')).toBeVisible();
+    await expect(page.getByTestId('marca-web-url')).toBeVisible();
+    await expect(page.getByTestId('marca-web-abrir')).toHaveAttribute('href', '/');
     await expect(page.getByTestId('marca-logo-input')).toBeAttached();
     await expect(page.getByTestId('marca-cover-input')).toBeAttached();
 

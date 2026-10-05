@@ -19,8 +19,8 @@ import { toast } from 'sonner';
  */
 
 const FILTERS = [
-    { key: 'pending', label: 'Pendientes de revisión' },
     { key: 'all', label: 'Todos' },
+    { key: 'pending', label: 'Pendientes de revisión' },
 ];
 
 const PENDING = 'comprobante_subido';
@@ -38,7 +38,7 @@ export default function Comprobantes() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
-    const [filter, setFilter] = useState('pending');
+    const [filter, setFilter] = useState('all');
     const [search, setSearch] = useState('');
     const [detail, setDetail] = useState(null);
 

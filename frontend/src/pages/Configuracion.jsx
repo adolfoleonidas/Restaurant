@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Trash2, Palette, Database, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { Settings, Save, Trash2, Palette, Database, Image as ImageIcon, Sparkles, Copy, Globe } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
@@ -169,6 +169,16 @@ function Marca() {
         finally { setSaving(false); }
     };
 
+    const publicUrl = typeof window === 'undefined' ? '/' : `${window.location.origin}/`;
+    const copyUrl = async () => {
+        try {
+            await navigator.clipboard.writeText(publicUrl);
+            toast.success('Link copiado');
+        } catch {
+            toast.error('No se pudo copiar el link');
+        }
+    };
+
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
 
     return (
@@ -238,6 +248,24 @@ function Marca() {
                 <div><Label>Instagram</Label><Input value={r.social_instagram || ''} onChange={(e) => set({ social_instagram: e.target.value })} placeholder="@turestaurante" className="mt-1" data-testid="marca-instagram" /></div>
                 <div><Label>Facebook</Label><Input value={r.social_facebook || ''} onChange={(e) => set({ social_facebook: e.target.value })} placeholder="https://facebook.com/…" className="mt-1" data-testid="marca-facebook" /></div>
                 <div><Label>WhatsApp</Label><Input value={r.social_whatsapp || ''} onChange={(e) => set({ social_whatsapp: e.target.value })} placeholder="+51 999 888 777" className="mt-1" data-testid="marca-whatsapp" /></div>
+            </div>
+
+            <div className="rounded-xl border border-border p-3 space-y-2">
+                <div className="page-kicker">Página web pública</div>
+                <p className="text-xs text-muted-foreground">
+                    Es el link que compartís con tus clientes para ver la carta, pedir delivery o pasar a recoger.
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <code className="flex-1 min-w-[14rem] truncate rounded-md bg-secondary px-3 py-2 text-xs" data-testid="marca-web-url">{publicUrl}</code>
+                    <Button type="button" variant="outline" size="sm" onClick={copyUrl} data-testid="marca-web-copiar">
+                        <Copy className="h-4 w-4 mr-1.5" /> Copiar
+                    </Button>
+                    <a href="/" target="_blank" rel="noreferrer" data-testid="marca-web-abrir">
+                        <Button type="button" size="sm">
+                            <Globe className="h-4 w-4 mr-1.5" /> Ver mi web
+                        </Button>
+                    </a>
+                </div>
             </div>
         </CardContent></Card>
     );

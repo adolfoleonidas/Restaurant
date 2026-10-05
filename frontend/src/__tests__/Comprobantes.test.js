@@ -58,6 +58,16 @@ describe('Comprobantes review', () => {
         expect(api.get).not.toHaveBeenCalledWith('/orders/order-1');
     });
 
+    it('opens on "Todos" and lists "Todos" first', async () => {
+        await act(async () => root.render(<Comprobantes />));
+        const filters = [...host.querySelectorAll('[data-testid^="comprobantes-filtro-"]')];
+        expect(filters.map((el) => el.getAttribute('data-testid'))).toEqual([
+            'comprobantes-filtro-all',
+            'comprobantes-filtro-pending',
+        ]);
+        expect(host.querySelector('[data-testid="comprobantes-filtro-all"]').textContent).toBe('Todos');
+    });
+
     it('loads the proof image on demand instead of shipping it with the list', async () => {
         await act(async () => root.render(<Comprobantes />));
         const button = host.querySelector('[data-testid="comprobantes-ver-12"]');

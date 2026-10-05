@@ -13,7 +13,7 @@ import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import {
     LayoutDashboard, Grid2X2, Receipt, ChefHat, Wallet, BarChart3,
-    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard, Store,
+    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard, Store, Globe,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { api } from '@/lib/api';
@@ -58,6 +58,7 @@ const NavItems = ({ items, onNav }) => items.map((it) => (
 ));
 
 const SidebarContent = ({ user, onNav, restaurant }) => {
+    const isOwner = user.role === 'admin' || hasFn(user, 'administracion');
     const combo = hasFn(user, 'atencion') && (hasFn(user, 'preparacion') || hasFn(user, 'cobro'));
     let items = ALL_NAV.filter((n) => n.roles.includes(user.role) || (n.roles.includes('admin') && hasFn(user, 'administracion')) || (n.roles.includes('cajero') && hasFn(user, 'cobro')) || (n.roles.includes('mozo') && hasFn(user, 'atencion')) || (n.roles.includes('cocina') && hasFn(user, 'preparacion')));
     if (combo) {
@@ -91,6 +92,20 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
                         <div className="page-kicker px-3 pt-4 pb-1">Más</div>
                         <NavItems items={more} onNav={onNav} />
                     </>
+                )}
+                {isOwner && (
+                    <a
+                        href="/"
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={onNav}
+                        data-testid="nav-mi-web"
+                        title="Abrir la carta pública en otra pestaña"
+                        className="mt-3 flex items-center gap-3 rounded-sm border border-border px-3 py-2.5 text-sm font-medium text-foreground/85 transition-colors hover:border-primary hover:bg-secondary"
+                    >
+                        <Globe className="h-[18px] w-[18px]" />
+                        <span>Mi página web</span>
+                    </a>
                 )}
             </nav>
             <div className="border-t border-border px-4 py-3">
