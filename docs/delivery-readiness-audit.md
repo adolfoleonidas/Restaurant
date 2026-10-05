@@ -26,14 +26,14 @@ trabajo** para dejarlo entregable.
 
 ## 🔴 P0 — bloqueantes de entrega
 
-### 1. Una instalación limpia en producción **no arranca**
-`startup → run_seed → (sin restaurante) → _seed_blank() → resolve_seed_passwords()` lanza
+### 1. Una instalación limpia en producción **no arranca** — ✅ RESUELTO
+`startup → run_seed → (sin restaurante) → _seed_blank() → resolve_seed_passwords()` lanzaba
 `RuntimeError` porque en producción exige las 4 `SEED_*_PASSWORD`, y `docker-compose.yml` **no
-las pasa al contenedor**.
+las pasaba al contenedor**.
 - Cadena: `server.py:93-98` → `seed.py:147-149` → `seed.py:97-99` → `security_config.py:55-66`
-- Compose: `docker-compose.yml:13-19` (solo `SEED_DEMO`, y `APP_ENV` por defecto **`production`**)
 - **Efecto**: Mongo vacío ⇒ backend en bucle de reinicio. La producción actual no lo sufre solo porque ya tiene un restaurante (`seed.py:148-149` corta).
-- **Fix**: agregar las 4 `SEED_*_PASSWORD` al `environment:` de compose (~4 líneas) **o** documentar el bootstrap. Decisión tuya.
+- **Arreglo aplicado**: las 4 `SEED_*_PASSWORD` van ahora en el `environment:` de `docker-compose.yml` con `${VAR:?...}`, así `docker compose up` **falla rápido con un mensaje claro** en vez de reintentar en silencio. `env.example` documenta los dos modos (desarrollo vs restaurante real).
+- **Verificado** (base limpia, `APP_ENV=production`): sin las claves → `RuntimeError: SEED_ADMIN_PASSWORD must be set to a password that is not a demo default`; con ellas → arranca y crea el restaurante + admin. `docker compose config` confirma el fail-fast y la inyección.
 
 ### 2. La producción sirve **datos demo** de otro restaurante
 Verificado en vivo contra `http://93.127.214.26:8081/api/public/restaurant`:
