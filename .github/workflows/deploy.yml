@@ -22,7 +22,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Nothing reaches production unless the hermetic suite and the build pass.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # The suite talks to Mongo but not to a live API: modules that need a
+      # running server are marked `integration` and excluded here.
+      - name: Backend tests
+        env:
+          MONGO_URL: mongodb://127.0.0.1:27017
+          DB_NAME: restaurant_ci
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          python -m pytest tests -m "not integration" -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npx craco test --watchAll=false --runInBand
+
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: npx craco build
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Prepare SSH key

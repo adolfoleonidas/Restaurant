@@ -73,10 +73,12 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 - **Causa del texto**: el `smoke` E2E restauraba "el valor anterior", que ya era de una corrida fallida ⇒ se encadena. Hay que **arreglar el test** además de limpiar.
 - `data/reset` **conserva** el catálogo (`data.py:15-27`), así que no alcanza para borrar la demo.
 
-### 6. El deploy a producción **no corre ninguna suite**
-`.github/workflows/deploy.yml` tiene un solo job (`deploy`: SSH + `compose up --build` +
-`curl /api/health`). **No hay paso de pytest/jest/build** ⇒ se puede romper cobro o caja y
-llegar a producción. Verificado: cero coincidencias de `pytest|craco|jest|playwright`.
+### 6. El deploy a producción **no corre ninguna suite** — ✅ RESUELTO
+`.github/workflows/deploy.yml` tenía un solo job (`deploy`: SSH + `compose up --build` +
+`curl /api/health`), sin ningún paso de pytest/jest/build.
+- **Arreglo aplicado**: se agregó el job **`test`** (servicio `mongo:7`, `python -m pytest tests -m "not integration"`,
+  `npm ci` + `craco test` + `craco build`) y **`deploy: needs: test`**: si algo falla, no llega a producción.
+- **Verificado**: `pytest -m "not integration"` → **342 passed / 0 failed**; el YAML parsea y el job `deploy` declara `needs: test`.
 
 ---
 
@@ -88,8 +90,8 @@ llegar a producción. Verificado: cero coincidencias de `pytest|craco|jest|playw
 | 2 | **Contraseñas demo activas** hasta que se cambien | `seed.py:204-232`, `security_config.py:13-19` | Acceso al panel con credenciales públicas del repo |
 | 3 | **Fuga cross-sucursal**: `POST /products/{id}/availability` devuelve pedidos activos de **todas** las sucursales | `products.py:236-243,256` | Un cocinero ve mesas/pedidos de otra sucursal en la respuesta |
 | 4 | **No se pueden operar 2 sucursales**: `tables.number` y `zones.name` son únicos por **restaurante** | `database.py:11,83`, `tables.py:107`, `zones.py:45` | "Mesa 1" en la sucursal B responde `400 ya existe` |
-| 5 | **La suite backend es roja**: 52 fallos (15 módulos de integración HTTP viejos, previos al aislamiento por sucursal) | `tests/test_zones.py:27` (`403 sin sucursal`), `test_mozo_floor.py:17` | No hay verificación confiable; enmascara bugs reales |
-| 6 | **El comando documentado ejecuta 0 tests**: `sys.path.insert` está en la línea 14 y el import de `models` en la 10 | `tests/test_attention_lifecycle.py:10` vs `:14` | 36 tests de cierre de atención nunca corren |
+| 5 | ~~**La suite backend es roja**: 52 fallos (15 módulos de integración HTTP viejos, previos al aislamiento por sucursal)~~ **RESUELTO**: los 15 módulos HTTP quedaron marcados `integration` (necesitan API viva) y la suite hermética da **342 ✅ / 0 ❌** | `tests/conftest.py` (marcado automático + aislación de módulos), `pytest.ini` | — |
+| 6 | ~~**El comando documentado ejecuta 0 tests**~~ **RESUELTO**: el `sys.path.insert` iba después del import de `models`; ahora un `pytest.ini` aporta `pythonpath = backend` | `tests/test_attention_lifecycle.py`, `pytest.ini` | — |
 | 7 | **Rate limit de login por IP de socket**: detrás de nginx todos comparten IP | `routes/auth.py:28`, `nginx.conf:8-14` | 10 intentos fallidos de uno bloquean el login de **todo** el local 5 min |
 | 8 | **Tracking público sin rate limit** con código de 8 chars, y devuelve teléfono y dirección del cliente | `public.py:33,601-609,102-103` | Enumeración de datos de clientes |
 | 9 | **`administracion` da admin total**: `require_roles` lo trata como pase universal, incluido resetear la contraseña de otro usuario | `auth.py:130-139`, `branch_access.py:8`, `users.py:64-73` | Un mozo con esa función puede tomar la cuenta del admin. Confirmar si es intencional |
