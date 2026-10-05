@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -428,10 +428,11 @@ export default function Salon() {
         setSelectMode(true);
     };
 
-    const cancelSelection = () => {
+    // Estable entre renders: el efecto del Esc la usa como dependencia.
+    const cancelSelection = useCallback(() => {
         setSelectMode(false);
         setSelected([]);
-    };
+    }, []);
 
     const joinTables = async () => {
         if (!canConfirmJoin || joining) return;
