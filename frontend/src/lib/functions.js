@@ -32,7 +32,7 @@ export function hasFn(user, ...fns) {
 export function homeFor(user) {
     if (!user) return '/login';
     if (typeof user === 'string') {
-        return { mozo: '/mesas', cocina: '/cocina', cajero: '/caja', admin: '/servicio' }[user] || '/dashboard';
+        return { mozo: '/salon', cocina: '/cocina', cajero: '/caja', admin: '/salon' }[user] || '/dashboard';
     }
     if (user.home) return user.home;
     const fns = functionsOf(user);
@@ -40,12 +40,12 @@ export function homeFor(user) {
     const prep = fns.includes('preparacion');
     const cash = fns.includes('cobro');
     const admin = fns.includes('administracion');
-    if (floor && (prep || cash)) return '/servicio';
-    if (floor && !prep && !cash) return '/mesas';
+    if (floor && (prep || cash)) return '/salon';
+    if (floor && !prep && !cash) return '/salon';
     if (prep && !floor && !cash) return '/cocina';
     if (cash && !floor) return '/caja';
     if (admin) return '/dashboard';
-    return '/mesas';
+    return '/salon';
 }
 
 export function canAccessRole(user, roles) {

@@ -13,7 +13,7 @@ import { AlertTriangle, ArrowRight, ChefHat, Clock, Wallet } from 'lucide-react'
 
 export default function Dashboard() {
     const { user } = useAuth();
-    if (user?.role === 'mozo') return <Navigate to="/mesas" replace />;
+    if (user?.role === 'mozo') return <Navigate to="/salon" replace />;
     if (user?.role === 'cocina') return <Navigate to="/cocina" replace />;
     if (user?.role === 'cajero') return <Navigate to="/caja" replace />;
 
@@ -244,7 +244,7 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-4">
-                        <Button variant="secondary" asChild><Link to="/mesas"><Clock className="h-4 w-4 mr-1" />Operación</Link></Button>
+                        <Button variant="secondary" asChild><Link to="/salon"><Clock className="h-4 w-4 mr-1" />Operación</Link></Button>
                         <Button variant="secondary" asChild><Link to="/cocina"><ChefHat className="h-4 w-4 mr-1" />Cocina</Link></Button>
                         <Button variant="secondary" asChild><Link to="/caja"><Wallet className="h-4 w-4 mr-1" />Caja</Link></Button>
                         <Button variant="outline" asChild><Link to="/reportes">Reportes del período</Link></Button>

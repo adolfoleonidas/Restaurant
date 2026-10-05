@@ -12,7 +12,7 @@ import { getTableNumbers } from './runtime';
 const TABLE = getTableNumbers().mobileTable;
 
 async function takeTableAndOrder(page: Page, tableNumber: number) {
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   const card = page.getByTestId(`mesa-card-${tableNumber}`);
   await expect(card).toBeVisible();
   await card.click();
@@ -22,7 +22,7 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
 
   await page.locator('[data-testid^="producto-add-"]:not([disabled])').first().click();
   await page.getByTestId('pedido-enviar-cocina').click();
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(card).toHaveAttribute('data-floor-state', 'preparando');
 }
 
@@ -60,7 +60,7 @@ test('mobile: mozo → cocina → caja con CobrarDialog táctil', async ({ page 
   await page.getByTestId('mesa-sheet-ver-pedido').click();
   await expect(page.getByTestId('pedido-detalle-root')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('pedido-solicitar-cuenta-button').click();
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(tableCard).toHaveAttribute('data-floor-state', 'cuenta');
 
   // ── Cajero: abrir caja + cobrar (táctil) ────────────────────────────────

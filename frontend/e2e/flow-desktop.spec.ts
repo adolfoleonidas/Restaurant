@@ -12,7 +12,7 @@ const TABLE = getTableNumbers().desktopTable;
 
 async function takeTableAndOrder(page: Page, tableNumber: number) {
   // Mozo home is /mesas.
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
 
   // Open the free table sheet and take it.
   const card = page.getByTestId(`mesa-card-${tableNumber}`);
@@ -31,7 +31,7 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
   await page.getByTestId('pedido-enviar-cocina').click();
 
   // Back on the floor; the table is now "preparando".
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(card).toHaveAttribute('data-floor-state', 'preparando');
 }
 
@@ -79,7 +79,7 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
 
   await expect(page.getByTestId('pedido-detalle-root')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('pedido-solicitar-cuenta-button').click();
-  await expect(page.getByTestId('mesas-root')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(tableCard).toHaveAttribute('data-floor-state', 'cuenta');
   await shot(page, `e4-${TABLE}-06-cuenta-solicitada`);
 

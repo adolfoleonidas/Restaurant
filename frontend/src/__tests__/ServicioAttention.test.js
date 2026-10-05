@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Servicio from '@/pages/Servicio';
+import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -34,7 +34,7 @@ async function renderPage() {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
-    await act(async () => root.render(<Servicio />));
+    await act(async () => root.render(<Salon />));
     return { container, root };
 }
 
@@ -99,7 +99,7 @@ describe('Servicio attention closure', () => {
         const { container, root } = await renderPage();
         expect(container.textContent).toContain('Cuenta solicitada');
         expect(container.textContent).toContain('Atención 5 · 2026-10-02 · branch-1');
-        expect(container.querySelector('[data-testid="servicio-entregar-1"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-card-deliver-1"]')).not.toBeNull();
         await act(async () => root.unmount());
         container.remove();
     });

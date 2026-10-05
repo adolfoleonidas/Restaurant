@@ -1,10 +1,10 @@
 import { homeFor as homeForUser } from '@/lib/functions';
 
 export const ROLE_HOME = {
-    mozo: '/mesas',
+    mozo: '/salon',
     cocina: '/cocina',
     cajero: '/caja',
-    admin: '/servicio',
+    admin: '/salon',
 };
 
 export function homeFor(userOrRole) {

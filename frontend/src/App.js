@@ -9,7 +9,7 @@ import { AppShell } from '@/components/AppShell';
 import { PublicLayout } from '@/components/PublicLayout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
-import Mesas from '@/pages/Mesas';
+import Salon from '@/pages/Salon';
 import Pedidos from '@/pages/Pedidos';
 import PedidoNuevo from '@/pages/PedidoNuevo';
 import PedidoDetalle from '@/pages/PedidoDetalle';
@@ -23,7 +23,6 @@ import Reportes from '@/pages/Reportes';
 import Configuracion from '@/pages/Configuracion';
 import Pagos from '@/pages/Pagos';
 import Disponibilidad from '@/pages/Disponibilidad';
-import Servicio from '@/pages/Servicio';
 import Unauthorized from '@/pages/Unauthorized';
 import Landing from '@/pages/Landing';
 import CategoriaPage from '@/pages/CategoriaPage';
@@ -63,8 +62,9 @@ function App() {
                                 {/* ADMIN ROUTES */}
                                 <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                                     <Route path="/dashboard" element={<Dashboard />} />
-                                    <Route path="/servicio" element={<Servicio />} />
-                                    <Route path="/mesas" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Mesas /></ProtectedRoute>} />
+                                    <Route path="/salon" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Salon /></ProtectedRoute>} />
+                                    <Route path="/servicio" element={<Navigate to="/salon" replace />} />
+                                    <Route path="/mesas" element={<Navigate to="/salon" replace />} />
                                     <Route path="/pedidos" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Pedidos /></ProtectedRoute>} />
                                     <Route path="/pedidos/nuevo" element={<ProtectedRoute roles={['admin', 'mozo']}><PedidoNuevo /></ProtectedRoute>} />
                                     <Route path="/pedidos/:id" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><PedidoDetalle /></ProtectedRoute>} />

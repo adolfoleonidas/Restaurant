@@ -19,8 +19,7 @@ import { api } from '@/lib/api';
 
 const ALL_NAV = [
     { to: '/dashboard', label: 'Hoy', icon: LayoutDashboard, roles: ['admin'], group: 'main' },
-    { to: '/mesas', label: 'Operación', icon: Grid2X2, roles: ['admin'], group: 'main' },
-    { to: '/mesas', label: 'Mesas', icon: Grid2X2, roles: ['mozo', 'cajero'], group: 'main' },
+    { to: '/salon', label: 'Salón', icon: Grid2X2, roles: ['admin', 'mozo', 'cajero'], group: 'main' },
     { to: '/productos', label: 'Carta', icon: Package, roles: ['admin'], group: 'main' },
     { to: '/caja', label: 'Caja', icon: Wallet, roles: ['admin', 'cajero'], group: 'main' },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'], group: 'main' },
@@ -60,10 +59,9 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
     let items = ALL_NAV.filter((n) => n.roles.includes(user.role) || (n.roles.includes('admin') && hasFn(user, 'administracion')) || (n.roles.includes('cajero') && hasFn(user, 'cobro')) || (n.roles.includes('mozo') && hasFn(user, 'atencion')) || (n.roles.includes('cocina') && hasFn(user, 'preparacion')));
     if (combo) {
         items = [
-            { to: '/servicio', label: 'Servicio', icon: Grid2X2, group: 'main' },
+            { to: '/salon', label: 'Salón', icon: Grid2X2, group: 'main' },
             ...(hasFn(user, 'cobro') ? [{ to: '/caja', label: 'Caja', icon: Wallet, group: 'main' }] : []),
             ...(hasFn(user, 'administracion') ? [{ to: '/dashboard', label: 'Gestión', icon: LayoutDashboard, group: 'main' }] : []),
-            { to: '/mesas', label: 'Mesas', icon: Grid2X2, group: 'more' },
             ...(hasFn(user, 'preparacion') ? [{ to: '/cocina', label: 'Cocina', icon: ChefHat, group: 'more' }] : []),
             ...(hasFn(user, 'administracion') ? [
                 { to: '/productos', label: 'Carta', icon: Package, group: 'more' },

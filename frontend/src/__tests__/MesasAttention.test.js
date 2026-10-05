@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Mesas from '@/pages/Mesas';
+import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
 
 const mockOrder = { id: 'order-1', order_number: 22, status: 'en_preparacion', source: 'staff', order_type: 'mesa', acceptance_status: 'aceptado', attention_number: 3, attention_business_date: '2026-10-02', branch_id: 'branch-2', items: [], total: 20 };
@@ -17,7 +17,7 @@ describe('Mesas attention history display', () => {
   beforeEach(() => { api.get.mockImplementation((path) => Promise.resolve({ data: path === '/branches' ? [{ id: 'branch-2', name: 'Sucursal Centro' }] : path === '/orders/order-1' ? mockOrder : [] })); host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host); });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ''; });
   it('shows the order-attention pair and branch name in the read-only table sheet', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     await act(async () => host.querySelector('[data-testid="mesa-card-7"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
     expect(document.body.textContent).toContain('Pedido #22');

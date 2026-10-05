@@ -78,7 +78,7 @@ export default function PedidoNuevo() {
                 if (msg) toast.error(msg);
             }
         }
-        navigate('/mesas');
+        navigate('/salon');
     };
 
     const submit = async () => {
@@ -90,7 +90,7 @@ export default function PedidoNuevo() {
             const { data: order } = await api.post('/orders', { table_id: tableId, order_type: 'mesa', items, notes: orderNotes || null });
             await api.post(`/orders/${order.id}/send-to-kitchen`);
             toast.success(`Mesa ${table?.number || ''} enviada a cocina`);
-            navigate('/mesas', { replace: true });
+            navigate('/salon', { replace: true });
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar');
         } finally {

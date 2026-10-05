@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Mesas from '@/pages/Mesas';
+import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
@@ -66,7 +66,7 @@ describe('Mesas floor priority and actions (T04)', () => {
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ''; });
 
   it('renders attention-needed tables before idle ones', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const cards = host.querySelectorAll('[data-floor-state]');
     const states = Array.from(cards).map((c) => c.getAttribute('data-floor-state'));
     // cuenta (index 0) and listo (index 1) must precede preparando and libre
@@ -76,7 +76,7 @@ describe('Mesas floor priority and actions (T04)', () => {
   });
 
   it('shows a bell indicator on attention-needed cards', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const cuentaCard = host.querySelector('[data-floor-state="cuenta"]');
     const libreCard = host.querySelector('[data-floor-state="libre"]');
     expect(cuentaCard.querySelector('[aria-label="Requiere atencion"]')).toBeTruthy();
@@ -84,20 +84,20 @@ describe('Mesas floor priority and actions (T04)', () => {
   });
 
   it('shows elapsed time on active tables', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const listoCard = host.querySelector('[data-floor-state="listo"]');
     expect(listoCard.textContent).toMatch(/Hace \d+ min/);
   });
 
   it('renders a prominent Entregar button on listo cards', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const btn = host.querySelector('[data-testid="mesa-card-deliver-3"]');
     expect(btn).toBeTruthy();
     expect(btn.textContent).toMatch(/Entregar/);
   });
 
   it('renders a prominent Cobrar button on cuenta cards', async () => {
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const btn = host.querySelector('[data-testid="mesa-card-cobrar-5"]');
     expect(btn).toBeTruthy();
     expect(btn.textContent).toMatch(/Cobrar/);
@@ -105,7 +105,7 @@ describe('Mesas floor priority and actions (T04)', () => {
 
   it('calls the serve endpoint when Entregar is clicked', async () => {
     api.post.mockImplementation(() => Promise.resolve({ data: {} }));
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<Salon />));
     const btn = host.querySelector('[data-testid="mesa-card-deliver-3"]');
     await act(async () => { btn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     expect(api.post).toHaveBeenCalledWith('/orders/o3/serve');

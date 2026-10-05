@@ -153,7 +153,7 @@ export default function PedidoDetalle() {
         try {
             await api.post(`/orders/${order.id}/status`, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
-            navigate('/mesas');
+            navigate('/salon');
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
@@ -171,7 +171,7 @@ export default function PedidoDetalle() {
             await api.post(`/orders/${order.id}/status`, { status: 'cancelado', reason: cancelReason });
             setCancelDlg(false);
             toast.success('Pedido cancelado');
-            navigate('/mesas');
+            navigate('/salon');
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
@@ -217,7 +217,7 @@ export default function PedidoDetalle() {
     return (
         <div className="space-y-4 pb-32" data-testid="pedido-detalle-root">
             <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate('/mesas')} data-testid="pedido-back-button">
+                <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate('/salon')} data-testid="pedido-back-button">
                     <ChevronLeft className="h-5 w-5" />
                 </Button>
                 <div>
@@ -374,7 +374,7 @@ export default function PedidoDetalle() {
                     </Button>
                 )}
                 {order.status === 'cancelado' && (
-                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/mesas')}>
+                    <Button variant="outline" className="w-full h-12" onClick={() => navigate('/salon')}>
                         Volver a mesas
                     </Button>
                 )}
