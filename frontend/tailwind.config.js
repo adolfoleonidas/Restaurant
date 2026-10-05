@@ -7,6 +7,23 @@ module.exports = {
     ],
     theme: {
         extend: {
+            // Notch y barra de gestos: habilita p-safe-top, pb-safe-bottom,
+            // mt-safe-top, etc. En escritorio env() vale 0px.
+            spacing: {
+                'safe-top': 'env(safe-area-inset-top, 0px)',
+                'safe-bottom': 'env(safe-area-inset-bottom, 0px)',
+                'safe-left': 'env(safe-area-inset-left, 0px)',
+                'safe-right': 'env(safe-area-inset-right, 0px)',
+                'header': 'var(--header-h)',
+                'bottom-nav': 'var(--bottom-nav-h)',
+            },
+            // Área táctil mínima (44 px) como utilidad: min-h-touch, min-w-touch.
+            minHeight: {
+                touch: '44px',
+            },
+            minWidth: {
+                touch: '44px',
+            },
             fontFamily: {
                 sans: ['Instrument Sans', 'Inter', 'system-ui', 'sans-serif'],
                 display: ['Bricolage Grotesque', 'Instrument Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],

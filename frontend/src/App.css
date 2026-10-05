@@ -1,3 +1,4 @@
 .App {
-    min-height: 100vh;
+    /* dvh sigue a la barra de direcciones del móvil; vh deja hueco o recorta. */
+    min-height: 100dvh;
 }

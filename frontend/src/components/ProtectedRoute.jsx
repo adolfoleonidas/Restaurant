@@ -6,7 +6,7 @@ export const ProtectedRoute = ({ children, roles = [] }) => {
     const { user, loading, hasRole } = useAuth();
     const location = useLocation();
     if (loading) {
-        return <div className="flex h-screen w-full items-center justify-center text-muted-foreground">Cargando…</div>;
+        return <div className="flex min-h-dvh w-full items-center justify-center text-muted-foreground">Cargando…</div>;
     }
     if (!user) {
         return <Navigate to="/login" state={{ from: location }} replace />;

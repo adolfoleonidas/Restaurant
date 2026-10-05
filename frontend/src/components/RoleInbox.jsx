@@ -73,19 +73,19 @@ export function RoleInbox() {
                     type="button"
                     variant="outline"
                     size="icon"
-                    className="relative h-9 w-9 rounded-sm"
+                    className="relative rounded-sm"
                     aria-label="Notificaciones"
                     data-testid="role-inbox-button"
                 >
                     <Bell className="h-4 w-4" />
                     {unread.length > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-accent text-accent-foreground text-[10px] font-bold flex items-center justify-center">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-accent text-accent-foreground text-xs font-bold flex items-center justify-center">
                             {unread.length > 9 ? '9+' : unread.length}
                         </span>
                     )}
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-80 p-0" data-testid="role-inbox-menu">
+            <DropdownMenuContent align="end" className="w-[min(20rem,calc(100vw-1rem))] p-0" data-testid="role-inbox-menu">
                 <DropdownMenuLabel className="px-3 py-2">
                     {user.role === 'cocina' && 'Pases nuevos'}
                     {user.role === 'mozo' && 'Salón'}
@@ -106,7 +106,7 @@ export function RoleInbox() {
                             >
                                 <span className="text-sm leading-tight">{it.title}</span>
                                 <span className="text-xs text-muted-foreground line-clamp-2">{it.body}</span>
-                                {it.at && <span className="text-[10px] text-muted-foreground">{fmtElapsed(it.at)}</span>}
+                                {it.at && <span className="text-xs text-muted-foreground">{fmtElapsed(it.at)}</span>}
                             </DropdownMenuItem>
                         ))}
                     </div>
