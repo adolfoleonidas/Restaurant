@@ -13,7 +13,7 @@ import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import {
     LayoutDashboard, Grid2X2, Receipt, ChefHat, Wallet, BarChart3,
-    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard, Store, Globe,
+    Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { api } from '@/lib/api';
@@ -30,8 +30,10 @@ const ALL_NAV = [
     { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['mozo', 'cajero'], group: 'main' },
     { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['admin'], group: 'more' },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['admin'], group: 'more' },
-    { to: '/combos', label: 'Combos', icon: Layers, roles: ['admin'], group: 'more' },
-    { to: '/categorias', label: 'Categorías', icon: Tags, roles: ['admin'], group: 'more' },
+    // Combos y Categorías dejan de ser ítems propios del menú: los dos son
+    // accesos al mismo formulario de "Carta" (Combos es un tab de Productos y
+    // Categorías se abre desde su botón). Antes el menú ofrecía tres accesos a
+    // lo mismo y no decía dónde gestionar la carta.
     { to: '/pagos', label: 'Datos de cobro', icon: CreditCard, roles: ['admin'], group: 'more' },
     { to: '/local', label: 'Local', icon: Store, roles: ['admin'], group: 'more' },
     { to: '/usuarios', label: 'Equipo', icon: Users, roles: ['admin'], group: 'more' },

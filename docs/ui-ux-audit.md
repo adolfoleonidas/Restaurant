@@ -383,6 +383,31 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ---
 
+## 🔄 Ronda 4 del objetivo — menú unificado y limpieza de datos de prueba
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R4-1 | Tres accesos a la misma carta | Los ítems **Combos** y **Categorías** dejan de existir en el menú: los dos eran accesos al mismo formulario de "Carta" (Combos es un tab de `Productos` y Categorías se abre desde su botón). El menú del admin pasa de 16 a **14 entradas**, sin ambigüedad sobre dónde gestionar la carta | `components/AppShell.jsx` |
+| R4-2 | Datos de prueba en la base | Limpieza dirigida con `e2e/audit/cleanup-test-data.mjs` (simulacro por defecto, `--apply` para ejecutar): se eliminan las **94 mesas E2E** (número ≥ 90000) **sin pedidos activos** y se conservan las **16** que sí los tienen (borrarlas habría dejado pedidos huérfanos). Además se limpia la descripción pública `"Carta E2E 1791171556639"`, que aparecía en la cara pública del negocio | `e2e/audit/cleanup-test-data.mjs` |
+
+### Verificación
+
+- **Limpieza (API, en vivo):** `94/94` mesas eliminadas, **0 fallos**; la base pasa de **125 a 31 mesas** (16 siguen siendo E2E porque tienen los 16 pedidos activos, que se conservaron); `public_description` queda vacío y la carta pública ya no muestra el texto de prueba.
+- **Menú (`checks4.mjs`, los 4 roles):** `problems: []` — el admin ve 14 entradas sin `/combos` ni `/categorias` y sin duplicados; mozo (Salón + Pedidos), cajero (Salón, Caja, Comprobantes, Pedidos) y cocina (Cocina, Disponibilidad) sin cambios; las 5 regiones vivas siguen presentes.
+- **Regresión de interfaz:** los cambios de esta ronda son de navegación y de datos, no de estilo; la última medición completa (ronda 3, **131 visitas comparables**) mantiene axe en 46 nodos concentrados en `/unauthorized` y `landmark-one-main`. La captura de regresión de esta ronda no llegó a completarse (el arnés se detuvo tras no producir ninguna captura) y queda anotado aquí para no dar por medida algo que no se midió.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Texto <12 px en salón y cocina | `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado; toca diez archivos y puede desplazar el layout |
+| Migrar `CobrarDialog` al `Dialog` de Radix | Ya tiene trampa de foco, `aria-modal` y retorno de foco a mano; Radix añadiría `inert` nativo y un manejo más limpio de los subdiálogos |
+| `region` y `landmark-one-main` en `/unauthorized` | Es la pantalla de acceso denegado: no tiene `<main>` ni landmarks (36 de los 46 nodos de axe que quedan) |
+
+---
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)
