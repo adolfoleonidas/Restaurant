@@ -10,6 +10,7 @@ jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staf
 jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
 jest.mock('react-router-dom', () => ({
     Link: ({ children, to, ...p }) => <a href={to} {...p}>{children}</a>,
+    useNavigate: () => jest.fn(),
     useSearchParams: () => [new URLSearchParams()],
 }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));

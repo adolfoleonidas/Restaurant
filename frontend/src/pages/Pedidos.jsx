@@ -3,7 +3,7 @@ import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtElapsed, fmtTime, elapsedMinutes, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Plus, Receipt, DollarSign, ShieldCheck, Clock } from 'lucide-react';
@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import AttentionReference from '@/components/AttentionReference';
+import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import useBranchNames from '@/hooks/useBranchNames';
 
 const WAITING_THRESHOLD_MIN = 15;
@@ -25,6 +26,8 @@ const FILTERS = [
 
 export default function Pedidos() {
     const [filter, setFilter] = useState('activos');
+    const [showAreas, setShowAreas] = useState(false);
+    const navigate = useNavigate();
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
@@ -40,6 +43,17 @@ export default function Pedidos() {
         [filter, generation]
     );
 
+    // Only the sales-area dialog needs the floor, to offer the free tables.
+    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 15000);
+
+    // Orders start from the same sales-area decision as the floor: "Nuevo pedido"
+    // must not drop the waiter into the composer with the area already assumed.
+    const handleAreaSelect = (type, table) => {
+        setShowAreas(false);
+        const path = newOrderPath(type, table);
+        if (path) navigate(path);
+    };
+
     return (
         <div className="space-y-5" data-testid="pedidos-root">
             <div className="flex items-center justify-between flex-wrap gap-3">
@@ -48,8 +62,8 @@ export default function Pedidos() {
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
                 {['admin', 'mozo'].includes(user.role) && (
-                    <Button asChild className="h-11" data-testid="pedidos-nuevo-button">
-                        <Link to="/pedidos/nuevo"><Plus className="h-4 w-4 mr-2" /> Nuevo pedido</Link>
+                    <Button className="h-11" onClick={() => setShowAreas(true)} data-testid="pedidos-nuevo-button">
+                        <Plus className="h-4 w-4 mr-2" /> Nuevo pedido
                     </Button>
                 )}
             </div>
@@ -166,6 +180,14 @@ export default function Pedidos() {
                     <Card className="col-span-full"><CardContent className="py-16 text-center text-muted-foreground">No hay pedidos en esta vista</CardContent></Card>
                 )}
             </div>
+
+            {/* Sales areas — first decision of every order */}
+            <SalesAreasDialog
+                open={showAreas}
+                onOpenChange={(open) => { if (!open) setShowAreas(false); }}
+                tables={tables}
+                onSelect={handleAreaSelect}
+            />
         </div>
     );
 }
