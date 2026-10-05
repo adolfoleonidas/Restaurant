@@ -369,6 +369,26 @@ export default function Salon() {
         }
     };
 
+    // Multi-cuenta: fusiona todas las demás cuentas dentro de la seleccionada.
+    const mergeAccounts = async () => {
+        const s = openTable;
+        if (!s || !canTake) return;
+        const list = s.accounts || [];
+        const targetId = s.order?.id || s.accountId || s.table?.active_order?.id;
+        if (!targetId || list.length < 2) return;
+        const others = list.filter((o) => o.id !== targetId);
+        try {
+            for (const o of others) {
+                await api.post(`/orders/${targetId}/merge`, { source_order_id: o.id });
+            }
+            toast.success('Cuentas fusionadas');
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudieron fusionar las cuentas');
+        }
+    };
+
     const toggleSelected = (t) => {
         setSelected((ids) => (ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id]));
     };
@@ -837,6 +857,16 @@ export default function Salon() {
                                                     className="rounded-lg border border-dashed border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
                                                 >
                                                     <Plus className="h-3 w-3 inline mr-1" />Cuenta
+                                                </button>
+                                            )}
+                                            {accounts.length > 1 && canTake && (
+                                                <button
+                                                    type="button"
+                                                    onClick={mergeAccounts}
+                                                    data-testid="mesa-sheet-fusionar-cuentas"
+                                                    className="rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                                >
+                                                    <Link2 className="h-3 w-3 inline mr-1" />Fusionar
                                                 </button>
                                             )}
                                         </div>

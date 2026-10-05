@@ -90,4 +90,24 @@ describe('multi-cuenta en el salón', () => {
         await click(nueva);
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
     });
+
+    it('fusiona las demás cuentas dentro de la seleccionada', async () => {
+        const o1 = order('order-1', 11, 'Ceviche', 30);
+        const o2 = order('order-2', 12, 'Lomo', 20);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, o1, o2);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: o1 });
+            if (url === '/orders/order-2') return Promise.resolve({ data: o2 });
+            return Promise.resolve({ data: [o1, o2] });
+        });
+        api.post.mockResolvedValue({ data: o1 });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/merge', { source_order_id: 'order-2' });
+    });
 });

@@ -408,6 +408,12 @@ class OrderCreate(BaseModel):
         return _user_branch_id(value) if value is not None else None
 
 
+class OrderMerge(BaseModel):
+    """Fusiona la cuenta `source_order_id` dentro de la cuenta destino (ruta)."""
+
+    source_order_id: str
+
+
 class PublicOrderCreate(BaseModel):
     request_id: Optional[constr(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$", min_length=36, max_length=36)] = None
     order_type: Literal["local", "recojo", "delivery"]

@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     FlowError,
@@ -454,6 +454,42 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/merge")
+async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Fusiona la cuenta `source_order_id` dentro de `order_id` (misma mesa y visita)."""
+    target = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    source = await db.orders.find_one(await _order_lookup_scope(data.source_order_id, user), {"_id": 0})
+    if not source:
+        raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
+    if source["id"] == target["id"]:
+        raise HTTPException(status_code=400, detail="Elegí cuentas distintas")
+    if target["status"] in ("pagado", "cancelado") or source["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="Solo se pueden fusionar cuentas abiertas")
+    if target.get("table_id") != source.get("table_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben estar en la misma mesa")
+    if target.get("attention_id") != source.get("attention_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma visita")
+    if (source.get("amount_paid") or 0) > 0.009:
+        raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anulalos antes de fusionar")
+    combined = (target.get("items") or []) + (source.get("items") or [])
+    subtotal, total = _apply_bill(target, combined)
+    new_status = _derive_kitchen_status(combined, target["status"])
+    if target["status"] in ("entregado", "pendiente_pago"):
+        new_status = "enviado_cocina"
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    patch.update(ticket_fields(target, new_status, target.get("amount_paid"), total))
+    await _save_order(target, patch)
+    await _save_order(source, {
+        "status": "cancelado",
+        "cancellation_reason": f"Fusionada con #{target.get('order_number')}",
+        "updated_at": _now(),
+    })
+    emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 

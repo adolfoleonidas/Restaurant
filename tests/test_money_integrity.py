@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
-from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
+from routes.orders import add_items, change_status, kitchen_orders, merge_order, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
 from order_flow import ticket_fields
 from routes.reports import sales_report
@@ -454,6 +454,63 @@ def test_editing_items_keeps_the_delivery_fee():
     updated = asyncio.run(run())
     assert updated["subtotal"] == 30
     assert updated["total"] == 35
+
+
+def _table_item(item_id, product_id, name, price):
+    return {
+        "id": item_id, "product_id": product_id, "product_name": name,
+        "quantity": 1, "unit_price": price, "subtotal": price,
+        "paid_qty": 0, "status": "pendiente",
+    }
+
+
+def test_merge_fuses_accounts_and_cancels_source():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+            items=[_table_item("i1", "prod-1", "Lomo", 20.0)],
+        ))
+        db.orders.docs.append(_order(
+            id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+            items=[_table_item("i2", "prod-2", "Agua", 10.0)],
+        ))
+        _bind(db)
+        result = await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db, result
+
+    db, result = asyncio.run(run())
+    assert result["id"] == "order-1"
+    assert [i["id"] for i in result["items"]] == ["i1", "i2"]
+    assert result["total"] == 30.0
+    source = next(o for o in db.orders.docs if o["id"] == "order-2")
+    assert source["status"] == "cancelado"
+    assert "Fusionada" in (source.get("cancellation_reason") or "")
+
+
+def test_merge_rejects_a_source_with_collected_money():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1",
+        ))
+        db.orders.docs.append(_order(
+            id="order-2", order_number=13, order_type="mesa", status="pendiente_pago",
+            table_id="table-1", attention_id="att-1", amount_paid=5.0,
+        ))
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        assert exc.value.status_code == 400
+
+    asyncio.run(run())
 
 
 def test_shift_totals_ignore_other_registers():
