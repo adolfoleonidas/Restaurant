@@ -379,8 +379,10 @@ export default function Salon() {
         try {
             const { data } = await api.post('/orders', { table_id: t.id, order_type: 'mesa', new_account: true });
             toast.success('Cuenta agregada');
-            closeSheet();
-            navigate(`/pedidos/${data.id}`);
+            // Queda seleccionada en el sheet: no se sale del salón.
+            setOpenTable((s) => (s && s.table.id === t.id
+                ? { ...s, order: data, accountId: data.id, accounts: [...(s.accounts || []), data] }
+                : s));
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo agregar la cuenta');
@@ -987,7 +989,7 @@ export default function Salon() {
                                                     data-testid={`mesa-sheet-cuenta-${o.order_number}`}
                                                     className={`rounded-lg border px-2 py-1 text-xs font-medium ${currentAccountId === o.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                                                 >
-                                                    #{o.order_number} · {fmtMoney(o.total)}
+                                                    {o.customer_name ? o.customer_name : `#${o.order_number}`} · {fmtMoney(o.total)}
                                                 </button>
                                             ))}
                                             {t.active_attention_id && canTake && (
@@ -1013,24 +1015,31 @@ export default function Salon() {
                                         </div>
                                     )}
                                     {canTake && order && (
-                                        <div className="flex items-center gap-2" data-testid="mesa-sheet-alias-row">
-                                            <Input
-                                                className="h-9"
-                                                placeholder="Alias de la cuenta (opcional)"
-                                                value={aliasDraft}
-                                                onChange={(e) => setAliasDraft(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
-                                                data-testid="mesa-sheet-alias"
-                                            />
-                                            <Button
-                                                size="sm"
-                                                className="h-9 shrink-0"
-                                                onClick={saveAlias}
-                                                disabled={aliasDraft.trim() === (order.customer_name || '')}
-                                                data-testid="mesa-sheet-alias-guardar"
-                                            >
-                                                Guardar
-                                            </Button>
+                                        <div className="space-y-1" data-testid="mesa-sheet-alias-row">
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    className="h-9"
+                                                    placeholder={accounts.length > 1 ? 'Alias (ej. Juan)' : 'Alias de la cuenta (opcional)'}
+                                                    value={aliasDraft}
+                                                    onChange={(e) => setAliasDraft(e.target.value)}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
+                                                    data-testid="mesa-sheet-alias"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    className="h-9 shrink-0"
+                                                    onClick={saveAlias}
+                                                    disabled={aliasDraft.trim() === (order.customer_name || '')}
+                                                    data-testid="mesa-sheet-alias-guardar"
+                                                >
+                                                    Guardar
+                                                </Button>
+                                            </div>
+                                            {accounts.length > 1 && !order.customer_name && (
+                                                <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
+                                                    Poné un alias para reconocer esta cuenta y agregarle lo suyo.
+                                                </p>
+                                            )}
                                         </div>
                                     )}
                                     {accounts.length > 1 && Object.keys(tableQuantities).length > 0 && (
@@ -1049,7 +1058,9 @@ export default function Salon() {
                                         <div className="space-y-2 rounded-xl border p-3" data-testid="mesa-sheet-pedido">
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className="page-kicker">
-                                                    {order ? `Agregar a la cuenta #${order.order_number}` : 'Agregar productos'}
+                                                    {order
+                                                        ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
+                                                        : 'Agregar productos'}
                                                 </span>
                                                 {draft && orderItems.length > 0 && (
                                                     <Button size="sm" className="h-8" onClick={sendCurrentToKitchen} data-testid="mesa-sheet-enviar-cocina">

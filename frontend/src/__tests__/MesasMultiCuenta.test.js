@@ -75,6 +75,28 @@ describe('multi-cuenta en el salón', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]').textContent).toContain('Ceviche');
     });
 
+    it('muestra el alias de cada cuenta para ubicarla y sumarle lo suyo', async () => {
+        const o1 = { ...order('order-1', 11, 'Ceviche', 30), customer_name: 'Juan' };
+        const o2 = order('order-2', 12, 'Lomo', 20);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, o1, o2);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: o1 });
+            if (url === '/orders/order-2') return Promise.resolve({ data: o2 });
+            return Promise.resolve({ data: [o1, o2] });
+        });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        const tabs = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
+        expect(tabs.textContent).toContain('Juan');
+        expect(tabs.textContent).toContain('#12'); // la que no tiene alias cae al número
+        // La carta dice a quién le está agregando.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]').textContent).toContain('Agregar a Juan');
+    });
+
     it('abre una cuenta nueva con new_account=true', async () => {
         const o1 = order('order-1', 11, 'Ceviche', 30);
         mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
