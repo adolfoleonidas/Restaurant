@@ -2,6 +2,7 @@ import {
     canJoinSelection,
     canTransferVisit,
     groupAccountTable,
+    groupAccountTables,
     groupAnchor,
     groupLabel,
     groupMembers,
@@ -81,6 +82,13 @@ describe('group reading', () => {
         expect(groupAccountTable(anchoredOnFirst, tables, withAccount).number).toBe(2);
     });
 
+    it('lists every account a group holds, in table order', () => {
+        const bothBills = { t1: visit('t1'), t2: visit('t2') };
+        expect(groupAccountTables(joined, tables, bothBills).map((t) => t.number)).toEqual([1, 2]);
+        expect(groupAccountTables(joined, tables, {})).toEqual([]);
+        expect(groupAccountTables(null, tables, bothBills)).toEqual([]);
+    });
+
     it('lists only the tables that belong to a group', () => {
         const withGroup = [table('t1', 1, { group: joined }), table('t3', 3)];
         expect(Object.keys(groupMembership(withGroup))).toEqual(['t1']);
@@ -120,7 +128,9 @@ describe('joining a selection', () => {
     it('refuses two running accounts and cross-branch selections', () => {
         const busy = [table('t1', 1), table('t2', 2), table('t3', 3)];
         const accounts = { t2: visit('t2'), t3: visit('t3') };
-        expect(selectionProblem(busy, accounts, ['t2', 't3'])).toMatch(/pedidos activos/);
+        // Two bills are allowed: joining never merges or moves them.
+        expect(selectionProblem(busy, accounts, ['t2', 't3'])).toBeNull();
+        expect(selectionProblem(busy, accounts, ['t1', 't2', 't3'])).toBeNull();
 
         const branches = [table('t1', 1), table('t2', 2, { branch_id: 'branch-2' })];
         expect(selectionProblem(branches, {}, ['t1', 't2'])).toBe('Las mesas deben pertenecer a la misma sucursal');

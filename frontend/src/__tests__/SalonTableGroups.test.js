@@ -137,17 +137,16 @@ describe('salón table groups', () => {
     it('explains why a selection cannot be joined and blocks the confirm', async () => {
         mockRows.tables = [
             freeTable('table-1', 1),
-            freeTable('table-3', 3, { status: 'ocupada', active_attention_id: 'visit-table-3', active_order: { id: 'order-3', status: 'en_preparacion', items: [] } }),
-            freeTable('table-4', 4, { status: 'ocupada', active_attention_id: 'visit-table-4', active_order: { id: 'order-4', status: 'en_preparacion', items: [] } }),
+            // A visit that never produced an order: there is nothing to group yet.
+            freeTable('table-3', 3, { status: 'ocupada', active_attention_id: 'visit-table-3' }),
         ];
-        mockRows.orders = [order('table-3', 'order-3'), order('table-4', 'order-4')];
         ({ container, root } = await renderPage());
 
         await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
         await click(container.querySelector('[data-testid="mesa-card-3"]'));
-        await click(container.querySelector('[data-testid="mesa-card-4"]'));
 
-        expect(container.querySelector('[data-testid="salon-seleccion-aviso"]').textContent).toMatch(/pedidos activos/);
+        expect(container.querySelector('[data-testid="salon-seleccion-aviso"]').textContent).toMatch(/visita en curso/);
         expect(container.querySelector('[data-testid="salon-unir-confirmar"]').disabled).toBe(true);
 
         await click(container.querySelector('[data-testid="salon-seleccion-cancelar"]'));
@@ -172,6 +171,48 @@ describe('salón table groups', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-pedir-grupo"]'));
         expect(document.body.querySelector('[data-testid="areas-venta"]')).not.toBeNull();
         expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('joins two occupied tables and shows both separate bills', async () => {
+        mockRows.tables = [
+            freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
+            freeTable('table-2', 2, { status: 'ocupada', active_attention_id: 'visit-table-2', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-2', status: 'en_preparacion', items: [] } }),
+        ];
+        mockRows.orders = [order('table-1', 'order-1'), order('table-2', 'order-2', { order_number: 12, total: 18 })];
+        ({ container, root } = await renderPage());
+
+        // The group says how many bills it holds instead of hiding one of them.
+        expect(container.querySelector('[data-testid="mesa-card-grupo-1"]').textContent).toContain('2 cuentas');
+        expect(container.querySelector('[data-testid="mesa-card-grupo-2"]').textContent).toContain('2 cuentas');
+
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-resumen"]').textContent).toContain('2 cuentas separadas');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-cuenta-1"]').textContent).toContain('Mesa 1');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-cuenta-2"]').textContent).toContain('Mesa 2');
+        // The sheet of a table with its own bill never follows another one.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-grupo"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalled();
+        expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('joins tables that each have a running order through the API', async () => {
+        mockRows.tables = [
+            freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
+            freeTable('table-2', 2, { status: 'ocupada', active_attention_id: 'visit-table-2', active_order: { id: 'order-2', status: 'en_preparacion', items: [] } }),
+        ];
+        mockRows.orders = [order('table-1', 'order-1'), order('table-2', 'order-2')];
+        ({ container, root } = await renderPage());
+
+        await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(container.querySelector('[data-testid="mesa-card-2"]'));
+        const confirm = container.querySelector('[data-testid="salon-unir-confirmar"]');
+
+        expect(container.querySelector('[data-testid="salon-seleccion-aviso"]')).toBeNull();
+        expect(confirm.disabled).toBe(false);
+        await click(confirm);
+        expect(api.post).toHaveBeenCalledWith('/table-groups', { table_ids: ['table-1', 'table-2'] });
     });
 
     it('dissolves the whole group or a single member from the sheet', async () => {

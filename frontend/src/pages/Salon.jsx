@@ -17,7 +17,7 @@ import useBranchNames from '@/hooks/useBranchNames';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import {
-    groupAccountTable,
+    groupAccountTables,
     groupLabel,
     groupMembers,
     ordersByTable,
@@ -198,13 +198,12 @@ export default function Salon() {
             const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
             const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
             const group = t.group || null;
-            const accountTable = group ? groupAccountTable(group, tables, activeOrders) : null;
             return {
                 table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested,
-                showVisitaActiva, group, accountTable,
+                showVisitaActiva, group,
             };
         });
-    }, [tables, byTable, activeOrders, orders]);
+    }, [tables, byTable, orders]);
 
     const filtered = useMemo(() => {
         const list = decorated.filter(({ table: t, floor }) => {
@@ -224,10 +223,11 @@ export default function Salon() {
 
     // ── Actions ────────────────────────────────────────────────────────────
     const openSheet = async (t) => {
-        // A joined table without an account of its own reads the group's account
-        // (the member that owns the visit may not be the one the mozo tapped).
-        const accountTable = t.group?.id ? groupAccountTable(t.group, tables, activeOrders) : null;
-        const followed = accountTable && accountTable.id !== t.id && !t.active_order ? accountTable : null;
+        // A joined table with no account of its own reads the group's account,
+        // but only when the group holds exactly one: with two separate bills
+        // there is nothing unambiguous to follow, so the sheet lists them.
+        const accounts = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
+        const followed = accounts.length === 1 && accounts[0].id !== t.id && !t.active_order ? accounts[0] : null;
         const targetOrderId = t.active_order?.id || followed?.active_order?.id || null;
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId) });
         if (targetOrderId) {
@@ -548,6 +548,7 @@ export default function Salon() {
                         const showCobrar = canCharge && floor.key === 'cuenta' && serviceOrder;
                         const overdue = due > 0 && serviceOrder;
                         const picked = selected.includes(t.id);
+                        const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
                         return (
                             <div
                                 key={t.id}
@@ -590,7 +591,10 @@ export default function Salon() {
                                             data-testid={`mesa-card-grupo-${t.number}`}
                                         >
                                             <Link2 className="h-3 w-3 shrink-0" />
-                                            <span className="truncate">{groupLabel(group, tables)}</span>
+                                            <span className="truncate">
+                                                {groupLabel(group, tables)}
+                                                {groupAccounts.length > 1 ? ` · ${groupAccounts.length} cuentas` : ''}
+                                            </span>
                                         </div>
                                     )}
                                     {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
@@ -729,7 +733,7 @@ export default function Salon() {
                         const { table: t, history, loading, accountTable } = openTable;
                         const group = openTable.group || t.group || null;
                         const members = group ? groupMembers(group, tables) : [];
-                        const accountMember = group ? groupAccountTable(group, tables, activeOrders) : null;
+                        const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
                         const order = sheetOrder;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
@@ -792,7 +796,7 @@ export default function Salon() {
                                                         style={{ background: '#F3F0FF', borderColor: '#D9D2F0', color: '#3B2A66' }}
                                                     >
                                                         Mesa {member.number}
-                                                        {accountMember?.id === member.id && <span className="text-[10px] opacity-80">· cuenta</span>}
+                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-[10px] opacity-80">· cuenta</span>}
                                                         {member.id !== t.id && canTake && (
                                                             <button
                                                                 type="button"
@@ -807,8 +811,34 @@ export default function Salon() {
                                                     </span>
                                                 ))}
                                             </div>
-                                            <p className="text-xs text-muted-foreground">
-                                                Cada mesa conserva su propia cuenta; la visita sigue siendo la de Mesa {accountMember?.number ?? t.number}.
+                                            {groupAccounts.length > 0 && (
+                                                <div className="space-y-1" data-testid="mesa-sheet-grupo-cuentas">
+                                                    {groupAccounts.map((owner) => {
+                                                        const ownerOrder = activeOrders[owner.id] || owner.active_order || null;
+                                                        return (
+                                                            <button
+                                                                key={owner.id}
+                                                                type="button"
+                                                                onClick={() => { closeSheet(); navigate(`/pedidos/${ownerOrder.id}`); }}
+                                                                data-testid={`mesa-sheet-grupo-cuenta-${owner.number}`}
+                                                                className="w-full rounded-lg border border-border px-2 py-1.5 text-left text-xs hover:bg-secondary"
+                                                            >
+                                                                <span className="font-medium">Mesa {owner.number}</span>
+                                                                {ownerOrder?.order_number ? ` · #${ownerOrder.order_number}` : ''}
+                                                                {ownerOrder?.total != null ? ` · ${fmtMoney(ownerOrder.total)}` : ''}
+                                                                {owner.id === t.id ? ' · esta mesa' : ''}
+                                                                <span className="float-right underline">Abrir</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-grupo-resumen">
+                                                {groupAccounts.length === 0
+                                                    ? 'Todavía no hay una cuenta abierta en el grupo: cada mesa puede pedir la suya.'
+                                                    : groupAccounts.length === 1
+                                                        ? `Cada mesa conserva su propia cuenta; por ahora hay una: la de Mesa ${groupAccounts[0].number}.`
+                                                        : `Cada mesa conserva su propia cuenta: hay ${groupAccounts.length} cuentas separadas en el grupo.`}
                                             </p>
                                             <Button
                                                 variant="outline"

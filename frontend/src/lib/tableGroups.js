@@ -1,6 +1,11 @@
 /**
  * Floor helpers for joined tables ("unir mesas") and for moving an open visit.
  *
+ * A group is a marker, not an account: members that already ordered keep their
+ * own bill, and a free member can open one. These helpers therefore talk about
+ * the accounts of a group in the plural, and only read back a single account when
+ * the group happens to hold exactly one.
+ *
  * The API is the authority on every rule here: these helpers exist so the salón
  * only offers an action the backend would accept, and so both sides read the
  * same table state the same way.
@@ -50,10 +55,14 @@ export function groupAnchor(group, tables = []) {
     return members.find((table) => table.id === group?.anchor_table_id) || members[0];
 }
 
+/** Every member that owns its own account: a group may hold several. */
+export function groupAccountTables(group, tables = [], activeOrders = {}) {
+    return groupMembers(group, tables).filter((table) => tableHasAccount(table, activeOrders));
+}
+
 /** The member that currently holds the account, falling back to the anchor. */
 export function groupAccountTable(group, tables = [], activeOrders = {}) {
-    const members = groupMembers(group, tables);
-    return members.find((table) => tableHasAccount(table, activeOrders)) || groupAnchor(group, tables);
+    return groupAccountTables(group, tables, activeOrders)[0] || groupAnchor(group, tables);
 }
 
 /** Map of table id -> group for the tables that belong to an active group. */
@@ -84,9 +93,6 @@ export function selectionProblem(tables = [], activeOrders = {}, selectedIds = [
     const unavailable = selected.find((table) => !tableHasAccount(table, activeOrders)
         && !JOINABLE_TABLE_STATUSES.includes(table.status));
     if (unavailable) return `La mesa ${unavailable.number} no está disponible para unir`;
-    if (selected.filter((table) => tableHasAccount(table, activeOrders)).length > 1) {
-        return 'Dos mesas ya tienen pedidos activos; cobrá o liberá una antes de unirlas';
-    }
     return null;
 }
 
