@@ -12,7 +12,7 @@ import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import {
     LayoutDashboard, Grid2X2, Receipt, ChefHat, Wallet, BarChart3,
-    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard,
+    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard, Store,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { api } from '@/lib/api';
@@ -31,7 +31,7 @@ const ALL_NAV = [
     { to: '/combos', label: 'Combos', icon: Layers, roles: ['admin'], group: 'more' },
     { to: '/categorias', label: 'Categorías', icon: Tags, roles: ['admin'], group: 'more' },
     { to: '/pagos', label: 'Datos de cobro', icon: CreditCard, roles: ['admin'], group: 'more' },
-    { to: '/mesas', label: 'Mesas', icon: Grid2X2, roles: ['admin'], group: 'more' },
+    { to: '/local', label: 'Local', icon: Store, roles: ['admin'], group: 'more' },
     { to: '/usuarios', label: 'Equipo', icon: Users, roles: ['admin'], group: 'more' },
     { to: '/configuracion', label: 'Casa', icon: Settings, roles: ['admin'], group: 'more' },
 ];
@@ -68,7 +68,7 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
                 { to: '/productos', label: 'Carta', icon: Package, group: 'more' },
                 { to: '/reportes', label: 'Reportes', icon: BarChart3, group: 'more' },
                 { to: '/categorias', label: 'Categorías', icon: Tags, group: 'more' },
-                { to: '/mesas', label: 'Mesas', icon: Grid2X2, group: 'more' },
+                { to: '/local', label: 'Local', icon: Store, group: 'more' },
                 { to: '/usuarios', label: 'Equipo', icon: Users, group: 'more' },
                 { to: '/configuracion', label: 'Casa', icon: Settings, group: 'more' },
             ] : []),

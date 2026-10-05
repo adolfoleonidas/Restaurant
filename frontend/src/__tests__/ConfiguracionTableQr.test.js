@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Mesas from '@/pages/MesasAdmin';
+import { TablesManager } from '@/pages/Local';
 import { api } from '@/lib/api';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +24,7 @@ async function renderPage() {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    await act(async () => root.render(<Mesas />));
+    await act(async () => root.render(<TablesManager />));
     await flush();
     const view = { host, root };
     mountedViews.push(view);

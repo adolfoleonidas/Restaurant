@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Grid2X2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { Grid2X2, Plus, Pencil, Trash2, MapPin, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
 import {
@@ -15,10 +15,235 @@ import {
 } from '@/components/ui/alert-dialog';
 
 /**
- * Mesas — independent management module (split out of Configuración).
- * Handles table CRUD, zone inheritance, branch assignment and QR actions.
- * Settings (restaurant, theme, branches, zones, data reset) stay in Configuración.
+ * Local — structural master data of the venue (sede → zona → mesa).
+ * Split out of Configuración so that screen holds only settings (theme,
+ * restaurant data, branding and system info).
  */
+
+export function SucursalesPanel() {
+    const [branches, setBranches] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [draft, setDraft] = useState({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
+    const [saving, setSaving] = useState(false);
+    const load = async () => {
+        setLoading(true);
+        try { const { data } = await api.get('/branches'); setBranches(Array.isArray(data) ? data : []); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales'); }
+        finally { setLoading(false); }
+    };
+    useEffect(() => { load(); }, []);
+    const update = (id, key, value) => setBranches((rows) => rows.map((branch) => branch.id === id ? { ...branch, [key]: value } : branch));
+    const create = async () => {
+        setSaving(true);
+        try {
+            await api.post('/branches', draft);
+            setDraft({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
+            toast.success('Sucursal creada'); await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear la sucursal'); }
+        finally { setSaving(false); }
+    };
+    const save = async (branch) => {
+        setSaving(true);
+        try {
+            await api.patch(`/branches/${branch.id}`, {
+                name: branch.name,
+                timezone: branch.timezone,
+                business_day_cutoff: branch.business_day_cutoff,
+                pickup_enabled: Boolean(branch.pickup_enabled),
+            });
+            toast.success('Sucursal guardada'); await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la sucursal'); }
+        finally { setSaving(false); }
+    };
+    const fields = (value, onChange, prefix) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div><Label>Nombre de sucursal</Label><Input value={value.name || ''} onChange={(e) => onChange('name', e.target.value)} data-testid={`${prefix}-name`} /></div>
+            <div><Label>Zona horaria IANA</Label><Input value={value.timezone || ''} onChange={(e) => onChange('timezone', e.target.value)} placeholder="America/Lima" data-testid={`${prefix}-timezone`} /></div>
+            <div><Label>Corte del día de negocio (hora local)</Label><Input type="time" value={value.business_day_cutoff || ''} onChange={(e) => onChange('business_day_cutoff', e.target.value)} data-testid={`${prefix}-cutoff`} /></div>
+        </div>
+    );
+    return (
+        <Card><CardContent className="p-5 space-y-5">
+            <div><h2 className="font-display text-lg font-semibold">Sucursales</h2><p className="text-sm text-muted-foreground">El recojo público solo aparece en sucursales habilitadas explícitamente.</p></div>
+            <div className="rounded-xl border p-4 space-y-3">
+                {fields(draft, (key, value) => setDraft((current) => ({ ...current, [key]: value })), 'branch-new')}
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.pickup_enabled} onChange={(e) => setDraft((current) => ({ ...current, pickup_enabled: e.target.checked }))} data-testid="branch-pickup-enabled-new" />Habilitar recojo público</label>
+                <Button onClick={create} disabled={saving || !draft.name.trim() || !draft.timezone.trim() || !draft.business_day_cutoff} data-testid="branch-create">Crear sucursal</Button>
+            </div>
+            {loading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : branches.map((branch) => (
+                <div key={branch.id} className="rounded-xl border p-4 space-y-3" data-testid={`branch-row-${branch.id}`}>
+                    {fields(branch, (key, value) => update(branch.id, key, value), `branch-${branch.id}`)}
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
+                    <Button onClick={() => save(branch)} disabled={saving || !branch.name?.trim() || !branch.timezone?.trim() || !branch.business_day_cutoff} data-testid={`branch-save-${branch.id}`}>Guardar sucursal</Button>
+                </div>
+            ))}
+            {!loading && branches.length === 0 && <p className="text-sm text-muted-foreground">No hay sucursales configuradas.</p>}
+        </CardContent></Card>
+    );
+}
+
+export function ZonasPanel() {
+    const [zones, setZones] = useState([]);
+    const [branches, setBranches] = useState([]);
+    const [tables, setTables] = useState([]);
+    const [dlg, setDlg] = useState(false);
+    const [editing, setEditing] = useState(null);
+    const [name, setName] = useState('');
+    const [branchId, setBranchId] = useState('');
+    const [confirmDel, setConfirmDel] = useState(null);
+
+    const load = async () => {
+        try {
+            const [z, b, t] = await Promise.all([
+                api.get('/zones'),
+                api.get('/branches'),
+                api.get('/tables')
+            ]);
+            setZones(z.data);
+            setBranches(Array.isArray(b.data) ? b.data : []);
+            setTables(t.data);
+        } catch {
+            // Keep the section usable with whatever data is already loaded.
+        }
+    };
+
+    useEffect(() => { load(); }, []);
+
+    const openNew = () => {
+        setEditing(null);
+        setName('');
+        setBranchId('');
+        setDlg(true);
+    };
+
+    const openEdit = (z) => {
+        setEditing(z);
+        setName(z.name);
+        setBranchId(z.branch_id || '');
+        setDlg(true);
+    };
+
+    const save = async () => {
+        try {
+            const payload = { name };
+            if (branchId) payload.branch_id = branchId;
+
+            if (editing) await api.patch(`/zones/${editing.id}`, payload);
+            else await api.post('/zones', payload);
+            toast.success('Guardado'); setDlg(false); await load();
+        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+    };
+
+    const doDelete = async (z) => {
+        try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
+        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+    };
+
+    const getBranchName = (id) => {
+        const branch = branches.find(b => b.id === id);
+        return branch ? branch.name : 'Sin sucursal';
+    };
+
+    const getTablesInZone = (zoneName) => {
+        return tables.filter(t => t.area === zoneName);
+    };
+
+    return (
+        <Card><CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><MapPin className="h-5 w-5" /> Zonas del salón</h2>
+                <Button onClick={openNew} data-testid="zona-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva zona</Button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-4">Asigná una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
+
+            {zones.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-2">Sin zonas. Creá una para agrupar las mesas (ej: Salón, Terraza).</p>
+            ) : (
+                <div className="space-y-3">
+                    {zones.map((z) => {
+                        const zoneTables = getTablesInZone(z.name);
+                        return (
+                            <div key={z.id} className="border rounded-xl p-4 space-y-3" data-testid={`zona-row-${z.id}`}>
+                                <div className="flex items-center justify-between">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-medium text-lg">{z.name}</span>
+                                            <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">
+                                                {getBranchName(z.branch_id)}
+                                            </span>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground mt-1">
+                                            {zoneTables.length} {zoneTables.length === 1 ? 'mesa' : 'mesas'} en esta zona
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                        <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                    </div>
+                                </div>
+
+                                {zoneTables.length > 0 && (
+                                    <div className="flex flex-wrap gap-2 pt-2 border-t">
+                                        {zoneTables.map(t => (
+                                            <span key={t.id} className="text-xs px-2 py-1 rounded bg-muted">
+                                                Mesa {t.number}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+
+            <Dialog open={dlg} onOpenChange={setDlg}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>{editing ? 'Editar zona' : 'Nueva zona'}</DialogTitle></DialogHeader>
+                    <div className="space-y-4">
+                        <div>
+                            <Label>Nombre</Label>
+                            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
+                        </div>
+                        <div>
+                            <Label>Sucursal asignada</Label>
+                            <Select value={branchId} onValueChange={setBranchId}>
+                                <SelectTrigger data-testid="zona-form-branch">
+                                    <SelectValue placeholder="Seleccionar sucursal..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {branches.map(b => (
+                                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Las mesas de esta zona heredarán automáticamente esta sucursal.
+                            </p>
+                        </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Al renombrar una zona, las mesas que la usan se actualizan solas.</p>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>
+                        <Button onClick={save} disabled={!name.trim()} data-testid="zona-form-save">Guardar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar zona «{confirmDel?.name}»?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </CardContent></Card>
+    );
+}
 
 const TABLE_STATUS_DOT = {
     disponible: 'bg-green-500',
@@ -29,7 +254,7 @@ const TABLE_STATUS_DOT = {
     pagada: 'bg-emerald-400',
 };
 
-function TablesManager() {
+export function TablesManager() {
     const [tables, setTables] = useState([]);
     const [zones, setZones] = useState([]);
     const [branches, setBranches] = useState([]);
@@ -247,13 +472,38 @@ function TablesManager() {
     );
 }
 
-export default function Mesas() {
+const TABS = [
+    { key: 'sucursales', label: 'Sucursales' },
+    { key: 'zonas', label: 'Zonas' },
+    { key: 'mesas', label: 'Mesas' },
+];
+
+export default function Local({ defaultTab = 'sucursales' }) {
+    const [tab, setTab] = useState(defaultTab);
+
     return (
-        <div className="space-y-5" data-testid="mesas-admin-root">
+        <div className="space-y-5" data-testid="local-root">
             <p className="page-kicker mb-1">Administración</p>
-            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Grid2X2 className="h-6 w-6 text-primary" /> Mesas</h1>
-            <p className="text-muted-foreground text-sm">Alta, edición, sucursal y códigos QR de las mesas del salón.</p>
-            <TablesManager />
+            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Store className="h-6 w-6 text-primary" /> Local</h1>
+            <p className="text-muted-foreground text-sm">Sucursales, zonas y mesas del local.</p>
+
+            <div className="flex gap-2 flex-wrap" data-testid="local-tabs">
+                {TABS.map((t) => (
+                    <Button
+                        key={t.key}
+                        variant={tab === t.key ? 'default' : 'outline'}
+                        className="h-10"
+                        onClick={() => setTab(t.key)}
+                        data-testid={`local-tab-${t.key}`}
+                    >
+                        {t.label}
+                    </Button>
+                ))}
+            </div>
+
+            {tab === 'sucursales' && <SucursalesPanel />}
+            {tab === 'zonas' && <ZonasPanel />}
+            {tab === 'mesas' && <TablesManager />}
         </div>
     );
 }

@@ -19,9 +19,11 @@ test.describe('smoke', () => {
     expect(token).toBeTruthy();
     await page.screenshot({ path: 'e2e/artifacts/smoke-03-after-login.png' });
 
-    // Admin management modules are reachable (Mesas is now its own page).
-    await page.goto('/mesas');
-    await expect(page.getByTestId('mesas-admin-root')).toBeVisible({ timeout: 15_000 });
+    // Admin management modules are reachable (Local holds sedes/zonas/mesas).
+    await page.goto('/local');
+    await expect(page.getByTestId('local-root')).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId('local-tab-mesas').click();
+    await expect(page.getByTestId('mesa-config-nueva')).toBeVisible({ timeout: 15_000 });
     await page.goto('/configuracion');
     await expect(page.getByTestId('config-root')).toBeVisible({ timeout: 15_000 });
 

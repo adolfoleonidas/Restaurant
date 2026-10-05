@@ -1,7 +1,7 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Checkout from '@/pages/Checkout';
-import Configuracion from '@/pages/Configuracion';
+import Local from '@/pages/Local';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
@@ -95,7 +95,7 @@ describe('pickup branch selection and administration', () => {
     });
 
     it('lets administrators save explicit branch pickup availability and cutoff settings', async () => {
-        const view = await mount(<Configuracion />);
+        const view = await mount(<Local />);
         const toggle = view.host.querySelector('[data-testid="branch-pickup-enabled-branch-a"]');
         expect(toggle).not.toBeNull();
         await act(async () => { toggle.click(); });
@@ -105,7 +105,7 @@ describe('pickup branch selection and administration', () => {
     });
 
     it('requires an explicit timezone and cutoff when creating a pickup branch', async () => {
-        const view = await mount(<Configuracion />);
+        const view = await mount(<Local />);
         expect(view.host.querySelector('[data-testid="branch-create"]').disabled).toBe(true);
         await setInput(view.host, 'branch-new-name', 'Sur');
         await setInput(view.host, 'branch-new-timezone', 'America/Lima');

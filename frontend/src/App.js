@@ -10,7 +10,7 @@ import { PublicLayout } from '@/components/PublicLayout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Salon from '@/pages/Salon';
-import MesasAdmin from '@/pages/MesasAdmin';
+import Local from '@/pages/Local';
 import Pedidos from '@/pages/Pedidos';
 import PedidoNuevo from '@/pages/PedidoNuevo';
 import PedidoDetalle from '@/pages/PedidoDetalle';
@@ -65,7 +65,8 @@ function App() {
                                     <Route path="/dashboard" element={<Dashboard />} />
                                     <Route path="/salon" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Salon /></ProtectedRoute>} />
                                     <Route path="/servicio" element={<Navigate to="/salon" replace />} />
-                                    <Route path="/mesas" element={<ProtectedRoute roles={['admin']}><MesasAdmin /></ProtectedRoute>} />
+                                    <Route path="/local" element={<ProtectedRoute roles={['admin']}><Local /></ProtectedRoute>} />
+                                    <Route path="/mesas" element={<Navigate to="/local" replace />} />
                                     <Route path="/pedidos" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Pedidos /></ProtectedRoute>} />
                                     <Route path="/pedidos/nuevo" element={<ProtectedRoute roles={['admin', 'mozo']}><PedidoNuevo /></ProtectedRoute>} />
                                     <Route path="/pedidos/:id" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><PedidoDetalle /></ProtectedRoute>} />
