@@ -83,7 +83,7 @@ export default function Pagos() {
                         <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div className="space-y-3">
                                 <div><Label>Número {m === 'yape' ? 'Yape' : 'Plin'}</Label><Input value={cfg[`${m}_number`] || ''} onChange={(e) => set({ [`${m}_number`]: e.target.value })} placeholder="999 888 777" data-testid={`pagos-${m}-numero`} /></div>
-                                <div><Label>Nombre del titular</Label><Input value={cfg[`${m}_holder`] || ''} onChange={(e) => set({ [`${m}_holder`]: e.target.value })} data-testid={`pagos-${m}-titular`} /></div>
+                                <div><Label htmlFor="nombre-del-titular">Nombre del titular</Label><Input id="nombre-del-titular" value={cfg[`${m}_holder`] || ''} onChange={(e) => set({ [`${m}_holder`]: e.target.value })} data-testid={`pagos-${m}-titular`} /></div>
                             </div>
                             <div>
                                 <Label>QR (imagen)</Label>
@@ -107,10 +107,10 @@ export default function Pagos() {
                 ))}
                 <TabsContent value="transferencia">
                     <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><Label>Banco</Label><Input value={cfg.bank_name || ''} onChange={(e) => set({ bank_name: e.target.value })} data-testid="pagos-bank-name" /></div>
-                        <div><Label>Titular</Label><Input value={cfg.bank_holder || ''} onChange={(e) => set({ bank_holder: e.target.value })} /></div>
-                        <div><Label>Número de cuenta</Label><Input value={cfg.bank_account || ''} onChange={(e) => set({ bank_account: e.target.value })} data-testid="pagos-bank-account" /></div>
-                        <div><Label>CCI</Label><Input value={cfg.bank_cci || ''} onChange={(e) => set({ bank_cci: e.target.value })} /></div>
+                        <div><Label htmlFor="banco">Banco</Label><Input id="banco" value={cfg.bank_name || ''} onChange={(e) => set({ bank_name: e.target.value })} data-testid="pagos-bank-name" /></div>
+                        <div><Label htmlFor="titular">Titular</Label><Input id="titular" value={cfg.bank_holder || ''} onChange={(e) => set({ bank_holder: e.target.value })} /></div>
+                        <div><Label htmlFor="numero-de-cuenta">Número de cuenta</Label><Input id="numero-de-cuenta" value={cfg.bank_account || ''} onChange={(e) => set({ bank_account: e.target.value })} data-testid="pagos-bank-account" /></div>
+                        <div><Label htmlFor="cci">CCI</Label><Input id="cci" value={cfg.bank_cci || ''} onChange={(e) => set({ bank_cci: e.target.value })} /></div>
                         <div className="md:col-span-2"><Label>Instrucciones para el cliente</Label><Textarea value={cfg.transfer_instructions || ''} onChange={(e) => set({ transfer_instructions: e.target.value })} placeholder="Ej: envía comprobante por WhatsApp…" /></div>
                     </CardContent></Card>
                 </TabsContent>

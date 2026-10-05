@@ -589,6 +589,34 @@ El sondeo sigue mostrando inertBackground: 0: Radix **no** escribe el atributo i
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
 | Pasa de revisión: el resto del backlog del objetivo quedó cerrado en las rondas 1 a 11 | — |
 
+---
+
+## 🔄 Ronda 12 del objetivo — etiquetas de formulario en Pagos y Configuración
+
+### Contexto
+
+La matriz de la ronda 11 destapó dos pantallas que hasta ahora se medían **vacías** y que, con la base ya poblada (Yape configurado, RUC y marca cargados), mostraban el hallazgo **P6** del informe original: <Label> sin htmlFor, es decir campos que no se anuncian ni se enfocan al pulsar su etiqueta.
+
+### Arreglos aplicados
+
+| # | Ítem | Cambio | Archivo |
+|---|---|---|---|
+| R12-1 | Campos sin etiqueta asociada | **15 pares** <Label> + <Input> reciben htmlFor e id con un identificador derivado del texto de la etiqueta (anco, 	itular, 
+umero-de-cuenta, cci, 
+ombre-del-restaurante, uc, direccion, 	elefono, moneda, zona-horaria, horario, instagram, acebook, whatsapp…): 5 en Pagos y 10 en Configuración | pages/Pagos.jsx, pages/Configuracion.jsx |
+
+### Verificación
+
+- **Captura dirigida** (admin × escritorio, build de :3001): /pagos y /configuracion pasan de **xe:1 y xe:2** (reglas label y utton-name, críticas) a **ninguna bandera**. La matriz vuelve a quedar limpia.
+- El cambio es de atributos (htmlFor/id), sin tocar estilos ni estructura, y se comprobó que la escritura preservó el UTF-8 sin BOM releyendo los archivos.
+
+### Pendiente
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
+| P2-16: la función proof_ocr se puede activar pero no existe en pantalla | Decisión de producto (retirarla o marcarla "próximamente") |
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)

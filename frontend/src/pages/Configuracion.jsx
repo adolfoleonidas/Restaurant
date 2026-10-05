@@ -106,13 +106,13 @@ function Restaurante() {
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (
         <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><Label>Nombre del restaurante</Label><Input value={r.name || ''} onChange={(e) => setR({ ...r, name: e.target.value })} data-testid="config-name" /></div>
-            <div><Label>RUC</Label><Input value={r.ruc || ''} onChange={(e) => setR({ ...r, ruc: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>Dirección</Label><Input value={r.address || ''} onChange={(e) => setR({ ...r, address: e.target.value })} /></div>
-            <div><Label>Teléfono</Label><Input value={r.phone || ''} onChange={(e) => setR({ ...r, phone: e.target.value })} /></div>
-            <div><Label>Moneda</Label><Input value={r.currency || ''} onChange={(e) => setR({ ...r, currency: e.target.value })} /></div>
-            <div><Label>Zona horaria</Label><Input value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
-            <div><Label>Horario</Label><Input value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
+            <div><Label htmlFor="nombre-del-restaurante">Nombre del restaurante</Label><Input id="nombre-del-restaurante" value={r.name || ''} onChange={(e) => setR({ ...r, name: e.target.value })} data-testid="config-name" /></div>
+            <div><Label htmlFor="ruc">RUC</Label><Input id="ruc" value={r.ruc || ''} onChange={(e) => setR({ ...r, ruc: e.target.value })} /></div>
+            <div className="md:col-span-2"><Label htmlFor="direccion">Dirección</Label><Input id="direccion" value={r.address || ''} onChange={(e) => setR({ ...r, address: e.target.value })} /></div>
+            <div><Label htmlFor="telefono">Teléfono</Label><Input id="telefono" value={r.phone || ''} onChange={(e) => setR({ ...r, phone: e.target.value })} /></div>
+            <div><Label htmlFor="moneda">Moneda</Label><Input id="moneda" value={r.currency || ''} onChange={(e) => setR({ ...r, currency: e.target.value })} /></div>
+            <div><Label htmlFor="zona-horaria">Zona horaria</Label><Input id="zona-horaria" value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
+            <div><Label htmlFor="horario">Horario</Label><Input id="horario" value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
             <div className="md:col-span-2">
                 <Label>Seguimiento de preparación</Label>
                 <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
@@ -245,9 +245,9 @@ function Marca() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div><Label>Instagram</Label><Input value={r.social_instagram || ''} onChange={(e) => set({ social_instagram: e.target.value })} placeholder="@turestaurante" className="mt-1" data-testid="marca-instagram" /></div>
-                <div><Label>Facebook</Label><Input value={r.social_facebook || ''} onChange={(e) => set({ social_facebook: e.target.value })} placeholder="https://facebook.com/…" className="mt-1" data-testid="marca-facebook" /></div>
-                <div><Label>WhatsApp</Label><Input value={r.social_whatsapp || ''} onChange={(e) => set({ social_whatsapp: e.target.value })} placeholder="+51 999 888 777" className="mt-1" data-testid="marca-whatsapp" /></div>
+                <div><Label htmlFor="instagram">Instagram</Label><Input id="instagram" value={r.social_instagram || ''} onChange={(e) => set({ social_instagram: e.target.value })} placeholder="@turestaurante" className="mt-1" data-testid="marca-instagram" /></div>
+                <div><Label htmlFor="facebook">Facebook</Label><Input id="facebook" value={r.social_facebook || ''} onChange={(e) => set({ social_facebook: e.target.value })} placeholder="https://facebook.com/…" className="mt-1" data-testid="marca-facebook" /></div>
+                <div><Label htmlFor="whatsapp">WhatsApp</Label><Input id="whatsapp" value={r.social_whatsapp || ''} onChange={(e) => set({ social_whatsapp: e.target.value })} placeholder="+51 999 888 777" className="mt-1" data-testid="marca-whatsapp" /></div>
             </div>
 
             <div className="rounded-xl border border-border p-3 space-y-2">
