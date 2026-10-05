@@ -57,8 +57,30 @@ Verification is local: FastAPI routes are exercised against in-memory collection
 Rollback: revert the group endpoints/collection and the transfer route together with their helpers, UI and tests; drop `table_groups` and the `group_id`/`group_joined_status` fields on `tables` (the operational reset already unsets them). No existing order, payment, attention or cash behavior depends on the new feature.
 
 ## Progress and next step
-Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in three work-unit commits (backend, frontend, docs). The user authorized publishing the branch, so `refs/heads/feat/unir-mesas` = `8f40b07` now exists on origin. `main` was **not** touched, so the `Deploy to VPS` workflow (triggered only by a push to `main`) did not run.
+Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in work-unit commits (backend, frontend, docs). The user authorized publishing the branch, so `refs/heads/feat/unir-mesas` exists on origin. `main` was **not** touched, so the `Deploy to VPS` workflow (triggered only by a push to `main`) did not run.
 
 `main` advanced while this ran (`f3d5d0f..255de43`, five commits: cash/payments/public/TLS-deploy work). None of those commits touch a file this branch changed, and `git merge-tree` reports a clean merge against the new `main`, so no rebase is required.
 
-Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main` locally, or extend the feature (for example a group-level "una sola cuenta" that deliberately merges accounts, which is a different and money-touching decision).
+Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main` locally, or build the future capability specified below.
+
+## Future capability (NOT implemented, NOT authorized): join tables that already have their own orders
+
+The user asked on 2026-10-04 to record the option that was deliberately deferred in this delivery: the second answer to "what happens when a selected table already owns its order" was **"Fusionar cuentas"** - *move the items of one order into the other and free the source table*. The accepted answer for this delivery was to block the join instead; that guard is what ships today.
+
+**The real use case (user's words, translated):** somebody arrives early, sits at table 4 and orders. Later their family or friends arrive, sit with them or at table 5, and order something else; the waiter joins the tables. Today that flow only works while at most one of the joined tables already owns an order.
+
+**What already works today** (no change needed): a table with an order plus a free table can be joined, and the free table can then open its own order, so the group shows two accounts. **What is blocked** (the gap): joining when *two* selected tables already own an order.
+
+Two variants are worth specifying separately, because their risk is not the same:
+
+- **F1 — Group without merging (separate accounts).** Allow joining two occupied tables; each keeps its own visit and its own account; the group must show how many accounts it has and which member owns each one. Code impact: relax the "two running accounts" guard in `_validate_join`, and teach the salón to render several accounts inside one group (today `groupAccountTable` in `frontend/src/lib/tableGroups.js` assumes a single account). Money risk: none, nothing is written to orders or payments. This is the cheap half.
+- **F2 — Merge into a single account.** Pick the account that survives, move the items of the other order into it, recompute subtotal/total/discount/tip, rebuild the kitchen state, close the source visit and free the source table, with an audit entry. This is the money-and-kitchen half and needs its own careful delivery.
+
+**Open questions to answer before implementing F1/F2** (they decide the design, not the implementation):
+1. One bill or two grouped bills? (The user's story suggests one bill is the common case, but two bills must stay possible.)
+2. If merging, which account survives: the oldest, the group's anchor, or the one the waiter picks? What happens to the surviving attention number?
+3. Does a partial payment or a pending proof block the merge (recommended) or does the payment follow the surviving order?
+4. Items already `entregado` or `en_preparacion`: do they move with their state, or get flagged for the kitchen?
+5. Who may merge (admin/mozo/cajero) and does it need a reason or an approval, like voids and discounts do today?
+
+**Status:** nothing of F1/F2 is implemented, no route or schema exists for it, and the current guard stays as is until the user authorizes the work. When authorized, this section is the starting point and should become its own task list (F-1 guards and listing, F-2 merge with money verification), each with its own fake-only and real-Mongo evidence.

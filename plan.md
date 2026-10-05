@@ -125,6 +125,7 @@
 
 ## Próximos pasos posibles (V2/V3 a pedido del usuario):
 - Clientes, Delivery, QR menu, descuentos/promos, impresión de tickets, app Android empaquetada (Capacitor)
+- Unir mesas **ya ocupadas**: agrupar con cuentas separadas (F1) y fusionar dos pedidos en una sola cuenta (F2, toca dinero y cocina). Especificado —sin implementar ni autorizar— en el [tracker de unir mesas](odd/tasks/unir-mesas.md)
 - Facturación electrónica, inventario, recetas, stock, capacidades multi-sucursal más amplias, fidelización y pasarelas de pago
 
 ## Estado local de aislamiento por sucursal (2026-10-03)
@@ -133,4 +134,4 @@ La implementación T1–T4 de aislamiento operativo y contexto de reportes está
 
 ## Unir mesas y mover el pedido de mesa (rama publicada `feat/unir-mesas`)
 
-Implementado en la worktree `.worktrees/unir-mesas` y publicado como rama `feat/unir-mesas` (sin merge a main, así que no dispara el deploy): agrupar mesas como marca del salón (cada mesa conserva su propia cuenta) y mover una visita abierta —pedido y visita— a otra mesa libre de la misma sucursal. Alcance, decisiones y evidencia en el [tracker de unir mesas](odd/tasks/unir-mesas.md). Unir dos cuentas en curso está bloqueado por decisión del usuario: fusionar cuentas es otra capacidad, todavía no implementada. Nada de esto está desplegado ni mergeado.
+Implementado en la worktree `.worktrees/unir-mesas` y publicado como rama `feat/unir-mesas` (sin merge a main, así que no dispara el deploy): agrupar mesas como marca del salón (cada mesa conserva su propia cuenta) y mover una visita abierta —pedido y visita— a otra mesa libre de la misma sucursal. Alcance, decisiones y evidencia en el [tracker de unir mesas](odd/tasks/unir-mesas.md). Hoy una mesa con pedido se puede unir a una mesa libre (y esa mesa libre puede abrir su propia cuenta), pero unir **dos mesas que ya tienen pedido** queda bloqueado por decisión del usuario en esta entrega: la capacidad que lo habilita —agrupar con cuentas separadas o fusionar los dos pedidos en una sola cuenta— está especificada como trabajo futuro en ese mismo tracker, sin implementar ni autorizar. Nada de esto está desplegado ni mergeado.
