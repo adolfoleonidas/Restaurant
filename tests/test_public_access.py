@@ -379,12 +379,12 @@ def test_public_proof_upload_accepts_open_order_and_rejects_closed_orders():
         db.orders.docs.extend([open_order, paid_order, cancelled_order, confirmed_order])
         proof = PublicProofUpload(payment_proof=_png_proof())
 
-        accepted = await upload_proof("open1234", proof)
+        accepted = await upload_proof("open1234", proof, _Request("10.0.0.21"))
         stored_open = await db.orders.find_one({"id": "order-open"})
         blocked = {}
         for label, code in (("paid", "paid1234"), ("cancelled", "cancel12"), ("confirmed", "confir12")):
             try:
-                await upload_proof(code, proof)
+                await upload_proof(code, proof, _Request("10.0.0.21"))
                 blocked[label] = None
             except HTTPException as exc:
                 blocked[label] = exc
@@ -421,7 +421,7 @@ def test_public_proof_upload_rejects_broken_or_non_image_payloads():
         results = []
         for payload, expected in cases:
             try:
-                await upload_proof("open1234", PublicProofUpload(payment_proof=payload))
+                await upload_proof("open1234", PublicProofUpload(payment_proof=payload), _Request("10.0.0.21"))
                 results.append((payload, expected, None))
             except HTTPException as exc:
                 results.append((payload, expected, exc))
