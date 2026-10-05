@@ -4,9 +4,9 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS, ORDER_TYPE_LABELS, ORDER_AREAS } from '@/lib/format';
+import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
+import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Clock, UtensilsCrossed, Receipt, Bell, CheckCheck, ShoppingBag, PackageCheck, Bike } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -82,7 +82,6 @@ export default function Salon() {
     const [stateFilter, setStateFilter] = useState('todas');
     const [openTable, setOpenTable] = useState(null);
     const [showNewOrder, setShowNewOrder] = useState(false);
-    const [newOrderType, setNewOrderType] = useState(null);
     const [pendingTable, setPendingTable] = useState(null);
     const [closing, setClosing] = useState(null);
 
@@ -247,7 +246,7 @@ export default function Salon() {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
         if (t.status === 'ocupada') {
             closeSheet();
-            navigate(`/pedidos/nuevo?mesa=${t.id}`);
+            navigate(newOrderPath('mesa', t));
             return;
         }
         if (t.status !== 'disponible') {
@@ -257,7 +256,7 @@ export default function Salon() {
         try {
             await api.post(`/tables/${t.id}/seat`);
             closeSheet();
-            navigate(`/pedidos/nuevo?mesa=${t.id}`);
+            navigate(newOrderPath('mesa', t));
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo tomar la mesa');
         }
@@ -275,41 +274,26 @@ export default function Salon() {
         }
     };
 
-    const availableTables = useMemo(
-        () => (tables || []).filter((t) => t.status === 'disponible' && !t.active_order && !t.active_attention_id)
-            .sort((a, b) => Number(a.number) - Number(b.number)),
-        [tables]
-    );
-
     const closeAreas = () => {
         setShowNewOrder(false);
-        setNewOrderType(null);
         setPendingTable(null);
     };
 
     const openAreas = (table = null) => {
         setPendingTable(table || null);
-        setNewOrderType(null);
         setShowNewOrder(true);
     };
 
-    const goToOrder = (type, table) => {
-        setShowNewOrder(false);
-        setNewOrderType(null);
-        setPendingTable(null);
-        if (type === 'mesa') {
-            if (!table) { toast.error('Seleccioná una mesa'); return; }
-            navigate(`/pedidos/nuevo?mesa=${table.id}`);
-            return;
-        }
-        navigate(`/pedidos/nuevo?tipo=${type}`);
-    };
-
-    // Areas grid: "mesa" needs a table (the one open in the sheet, or a pick).
-    const chooseArea = (type) => {
-        if (type !== 'mesa') { goToOrder(type, null); return; }
-        if (pendingTable) { void takeTable(pendingTable); return; }
-        setNewOrderType('mesa');
+    // Every entry point lands here. Dine-in keeps its two gestures: seat the
+    // table already in hand (card or sheet), otherwise open the composer for the
+    // table picked in the grid. The other areas route straight by order type.
+    const handleAreaSelect = (type, table) => {
+        const tableInHand = pendingTable;
+        closeAreas();
+        if (type === 'mesa' && tableInHand) { void takeTable(tableInHand); return; }
+        const path = newOrderPath(type, table);
+        if (!path) { toast.error('Seleccioná una mesa'); return; }
+        navigate(path);
     };
 
     const areaLabel = (a) => (a === 'todas' ? 'Todas las zonas' : a);
@@ -678,61 +662,13 @@ export default function Salon() {
             </Sheet>
 
             {/* Sales areas — first decision of every order */}
-            <Dialog open={showNewOrder} onOpenChange={(open) => (open ? setShowNewOrder(true) : closeAreas())}>
-                <DialogContent className="sm:max-w-lg" data-testid="areas-venta">
-                    <DialogHeader>
-                        <DialogTitle className="font-display text-2xl">Áreas de venta</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        {pendingTable && (
-                            <div className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm" data-testid="areas-venta-mesa">
-                                Pedido para <strong>Mesa {pendingTable.number}</strong>
-                            </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-3">
-                            {ORDER_AREAS.map((area) => (
-                                <button
-                                    key={area.key}
-                                    type="button"
-                                    onClick={() => chooseArea(area.key)}
-                                    data-testid={`area-${area.key}`}
-                                    className={`flex min-h-[96px] flex-col items-start justify-center gap-1 rounded-xl border-2 p-4 text-left transition-colors ${
-                                        newOrderType === area.key
-                                            ? 'border-primary bg-primary/10'
-                                            : 'border-border hover:border-primary hover:bg-primary/5'
-                                    }`}
-                                >
-                                    <span className="font-display text-xl font-semibold">{ORDER_TYPE_LABELS[area.key]}</span>
-                                    <span className="text-xs text-muted-foreground">{area.hint}</span>
-                                </button>
-                            ))}
-                        </div>
-                        {newOrderType === 'mesa' && !pendingTable && (
-                            availableTables.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-4">No hay mesas disponibles en este momento.</p>
-                            ) : (
-                                <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="areas-venta-mesas">
-                                    {availableTables.map((t) => (
-                                        <button
-                                            key={t.id}
-                                            type="button"
-                                            onClick={() => goToOrder('mesa', t)}
-                                            data-testid={`salon-mesa-disponible-${t.number}`}
-                                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors"
-                                        >
-                                            <span className="font-display text-2xl font-bold">{t.number}</span>
-                                            <span className="text-xs text-muted-foreground mt-1">{t.area}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={closeAreas} data-testid="areas-venta-cancelar">Cancelar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <SalesAreasDialog
+                open={showNewOrder}
+                onOpenChange={(open) => { if (!open) closeAreas(); }}
+                pendingTable={pendingTable}
+                tables={tables}
+                onSelect={handleAreaSelect}
+            />
         </div>
     );
 }

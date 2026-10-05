@@ -89,7 +89,7 @@ describe('sales areas', () => {
         expect(mockNavigate).not.toHaveBeenCalled();
         expect(document.body.querySelector('[data-testid="areas-venta-mesas"]')).not.toBeNull();
 
-        await act(async () => document.body.querySelector('[data-testid="salon-mesa-disponible-7"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
+        await act(async () => document.body.querySelector('[data-testid="mesa-disponible-7"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
         expect(mockNavigate).toHaveBeenCalledWith('/pedidos/nuevo?mesa=table-1');
     });
 
