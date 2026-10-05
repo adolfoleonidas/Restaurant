@@ -83,11 +83,13 @@ class _Collection:
 
 
 class _DB:
-    def __init__(self, *, orders=(), tables=(), zones=(), branches=()):
+    def __init__(self, *, orders=(), tables=(), zones=(), branches=(), attentions=(), table_groups=()):
         self.orders = _Collection(orders)
         self.tables = _Collection(tables)
         self.zones = _Collection(zones)
         self.branches = _Collection(branches or [{"id": "branch-a", "restaurant_id": "tenant-1"}, {"id": "branch-b", "restaurant_id": "tenant-1"}])
+        self.attentions = _Collection(attentions)
+        self.table_groups = _Collection(table_groups)
         self.users = _Collection()
         self.counters = _Collection()
         self.audit_logs = _Collection()
