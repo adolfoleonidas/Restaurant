@@ -81,7 +81,9 @@ export default function MesaCard({
     const amount = due > 0
         ? {
             primary: `Debe ${fmtMoney(due)}`,
-            secondary: paid > 0 && total != null ? `Total ${fmtMoney(total)}` : null,
+            // Only a partial payment makes the ticket total differ from the
+            // balance, so that is the one case where a second number is news.
+            secondary: paid > 0 && total != null ? total : null,
         }
         : (total != null ? { primary: fmtMoney(total), secondary: null } : null);
 
@@ -157,8 +159,10 @@ export default function MesaCard({
                 {displayOrder && <AttentionReference order={displayOrder} branchNames={branchNames} />}
                 {amount && (
                     <div className="mt-auto text-xs font-mono font-semibold tabular-nums opacity-80">
-                        {amount.primary}
-                        {amount.secondary && <span className="opacity-80"> · {amount.secondary}</span>}
+                        <div>{amount.primary}</div>
+                        {amount.secondary != null && (
+                            <div className="opacity-80">Total {fmtMoney(amount.secondary)}</div>
+                        )}
                     </div>
                 )}
             </div>
