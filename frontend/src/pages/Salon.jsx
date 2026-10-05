@@ -7,15 +7,17 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS, ORDER_TYPE_LABELS, ORDER_AREAS } from '@/lib/format';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Clock, UtensilsCrossed, Receipt, Bell, CheckCheck, ShoppingBag, PackageCheck, Bike } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
+import MesaCard from '@/components/MesaCard';
 import useBranchNames from '@/hooks/useBranchNames';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
+import { FLOOR_STYLE } from '@/lib/floorStyle';
 
 /**
  * Salón — unified floor + service screen.
@@ -28,19 +30,6 @@ import { partitionPriorPickupOrders } from '@/lib/serviceDay';
  * `mesa-card-cobrar-*`, `data-floor-state`, `mesa-sheet-*`, `servicio-cerrar-*`,
  * `servicio-recojos-activos`, `servicio-recojo-*`, `servicio-dias-anteriores`.
  */
-
-const FLOOR_STYLE = {
-    libre: { label: 'Libre', bg: '#E7F6EE', fg: '#0F5132', border: '#BFE7D0', dot: '#22C55E' },
-    sentados: { label: 'Ocupada', bg: '#FDE3E3', fg: '#8C1D1D', border: '#F5B5B5', dot: '#EF4444' },
-    preparando: { label: 'Preparando', bg: '#FFF6DB', fg: '#6B4E00', border: '#F3E2A6', dot: '#F59E0B' },
-    listo: { label: 'Listo', bg: '#E0EEFF', fg: '#0B3A66', border: '#A9CFF5', dot: '#3B82F6' },
-    cuenta: { label: 'Cuenta', bg: '#FFE0CC', fg: '#8C3A12', border: '#F5B488', dot: '#E07A5F' },
-    entregado: { label: 'Entregado', bg: '#EAF6F5', fg: '#0F4F49', border: '#BFE5E0', dot: '#14B8A6' },
-    pagada: { label: 'Cuenta pagada', bg: '#F2F2F2', fg: '#3F3F46', border: '#D4D4D8', dot: '#71717A' },
-    atencion: { label: 'Atención abierta', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
-    reservada: { label: 'Reservada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
-    inactiva: { label: 'Inactiva', bg: '#EFEFEF', fg: '#71717A', border: '#D4D4D8', dot: '#A1A1AA' },
-};
 
 const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'atencion', 'reservada'];
 
@@ -205,6 +194,12 @@ export default function Salon() {
 
     const closeSheet = () => setOpenTable(null);
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
+
+    // Charging leaves the floor: the cash screen owns the whole payment flow.
+    const openCharge = (order) => {
+        closeSheet();
+        navigate(`/pedidos/${order.id}`);
+    };
 
     const deliver = async (orderId) => {
         try {
@@ -391,117 +386,23 @@ export default function Salon() {
                 <div className="py-16 text-center text-muted-foreground border rounded-xl">No hay mesas con esos filtros.</div>
             ) : (
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                    {filtered.map(({ table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva }) => {
-                        const s = FLOOR_STYLE[floor.key];
-                        const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
-                        const elapsed = displayOrder?.created_at ? fmtElapsed(displayOrder.created_at) : null;
-                        const closeable = canClose && canCloseAttention(t, serviceOrder);
-                        const showDeliver = canServe && (floor.key === 'listo' || ready > 0) && Boolean(serviceOrder);
-                        const showCobrar = canCharge && floor.key === 'cuenta' && serviceOrder;
-                        const overdue = due > 0 && serviceOrder;
-                        return (
-                            <div
-                                key={t.id}
-                                data-testid={`mesa-card-${t.number}`}
-                                data-floor-state={floor.key}
-                                onClick={() => openSheet(t)}
-                                className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
-                                style={{
-                                    background: s.bg,
-                                    borderColor: needsAttention ? s.dot : s.border,
-                                    ...(needsAttention ? { ['--tw-ring-color']: s.dot } : {}),
-                                }}
-                            >
-                                <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform">
-                                    <div className="flex items-start justify-between gap-1">
-                                        <div className="font-display text-3xl sm:text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
-                                        {needsAttention && (
-                                            <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
-                                                <Bell className="h-3.5 w-3.5 text-white" />
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
-                                        <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
-                                        {billRequested && <span className="text-[10px] font-medium rounded-full bg-[#FFE0CC] text-[#8C3A12] border border-[#F5B488] px-2 py-0.5">Cuenta solicitada</span>}
-                                    </div>
-                                    {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
-                                        <div className="flex items-center gap-1 text-xs" style={{ color: s.fg, opacity: 0.75 }}>
-                                            <Clock className="h-3 w-3" />
-                                            <span>Hace {elapsed}</span>
-                                        </div>
-                                    )}
-                                    {showVisitaActiva && <div className="text-xs" style={{ color: s.fg, opacity: 0.8 }}>Visita activa</div>}
-                                    {displayOrder && <AttentionReference order={displayOrder} branchNames={branchNames} />}
-                                    {overdue && <div className="text-xs font-semibold" style={{ color: s.fg }}>Debe {fmtMoney(due)}</div>}
-                                    {displayOrder?.total != null && (
-                                        <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(displayOrder.total)}</div>
-                                    )}
-                                </div>
-                                {(showDeliver || showCobrar || closeable || floor.key === 'libre' || floor.key === 'sentados') && (
-                                    <div className="px-3 pb-3 sm:px-4 sm:pb-4 flex flex-col gap-1.5">
-                                        {showDeliver && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.listo.dot }}
-                                                onClick={(e) => { e.stopPropagation(); deliver(serviceOrder.id); }}
-                                                data-testid={`mesa-card-deliver-${t.number}`}
-                                            >
-                                                <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" /> Entregar
-                                            </button>
-                                        )}
-                                        {showCobrar && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.cuenta.dot }}
-                                                onClick={(e) => { e.stopPropagation(); closeSheet(); navigate(`/pedidos/${serviceOrder.id}`); }}
-                                                data-testid={`mesa-card-cobrar-${t.number}`}
-                                            >
-                                                <Receipt className="h-3.5 w-3.5 inline mr-1" /> Cobrar
-                                            </button>
-                                        )}
-                                        {floor.key === 'libre' && canTake && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
-                                                style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); takeTable(t); }}
-                                                data-testid={`mesa-card-pedir-${t.number}`}
-                                            >
-                                                <Plus className="h-3.5 w-3.5 inline mr-1" /> Tomar pedido
-                                            </button>
-                                        )}
-                                        {floor.key === 'sentados' && canTake && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
-                                                style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); takeTable(t); }}
-                                                data-testid={`mesa-card-pedir-${t.number}`}
-                                            >
-                                                Tomar pedido
-                                            </button>
-                                        )}
-                                        {closeable && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold border transition-colors active:scale-[0.98]"
-                                                style={{ borderColor: s.border, color: s.fg }}
-                                                disabled={closing === serviceOrder.id}
-                                                onClick={(e) => { e.stopPropagation(); closeAttention(serviceOrder); }}
-                                                data-testid={`servicio-cerrar-${t.number}`}
-                                            >
-                                                <CheckCheck className="h-3.5 w-3.5 inline mr-1" /> {closing === serviceOrder.id ? 'Cerrando…' : 'Finalizar mesa'}
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {filtered.map((entry) => (
+                        <MesaCard
+                            key={entry.table.id}
+                            item={entry}
+                            branchNames={branchNames}
+                            canServe={canServe}
+                            canCharge={canCharge}
+                            canClose={canClose}
+                            canTake={canTake}
+                            closing={closing}
+                            onOpen={openSheet}
+                            onDeliver={deliver}
+                            onCharge={openCharge}
+                            onCloseAttention={closeAttention}
+                            onTake={takeTable}
+                        />
+                    ))}
                 </div>
             )}
 
