@@ -90,6 +90,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const [proofRefreshError, setProofRefreshError] = useState('');
     const idempotencyRef = useRef(null);
     const dialogEpochRef = useRef(0);
+    const dialogRef = useRef(null);
 
     const showToast = useCallback((msg) => {
         setToastMsg(msg);
@@ -145,6 +146,14 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             if (e.ctrlKey || e.metaKey || e.altKey) return;
             if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
             if (showVerify || showHelp || showHistory || showQr) return;
+            // Escape cierra el cobro, salvo que haya una operación en curso:
+            // nunca se abandona el diálogo a mitad de un registro de pago.
+            if (e.key === 'Escape') {
+                if (loading || result || proofSending) return;
+                e.preventDefault();
+                onOpenChange(false);
+                return;
+            }
             const idx = Number(e.key);
             if (!Number.isInteger(idx) || idx < 1 || idx > METHODS.length) return;
             if (proofIntent && !proofSent) return; // method rail is locked mid-proof-send
@@ -157,7 +166,13 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order]);
+    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order, loading, result, proofSending, onOpenChange]);
+
+    // El foco entra al diálogo al abrirlo (antes quedaba en el botón "Cobrar",
+    // que queda detrás del overlay).
+    useEffect(() => {
+        if (open) dialogRef.current?.focus();
+    }, [open]);
 
     if (!open) return null;
     const acct = live || order;
@@ -472,7 +487,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     return (
         <div className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}>
-        <div className="cobro-checkout" data-testid="caja-cobrar-dialog" role="dialog" aria-labelledby="checkout-title">
+        <div className="cobro-checkout" ref={dialogRef} tabIndex={-1} data-testid="caja-cobrar-dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
             {!online && <div className="offline-banner" role="status">Sin conexión. Reconecta para registrar pagos.</div>}
             {/* Header */}
             <header className="cobro-checkout-header">

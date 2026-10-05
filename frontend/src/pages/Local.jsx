@@ -57,9 +57,9 @@ export function SucursalesPanel() {
     };
     const fields = (value, onChange, prefix) => (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div><Label>Nombre de sucursal</Label><Input value={value.name || ''} onChange={(e) => onChange('name', e.target.value)} data-testid={`${prefix}-name`} /></div>
-            <div><Label>Zona horaria IANA</Label><Input value={value.timezone || ''} onChange={(e) => onChange('timezone', e.target.value)} placeholder="America/Lima" data-testid={`${prefix}-timezone`} /></div>
-            <div><Label>Corte del día de negocio (hora local)</Label><Input type="time" value={value.business_day_cutoff || ''} onChange={(e) => onChange('business_day_cutoff', e.target.value)} data-testid={`${prefix}-cutoff`} /></div>
+            <div><Label htmlFor={`${prefix}-name`}>Nombre de sucursal</Label><Input id={`${prefix}-name`} value={value.name || ''} onChange={(e) => onChange('name', e.target.value)} data-testid={`${prefix}-name`} /></div>
+            <div><Label htmlFor={`${prefix}-timezone`}>Zona horaria IANA</Label><Input id={`${prefix}-timezone`} value={value.timezone || ''} onChange={(e) => onChange('timezone', e.target.value)} placeholder="America/Lima" data-testid={`${prefix}-timezone`} /></div>
+            <div><Label htmlFor={`${prefix}-cutoff`}>Corte del día de negocio (hora local)</Label><Input id={`${prefix}-cutoff`} type="time" value={value.business_day_cutoff || ''} onChange={(e) => onChange('business_day_cutoff', e.target.value)} data-testid={`${prefix}-cutoff`} /></div>
         </div>
     );
     return (
@@ -177,8 +177,8 @@ export function ZonasPanel() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
-                                        <Button size="icon" variant="ghost" onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        <Button size="icon" variant="ghost" aria-label={`Editar ${z.name}`} onClick={() => openEdit(z)}><Pencil className="h-4 w-4" /></Button>
+                                        <Button size="icon" variant="ghost" aria-label={`Eliminar ${z.name}`} onClick={() => setConfirmDel(z)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                     </div>
                                 </div>
 

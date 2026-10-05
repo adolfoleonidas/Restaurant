@@ -71,10 +71,18 @@ body {
         --ink: hsl(var(--foreground));
         --muted-ink: hsl(var(--muted-foreground));
         --soft: hsl(220 12% 55%);
-        --warn: 30 85% 50%;
+        /* Triplets HSL: consumir siempre como hsl(var(--x)). Oscurecidos para AA 4.5:1 */
+        --warn: 32 92% 26%;
         --warn-soft: 30 90% 92%;
-        --green: 160 65% 40%;
+        --green: 160 84% 24%;
         --green-soft: 160 70% 92%;
+        /* Estados que antes compartían el mismo verde (Listo / Entregado / Pagado) */
+        --listo-soft: 213 100% 94%;
+        --listo-ink: 213 84% 22%;
+        --entregado-soft: 172 60% 94%;
+        --entregado-ink: 175 70% 16%;
+        --pagado-soft: 0 0% 95%;
+        --pagado-ink: 240 5% 26%;
         --red: hsl(var(--destructive));
         --red-soft: hsl(0 85% 92%);
         --shadow: 0 24px 60px -20px hsl(220 30% 20% / 0.18);
@@ -165,17 +173,18 @@ body {
     font-weight: 600;
 }
 
-/* State badges — semantic colors that follow the theme */
-.state-disponible { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
-.state-ocupada    { background: var(--red-soft); color: var(--red); border-color: hsl(var(--red) / 0.3); }
-.state-esperando  { background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
-.state-listo      { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+/* State badges — semantic colors that follow the theme.
+   Los tokens de color son tripletes HSL: se consumen como hsl(var(--x)). */
+.state-disponible { background: hsl(var(--green-soft)); color: hsl(var(--green)); border-color: hsl(var(--green) / 0.3); }
+.state-ocupada    { background: hsl(var(--red-soft)); color: var(--red); border-color: hsl(var(--destructive) / 0.3); }
+.state-esperando  { background: hsl(var(--warn-soft)); color: hsl(var(--warn)); border-color: hsl(var(--warn) / 0.3); }
+.state-listo      { background: hsl(var(--listo-soft)); color: hsl(var(--listo-ink)); border-color: hsl(var(--listo-ink) / 0.3); }
 .state-cancelada  { background: var(--muted); color: var(--muted-ink); border-color: var(--line); }
-.state-pagado     { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-pagado     { background: hsl(var(--pagado-soft)); color: hsl(var(--pagado-ink)); border-color: hsl(var(--pagado-ink) / 0.3); }
 .state-nuevo      { background: var(--brand-soft); color: var(--brand); border-color: hsl(var(--primary) / 0.3); }
-.state-enviado    { background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
-.state-preparacion{ background: var(--warn-soft); color: var(--warn); border-color: hsl(var(--warn) / 0.3); }
-.state-entregado  { background: var(--green-soft); color: var(--green); border-color: hsl(var(--green) / 0.3); }
+.state-enviado    { background: hsl(var(--warn-soft)); color: hsl(var(--warn)); border-color: hsl(var(--warn) / 0.3); }
+.state-preparacion{ background: hsl(var(--warn-soft)); color: hsl(var(--warn)); border-color: hsl(var(--warn) / 0.3); }
+.state-entregado  { background: hsl(var(--entregado-soft)); color: hsl(var(--entregado-ink)); border-color: hsl(var(--entregado-ink) / 0.3); }
 .state-reservada  { background: var(--brand-soft); color: var(--brand); border-color: hsl(var(--primary) / 0.3); }
 .state-inactiva   { background: var(--muted); color: var(--muted-ink); border-color: var(--line); }
 

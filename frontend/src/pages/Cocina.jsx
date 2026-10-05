@@ -123,7 +123,7 @@ export default function Cocina() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
-    const { data: orders, refetch } = usePolling(
+    const { data: orders, error: ordersError, loading: ordersLoading, refetch } = usePolling(
         () => api.get('/orders/kitchen').then((r) => r.data),
         12000,
         [generation]
@@ -227,6 +227,13 @@ export default function Cocina() {
                 </div>
             )}
 
+            {ordersError && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                    <span className="font-medium">Sin conexión con el pase: los pedidos no se están actualizando.</span>
+                    <Button variant="outline" className="h-11" onClick={() => refetch()}>Reintentar</Button>
+                </div>
+            )}
+
             <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
                 <div data-testid="cocina-kanban" className="flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
                 {columns.map((col) => (
@@ -235,9 +242,16 @@ export default function Cocina() {
                             <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
                             <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
                         </div>
-                        <div className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 md:max-h-[calc(100vh-230px)]">
+                        <div
+                            role="region"
+                            aria-label={`Pedidos en ${col.label}`}
+                            tabIndex={0}
+                            className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-h-[calc(100dvh-230px)]"
+                        >
                             {col.cards.length === 0 ? (
-                                <div className="text-center text-sm text-muted-foreground py-10">Vacío</div>
+                                <div className="text-center text-sm text-muted-foreground py-10">
+                                    {ordersLoading && !orders ? 'Cargando…' : ordersError ? 'Sin datos' : 'Vacío'}
+                                </div>
                             ) : col.cards.map((c) => (
                                 <KitchenCard
                                     key={`${c.order.id}-${col.key}`}

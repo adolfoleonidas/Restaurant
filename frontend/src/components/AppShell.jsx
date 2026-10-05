@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
 import { hasFn } from '@/lib/functions';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
@@ -144,11 +144,12 @@ export const AppShell = () => {
                 <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/90 backdrop-blur px-4 md:px-6">
                     <Sheet open={open} onOpenChange={setOpen}>
                         <SheetTrigger asChild>
-                            <Button variant="ghost" size="icon" className="md:hidden" data-testid="open-sidebar-button">
+                            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menú de navegación" data-testid="open-sidebar-button">
                                 <Menu className="h-5 w-5" />
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" className="p-0 w-72 border-border">
+                            <SheetTitle className="sr-only">Navegación</SheetTitle>
                             <SidebarContent user={user} restaurant={restaurant} onNav={() => setOpen(false)} />
                         </SheetContent>
                     </Sheet>

@@ -220,7 +220,7 @@ export default function PedidoDetalle() {
     return (
         <div className="space-y-4 pb-32" data-testid="pedido-detalle-root">
             <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="h-11 w-11" onClick={() => navigate('/salon')} data-testid="pedido-back-button">
+                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Volver al salón" onClick={() => navigate('/salon')} data-testid="pedido-back-button">
                     <ChevronLeft className="h-5 w-5" />
                 </Button>
                 <div>
@@ -237,6 +237,7 @@ export default function PedidoDetalle() {
                     <span>Reasignar mozo</span>
                     <select
                         className="h-10 rounded-sm border border-border bg-background px-2"
+                        aria-label="Reasignar mozo"
                         value={order.created_by || ''}
                         onChange={(e) => e.target.value && reassign(e.target.value)}
                         data-testid="pedido-reasignar"

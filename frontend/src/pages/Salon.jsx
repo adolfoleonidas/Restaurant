@@ -86,12 +86,12 @@ export default function Salon() {
     const [pendingTable, setPendingTable] = useState(null);
     const [closing, setClosing] = useState(null);
 
-    const { data: tables, refetch: refetchTables } = usePolling(
+    const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
         8000,
         [generation]
     );
-    const { data: liveOrders, refetch: refetchOrders } = usePolling(
+    const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
         () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
         8000,
         [generation]
@@ -373,7 +373,7 @@ export default function Salon() {
                         {areaLabel(a)}
                     </button>
                 ))}
-                <div className="hidden lg:flex gap-2 items-center ml-auto" data-testid="salon-legend">
+                <div className="flex flex-wrap gap-2 items-center lg:ml-auto" data-testid="salon-legend">
                     {LEGEND.map((k) => {
                         const s = FLOOR_STYLE[k];
                         return (
@@ -386,9 +386,18 @@ export default function Salon() {
                 </div>
             </div>
 
+            {(tablesError || ordersError) && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                    <span className="font-medium">No se pudo actualizar el salón: las mesas y los pedidos pueden estar desactualizados.</span>
+                    <Button variant="outline" className="h-11" onClick={() => { refetchTables(); refetchOrders(); }}>Reintentar</Button>
+                </div>
+            )}
+
             {/* Floor grid */}
             {filtered.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground border rounded-xl">No hay mesas con esos filtros.</div>
+                <div className="py-16 text-center text-muted-foreground border rounded-xl">
+                    {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
+                </div>
             ) : (
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                     {filtered.map(({ table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva }) => {
@@ -405,7 +414,11 @@ export default function Salon() {
                                 data-testid={`mesa-card-${t.number}`}
                                 data-floor-state={floor.key}
                                 onClick={() => openSheet(t)}
-                                className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
+                                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSheet(t); } }}
+                                role="group"
+                                tabIndex={0}
+                                aria-label={`Mesa ${t.number}, ${s.label}`}
+                                className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
                                 style={{
                                     background: s.bg,
                                     borderColor: needsAttention ? s.dot : s.border,
@@ -416,7 +429,7 @@ export default function Salon() {
                                     <div className="flex items-start justify-between gap-1">
                                         <div className="font-display text-3xl sm:text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
                                         {needsAttention && (
-                                            <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
+                                            <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-hidden="true">
                                                 <Bell className="h-3.5 w-3.5 text-white" />
                                             </span>
                                         )}
@@ -427,16 +440,16 @@ export default function Salon() {
                                         {billRequested && <span className="text-[10px] font-medium rounded-full bg-[#FFE0CC] text-[#8C3A12] border border-[#F5B488] px-2 py-0.5">Cuenta solicitada</span>}
                                     </div>
                                     {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
-                                        <div className="flex items-center gap-1 text-xs" style={{ color: s.fg, opacity: 0.75 }}>
+                                        <div className="flex items-center gap-1 text-xs" style={{ color: s.fg }}>
                                             <Clock className="h-3 w-3" />
                                             <span>Hace {elapsed}</span>
                                         </div>
                                     )}
-                                    {showVisitaActiva && <div className="text-xs" style={{ color: s.fg, opacity: 0.8 }}>Visita activa</div>}
+                                    {showVisitaActiva && <div className="text-xs" style={{ color: s.fg }}>Visita activa</div>}
                                     {displayOrder && <AttentionReference order={displayOrder} branchNames={branchNames} />}
                                     {overdue && <div className="text-xs font-semibold" style={{ color: s.fg }}>Debe {fmtMoney(due)}</div>}
                                     {displayOrder?.total != null && (
-                                        <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(displayOrder.total)}</div>
+                                        <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg }}>{fmtMoney(displayOrder.total)}</div>
                                     )}
                                 </div>
                                 {(showDeliver || showCobrar || closeable || floor.key === 'libre' || floor.key === 'sentados') && (
@@ -444,8 +457,8 @@ export default function Salon() {
                                         {showDeliver && (
                                             <button
                                                 type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.listo.dot }}
+                                                className="h-11 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
+                                                style={{ background: FLOOR_STYLE.listo.fg }}
                                                 onClick={(e) => { e.stopPropagation(); deliver(serviceOrder.id); }}
                                                 data-testid={`mesa-card-deliver-${t.number}`}
                                             >
@@ -455,8 +468,8 @@ export default function Salon() {
                                         {showCobrar && (
                                             <button
                                                 type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.cuenta.dot }}
+                                                className="h-11 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
+                                                style={{ background: FLOOR_STYLE.cuenta.fg }}
                                                 onClick={(e) => { e.stopPropagation(); closeSheet(); navigate(`/pedidos/${serviceOrder.id}`); }}
                                                 data-testid={`mesa-card-cobrar-${t.number}`}
                                             >
@@ -466,7 +479,7 @@ export default function Salon() {
                                         {floor.key === 'libre' && canTake && (
                                             <button
                                                 type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
+                                                className="h-11 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
                                                 style={{ background: s.border, color: s.fg }}
                                                 onClick={(e) => { e.stopPropagation(); takeTable(t); }}
                                                 data-testid={`mesa-card-pedir-${t.number}`}
@@ -477,7 +490,7 @@ export default function Salon() {
                                         {floor.key === 'sentados' && canTake && (
                                             <button
                                                 type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
+                                                className="h-11 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
                                                 style={{ background: s.border, color: s.fg }}
                                                 onClick={(e) => { e.stopPropagation(); takeTable(t); }}
                                                 data-testid={`mesa-card-pedir-${t.number}`}

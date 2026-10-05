@@ -336,7 +336,7 @@ export default function Productos({ section = 'platos' }) {
                             : 'Platos sueltos de la carta.'}
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {tab === 'platos' && (
                         <>
                             <Button variant="outline" onClick={() => navigate('/categorias')} data-testid="producto-categorias-button">
@@ -417,8 +417,8 @@ export default function Productos({ section = 'platos' }) {
                                 <div className="mt-3 flex items-center justify-between">
                                     <label className="flex items-center gap-2 text-sm"><Switch checked={p.is_available} onCheckedChange={() => toggleAvail(p)} data-testid={`producto-disp-${p.id}`} /> {p.is_available ? 'Disponible' : 'Agotado'}</label>
                                     <div className="flex items-center gap-1">
-                                        <Button size="icon" variant="ghost" onClick={() => openEdit(p)} data-testid={`producto-edit-${p.id}`}><Pencil className="h-4 w-4" /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                        <Button size="icon" variant="ghost" aria-label={`Editar ${p.name}`} onClick={() => openEdit(p)} data-testid={`producto-edit-${p.id}`}><Pencil className="h-4 w-4" /></Button>
+                                        <Button size="icon" variant="ghost" aria-label={`Eliminar ${p.name}`} onClick={() => setConfirmDel(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                                     </div>
                                 </div>
                             </CardContent></Card>

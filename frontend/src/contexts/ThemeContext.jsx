@@ -36,7 +36,12 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const loadRestaurantTheme = async () => {
       try {
-        const { data } = await api.get('/restaurants/current');
+        // Sin sesión, /restaurants/current responde 401: la carta pública lee el
+        // endpoint público, que también devuelve theme_id.
+        const hasSession = typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
+        const { data } = hasSession
+          ? await api.get('/restaurants/current')
+          : await api.get('/public/restaurant');
         const restaurantTheme = data.theme_id || 'fresco';
         const localOverride = localStorage.getItem('restaurant-theme');
         

@@ -62,8 +62,8 @@ function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
             </div>
             <div className="text-right shrink-0 space-y-1">
                 <div className="font-mono font-bold tabular-nums">{fmtMoney(order.total)}</div>
-                <Button size="sm" variant="outline" className="h-8 w-full" onClick={openProof} disabled={loading}>Ver comprobante</Button>
-                <Button size="sm" className="h-8 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
+                <Button size="sm" variant="outline" className="h-11 w-full" onClick={openProof} disabled={loading}>Ver comprobante</Button>
+                <Button size="sm" className="h-11 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
             </div>
         </div>
     );
@@ -616,7 +616,10 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     }, [params, pending, selectOrder]);
 
     const cobrables = useMemo(() => {
-        const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
+        // Un pedido web con comprobante ya subido se resuelve en su propio bloque
+        // (Ver comprobante / Confirmar). Se excluye de las listas de cobro para que
+        // una misma cuenta no ofrezca dos acciones de dinero a la vez.
+        const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado' && o.payment_status !== 'comprobante_subido');
         const requested = list.filter((o) => o.payment_requested || o.status === 'pendiente_pago');
         const rest = list.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago'));
         return [...requested, ...rest].map((o) => ({
