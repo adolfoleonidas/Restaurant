@@ -14,7 +14,8 @@ export default function Unauthorized() {
                 <p className="page-kicker mb-2">Acceso</p>
                 <h1 className="font-display text-3xl font-semibold mb-2">Sin permisos</h1>
                 <p className="text-muted-foreground mb-6">Tu rol no entra a esta sección.</p>
-                <Link to="/dashboard" className="text-primary font-medium underline-offset-4 hover:underline">Volver al salón</Link>
+                {/* min-h-touch: el enlace medía 20 px de alto. */}
+                <Link to="/dashboard" className="inline-flex min-h-touch items-center text-primary font-medium underline-offset-4 hover:underline">Volver al salón</Link>
             </div>
         </main>
     );

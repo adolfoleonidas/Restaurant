@@ -160,8 +160,11 @@ const BottomNav = ({ items, showMore, onMore }) => (
                 aria-label={it.label}
                 data-testid={`bottom-nav-${it.to.slice(1)}`}
                 className={({ isActive }) =>
+                    // En modo oscuro `primary` (#2463e0) sobre el fondo de la
+                    // barra da 3,33:1: la etiqueta activa se aclara, como ya
+                    // hace el pase de cocina con sus ámbar/azul claros.
                     `flex min-h-touch min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-medium transition-colors ${
-                        isActive ? 'text-primary' : 'text-muted-foreground'
+                        isActive ? 'text-primary dark:text-blue-300' : 'text-muted-foreground'
                     }`
                 }
             >

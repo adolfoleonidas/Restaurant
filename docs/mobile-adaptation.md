@@ -178,6 +178,8 @@ La auditoría los destapó porque esta vez se midió con datos reales y a 360 px
 | `SelectTrigger` sin nombre cuando el ajuste llega vacío | `Configuracion.jsx` | `aria-label="Seguimiento de preparación"` |
 | Casillas y enlaces de 13-20 px en táctil | `Local.jsx`, `PublicLayout.jsx` | `h-6 w-6` en las casillas, `min-h-touch` en la fila y `min-h-8` en los enlaces de redes |
 | Botones "Quitar" de 16 px de alto | `Configuracion.jsx` | `inline-flex min-h-touch` |
+| Ítem activo de la barra inferior en modo oscuro: 3,33:1 (lo ve el rol cocina, que vive en oscuro) | `AppShell.jsx` | La etiqueta activa se aclara en oscuro (`dark:text-blue-300`), como ya hacía el pase con sus ámbar/azul claros |
+| Enlace "Volver al salón" de `/unauthorized` de 20 px de alto | `Unauthorized.jsx` | `inline-flex min-h-touch` |
 
 ### Verificación de cierre
 
@@ -185,6 +187,12 @@ La auditoría los destapó porque esta vez se midió con datos reales y a 360 px
 |---|---|---|---|---|
 | 360 px + escritorio (`admin` y público) | 49 | 2 → **0** tras los dos últimos arreglos | 0 | 2 → **0** |
 | **360×640 (peor caso), `admin` y público** | **23** | **0** | **0** | **0** |
+| **360×640, `cocina` y `cajero`** (incluye la pantalla de acceso denegado) | **17** | **0** | **0** | **0** |
+
+Los cuatro roles quedan medidos al peor tamaño. Los únicos mensajes de
+consola que quedan son el 404 intencional de `/pedido/ZZZZZZZZ`, el cierre
+normal del stream de notificaciones al navegar y la descarga de fuentes de
+Google, que en este entorno no tiene salida a internet.
 
 `CI=true npx craco build` compila sin advertencias y
 `npx craco test --watchAll=false --runInBand` pasa **39 suites / 240 pruebas**.
