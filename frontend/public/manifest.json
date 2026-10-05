@@ -1,17 +1,72 @@
 {
-  "short_name": "Resto POS",
-  "name": "Sistema de Gestión para Restaurantes",
+  "id": "/",
+  "name": "Sabor Peruano — Gestión de restaurante",
+  "short_name": "Sabor Peruano",
+  "description": "Punto de venta y carta digital: salón, pase de cocina, caja, pedidos en línea y seguimiento para el cliente.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "theme_color": "#F8F9FB",
+  "background_color": "#F8F9FB",
+  "categories": ["food", "business", "productivity"],
   "icons": [
     {
-      "src": "favicon.ico",
-      "sizes": "64x64",
-      "type": "image/x-icon"
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#2C1810",
-  "background_color": "#2C1810",
-  "orientation": "any",
-  "lang": "es"
+  "shortcuts": [
+    {
+      "name": "Salón",
+      "short_name": "Salón",
+      "description": "Mesas, cuentas abiertas y pedidos en curso",
+      "url": "/salon",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Pase de cocina",
+      "short_name": "Cocina",
+      "description": "Comandas por preparar, listas y entregadas",
+      "url": "/cocina",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Caja",
+      "short_name": "Caja",
+      "description": "Cobros del turno, movimientos y arqueo",
+      "url": "/caja",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Carta digital",
+      "short_name": "Carta",
+      "description": "La carta pública que ve el cliente",
+      "url": "/menu",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
 }
