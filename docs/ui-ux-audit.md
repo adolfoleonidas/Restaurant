@@ -491,7 +491,7 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 ### Verificación
 
 - **Código:** 15 sustituciones, **0 ocurrencias restantes** de los literales antiguos en los 8 archivos, reescritas como UTF-8 sin BOM y releyéndolas para confirmar que no hubo mojibake ni pérdida de acentos (el mensaje usa "Revisá", con tilde, y se comprobó al releer).
-- **Matriz de regresión:** el cambio es solo de texto (no toca estilos ni estructura), por lo que no se esperaba impacto en axe ni en layout. La matriz de verificación quedó corriendo al cierre de esta ronda y queda anotado aquí, como en la ronda 4, para no dar por medida una medición que no se completó.
+- **Matriz de regresión** (90 visitas comparables: 4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe** en las 90 visitas y 0 desbordamientos horizontales. Las métricas de la ronda quedan cerradas con este dato: egion **35 → 0**, landmark-one-main **8 → 0**, page-has-heading-one **14 → 0**, controles <24 px **65 → 38** y, el dato que cierra el hallazgo de texto pequeño, **nodos de texto <12 px: 215 → 70** (el salto se debía sobre todo a .page-kicker, corregido en la ronda 7).
 
 ### Pendiente (siguientes rondas)
 
