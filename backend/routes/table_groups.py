@@ -3,13 +3,19 @@
 A group never moves orders, money or visits. It states that these tables are
 serving the same party, and it keeps that statement physically honest: a member
 table without a visit of its own is shown as occupied so nobody seats a second
-party there. Each member still opens, serves and pays its own order, which is
-why joining is refused as soon as two of the selected tables already own a
-running account.
+party there. Each member keeps its own account - a table that already ordered
+keeps its visit and its bill, and a free member can open its own - so the group
+reports how many accounts it holds instead of assuming a single one. Merging two
+accounts into one is a different, money-touching capability that is deliberately
+not implemented here.
 
 Deliberate rules:
-  * Only free tables, or the single table that already owns the open visit, can
-    join. Joining never merges two running accounts.
+  * Any number of members may already own their own account; joining never
+    merges or moves them. The group's anchor is one of those tables (the one
+    that opened its visit first).
+  * A table with a visit in progress but no order, a table already in another
+    group, a table that is not available for a party and a table of another
+    branch are still refused.
   * Groups are dissolved explicitly ("Separar mesas"), never by closing a visit:
     the tables usually stay physically together after the party leaves.
   * A grouped table cannot be deleted, moved to another branch, or have its
@@ -102,7 +108,7 @@ async def _busy_tables(table_ids: list[str], user: dict) -> dict:
         "table_id": {"$in": list(table_ids)},
         **_BUSY_ORDER,
         **record_branch_filter(user),
-    }, {"_id": 0, "id": 1, "table_id": 1}).to_list(len(table_ids) * 4)
+    }, {"_id": 0, "id": 1, "table_id": 1, "created_at": 1}).to_list(len(table_ids) * 4)
     return {row["table_id"]: row for row in rows if row.get("table_id")}
 
 
@@ -158,11 +164,15 @@ async def _validate_join(
                 status_code=409,
                 detail=f"La mesa {number} no está disponible para unir",
             )
-    if len([table for table in tables if busy.get(table["id"])]) > 1:
-        raise HTTPException(
-            status_code=409,
-            detail="Dos mesas de la selección ya tienen pedidos activos; cobrá o liberá una antes de unirlas",
-        )
+
+
+def _account_owners(tables: list[dict], busy: dict) -> list[dict]:
+    """Members that already own their own account, earliest visit first."""
+    owners = [table for table in tables if busy.get(table["id"])]
+    return sorted(owners, key=lambda table: (
+        (busy[table["id"]] or {}).get("created_at") or "",
+        table.get("number") or 0,
+    ))
 
 
 def _auto_name(tables: list[dict]) -> str:
@@ -175,20 +185,19 @@ def _lowest_number(tables: list[dict]) -> str:
 
 
 def _resolve_anchor(tables: list[dict], busy: dict, requested: str | None) -> str:
-    owners = [table for table in tables if busy.get(table["id"])]
+    """The anchor is the group's reference table: an account owner when there is one."""
+    owners = _account_owners(tables, busy)
+    if requested and requested not in {table["id"] for table in tables}:
+        raise HTTPException(status_code=400, detail="La mesa principal debe pertenecer al grupo")
     if owners:
-        anchor_id = owners[0]["id"]
-        if requested and requested != anchor_id:
+        owner_ids = {table["id"] for table in owners}
+        if requested and requested not in owner_ids:
             raise HTTPException(
                 status_code=409,
-                detail="La mesa con el pedido activo debe ser la mesa principal del grupo",
+                detail="La mesa principal debe ser una de las que ya tiene su propia cuenta",
             )
-        return anchor_id
-    if requested:
-        if requested not in {table["id"] for table in tables}:
-            raise HTTPException(status_code=400, detail="La mesa principal debe pertenecer al grupo")
-        return requested
-    return _lowest_number(tables)
+        return requested or owners[0]["id"]
+    return requested or _lowest_number(tables)
 
 
 def _group_response(group: dict, tables: list[dict]) -> dict:
@@ -377,6 +386,7 @@ async def create_group(data: TableGroupCreate, user: dict = Depends(require_role
         raise
     await record_audit("join", "table_group", group_id, user, {
         "tables": [table.get("number") for table in tables],
+        "accounts": len(_account_owners(tables, busy)),
     })
     fresh = await _load_tables(group["table_ids"], user)
     _announce(fresh, user)
@@ -399,7 +409,9 @@ async def add_table_to_group(
     await _validate_join(combined, busy, user, exclude_group_id=group_id)
     claimed = await _claim_members(group_id, incoming, busy, user)
     table_ids = list(group.get("table_ids") or []) + [incoming[0]["id"]]
-    anchor_id = incoming[0]["id"] if busy.get(incoming[0]["id"]) else group.get("anchor_table_id")
+    # The reference table follows the earliest account of the whole group.
+    owners = _account_owners(combined, busy)
+    anchor_id = owners[0]["id"] if owners else group.get("anchor_table_id")
     name = _auto_name(combined) if group.get("auto_name") else group.get("name")
     result = await db.table_groups.update_one(
         {"id": group_id, "restaurant_id": user["restaurant_id"], "status": "active",
@@ -409,7 +421,10 @@ async def add_table_to_group(
     if getattr(result, "modified_count", 0) != 1:
         await _rollback_claim(group_id, claimed, user)
         raise HTTPException(status_code=409, detail="El grupo cambió; volvé a cargarlo antes de unir la mesa")
-    await record_audit("join", "table_group", group_id, user, {"tables": [incoming[0].get("number")]})
+    await record_audit("join", "table_group", group_id, user, {
+        "tables": [incoming[0].get("number")],
+        "accounts": len(owners),
+    })
     updated = {**group, "table_ids": table_ids, "anchor_table_id": anchor_id, "name": name}
     fresh = await _load_tables(table_ids, user)
     _announce(fresh, user)
@@ -434,12 +449,13 @@ async def remove_table_from_group(
         return {"ok": True, "dissolved": True, "group_id": group_id}
 
     await _release_membership([leaving], group_id, user)
-    anchor_id = group.get("anchor_table_id")
-    if anchor_id == table_id:
-        busy = await _busy_tables([table["id"] for table in remaining], user)
-        owners = [table for table in remaining if busy.get(table["id"])]
-        anchor_id = owners[0]["id"] if owners else _lowest_number(remaining)
     table_ids = [table["id"] for table in remaining]
+    # The reference table must stay inside the group and, when any member owns an
+    # account, be one of those members.
+    owners = _account_owners(remaining, await _busy_tables(table_ids, user))
+    anchor_id = group.get("anchor_table_id")
+    if anchor_id not in table_ids or (owners and anchor_id not in {table["id"] for table in owners}):
+        anchor_id = owners[0]["id"] if owners else _lowest_number(remaining)
     name = _auto_name(remaining) if group.get("auto_name") else group.get("name")
     result = await db.table_groups.update_one(
         {"id": group_id, "restaurant_id": user["restaurant_id"], "status": "active",

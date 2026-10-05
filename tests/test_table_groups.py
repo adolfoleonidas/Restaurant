@@ -72,21 +72,120 @@ def test_group_model_rejects_blank_or_repeated_tables():
     assert TableGroupCreate(table_ids=["table-a", "table-b"]).table_ids == ["table-a", "table-b"]
 
 
-def test_join_refuses_two_running_accounts(monkeypatch):
+def test_join_allows_two_running_accounts_and_keeps_both_bills(monkeypatch):
     async def run():
         db = _DB(
             tables=[_table("table-a", "branch-a", number=1, status="ocupada", active_attention_id="attention-1"),
                     _table("table-b", "branch-a", number=2, status="ocupada", active_attention_id="attention-2")],
-            orders=[_visit_order("order-1", "table-a"),
-                    _visit_order("order-2", "table-b", attention_id="attention-2")],
+            orders=[_visit_order("order-1", "table-a", created_at="t1"),
+                    _visit_order("order-2", "table-b", attention_id="attention-2", created_at="t2")],
+            attentions=[_attention("table-a"),
+                        _attention("table-b", "order-2", "attention-2")],
         )
         _wire(monkeypatch, db)
+        group = await group_routes.create_group(TableGroupCreate(table_ids=["table-a", "table-b"]), _user())
+        assert group["table_ids"] == ["table-a", "table-b"]
+        # The earliest account is the group's reference table.
+        assert group["anchor_table_id"] == "table-a"
+        assert db.table_groups.rows[0]["status"] == "active"
+        assert db.audit_logs.rows[0]["details"]["accounts"] == 2
+        for table_id, attention in (("table-a", "attention-1"), ("table-b", "attention-2")):
+            row = _row(db, table_id)
+            assert row["group_id"] == group["id"]
+            assert row["status"] == "ocupada"
+            assert row["active_attention_id"] == attention
+            # Neither account was touched and neither table was re-blocked.
+            assert "group_joined_status" not in row
+        assert [order["table_id"] for order in db.orders.rows] == ["table-a", "table-b"]
+        assert [attention["table_id"] for attention in db.attentions.rows] == ["table-a", "table-b"]
+    asyncio.run(run())
+
+
+def test_join_picks_the_earliest_account_and_refuses_a_free_anchor(monkeypatch):
+    async def run():
+        tables = [_table("table-a", "branch-a", number=1, status="ocupada", active_attention_id="attention-1"),
+                  _table("table-b", "branch-a", number=2, status="ocupada", active_attention_id="attention-2"),
+                  _table("table-c", "branch-a", number=3)]
+        orders = [_visit_order("order-1", "table-a", created_at="t2"),
+                  _visit_order("order-2", "table-b", attention_id="attention-2", created_at="t1")]
+
+        db = _DB(tables=tables, orders=orders, attentions=[_attention("table-a"), _attention("table-b", "order-2", "attention-2")])
+        _wire(monkeypatch, db)
+        # table-b opened its visit first, so it becomes the reference table.
+        default = await group_routes.create_group(TableGroupCreate(table_ids=["table-a", "table-b"]), _user())
+        assert default["anchor_table_id"] == "table-b"
+
+        db = _DB(tables=tables, orders=orders, attentions=[_attention("table-a"), _attention("table-b", "order-2", "attention-2")])
+        _wire(monkeypatch, db)
+        chosen = await group_routes.create_group(
+            TableGroupCreate(table_ids=["table-a", "table-b"], anchor_table_id="table-a"), _user()
+        )
+        assert chosen["anchor_table_id"] == "table-a"
+
+        db = _DB(tables=tables, orders=orders, attentions=[_attention("table-a"), _attention("table-b", "order-2", "attention-2")])
+        _wire(monkeypatch, db)
         with pytest.raises(HTTPException) as caught:
-            await group_routes.create_group(TableGroupCreate(table_ids=["table-a", "table-b"]), _user())
+            await group_routes.create_group(
+                TableGroupCreate(table_ids=["table-a", "table-b", "table-c"], anchor_table_id="table-c"), _user()
+            )
         assert caught.value.status_code == 409
-        assert "pedidos activos" in caught.value.detail
+        assert "su propia cuenta" in caught.value.detail
         assert db.table_groups.rows == []
-        assert [row.get("group_id") for row in db.tables.rows] == [None, None]
+        assert all(row.get("group_id") is None for row in db.tables.rows)
+    asyncio.run(run())
+
+
+def test_join_mixes_accounts_and_a_free_member(monkeypatch):
+    async def run():
+        db = _DB(
+            tables=[_table("table-a", "branch-a", number=1, status="ocupada", active_attention_id="attention-1"),
+                    _table("table-b", "branch-a", number=2, status="ocupada", active_attention_id="attention-2"),
+                    _table("table-c", "branch-a", number=3, status="disponible")],
+            orders=[_visit_order("order-1", "table-a", created_at="t1"),
+                    _visit_order("order-2", "table-b", attention_id="attention-2", created_at="t2")],
+            attentions=[_attention("table-a"), _attention("table-b", "order-2", "attention-2")],
+        )
+        _wire(monkeypatch, db)
+        group = await group_routes.create_group(
+            TableGroupCreate(table_ids=["table-a", "table-b", "table-c"]), _user()
+        )
+        assert group["anchor_table_id"] == "table-a"
+        assert _row(db, "table-c")["group_joined_status"] == "disponible"
+        assert _row(db, "table-c")["status"] == "ocupada"
+        assert _row(db, "table-c").get("active_attention_id") is None
+
+        dissolved = await group_routes.dissolve_group(group["id"], _user())
+        assert dissolved["dissolved"] is True
+        # Only the member the group had blocked goes back to the floor; both bills stay.
+        assert _row(db, "table-a")["status"] == "ocupada"
+        assert _row(db, "table-b")["status"] == "ocupada"
+        assert _row(db, "table-c")["status"] == "disponible"
+        assert all(row.get("group_id") is None for row in db.tables.rows)
+    asyncio.run(run())
+
+
+def test_removing_the_anchor_moves_the_reference_to_the_other_account(monkeypatch):
+    async def run():
+        db = _DB(
+            tables=[_table("table-a", "branch-a", number=1, status="ocupada", group_id="group-1",
+                           active_attention_id="attention-1"),
+                    _table("table-b", "branch-a", number=2, status="ocupada", group_id="group-1",
+                           active_attention_id="attention-2"),
+                    _table("table-c", "branch-a", number=3, status="ocupada", group_id="group-1",
+                           group_joined_status="disponible")],
+            orders=[_visit_order("order-1", "table-a", created_at="t1"),
+                    _visit_order("order-2", "table-b", attention_id="attention-2", created_at="t2")],
+            attentions=[_attention("table-a"), _attention("table-b", "order-2", "attention-2")],
+            table_groups=[_group("group-1", ("table-a", "table-b", "table-c"))],
+        )
+        _wire(monkeypatch, db)
+        group = await group_routes.remove_table_from_group("group-1", "table-a", _user())
+        assert group["table_ids"] == ["table-b", "table-c"]
+        assert group["anchor_table_id"] == "table-b"
+        # The leaving table keeps its own account and its visit.
+        assert _row(db, "table-a")["status"] == "ocupada"
+        assert _row(db, "table-a")["active_attention_id"] == "attention-1"
+        assert "group_id" not in _row(db, "table-a")
     asyncio.run(run())
 
 
