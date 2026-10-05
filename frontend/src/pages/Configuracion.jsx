@@ -4,12 +4,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin, Palette, Database } from 'lucide-react';
+import { Settings, Save, Plus, Pencil, Trash2, MapPin, Palette, Database, Image as ImageIcon } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import TableQrActions from '@/components/TableQrActions';
 import { useTheme } from '@/contexts/ThemeContext';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -132,6 +132,113 @@ function Restaurante() {
                 <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
             </div>
             <div className="md:col-span-2 flex justify-end"><Button onClick={save} data-testid="config-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button></div>
+        </CardContent></Card>
+    );
+}
+
+function Marca() {
+    const [r, setR] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => { api.get('/restaurants/current').then((res) => setR(res.data)); }, []);
+    const set = (patch) => setR((prev) => ({ ...prev, ...patch }));
+
+    const onFile = (key) => (e) => {
+        const f = e.target.files?.[0];
+        if (!f) return;
+        if (f.size > 1.5 * 1024 * 1024) { toast.error('Imagen muy pesada (máx ~1.5 MB)'); return; }
+        const reader = new FileReader();
+        reader.onload = (ev) => set({ [key]: ev.target.result });
+        reader.readAsDataURL(f);
+    };
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            const { data } = await api.patch('/restaurants/current', {
+                logo_url: r.logo_url || '',
+                cover_url: r.cover_url || '',
+                public_description: r.public_description || '',
+                social_instagram: r.social_instagram || '',
+                social_facebook: r.social_facebook || '',
+                social_whatsapp: r.social_whatsapp || '',
+            });
+            setR(data);
+            toast.success('Marca guardada');
+        } catch (e) { toast.error(e.response?.data?.detail || 'Error al guardar la marca'); }
+        finally { setSaving(false); }
+    };
+
+    if (!r) return <div className="text-muted-foreground">Cargando…</div>;
+
+    return (
+        <Card><CardContent className="p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Palette className="h-5 w-5" /> Marca</h2>
+                <Button onClick={save} disabled={saving} data-testid="marca-save">
+                    <Save className="h-4 w-4 mr-2" />{saving ? 'Guardando…' : 'Guardar marca'}
+                </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">Logo, portada, descripción y redes: es lo que ve tu cliente en la carta web.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-border p-4 space-y-3">
+                    <div className="text-sm font-medium">Logo</div>
+                    <div className="flex items-center gap-3">
+                        <div className="h-16 w-16 rounded-lg border border-border bg-secondary/40 flex items-center justify-center overflow-hidden shrink-0" data-testid="marca-logo-preview">
+                            {r.logo_url
+                                ? <img src={r.logo_url} alt="Logo" className="h-full w-full object-contain" />
+                                : <ImageIcon className="h-6 w-6 text-muted-foreground" />}
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm underline cursor-pointer">
+                                <input type="file" accept="image/*" className="hidden" onChange={onFile('logo_url')} data-testid="marca-logo-input" />
+                                Subir logo
+                            </label>
+                            {r.logo_url && (
+                                <button type="button" className="text-xs text-destructive text-left" onClick={() => set({ logo_url: '' })} data-testid="marca-logo-clear">Quitar</button>
+                            )}
+                        </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">PNG o JPG hasta ~1.5 MB. Se muestra en el panel y en la carta.</p>
+                </div>
+
+                <div className="rounded-xl border border-border p-4 space-y-3">
+                    <div className="text-sm font-medium">Portada</div>
+                    <div className="h-20 w-full rounded-lg border border-border bg-secondary/40 overflow-hidden flex items-center justify-center" data-testid="marca-cover-preview">
+                        {r.cover_url
+                            ? <img src={r.cover_url} alt="Portada" className="h-full w-full object-cover" />
+                            : <span className="text-xs text-muted-foreground">Sin portada</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <label className="text-sm underline cursor-pointer">
+                            <input type="file" accept="image/*" className="hidden" onChange={onFile('cover_url')} data-testid="marca-cover-input" />
+                            Subir portada
+                        </label>
+                        {r.cover_url && (
+                            <button type="button" className="text-xs text-destructive" onClick={() => set({ cover_url: '' })} data-testid="marca-cover-clear">Quitar</button>
+                        )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">Imagen ancha (ej. 1600×600) que encabeza la carta web.</p>
+                </div>
+            </div>
+
+            <div>
+                <Label>Descripción pública</Label>
+                <Textarea
+                    value={r.public_description || ''}
+                    onChange={(e) => set({ public_description: e.target.value })}
+                    placeholder="Cocina peruana de autor con productos frescos…"
+                    className="mt-1"
+                    data-testid="marca-description"
+                />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div><Label>Instagram</Label><Input value={r.social_instagram || ''} onChange={(e) => set({ social_instagram: e.target.value })} placeholder="@turestaurante" className="mt-1" data-testid="marca-instagram" /></div>
+                <div><Label>Facebook</Label><Input value={r.social_facebook || ''} onChange={(e) => set({ social_facebook: e.target.value })} placeholder="https://facebook.com/…" className="mt-1" data-testid="marca-facebook" /></div>
+                <div><Label>WhatsApp</Label><Input value={r.social_whatsapp || ''} onChange={(e) => set({ social_whatsapp: e.target.value })} placeholder="+51 999 888 777" className="mt-1" data-testid="marca-whatsapp" /></div>
+            </div>
         </CardContent></Card>
     );
 }
@@ -361,230 +468,25 @@ function Zonas() {
     );
 }
 
-const TABLE_STATUS_DOT = {
-    disponible: 'bg-green-500',
-    ocupada: 'bg-red-500',
-    esperando_pago: 'bg-amber-500',
-    reservada: 'bg-blue-500',
-    inactiva: 'bg-gray-400',
-    pagada: 'bg-emerald-400',
-};
+function fmtServerTime(iso) {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }); }
+    catch { return iso; }
+}
 
-function Mesas() {
-    const [tables, setTables] = useState([]);
-    const [zones, setZones] = useState([]);
-    const [branches, setBranches] = useState([]);
-    const [branchesLoading, setBranchesLoading] = useState(true);
-    const [branchesError, setBranchesError] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [dlg, setDlg] = useState(false);
-    const [editing, setEditing] = useState(null);
-    const [confirmDel, setConfirmDel] = useState(null);
-    const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
-    const load = async () => {
-        try {
-            const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
-            setTables(t.data); setZones(z.data);
-        } catch {
-            // Keep the section usable with whatever data is already loaded.
-        }
-    };
-    useEffect(() => { load(); }, []);
-    const loadBranches = async () => {
-        setBranchesLoading(true);
-        setBranchesError(false);
-        try {
-            const { data } = await api.get('/branches');
-            setBranches(Array.isArray(data) ? data : []);
-        } catch (e) {
-            setBranchesError(true);
-            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
-        } finally { setBranchesLoading(false); }
-    };
-    useEffect(() => { loadBranches(); }, []);
-    const defaultArea = () => (zones[0]?.name || 'Salón');
-    const openNew = () => { setEditing(null); setForm({ number: tables.length + 1, name: '', capacity: 4, area: defaultArea(), status: 'disponible', branch_id: '' }); setDlg(true); };
-    const openEdit = (t) => { setEditing(t); setForm({ number: t.number, name: t.name, capacity: t.capacity, area: t.area, status: t.status, branch_id: t.branch_id || '' }); setDlg(true); };
-    const save = async () => {
-        if (saving) return;
-        setSaving(true);
-        try {
-            const { branch_id, ...tableForm } = form;
-            const payload = { ...tableForm, number: Number(form.number), capacity: Number(form.capacity) };
-            if (branch_id && branch_id !== (editing?.branch_id || '')) payload.branch_id = branch_id;
-            if (editing) await api.patch(`/tables/${editing.id}`, payload);
-            else await api.post('/tables', payload);
-            toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
-        finally { setSaving(false); }
-    };
-    const doDelete = async (t) => {
-        try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error('Error'); }
-    };
-    
-    const getZoneBranch = (area) => {
-        const zone = zones.find(z => z.name === area);
-        return zone?.branch_id || null;
-    };
-    
-    const getBranchName = (id) => {
-        const branch = branches.find(b => b.id === id);
-        return branch ? branch.name : null;
-    };
-    
-    const getTableBranchInfo = (table) => {
-        if (table.branch_id) {
-            const name = getBranchName(table.branch_id);
-            return { type: 'explicit', name: name || table.branch_id };
-        }
-        const zoneBranch = getZoneBranch(table.area);
-        if (zoneBranch) {
-            const name = getBranchName(zoneBranch);
-            return { type: 'inherited', name: name || zoneBranch };
-        }
-        return { type: 'none', name: 'Sin sucursal' };
-    };
+function fmtUptime(seconds) {
+    if (seconds == null) return '—';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return h > 0 ? `${h} h ${m} min` : `${m} min`;
+}
 
+function SystemItem({ label, value }) {
     return (
-        <Card><CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Grid2X2 className="h-5 w-5" /> Mesas</h2>
-                <Button onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
-            </div>
-            <p className="text-xs text-muted-foreground mb-4">
-                Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {tables.map((t) => {
-                    const branchInfo = getTableBranchInfo(t);
-                    return (
-                        <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} />
-                                    <div>
-                                        <div className="font-medium">{t.name}</div>
-                                        <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
-                                        <div className="text-xs mt-1" data-testid={`mesa-config-branch-${t.id}`}>
-                                            {branchInfo.type === 'explicit' && (
-                                                <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                    {branchInfo.name}
-                                                </span>
-                                            )}
-                                            {branchInfo.type === 'inherited' && (
-                                                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                                    Hereda: {branchInfo.name}
-                                                </span>
-                                            )}
-                                            {branchInfo.type === 'none' && (
-                                                <span className="text-muted-foreground">{branchInfo.name}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <Button size="icon" variant="ghost" onClick={() => openEdit(t)} aria-label={`Editar ${t.name}`}><Pencil className="h-4 w-4" /></Button>
-                                    <Button size="icon" variant="ghost" onClick={() => setConfirmDel(t)} aria-label={`Eliminar ${t.name}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                                </div>
-                            </div>
-                            <TableQrActions table={t} />
-                        </div>
-                    );
-                })}
-            </div>
-
-            <Dialog open={dlg} onOpenChange={setDlg}>
-                <DialogContent>
-                    <DialogHeader><DialogTitle>{editing ? 'Editar mesa' : 'Nueva mesa'}</DialogTitle></DialogHeader>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div><Label>Número</Label><Input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
-                        <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-                        <div><Label>Capacidad</Label><Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
-                        <div><Label>Zona</Label>
-                            <Select value={form.area} onValueChange={(v) => {
-                                const zoneBranch = getZoneBranch(v);
-                                // Si la mesa no tiene branch_id explícito, hereda de la zona
-                                const newBranchId = (!editing || !editing.branch_id) ? (zoneBranch || '') : form.branch_id;
-                                setForm({ ...form, area: v, branch_id: newBranchId });
-                            }}>
-                                <SelectTrigger data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
-                                <SelectContent>
-                                    {zones.map((z) => <SelectItem key={z.id} value={z.name}>{z.name}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="col-span-2">
-                            <Label htmlFor="mesa-form-branch">Sucursal</Label>
-                            <select
-                                id="mesa-form-branch"
-                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                value={form.branch_id}
-                                onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
-                                disabled={branchesLoading || branchesError || saving}
-                                data-testid="mesa-form-branch"
-                            >
-                                {!editing?.branch_id && <option value="">Heredar de la zona</option>}
-                                {editing?.branch_id && !branches.some((branch) => branch.id === editing.branch_id) && <option value={editing.branch_id}>{editing.branch_id}</option>}
-                                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                            </select>
-                            {branchesLoading && <p className="text-xs text-muted-foreground mt-1" data-testid="mesa-branches-loading">Cargando sucursales…</p>}
-                            {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="mesa-branches-retry">Reintentar</Button></div>}
-                            {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
-                            
-                            {/* Mostrar qué sucursal heredará si no hay asignación explícita */}
-                            {!form.branch_id && form.area && (() => {
-                                const zoneBranch = getZoneBranch(form.area);
-                                if (zoneBranch) {
-                                    const branchName = getBranchName(zoneBranch);
-                                    return (
-                                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-                                            ✓ Heredará: {branchName || zoneBranch} (de la zona "{form.area}")
-                                        </p>
-                                    );
-                                }
-                                return (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        La zona "{form.area}" no tiene sucursal asignada. Esta mesa quedará sin sucursal.
-                                    </p>
-                                );
-                            })()}
-                            {form.branch_id && (
-                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                                    ✓ Asignación explícita (override de la zona)
-                                </p>
-                            )}
-                        </div>
-                        {editing && (
-                            <div className="col-span-2"><Label>Estado</Label>
-                                <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        {['disponible', 'ocupada', 'esperando_pago', 'reservada', 'inactiva'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>
-                        <Button onClick={save} disabled={saving} data-testid="mesa-form-save">{saving ? 'Guardando…' : 'Guardar'}</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Eliminar {confirmDel?.name}?</AlertDialogTitle>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
-        </CardContent></Card>
+        <div>
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div className="font-medium text-sm break-words">{value}</div>
+        </div>
     );
 }
 
@@ -593,6 +495,19 @@ function Datos() {
     const [confirm, setConfirm] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [info, setInfo] = useState(null);
+    const [infoError, setInfoError] = useState(false);
+
+    const loadInfo = async () => {
+        try {
+            const { data } = await api.get('/system/info');
+            setInfo(data);
+            setInfoError(false);
+        } catch {
+            setInfoError(true);
+        }
+    };
+    useEffect(() => { loadInfo(); }, []);
 
     const reset = async () => {
         if (confirm.trim() !== 'ELIMINAR') { toast.error('Escribe ELIMINAR para confirmar'); return; }
@@ -604,6 +519,7 @@ function Datos() {
             setOpen(false);
             setConfirm('');
             setPassword('');
+            loadInfo();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo restablecer los datos');
         } finally {
@@ -619,17 +535,54 @@ function Datos() {
 
     return (
         <Card><CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-3">
-                <Database className="h-5 w-5 text-destructive" />
-                <h2 className="font-display text-lg font-semibold">Datos del sistema</h2>
+            <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="font-display text-lg font-semibold flex items-center gap-2">
+                    <Database className="h-5 w-5 text-primary" /> Datos del sistema
+                </h2>
+                <Button size="sm" variant="outline" onClick={loadInfo} data-testid="system-info-refresh">Actualizar</Button>
             </div>
-            <p className="text-sm text-muted-foreground mb-4">
-                Restablece los datos operativos (pedidos, pagos, caja, movimientos, historial y visitas de mesa).
-                Se conservan el menú, las mesas, las sucursales y los usuarios.
-            </p>
-            <Button variant="destructive" onClick={() => setOpen(true)} data-testid="data-reset-button">
-                <Trash2 className="h-4 w-4 mr-2" /> Restablecer datos operativos
-            </Button>
+            {infoError ? (
+                <p role="alert" className="text-sm text-destructive" data-testid="system-info-error">No se pudo cargar la información del sistema.</p>
+            ) : !info ? (
+                <p className="text-sm text-muted-foreground">Cargando información…</p>
+            ) : (
+                <>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4" data-testid="system-info">
+                        <SystemItem label="Versión" value={info.app_version} />
+                        <SystemItem label="Entorno" value={info.environment} />
+                        <SystemItem label="Base de datos" value={`${info.database?.name} · ${info.database?.connected ? 'conectada' : 'sin conexión'}`} />
+                        <SystemItem label="Restaurante" value={info.restaurant?.name || '—'} />
+                        <SystemItem label="Zona horaria" value={info.restaurant?.timezone || '—'} />
+                        <SystemItem label="Hora del servidor (UTC)" value={fmtServerTime(info.server_time)} />
+                        <SystemItem label="En línea desde" value={fmtUptime(info.uptime_seconds)} />
+                        <SystemItem label="Python" value={info.runtime?.python || '—'} />
+                        <SystemItem label="Datos demo" value={info.demo_seed ? 'Sí' : 'No'} />
+                    </div>
+                    <div className="mt-5 border-t pt-4" data-testid="system-counts">
+                        <div className="page-kicker mb-2">Registros</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {Object.entries(info.counts || {}).map(([key, value]) => (
+                                <div key={key} className="rounded-lg border border-border px-3 py-2">
+                                    <div className="text-xs text-muted-foreground capitalize">{key}</div>
+                                    <div className="font-mono font-semibold tabular-nums">{value}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </>
+            )}
+
+            <div className="mt-5 border-t pt-4">
+                <h3 className="font-display text-base font-semibold flex items-center gap-2 text-destructive">
+                    <Trash2 className="h-4 w-4" /> Restablecer datos operativos
+                </h3>
+                <p className="text-sm text-muted-foreground mt-2 mb-3">
+                    Borra pedidos, pagos, caja y movimientos. Se conservan el menú, las mesas, las sucursales y los usuarios.
+                </p>
+                <Button variant="destructive" onClick={() => setOpen(true)} data-testid="data-reset-button">
+                    <Trash2 className="h-4 w-4 mr-2" /> Restablecer datos operativos
+                </Button>
+            </div>
 
             <AlertDialog open={open} onOpenChange={(o) => { if (!o) cancel(); }}>
                 <AlertDialogContent>
@@ -673,12 +626,12 @@ export default function Configuracion() {
         <div className="space-y-5" data-testid="config-root">
             <p className="page-kicker mb-1">Administración</p>
             <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Settings className="h-6 w-6 text-primary" /> Configuración</h1>
-            <p className="text-muted-foreground text-sm">Datos del restaurante, sucursales, zonas y mesas.</p>
+            <p className="text-muted-foreground text-sm">Marca, datos del restaurante, sucursales, zonas y sistema.</p>
             <Temas />
             <Restaurante />
+            <Marca />
             <Sucursales />
             <Zonas />
-            <Mesas />
             <Datos />
         </div>
     );

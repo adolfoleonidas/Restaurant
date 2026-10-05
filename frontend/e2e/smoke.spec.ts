@@ -18,5 +18,49 @@ test.describe('smoke', () => {
     const token = await page.evaluate(() => window.localStorage.getItem('token'));
     expect(token).toBeTruthy();
     await page.screenshot({ path: 'e2e/artifacts/smoke-03-after-login.png' });
+
+    // Admin management modules are reachable (Mesas is now its own page).
+    await page.goto('/mesas');
+    await expect(page.getByTestId('mesas-admin-root')).toBeVisible({ timeout: 15_000 });
+    await page.goto('/configuracion');
+    await expect(page.getByTestId('config-root')).toBeVisible({ timeout: 15_000 });
+
+    // The system panel renders real backend data.
+    await expect(page.getByTestId('system-info')).toBeVisible({ timeout: 15_000 });
+
+    // Switching theme must really change the design tokens.
+    const rootPrimary = () => page.evaluate(
+      () => getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(),
+    );
+    const frescoPrimary = await rootPrimary();
+    await page.getByTestId('theme-calido').click();
+    await expect.poll(rootPrimary, { timeout: 10_000 }).not.toBe(frescoPrimary);
+    // Restore the default theme for the shared test database.
+    await page.getByTestId('theme-fresco').click();
+    await expect.poll(rootPrimary, { timeout: 10_000 }).toBe(frescoPrimary);
+
+    // Branding controls render, and the public description round-trips to the menu.
+    await expect(page.getByTestId('marca-save')).toBeVisible();
+    await expect(page.getByTestId('marca-logo-input')).toBeAttached();
+    await expect(page.getByTestId('marca-cover-input')).toBeAttached();
+
+    const description = page.getByTestId('marca-description');
+    const original = await description.inputValue();
+    const probe = `Carta E2E ${Date.now()}`;
+    const saveMarca = () => Promise.all([
+      page.waitForResponse((r) => r.url().includes('/restaurants/current') && r.request().method() === 'PATCH'),
+      page.getByTestId('marca-save').click(),
+    ]);
+
+    await description.fill(probe);
+    await saveMarca();
+    await page.goto('/');
+    // The description shows both in the cover hero and the public footer.
+    await expect(page.getByText(probe).first()).toBeVisible({ timeout: 15_000 });
+
+    // Restore the original description for the shared test database.
+    await page.goto('/configuracion');
+    await page.getByTestId('marca-description').fill(original);
+    await saveMarca();
   });
 });

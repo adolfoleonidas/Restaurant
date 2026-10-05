@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Configuracion from '@/pages/Configuracion';
+import Mesas from '@/pages/MesasAdmin';
 import Usuarios from '@/pages/Usuarios';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -183,7 +183,7 @@ describe('table branch assignment controls', () => {
         api.get.mockImplementation((path) => Promise.resolve({ data: path === '/tables' ? []
             : path === '/zones' ? [{ id: 'zone-a', name: 'Salón' }] : path === '/branches' ? [branches[0]]
                 : path === '/restaurants/current' ? { name: 'Restaurant' } : null }));
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await click('mesa-config-nueva');
         const branch = document.body.querySelector('[data-testid="mesa-form-branch"]');
         expect(branch).not.toBeNull();
@@ -199,7 +199,7 @@ describe('table branch assignment controls', () => {
     });
 
     it('omits branch_id when creating an unassigned table', async () => {
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await click('mesa-config-nueva');
         await click('mesa-form-save');
         expect(api.post).toHaveBeenCalledWith('/tables', expect.any(Object));
@@ -211,7 +211,7 @@ describe('table branch assignment controls', () => {
         api.get.mockImplementation((path) => Promise.resolve({ data: path === '/tables' ? [{ ...tables[0], branch_id: undefined }]
             : path === '/zones' ? [{ id: 'zone-a', name: 'Salón' }] : path === '/branches' ? branches
                 : path === '/restaurants/current' ? { name: 'Restaurant' } : null }));
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await clickNode(document.body.querySelector('[aria-label="Editar Mesa A"]'));
         const branch = document.body.querySelector('[data-testid="mesa-form-branch"]');
         expect(branch.value).toBe('');
@@ -222,7 +222,7 @@ describe('table branch assignment controls', () => {
 
     it('retains the displayed branch after the server rejects reassignment and does not touch QR endpoints', async () => {
         api.patch.mockRejectedValue({ response: { data: { detail: 'La mesa está ocupada' } } });
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await clickNode(document.body.querySelector('[aria-label="Editar Mesa A"]'));
         const branch = document.body.querySelector('[data-testid="mesa-form-branch"]');
         await act(async () => {
@@ -238,7 +238,7 @@ describe('table branch assignment controls', () => {
     });
 
     it('omits branch_id on an unchanged assigned table', async () => {
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await clickNode(document.body.querySelector('[aria-label="Editar Mesa A"]'));
         const branch = document.body.querySelector('[data-testid="mesa-form-branch"]');
         expect(Array.from(branch.options).map((option) => option.value)).not.toContain('');
@@ -254,7 +254,7 @@ describe('table branch assignment controls', () => {
             : Promise.resolve({ data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [{ id: 'zone-a', name: 'Salón' }]
                     : path === '/restaurants/current' ? { name: 'Restaurant' } : null }));
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await clickNode(document.body.querySelector('[aria-label="Editar Mesa A"]'));
         expect(document.body.querySelector('[data-testid="mesa-branches-loading"]')).not.toBeNull();
         await click('mesa-form-save');
@@ -273,7 +273,7 @@ describe('table branch assignment controls', () => {
         api.get.mockImplementation((path) => path === '/branches'
             ? (failing ? Promise.reject(new Error('offline')) : pendingRetry.promise)
             : Promise.resolve({ data: path === '/tables' ? [] : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' } : null }));
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await click('mesa-config-nueva');
         failing = false;
         expect(document.body.querySelector('[data-testid="mesa-branches-retry"]')).not.toBeNull();
@@ -290,7 +290,7 @@ describe('table branch assignment controls', () => {
     it('prevents duplicate table saves while the request is pending', async () => {
         const pendingSave = deferred();
         api.post.mockReturnValue(pendingSave.promise);
-        const view = await render(Configuracion);
+        const view = await render(Mesas);
         await click('mesa-config-nueva');
         await click('mesa-form-save');
         await click('mesa-form-save');

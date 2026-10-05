@@ -71,28 +71,28 @@ def user_functions(user: dict) -> list:
 def home_for(user: dict) -> str:
     if user.get("home_view"):
         return {
-            "servicio": "/servicio",
-            "mesas": "/mesas",
+            "servicio": "/salon",
+            "mesas": "/salon",
             "cocina": "/cocina",
             "caja": "/caja",
             "hoy": "/dashboard",
-        }.get(user["home_view"], "/mesas")
+        }.get(user["home_view"], "/salon")
     fns = set(user_functions(user))
     floor = "atencion" in fns
     prep = "preparacion" in fns
     cash = "cobro" in fns
     admin = "administracion" in fns
     if floor and (prep or cash):
-        return "/servicio"
+        return "/salon"
     if floor and not prep and not cash:
-        return "/mesas"
+        return "/salon"
     if prep and not floor and not cash:
         return "/cocina"
     if cash and not floor:
         return "/caja"
     if admin:
         return "/dashboard"
-    return "/mesas"
+    return "/salon"
 
 
 def apply_permissions(user: dict) -> dict:

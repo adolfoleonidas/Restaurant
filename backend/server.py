@@ -28,6 +28,7 @@ from routes import (
     zones_router,
     branches_router,
     data_router,
+    system_router,
 )
 from seed import run_seed
 
@@ -70,6 +71,7 @@ api_router.include_router(approvals_router, prefix="/approvals", tags=["approval
 api_router.include_router(zones_router, prefix="/zones", tags=["zones"])
 api_router.include_router(branches_router, prefix="/branches", tags=["branches"])
 api_router.include_router(data_router, prefix="/data", tags=["data"])
+api_router.include_router(system_router, prefix="/system", tags=["system"])
 
 app.include_router(api_router)
 

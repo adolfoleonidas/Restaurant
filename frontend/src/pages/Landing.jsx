@@ -121,6 +121,20 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
+            {restaurant?.cover_url && (
+                <section className="relative" data-testid="public-cover">
+                    <img src={restaurant.cover_url} alt="" className="w-full h-40 sm:h-52 md:h-64 object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+                    <div className="absolute bottom-4 left-0 right-0">
+                        <div className="max-w-6xl mx-auto px-4 md:px-6">
+                            <h1 className="font-display text-3xl md:text-4xl font-semibold drop-shadow-sm">{restaurant?.name}</h1>
+                            {restaurant?.public_description && (
+                                <p className="text-sm text-muted-foreground mt-1 max-w-2xl line-clamp-2">{restaurant.public_description}</p>
+                            )}
+                        </div>
+                    </div>
+                </section>
+            )}
             <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border shadow-sm" role="navigation" aria-label="Categorías del menú">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 overflow-x-auto">
                     <div className="relative shrink-0">

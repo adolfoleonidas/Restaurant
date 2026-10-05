@@ -1,6 +1,6 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import Configuracion from '@/pages/Configuracion';
+import Mesas from '@/pages/MesasAdmin';
 import { api } from '@/lib/api';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -24,7 +24,7 @@ async function renderPage() {
     const host = document.createElement('div');
     document.body.appendChild(host);
     const root = createRoot(host);
-    await act(async () => root.render(<Configuracion />));
+    await act(async () => root.render(<Mesas />));
     await flush();
     const view = { host, root };
     mountedViews.push(view);
