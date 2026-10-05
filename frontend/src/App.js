@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
 import { AssistantProvider } from '@/contexts/AssistantContext';
@@ -40,6 +41,57 @@ function ScrollToTop() {
     return null;
 }
 
+// El título de la pestaña no cambia por ruta: todas las pestañas se llaman igual
+// y quien navega con lector de pantalla pierde la confirmación del cambio de
+// vista. La base sale del <title> de index.html, así que el nombre del negocio
+// se ajusta en un solo lugar.
+const BASE_TITLE = document.title;
+const ROUTE_TITLES = [
+    ['/', 'Carta pública'],
+    ['/menu', 'Carta pública'],
+    ['/checkout', 'Confirmar pedido'],
+    ['/pedido', 'Seguimiento'],
+    ['/login', 'Ingreso'],
+    ['/unauthorized', 'Sin permisos'],
+    ['/dashboard', 'Hoy'],
+    ['/salon', 'Salón'],
+    ['/local', 'Local'],
+    ['/pedidos', 'Pedidos'],
+    ['/cocina', 'Pase de cocina'],
+    ['/caja', 'Caja'],
+    ['/comprobantes', 'Comprobantes'],
+    ['/reportes', 'Reportes'],
+    ['/disponibilidad', 'Disponibilidad'],
+    ['/productos', 'Carta'],
+    ['/combos', 'Combos'],
+    ['/categorias', 'Categorías'],
+    ['/usuarios', 'Equipo'],
+    ['/pagos', 'Datos de cobro'],
+    ['/configuracion', 'Configuración'],
+];
+
+function RouteTitle() {
+    const { pathname } = useLocation();
+    const hit = ROUTE_TITLES.find(([p]) => (p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(`${p}/`)));
+    const section = hit ? hit[1] : null;
+    useEffect(() => {
+        document.title = section ? `${section} · ${BASE_TITLE}` : BASE_TITLE;
+    }, [section]);
+    return null;
+}
+
+// ThemeProvider vive fuera del router, así que la ruta activa se le reporta
+// desde aquí: así la cocina puede quedar en modo oscuro (y salir de él al
+// navegar al resto de la app).
+function ThemeRouteSync() {
+    const { pathname } = useLocation();
+    const { setActivePath } = useTheme();
+    useEffect(() => {
+        setActivePath(pathname);
+    }, [pathname, setActivePath]);
+    return null;
+}
+
 function App() {
     return (
         <div className="App">
@@ -49,6 +101,8 @@ function App() {
                             <AssistantProvider>
                             <BrowserRouter>
                                 <ScrollToTop />
+                                <RouteTitle />
+                                <ThemeRouteSync />
                                 <Routes>
                                 {/* PUBLIC ROUTES */}
                                 <Route element={<PublicLayout />}>

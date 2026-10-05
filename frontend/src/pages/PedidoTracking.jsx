@@ -59,12 +59,17 @@ export default function PedidoTracking() {
     const [uploading, setUploading] = useState(false);
 
     if (loading && !order) {
-        return <div className="max-w-xl mx-auto px-4 py-16 text-center text-muted-foreground">Cargando…</div>;
+        return (
+            <div className="max-w-xl mx-auto px-4 py-16 text-center text-muted-foreground">
+                <h1 className="font-display text-2xl font-semibold mb-2 text-foreground">Seguimiento de pedido</h1>
+                <p>Cargando…</p>
+            </div>
+        );
     }
     if (!order) {
         return (
             <div className="max-w-xl mx-auto px-4 py-16 text-center">
-                <h2 className="font-display text-2xl font-semibold mb-2">Pedido no encontrado</h2>
+                <h1 className="font-display text-2xl font-semibold mb-2">Pedido no encontrado</h1>
                 <p className="text-muted-foreground mb-6">{error ? 'No se pudo cargar el pedido.' : 'Verifica tu código de seguimiento.'}</p>
                 <Button asChild><Link to="/">Ir al inicio</Link></Button>
             </div>
@@ -85,7 +90,7 @@ export default function PedidoTracking() {
     const upload = async () => {
         setUploading(true);
         try { await api.post(`/public/orders/${code}/proof`, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.'); }
         finally { setUploading(false); }
     };
     const needsProof = !order.has_proof && ['yape', 'plin', 'transferencia'].includes(order.payment_method_choice);

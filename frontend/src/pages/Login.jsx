@@ -25,6 +25,7 @@ export default function Login() {
     const [password, setPassword] = useState('');
     const [show, setShow] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [formError, setFormError] = useState('');
     const [restaurant, setRestaurant] = useState(null);
     const navigate = useNavigate();
     const location = useLocation();
@@ -41,7 +42,11 @@ export default function Login() {
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!email || !password) return;
+        if (!email || !password) {
+            setFormError('Ingresá tu correo y tu contraseña para entrar.');
+            return;
+        }
+        setFormError('');
         setLoading(true);
         try {
             const logged = await login(email, password);
@@ -49,7 +54,9 @@ export default function Login() {
             const fallback = homeFor(logged);
             navigate(from && from !== '/login' ? from : fallback, { replace: true });
         } catch (err) {
-            toast.error(err.response?.data?.detail || 'Error al iniciar sesión');
+            const message = err.response?.data?.detail || 'No se pudo iniciar sesión. Revisá tu correo y tu contraseña.';
+            setFormError(message);
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -61,7 +68,11 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen w-full flex items-stretch bg-background">
+        <main className="min-h-screen w-full flex items-stretch bg-background">
+            {/* El panel hero está oculto en móvil (hidden lg:flex): el h1 de la
+                página se coloca aquí para que siempre exista un único encabezado
+                de nivel 1 visible o accesible. */}
+            <h1 className="sr-only">Ingreso de personal</h1>
             <div className="hidden lg:flex lg:w-[52%] relative overflow-hidden">
                 <img
                     src="https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1200"
@@ -71,7 +82,7 @@ export default function Login() {
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
-                    <div className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</div>
+                    <p className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</p>
                     <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
                 </div>
             </div>
@@ -110,11 +121,14 @@ export default function Login() {
                                     data-testid="login-password-input"
                                     className="h-11 pr-10 rounded-sm"
                                 />
-                                <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-2.5 text-muted-foreground" data-testid="login-toggle-password">
+                                <button type="button" onClick={() => setShow(!show)} aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'} className="absolute right-1 top-1 grid h-9 w-9 place-items-center text-muted-foreground" data-testid="login-toggle-password">
                                     {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                 </button>
                             </div>
                         </div>
+                        {formError && (
+                            <p role="alert" className="rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{formError}</p>
+                        )}
                         <Button type="submit" disabled={loading} className="w-full h-12 rounded-sm text-base" data-testid="login-submit-button">
                             {loading ? 'Entrando…' : 'Entrar al salón'}
                         </Button>
@@ -139,6 +153,6 @@ export default function Login() {
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

@@ -71,13 +71,13 @@ export const CartPanel = ({ onClose }) => {
                                         <div className="font-display truncate">{it.product_name}</div>
                                         <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmtMoney(it.unit_price)} c/u</div>
                                     </div>
-                                    <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
+                                    <span className={`text-xs font-medium rounded-full px-1.5 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <Button size="icon" variant="outline" className="h-9 w-9 rounded-sm" disabled={pending} onClick={() => decrementLine(it).catch((e) => toast.error(e.message))} data-testid={`cart-live-item-${it.id}-dec`}><Minus className="h-3.5 w-3.5" /></Button>
+                                        <Button size="icon" variant="outline" className="h-11 w-11 rounded-sm" aria-label={`Quitar una unidad de ${it.product_name}`} disabled={pending} onClick={() => decrementLine(it).catch((e) => toast.error(e.message))} data-testid={`cart-live-item-${it.id}-dec`}><Minus className="h-3.5 w-3.5" /></Button>
                                         <span className="w-6 text-center font-mono font-semibold tabular-nums">{it.quantity}</span>
-                                        <Button size="icon" variant="outline" className="h-9 w-9 rounded-sm" disabled={pending || billPending} onClick={() => addProduct(product, 1).catch((e) => toast.error(e.message))} data-testid={`cart-live-item-${it.id}-inc`}><Plus className="h-3.5 w-3.5" /></Button>
+                                        <Button size="icon" variant="outline" className="h-11 w-11 rounded-sm" aria-label={`Agregar una unidad de ${it.product_name}`} disabled={pending || billPending} onClick={() => addProduct(product, 1).catch((e) => toast.error(e.message))} data-testid={`cart-live-item-${it.id}-inc`}><Plus className="h-3.5 w-3.5" /></Button>
                                     </div>
                                     <span className="font-mono font-semibold tabular-nums text-primary">{fmtMoney(it.subtotal)}</span>
                                 </div>
@@ -121,13 +121,13 @@ export const CartPanel = ({ onClose }) => {
                                 <div className="font-display truncate">{it.name}{it.is_combo ? ' · combo' : ''}</div>
                                 <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmtMoney(it.price)} c/u</div>
                             </div>
-                            <button onClick={() => remove(it.product_id)} className="text-muted-foreground hover:text-destructive" data-testid={`cart-item-${it.product_id}-remove`}><X className="h-4 w-4" /></button>
+                            <button onClick={() => remove(it.product_id)} aria-label={`Quitar ${it.name} del pedido`} className="grid h-11 w-11 place-items-center text-muted-foreground hover:text-destructive" data-testid={`cart-item-${it.product_id}-remove`}><X className="h-4 w-4" /></button>
                         </div>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <Button size="icon" variant="outline" className="h-9 w-9 rounded-sm" onClick={() => updateQty(it.product_id, it.quantity - 1)} data-testid={`cart-item-${it.product_id}-dec`}><Minus className="h-3.5 w-3.5" /></Button>
+                                <Button size="icon" variant="outline" className="h-11 w-11 rounded-sm" aria-label={`Quitar una unidad de ${it.name}`} onClick={() => updateQty(it.product_id, it.quantity - 1)} data-testid={`cart-item-${it.product_id}-dec`}><Minus className="h-3.5 w-3.5" /></Button>
                                 <span className="w-6 text-center font-mono font-semibold tabular-nums">{it.quantity}</span>
-                                <Button size="icon" variant="outline" className="h-9 w-9 rounded-sm" onClick={() => updateQty(it.product_id, it.quantity + 1)} data-testid={`cart-item-${it.product_id}-inc`}><Plus className="h-3.5 w-3.5" /></Button>
+                                <Button size="icon" variant="outline" className="h-11 w-11 rounded-sm" aria-label={`Agregar una unidad de ${it.name}`} onClick={() => updateQty(it.product_id, it.quantity + 1)} data-testid={`cart-item-${it.product_id}-inc`}><Plus className="h-3.5 w-3.5" /></Button>
                             </div>
                             <span className="font-mono font-semibold tabular-nums text-primary">{fmtMoney(it.price * it.quantity)}</span>
                         </div>

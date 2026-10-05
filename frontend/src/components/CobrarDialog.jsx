@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { api } from '@/lib/api';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { Banknote, Smartphone, CreditCard, Building2, ArrowLeftRight, CheckCircle2, Printer, Copy, Info, Lock, HelpCircle, X, ChevronDown, Maximize2 } from 'lucide-react';
@@ -90,6 +91,8 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const [proofRefreshError, setProofRefreshError] = useState('');
     const idempotencyRef = useRef(null);
     const dialogEpochRef = useRef(0);
+    const dialogRef = useRef(null);
+    const lastFocusRef = useRef(null);
 
     const showToast = useCallback((msg) => {
         setToastMsg(msg);
@@ -143,8 +146,41 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         if (!open) return undefined;
         const onKey = (e) => {
             if (e.ctrlKey || e.metaKey || e.altKey) return;
+            // Trampa de foco: el diálogo se comporta como modal de verdad. Se
+            // atiende antes del filtro de campos para que Tab no escape al fondo
+            // (que queda detrás del overlay).
+            if (e.key === 'Tab') {
+                const dialog = dialogRef.current;
+                if (!dialog) return;
+                const focusables = Array.from(dialog.querySelectorAll(
+                    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                )).filter((el) => el.getClientRects().length > 0);
+                if (!focusables.length) return;
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                const current = document.activeElement;
+                if (!dialog.contains(current)) {
+                    e.preventDefault();
+                    first.focus();
+                } else if (e.shiftKey && current === first) {
+                    e.preventDefault();
+                    last.focus();
+                } else if (!e.shiftKey && current === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
+                return;
+            }
             if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName || '')) return;
             if (showVerify || showHelp || showHistory || showQr) return;
+            // Escape cierra el cobro, salvo que haya una operación en curso:
+            // nunca se abandona el diálogo a mitad de un registro de pago.
+            if (e.key === 'Escape') {
+                if (loading || result || proofSending) return;
+                e.preventDefault();
+                onOpenChange(false);
+                return;
+            }
             const idx = Number(e.key);
             if (!Number.isInteger(idx) || idx < 1 || idx > METHODS.length) return;
             if (proofIntent && !proofSent) return; // method rail is locked mid-proof-send
@@ -157,7 +193,19 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order]);
+    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order, loading, result, proofSending, onOpenChange]);
+
+    // El foco entra al diálogo al abrirlo y vuelve al botón que lo abrió al
+    // cerrarlo (antes quedaba en el botón "Cobrar", que queda detrás del
+    // overlay, y el foco se perdía en el documento).
+    useEffect(() => {
+        if (open) {
+            lastFocusRef.current = document.activeElement;
+            dialogRef.current?.focus();
+        } else if (lastFocusRef.current && document.contains(lastFocusRef.current)) {
+            lastFocusRef.current.focus();
+        }
+    }, [open]);
 
     if (!open) return null;
     const acct = live || order;
@@ -340,7 +388,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 if (e.response?.status === 409 && detail?.code === 'account_changed') {
                     setStale(detail);
                 } else {
-                    toast.error(typeof detail === 'string' ? detail : (detail?.message || 'Error al cobrar'));
+                    toast.error(typeof detail === 'string' ? detail : (detail?.message || 'No se pudo registrar el pago. Revisá tu conexión y reintentá.'));
                     idempotencyRef.current = newIdempotencyKey();
                 }
             }
@@ -473,8 +521,10 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const proofAlreadySent = acct.payment_status === 'comprobante_subido' || proofSent;
 
     return (
-        <div className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}>
-        <div className="cobro-checkout" data-testid="caja-cobrar-dialog" role="dialog" aria-labelledby="checkout-title">
+        <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+        <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }} />
+        <DialogPrimitive.Content className="cobro-checkout" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-testid="caja-cobrar-dialog" aria-labelledby="checkout-title" onEscapeKeyDown={(e) => { if (loading || result || proofSending) e.preventDefault(); }}>
             {!online && <div className="offline-banner" role="status">Sin conexión. Reconecta para registrar pagos.</div>}
             {/* Header */}
             <header className="cobro-checkout-header">
@@ -1085,7 +1135,8 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
             {/* Toast */}
             {toastMsg && <div className="cobro-toast show" role="status">{toastMsg}</div>}
-        </div>
-        </div>
+        </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
     );
 }
