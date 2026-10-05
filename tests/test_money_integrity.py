@@ -16,6 +16,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
+from billing import method_amounts
 from routes.cash import _shift_totals, close_register
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment
@@ -889,3 +890,80 @@ def test_stale_kitchen_update_cannot_overwrite_a_payment():
         assert stored["status"] == "en_preparacion"
         assert paid_qty == 0
         assert stored["amount_paid"] == 0
+
+
+def test_mixed_payment_with_change_nets_the_change_off_the_drawer():
+    """Cash 60 + Yape 50 on a 100 bill, with 10 change: 50 cash and 50 Yape.
+
+    The drawer hands the change back, so the cash side keeps 50 and not the 60
+    that was handed over; otherwise the shift closes with a phantom surplus.
+    """
+    payment = {
+        "method": "mixto",
+        "amount": 100.0,
+        "received_amount": 110.0,
+        "change_amount": 10.0,
+        "splits": [
+            {"method": "efectivo", "amount": 60.0},
+            {"method": "yape", "amount": 50.0},
+        ],
+    }
+    assert method_amounts(payment) == {"efectivo": 50.0, "yape": 50.0}
+
+
+def test_mixed_payment_without_change_keeps_each_split():
+    payment = {
+        "method": "mixto",
+        "amount": 100.0,
+        "received_amount": 100.0,
+        "change_amount": 0.0,
+        "splits": [
+            {"method": "efectivo", "amount": 60.0},
+            {"method": "yape", "amount": 40.0},
+        ],
+    }
+    assert method_amounts(payment) == {"efectivo": 60.0, "yape": 40.0}
+
+
+def test_charging_without_a_new_discount_keeps_the_accounts_discount():
+    """Voiding leaves the discount on the account; re-charging must honour it."""
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=100.0, discount=10.0, total=90.0, amount_paid=0.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(_payment_body(amount=90, received_amount=90), _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return paid, stored
+
+    paid, stored = asyncio.run(run())
+    assert paid["discount"] == 10.0
+    assert paid["total"] == 90.0
+    assert stored["amount_paid"] == 90.0
+    assert stored["status"] == "pagado"
+
+
+def test_public_pickup_payment_can_be_voided_without_an_open_visit():
+    """A public pickup carries an attention_id for numbering but no visit."""
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(
+            order_type="recojo", status="pagado", total=20.0, amount_paid=20.0,
+            attention_id="attention-1",
+        ))
+        db.orders.docs[0]["items"][0]["paid_qty"] = 1
+        db.cash_registers.docs.append(_open_register())
+        db.payments.docs.append({
+            "id": "pay-1", "restaurant_id": RID, "order_id": "order-1", "order_number": 12,
+            "cash_register_id": "reg-open", "branch_id": "branch-1", "method": "efectivo",
+            "amount": 20.0, "received_amount": 20.0, "change_amount": 0.0,
+            "status": "completed", "created_at": STAMP, "paid_by": "cashier-1",
+        })
+        _bind(db)
+        voided = await apply_void_payment("pay-1", _cashier(), "el cliente cancelo", "void")
+        stored = await db.orders.find_one({"id": "order-1"})
+        return voided, stored
+
+    voided, stored = asyncio.run(run())
+    assert voided["status"] in ("voided", "refunded")
+    assert stored["amount_paid"] == 0.0

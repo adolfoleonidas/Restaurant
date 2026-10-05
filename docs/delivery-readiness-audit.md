@@ -103,20 +103,20 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 
 ## 💰 Bugs de dinero (reproducidos con el arnés del repo)
 
-Ejecutados contra las rutas reales sobre el fake in-memory de `tests/test_money_integrity.py`,
-sin tocar datos. Los tres primeros están **confirmados leyendo el código**.
+Ejecutados contra las rutas reales sobre el fake in-memory de `tests/test_money_integrity.py`.
+Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite hermética da **346 ✅ / 0 ❌**.
 
-| Sev | Bug | Escenario real | Evidencia |
-|---|---|---|---|
-| **P1** | **Pago mixto con vuelto descuadra el cajón** | Total 100: efectivo 60 + Yape 50 ⇒ el cliente recibe 10 de vuelto. El sistema atribuye **efectivo 60 / Yape 40**; la realidad es **efectivo 50 / Yape 50** ⇒ el cierre muestra un **faltante falso de 10** | `billing.py:47-66` (reparte el monto aplicado y **no** descuenta el vuelto) + `payments.py:333-339` (`sum_splits` puede superar `remaining`) |
-| **P1** | **Anular un cobro de pedido web de recojo es imposible** (409 permanente) | Pedido de recojo cobrado ⇒ `attention_id` sin `attention_state` ⇒ el void cae en la rama de visita y responde `409 La visita está cambiando` | `public.py:505,561-566` → `payments.py:703-704,760-761` |
-| **P1** | **Se pierde el descuento al recobrar tras anular** | Cobro de 90 con descuento 10 ⇒ se anula ⇒ la UI muestra Total 90 y cobra 90, pero el servidor recalcula 100 ⇒ la cuenta queda **parcial con 10 pendientes** y la visita no cierra | `payments.py:294-300,797-800`, `CobrarDialog.jsx:169,305` |
-| **P1** | **Un fallo entre el claim y el insert deja la orden "pagada" sin ningún pago** | El rollback restaura todo **menos** `payment_status` ⇒ queda `payment_status="pagado"` con `amount_paid=0` | `payments.py:401-404,462-463,447-460` |
-| P2 | Un comprobante pendiente desaparece de la cola si entra un pago parcial | El cliente sube Yape por 100; el cajero cobra 10 en efectivo ⇒ pasa a `parcial` y se pueden cobrar 90 **encima** del Yape ya pagado | `order_flow.py:142-149`, `payments.py:217-218` |
-| P2 | El reintento idempotente devuelve un payload sin `fully_paid`/`remaining` | Corte de red tras un cobro exitoso ⇒ el cajero reintenta ⇒ el diálogo dice "Restante: —" con la cuenta ya cubierta | `payments.py:53-56,267-273` vs `:498-500` |
-| P2 | Movimientos de caja sin control | Un cajero saca 200 del cajón y registra un `ingreso` de 200 ⇒ cierra con `difference = 0`, sin aprobación ni `audit_logs` | `cash.py:261-277,55-61` |
-| P2 | Mutaciones públicas no recalculan `payment_status` | Pedido web pagado y no entregado: el cliente agrega un postre ⇒ sube el total pero sigue `pagado` ⇒ la deuda no se cobra nunca | `public.py:619-623,652-654,682-684` |
-| P3 | Métodos de pago deshabilitados se pueden usar igual | El local desactiva "tarjeta" y se cobra igual por API | `payments.py:264-353` nunca lee `payment_configs` |
+| Sev | Bug | Estado |
+|---|---|---|
+| **P1** | **Pago mixto con vuelto descuadraba el cajón**: total 100 con efectivo 60 + Yape 50 y vuelto 10 atribuía 60/40 en vez de 50/50 (faltante falso de 10) | ✅ **resuelto**: `method_amounts` netea el vuelto contra el efectivo y cierra contra el monto cobrado (`billing.py`) |
+| **P1** | **Anular un cobro de pedido web de recojo era imposible** (409 permanente) | ✅ **resuelto**: un recojo lleva `attention_id` para numerar pero **no** es una visita; el helper `_has_open_visit()` decide, en los 3 caminos que lo confundían (`payments.py`) |
+| **P1** | **Se perdía el descuento al recobrar tras anular**: la cuenta volvía al total sin descuento y quedaba parcial | ✅ **resuelto**: el descuento (y la propina) de la cuenta se conservan cuando no se manda uno nuevo, y solo un descuento **nuevo o cambiado** exige permiso y motivo. La UI ahora manda el descuento efectivo (`payments.py`, `CobrarDialog.jsx`) |
+| **P1** | **Un fallo entre el claim y el insert dejaba la orden "pagada" sin ningún pago** | ✅ **resuelto**: el rollback restaura también `payment_status` y `fulfillment_status` (`payments.py`) |
+| P2 | Un comprobante pendiente desaparece de la cola si entra un pago parcial | ⏳ pendiente |
+| P2 | El reintento idempotente devuelve un payload sin `fully_paid`/`remaining` | ⏳ pendiente |
+| P2 | Movimientos de caja sin control (cualquier cajero crea ingreso/egreso) | ⏳ pendiente |
+| P2 | Mutaciones públicas no recalculan `payment_status` | ⏳ pendiente |
+| P3 | Métodos de pago deshabilitados se pueden usar igual | ⏳ pendiente |
 
 ---
 
