@@ -204,7 +204,11 @@ export default function MesaCard({
                     </div>
                 )}
                 {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
-                    <div className={`flex items-center gap-1 text-xs ${urgency ? '' : 'opacity-75'}`}>
+                    /* Sin opacity: sobre los fondos suaves de estado el tiempo
+                       quedaba en 3,94:1 (por debajo de AA). El token apagado da
+                       la misma jerarquía sin perder contraste; los colores de
+                       urgencia van en línea y ya cumplen. */
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         <span style={urgency === 'bad' ? { color: '#B91C1C', fontWeight: 700 } : urgency === 'warn' ? { color: '#B45309', fontWeight: 600 } : undefined}>
                             Hace {elapsed}
