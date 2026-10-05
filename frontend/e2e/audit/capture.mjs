@@ -35,6 +35,12 @@ const ALL_VIEWPORTS = [
   { id: 'desktop', width: 1440, height: 900, mobile: false, hasTouch: false, label: 'Desktop 1440x900' },
   { id: 'tablet', width: 1024, height: 768, mobile: false, hasTouch: true, label: 'Tablet 1024x768' },
   { id: 'mobile', width: 390, height: 844, mobile: true, hasTouch: true, label: 'Mobile 390x844' },
+  // Los dos tamaños que faltaban y que escondían hallazgos reales: 360 px es el
+  // Android más estrecho que se usa en el local (ahí desbordaban Pedidos y
+  // Usuarios sin que la matriz de 390 px lo viera) y 844x390 es el móvil de
+  // lado, donde el formulario de login y el pase de cocina se recortan.
+  { id: 'mobile360', width: 360, height: 640, mobile: true, hasTouch: true, label: 'Mobile chico 360x640' },
+  { id: 'mobile-landscape', width: 844, height: 390, mobile: true, hasTouch: true, label: 'Mobile apaisado 844x390' },
 ];
 
 const USERS = {

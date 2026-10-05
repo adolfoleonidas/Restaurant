@@ -165,7 +165,18 @@ export const COLLECT = () => {
     const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.value || '').trim();
     const labelledBy = el.getAttribute('aria-labelledby');
     const imgAlt = el.querySelector && el.querySelector('img[alt]:not([alt=""])');
-    if (!name && !labelledBy && !imgAlt) {
+    // Un control envuelto en un <label> toma su texto como nombre accesible, y
+    // otro puede tomarlo de un <label for="id"> remoto. Sin estas dos vías, las
+    // casillas de Local y los inputs de archivo de Configuración contaban como
+    // anónimos aunque axe (la regla `label`) los da por correctos.
+    const wrappingLabel = el.closest && el.closest('label');
+    const wrappingText = wrappingLabel ? (wrappingLabel.textContent || '').trim() : '';
+    let forText = '';
+    if (!wrappingText && el.id && typeof CSS !== 'undefined' && CSS.escape) {
+      const remote = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      forText = remote ? (remote.textContent || '').trim() : '';
+    }
+    if (!name && !wrappingText && !forText && !labelledBy && !imgAlt) {
       nameless.push({ selector: cssPath(el), tag: el.tagName.toLowerCase(), type: el.getAttribute('type') || '' });
     }
   }
