@@ -1,8 +1,8 @@
 import React from 'react';
-import { Bell, CheckCheck, Clock, Link2, Plus, Receipt, UtensilsCrossed } from 'lucide-react';
+import { Bell, Check, CheckCheck, Clock, Link2, Plus, Receipt, UtensilsCrossed } from 'lucide-react';
 import AttentionReference from '@/components/AttentionReference';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
-import { fmtElapsed, fmtMoney } from '@/lib/format';
+import { elapsedMinutes, fmtElapsed, fmtMoney } from '@/lib/format';
 import { canCloseAttention } from '@/lib/attentionClose';
 
 /**
@@ -67,10 +67,16 @@ export default function MesaCard({
     onCloseAttention,
     onTake,
 }) {
-    const { table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva, group, groupBadge } = item;
+    const { table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva, group, groupBadge, groupNumbers } = item;
     const s = FLOOR_STYLE[floor.key];
     const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
     const elapsed = displayOrder?.created_at ? fmtElapsed(displayOrder.created_at) : null;
+    // Urgencia por tiempo de permanencia: ámbar a partir de 30 min, rojo a los 45.
+    const minutes = elapsedMinutes(displayOrder?.created_at || serviceOrder?.created_at || null);
+    const urgency = minutes >= 45 ? 'bad' : minutes >= 30 ? 'warn' : null;
+    const isLate = floor.key === 'cuenta' && urgency === 'bad';
+    // Miembros del grupo además de la mesa que muestra esta tarjeta.
+    const groupOthers = (groupNumbers || []).filter((n) => Number(n) !== Number(t.number));
     const closeable = canClose && canCloseAttention(t, serviceOrder);
     const showDeliver = canServe && (floor.key === 'listo' || ready > 0) && Boolean(serviceOrder);
     const showCobrar = canCharge && floor.key === 'cuenta' && Boolean(serviceOrder);
@@ -128,7 +134,7 @@ export default function MesaCard({
             data-selected={picked ? 'true' : undefined}
             data-grouped={group ? 'true' : undefined}
             onClick={() => (selectMode ? onSelect(t) : onOpen(t))}
-            className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${needsAttention ? 'ring-2 ring-offset-1' : ''} ${picked ? 'ring-4 ring-primary' : ''}`}
+            className={`relative rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${isLate ? 'floor-late' : ''} ${needsAttention ? 'ring-2 ring-offset-1' : ''} ${picked ? 'ring-4 ring-primary' : ''}`}
             style={{
                 background: s.bg,
                 // Inherited by every child: no child repeats `color: s.fg`.
@@ -141,13 +147,27 @@ export default function MesaCard({
         >
             <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform">
                 <div className="flex items-start justify-between gap-1">
-                    <div className="font-display text-3xl sm:text-4xl font-bold leading-none">{t.number}</div>
-                    {picked && (
-                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center bg-primary text-primary-foreground" aria-label="Mesa elegida">
-                            <Link2 className="h-3.5 w-3.5" />
+                    {groupOthers.length > 0 ? (
+                        <div className="flex items-center gap-1 flex-wrap">
+                            <div className="font-display text-3xl sm:text-4xl font-bold leading-none">{t.number}</div>
+                            {groupOthers.map((n) => (
+                                <span key={n} className="h-6 min-w-6 px-1 grid place-items-center rounded-md bg-black/5 text-sm font-bold leading-none">
+                                    {n}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="font-display text-3xl sm:text-4xl font-bold leading-none">{t.number}</div>
+                    )}
+                    {selectMode && (
+                        <span
+                            aria-label={picked ? 'Mesa elegida' : 'Elegir mesa'}
+                            className={`absolute top-3 right-3 h-6 w-6 rounded-md border-2 grid place-items-center ${picked ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border'}`}
+                        >
+                            {picked && <Check className="h-4 w-4" />}
                         </span>
                     )}
-                    {!picked && needsAttention && (
+                    {!selectMode && needsAttention && (
                         <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
                             <Bell className="h-3.5 w-3.5 text-white" />
                         </span>
@@ -179,9 +199,11 @@ export default function MesaCard({
                     </div>
                 )}
                 {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
-                    <div className="flex items-center gap-1 text-xs opacity-75">
+                    <div className={`flex items-center gap-1 text-xs ${urgency ? '' : 'opacity-75'}`}>
                         <Clock className="h-3 w-3" />
-                        <span>Hace {elapsed}</span>
+                        <span style={urgency === 'bad' ? { color: '#B91C1C', fontWeight: 700 } : urgency === 'warn' ? { color: '#B45309', fontWeight: 600 } : undefined}>
+                            Hace {elapsed}
+                        </span>
                     </div>
                 )}
                 {showVisitaActiva && <div className="text-xs opacity-80">Visita activa</div>}
