@@ -71,7 +71,7 @@ Implementation and both local suites are green in the worktree `.worktrees/unir-
 - Merged state re-verified: backend `python.exe -m pytest tests -m "not integration" -q` -> **387 passed, 49 deselected** (includes main's new tests); frontend `craco test --watchAll=false --runInBand` -> **33 suites / 213 tests passed**.
 - When F1 was pushed, `main` had moved again (`8f88e76..5f77ae1`, five more commits: auth/admin scope, public tracking throttle, system info, feature-switch UI, e2e smoke). None of them touch a file this branch changed and `git merge-tree` still reports a **clean** merge, but the branch is no longer a fast-forward of `main`. `main` has moved five times during this delivery, so re-check the merge right before merging. Any push to `main` still triggers the production deploy.
 
-Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main`, or build F2 (the remaining future capability specified below).
+Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`) or merge into `main`. F2 is not part of this delivery: it is tracked in issue #40.
 
 ## F1 — IMPLEMENTED (2026-10-04): join tables that already have their own orders
 
@@ -85,14 +85,16 @@ What F1 changed (see UM-5):
 - The join audit records `accounts`, so a later investigation can tell one bill from two.
 - Frontend: `groupAccountTables` reads the bills in the plural; the member card badge reports `· N cuentas`; the sheet lists every bill (member, order number, total, "Abrir"), and it only follows a bill automatically when the group holds exactly one.
 
-## F2 — FUTURE (NOT implemented, NOT authorized): merge two accounts into one
+## F2 — FUTURE: merge two accounts into one (tracked as issue #40)
+
+**Tracked in GitHub: [#40 · [Feature] Unir mesas: fusionar dos cuentas en una sola (F2)](https://github.com/adolfoleonidas/Restaurant/issues/40)** — the owner deliberately deferred it there on 2026-10-04. The issue carries the proposed scope, the questions below and the tests the work must bring; this section keeps the design reasoning next to the code.
 
 - **F2 — Merge into a single account.** Pick the account that survives, move the items of the other order into it, recompute subtotal/total/discount/tip, rebuild the kitchen state, close the source visit and free the source table, with an audit entry. This is the money-and-kitchen half and needs its own careful delivery.
 
-**Open questions to answer before implementing F2** (they decide the design, not the implementation):
+**Open questions to answer before implementing F2** (they decide the design, not the implementation, and are repeated in the issue):
 1. Which account survives: the oldest, the group's anchor, or the one the waiter picks? What happens to the surviving attention number?
 2. Does a partial payment or a pending proof block the merge (recommended) or does the payment follow the surviving order?
 3. Items already `entregado` or `en_preparacion`: do they move with their state, or get flagged for the kitchen?
 4. Who may merge (admin/mozo/cajero) and does it need a reason or an approval, like voids and discounts do today?
 
-**Status:** F2 is not implemented and no route or schema exists for it; F1 shipped as described above. When authorized, this section is the starting point and should become its own task list (merge endpoint, money verification, kitchen state rebuild, audit), each with its own fake-only and real-Mongo evidence.
+**Status:** F2 is not implemented and no route or schema exists for it; it lives in issue #40 and is out of scope for this delivery. F1 shipped as described above. When authorized, the issue is the starting point and should become its own task list (merge endpoint, money verification, kitchen state rebuild, audit), each with its own fake-only and real-Mongo evidence.
