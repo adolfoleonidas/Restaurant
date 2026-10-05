@@ -201,7 +201,12 @@ def test_wrong_tenant_user_target_is_not_disclosed_or_mutated(monkeypatch):
     assert db.users.queries[0] == {"id": "user-1", "restaurant_id": "tenant-a"}
 
 
-def test_user_mutations_keep_existing_admin_function_authorization():
+def test_staff_management_is_restricted_to_the_admin_role():
+    """The `administracion` function opens every panel except this one.
+
+    An encargado must not be able to reset the admin's password or delete the
+    account, which is exactly what managing users would allow.
+    """
     from inspect import signature
     create_dep = signature(user_routes.create_user).parameters["user"].default.dependency
     update_dep = signature(user_routes.update_user).parameters["user"].default.dependency
@@ -210,7 +215,9 @@ def test_user_mutations_keep_existing_admin_function_authorization():
     async def checks():
         assert await create_dep(user=_admin()) == _admin()
         function_admin = {"id": "function-admin", "restaurant_id": "tenant-a", "role": "mozo", "functions": ["administracion"]}
-        assert await update_dep(user=function_admin) == function_admin
+        with pytest.raises(HTTPException) as blocked:
+            await update_dep(user=function_admin)
+        assert blocked.value.status_code == 403
         with pytest.raises(HTTPException) as error:
             await create_dep(user={"id": "waiter", "restaurant_id": "tenant-a", "role": "mozo", "functions": ["atencion"]})
         assert error.value.status_code == 403

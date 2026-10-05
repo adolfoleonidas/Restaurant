@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
 from database import db
-from auth import require_roles, hash_password, get_current_user, apply_permissions
+from auth import require_role_exact, hash_password, get_current_user, apply_permissions
 from models import UserCreate, UserUpdate
 
 router = APIRouter()
@@ -24,7 +24,7 @@ def _now():
 
 
 @router.get("")
-async def list_users(user: dict = Depends(require_roles(["admin"]))):
+async def list_users(user: dict = Depends(require_role_exact("admin"))):
     items = await db.users.find(
         {"restaurant_id": user["restaurant_id"]},
         {"_id": 0, "password_hash": 0}
@@ -33,7 +33,7 @@ async def list_users(user: dict = Depends(require_roles(["admin"]))):
 
 
 @router.post("")
-async def create_user(data: UserCreate, user: dict = Depends(require_roles(["admin"]))):
+async def create_user(data: UserCreate, user: dict = Depends(require_role_exact("admin"))):
     if data.branch_id is not None:
         await _assert_owned_branch(data.branch_id, user["restaurant_id"])
     existing = await db.users.find_one({"email": data.email.lower()})
@@ -61,7 +61,7 @@ async def create_user(data: UserCreate, user: dict = Depends(require_roles(["adm
 
 
 @router.patch("/{user_id}")
-async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(require_roles(["admin"]))):
+async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(require_role_exact("admin"))):
     user_filter = {"id": user_id, "restaurant_id": user["restaurant_id"]}
     target = await db.users.find_one(user_filter)
     if not target:
@@ -82,7 +82,7 @@ async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(requi
 
 
 @router.delete("/{user_id}")
-async def delete_user(user_id: str, user: dict = Depends(require_roles(["admin"]))):
+async def delete_user(user_id: str, user: dict = Depends(require_role_exact("admin"))):
     if user_id == user["id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
     res = await db.users.delete_one({"id": user_id, "restaurant_id": user["restaurant_id"]})

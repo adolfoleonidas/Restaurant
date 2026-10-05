@@ -78,6 +78,9 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
             ] : []),
         ];
     }
+    // Staff accounts and passwords belong to the owner: the `administracion`
+    // function opens every other panel, but not this one.
+    items = items.filter((n) => n.to !== '/usuarios' || user.role === 'admin');
     const main = items.filter((n) => n.group !== 'more');
     const more = items.filter((n) => n.group === 'more');
     return (
