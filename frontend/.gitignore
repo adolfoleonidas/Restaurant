@@ -11,6 +11,12 @@
 # production
 /build
 
+# playwright e2e
+/test-results
+/playwright-report
+/e2e/artifacts
+/e2e/.runtime.json
+
 # misc
 .DS_Store
 .env.local
