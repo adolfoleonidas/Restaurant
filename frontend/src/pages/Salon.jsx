@@ -130,6 +130,7 @@ export default function Salon() {
     const [productCategory, setProductCategory] = useState('all');
     const [productSearch, setProductSearch] = useState('');
     const [savingItem, setSavingItem] = useState(false);
+    const [aliasDraft, setAliasDraft] = useState('');
     const searchRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
@@ -502,6 +503,20 @@ export default function Salon() {
         }
     };
 
+    // Alias opcional de la cuenta (identifica quién pidió; viaja a cocina).
+    const saveAlias = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake) return;
+        try {
+            await api.patch(`/orders/${orderId}/alias`, { alias: aliasDraft.trim() || null });
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+            toast.success('Alias guardado');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        }
+    };
+
     // "Tomar pedido" abre el sheet; la cuenta se crea al agregar el primer
     // producto. No navega a /pedidos.
     const takeOrderInline = async (t) => {
@@ -698,6 +713,11 @@ export default function Salon() {
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
     }, [selectMode, cancelSelection]);
+
+    // El alias del formulario sigue a la cuenta que se está viendo.
+    useEffect(() => {
+        setAliasDraft(openTable?.order?.customer_name || '');
+    }, [openTable?.order?.id, openTable?.order?.customer_name]);
 
     return (
         <div className={selectMode ? 'space-y-5 pb-28' : 'space-y-5'} data-testid="salon-root">
@@ -934,6 +954,15 @@ export default function Salon() {
                         const canCompose = canTake && ['disponible', 'ocupada'].includes(t.status);
                         const draft = Boolean(order) && order.status === 'nuevo';
                         const orderItems = (order?.items || []).filter((i) => i.status !== 'cancelado');
+                        // Cuántos platos pidió la mesa en total (todas las cuentas):
+                        // el mozo lo lee de un vistazo sin sumar cuentas a mano.
+                        const tableQuantities = (accounts || []).flatMap((o) => o.items || [])
+                            .filter((i) => i.status !== 'cancelado')
+                            .reduce((acc, i) => {
+                                const name = i.product_name || 'Producto';
+                                acc[name] = (acc[name] || 0) + Number(i.quantity || 0);
+                                return acc;
+                            }, {});
                         return (
                             <>
                                 <div className="p-5 border-b" style={{ background: s.bg }}>
@@ -981,6 +1010,39 @@ export default function Salon() {
                                                     <Link2 className="h-3 w-3 inline mr-1" />Fusionar
                                                 </button>
                                             )}
+                                        </div>
+                                    )}
+                                    {canTake && order && (
+                                        <div className="flex items-center gap-2" data-testid="mesa-sheet-alias-row">
+                                            <Input
+                                                className="h-9"
+                                                placeholder="Alias de la cuenta (opcional)"
+                                                value={aliasDraft}
+                                                onChange={(e) => setAliasDraft(e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
+                                                data-testid="mesa-sheet-alias"
+                                            />
+                                            <Button
+                                                size="sm"
+                                                className="h-9 shrink-0"
+                                                onClick={saveAlias}
+                                                disabled={aliasDraft.trim() === (order.customer_name || '')}
+                                                data-testid="mesa-sheet-alias-guardar"
+                                            >
+                                                Guardar
+                                            </Button>
+                                        </div>
+                                    )}
+                                    {accounts.length > 1 && Object.keys(tableQuantities).length > 0 && (
+                                        <div className="rounded-xl border p-3 space-y-1" data-testid="mesa-sheet-resumen">
+                                            <div className="page-kicker">
+                                                Resumen de la mesa · {Object.values(tableQuantities).reduce((a, b) => a + b, 0)} platos
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {Object.entries(tableQuantities).map(([name, qty]) => (
+                                                    <span key={name} className="text-xs rounded-full border border-border px-2 py-0.5 tabular-nums">{qty}× {name}</span>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
                                     {canCompose && (

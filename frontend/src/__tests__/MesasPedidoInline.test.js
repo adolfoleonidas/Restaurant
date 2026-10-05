@@ -124,4 +124,48 @@ describe('pedido inline en el salón', () => {
         await click(button);
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
+
+    it('guarda el alias de la cuenta', async () => {
+        const existing = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 1, 38)], 38);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, existing);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: existing });
+            return Promise.resolve({ data: [existing] });
+        });
+        api.patch.mockResolvedValue({ data: existing });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const input = document.body.querySelector('[data-testid="mesa-sheet-alias"]');
+        expect(input).not.toBeNull();
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, 'Juan');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(document.body.querySelector('[data-testid="mesa-sheet-alias-guardar"]'));
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan' });
+    });
+
+    it('resume los platos de todas las cuentas de la mesa', async () => {
+        const o1 = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 2, 38)], 76);
+        const o2 = order('order-2', 12, 'en_preparacion', [item('i2', 'Ceviche', 1, 38), item('i3', 'Chicha', 2, 10)], 58);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, o1, o2);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: o1 });
+            if (url === '/orders/order-2') return Promise.resolve({ data: o2 });
+            return Promise.resolve({ data: [o1, o2] });
+        });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const summary = document.body.querySelector('[data-testid="mesa-sheet-resumen"]');
+        expect(summary).not.toBeNull();
+        expect(summary.textContent).toContain('3× Ceviche');
+        expect(summary.textContent).toContain('2× Chicha');
+    });
 });

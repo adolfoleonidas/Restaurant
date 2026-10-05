@@ -67,8 +67,12 @@ describe('multi-cuenta en el salón', () => {
         expect(sheet.textContent).toContain('Ceviche');
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]'));
-        expect(sheet.textContent).toContain('Lomo');
-        expect(sheet.textContent).not.toContain('Ceviche');
+        // El detalle muestra solo los ítems de la cuenta elegida…
+        const items = sheet.querySelector('[data-testid="mesa-sheet-items"]');
+        expect(items.textContent).toContain('Lomo');
+        expect(items.textContent).not.toContain('Ceviche');
+        // …y el resumen de la mesa agrega lo de todas las cuentas.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]').textContent).toContain('Ceviche');
     });
 
     it('abre una cuenta nueva con new_account=true', async () => {

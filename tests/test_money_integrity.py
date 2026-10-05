@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
-from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, split_order, update_item
+from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, set_order_alias, split_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
 from order_flow import ticket_fields
 from routes.reports import sales_report
@@ -626,6 +626,25 @@ def test_split_rejects_an_account_with_collected_money():
         assert exc.value.status_code == 400
 
     asyncio.run(run())
+
+
+def test_set_order_alias_trims_and_stores_it():
+    async def run():
+        from models import OrderAlias
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1",
+            items=[_table_item("i1", "prod-1", "Lomo", 20.0)],
+        ))
+        _bind(db)
+        await set_order_alias("order-1", OrderAlias(alias="  Juan  "), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    order = next(o for o in db.orders.docs if o["id"] == "order-1")
+    assert order["customer_name"] == "Juan"
 
 
 def test_shift_totals_ignore_other_registers():
