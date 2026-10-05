@@ -64,5 +64,10 @@ test.describe('smoke', () => {
     await page.goto('/configuracion');
     await page.getByTestId('marca-description').fill(original);
     await saveMarca();
+
+    // Proof review module is reachable for the cashier/admin.
+    await page.goto('/comprobantes');
+    await expect(page.getByTestId('comprobantes-root')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('comprobantes-resumen')).toBeVisible();
   });
 });

@@ -196,6 +196,58 @@ async def list_payments(
     return items
 
 
+@router.get("/proofs")
+async def list_payment_proofs(
+    user: dict = Depends(require_roles(["admin", "cajero"])),
+    pending: bool = False,
+    limit: int = 100,
+    branch_id: Optional[str] = None,
+    legacy_only: bool = False,
+):
+    """Orders carrying a captured Yape/Plin proof, pending verification first.
+
+    Returns metadata only: the base64 image is fetched on demand from the order
+    (``GET /orders/{id}``) so this list stays light.
+    """
+    filt = {
+        "restaurant_id": user["restaurant_id"],
+        "payment_proof_url": {"$type": "string"},
+        **await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only),
+    }
+    if pending:
+        filt["payment_status"] = "comprobante_subido"
+
+    rows = await db.orders.find(filt, {
+        "_id": 0, "id": 1, "order_number": 1, "status": 1, "payment_status": 1,
+        "payment_proof_method": 1, "payment_proof_uploaded_at": 1, "payment_proof_uploaded_by": 1,
+        "total": 1, "amount_paid": 1, "table_id": 1, "customer_name": 1, "source": 1,
+        "order_type": 1, "created_at": 1, "branch_id": 1,
+    }).sort("payment_proof_uploaded_at", -1).limit(limit).to_list(limit)
+
+    table_ids = [row["table_id"] for row in rows if row.get("table_id")]
+    if table_ids:
+        tables = await db.tables.find(
+            {"restaurant_id": user["restaurant_id"], "id": {"$in": table_ids}},
+            {"_id": 0, "id": 1, "number": 1, "name": 1},
+        ).to_list(len(table_ids))
+        table_map = {table["id"]: table for table in tables}
+        for row in rows:
+            row["table"] = table_map.get(row.get("table_id"))
+
+    uploader_ids = [row["payment_proof_uploaded_by"] for row in rows if row.get("payment_proof_uploaded_by")]
+    if uploader_ids:
+        uploaders = await db.users.find(
+            {"id": {"$in": uploader_ids}}, {"_id": 0, "id": 1, "full_name": 1}
+        ).to_list(len(uploader_ids))
+        name_map = {u["id"]: u.get("full_name") for u in uploaders}
+        for row in rows:
+            row["payment_proof_uploaded_by_name"] = name_map.get(row.get("payment_proof_uploaded_by"))
+
+    pending_rows = [row for row in rows if row.get("payment_status") == "comprobante_subido"]
+    other_rows = [row for row in rows if row.get("payment_status") != "comprobante_subido"]
+    return {"pending": len(pending_rows), "items": pending_rows + other_rows}
+
+
 @router.get("/by-order/{order_id}")
 async def payments_for_order(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
     await _authorized_order(order_id, user)

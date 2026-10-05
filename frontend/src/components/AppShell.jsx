@@ -22,6 +22,7 @@ const ALL_NAV = [
     { to: '/salon', label: 'Salón', icon: Grid2X2, roles: ['admin', 'mozo', 'cajero'], group: 'main' },
     { to: '/productos', label: 'Carta', icon: Package, roles: ['admin'], group: 'main' },
     { to: '/caja', label: 'Caja', icon: Wallet, roles: ['admin', 'cajero'], group: 'main' },
+    { to: '/comprobantes', label: 'Comprobantes', icon: Receipt, roles: ['admin', 'cajero'], group: 'main' },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'], group: 'main' },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['cocina'], group: 'main' },
     { to: '/disponibilidad', label: 'Agotar', icon: Package, roles: ['cocina'], group: 'main' },
@@ -62,6 +63,7 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
         items = [
             { to: '/salon', label: 'Salón', icon: Grid2X2, group: 'main' },
             ...(hasFn(user, 'cobro') ? [{ to: '/caja', label: 'Caja', icon: Wallet, group: 'main' }] : []),
+            ...(hasFn(user, 'cobro') ? [{ to: '/comprobantes', label: 'Comprobantes', icon: Receipt, group: 'main' }] : []),
             ...(hasFn(user, 'administracion') ? [{ to: '/dashboard', label: 'Gestión', icon: LayoutDashboard, group: 'main' }] : []),
             ...(hasFn(user, 'preparacion') ? [{ to: '/cocina', label: 'Cocina', icon: ChefHat, group: 'more' }] : []),
             ...(hasFn(user, 'administracion') ? [

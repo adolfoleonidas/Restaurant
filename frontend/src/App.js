@@ -16,6 +16,7 @@ import PedidoNuevo from '@/pages/PedidoNuevo';
 import PedidoDetalle from '@/pages/PedidoDetalle';
 import Cocina from '@/pages/Cocina';
 import Caja from '@/pages/Caja';
+import Comprobantes from '@/pages/Comprobantes';
 import Productos from '@/pages/Productos';
 import Combos from '@/pages/Combos';
 import Categorias from '@/pages/Categorias';
@@ -72,6 +73,7 @@ function App() {
                                     <Route path="/pedidos/:id" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><PedidoDetalle /></ProtectedRoute>} />
                                     <Route path="/cocina" element={<ProtectedRoute roles={['admin', 'cocina', 'mozo']}><Cocina /></ProtectedRoute>} />
                                     <Route path="/caja" element={<ProtectedRoute roles={['admin', 'cajero']}><Caja /></ProtectedRoute>} />
+                                    <Route path="/comprobantes" element={<ProtectedRoute roles={['admin', 'cajero']}><Comprobantes /></ProtectedRoute>} />
                                     <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reportes /></ProtectedRoute>} />
                                     <Route path="/disponibilidad" element={<ProtectedRoute roles={['admin', 'cocina']}><Disponibilidad /></ProtectedRoute>} />
                                     <Route path="/productos" element={<ProtectedRoute roles={['admin']}><Productos /></ProtectedRoute>} />
