@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
@@ -940,7 +940,7 @@ export default function Salon() {
 
             {/* Table detail sheet (secondary actions) */}
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
-                <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
+                <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" aria-describedby={undefined} data-testid="mesa-sheet">
                     {openTable && (() => {
                         const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
                         const group = openTable.group || t.group || null;
@@ -967,6 +967,8 @@ export default function Salon() {
                             }, {});
                         return (
                             <>
+                                {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
+                                <SheetTitle className="sr-only">Mesa {t.number}</SheetTitle>
                                 <div className="p-5 border-b" style={{ background: s.bg }}>
                                     <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
                                     <div className="flex items-center gap-2 mt-1">

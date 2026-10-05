@@ -6,7 +6,7 @@ import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { fmtMoney, ORDER_STATUS_LABELS } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Toaster } from '@/components/ui/sonner';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { CartPanel } from '@/components/CartPanel';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -31,7 +31,8 @@ export const PublicLayout = () => {
 
     const cartSheet = (
         <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-            <SheetContent side="right" className="w-full sm:max-w-md p-0 bg-card border-border">
+            <SheetContent side="right" className="w-full sm:max-w-md p-0 bg-card border-border" aria-describedby={undefined}>
+                <SheetTitle className="sr-only">Tu pedido</SheetTitle>
                 <CartPanel onClose={() => setCartOpen(false)} />
             </SheetContent>
         </Sheet>

@@ -46,7 +46,8 @@ const sheetVariants = cva(
 const SheetContent = React.forwardRef(({ side = "right", className, children, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
-    <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
+    {/* Opt-out explícito de la descripción (Radix avisa si falta). */}
+    <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} aria-describedby={undefined} {...props}>
       <SheetPrimitive.Close
         aria-label="Cerrar"
         className="absolute right-2 top-2 grid h-11 w-11 place-items-center rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
