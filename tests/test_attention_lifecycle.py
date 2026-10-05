@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pytest
 from pymongo.errors import DuplicateKeyError
-from models import PublicOrderCreate, OrderItemInput
 
 os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
 os.environ.setdefault("DB_NAME", "restaurant_db_unit")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from attention import AttentionBlocked, close_table_attention, open_table_attention
-from order_flow import VersionError, claim_order
+from models import PublicOrderCreate, OrderItemInput  # noqa: E402
+from attention import AttentionBlocked, close_table_attention, open_table_attention  # noqa: E402
+from order_flow import VersionError, claim_order  # noqa: E402
 
 
 def _matches(doc, filt):

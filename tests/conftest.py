@@ -1,9 +1,83 @@
 import os
+import sys
 
 import pytest
 import requests
 
+import database as _database
+
 BASE = os.environ.get("API_BASE", "http://127.0.0.1:8000/api")
+
+# The real bindings, captured before any test swaps them.
+_REAL_DB = _database.db
+_BACKEND_DIR = os.path.dirname(os.path.abspath(_database.__file__))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_backend_modules():
+    """Put every backend module back the way the test found it.
+
+    Test modules swap route-level bindings (`db`, `_get_restaurant`, `client_host`,
+    `_next_order_number`, ...) by direct assignment instead of monkeypatch, and
+    reconfigure the rate limiters in place. Left alone, one module's fakes leak
+    into every later test and the suite fails depending on the order it runs in.
+    """
+    modules = {}
+    for name, module in list(sys.modules.items()):
+        if name.startswith("tests") or name.startswith("_"):
+            continue
+        path = getattr(module, "__file__", None)
+        if path and os.path.abspath(path).startswith(_BACKEND_DIR):
+            modules[name] = module
+
+    snapshots = {name: dict(module.__dict__) for name, module in modules.items()}
+    limiters = [
+        (value, value.allow)
+        for module in modules.values()
+        for value in module.__dict__.values()
+        if hasattr(value, "allow") and hasattr(value, "reset")
+    ]
+
+    yield
+
+    _database.db = _REAL_DB
+    for name, module in modules.items():
+        original = snapshots[name]
+        for key in list(module.__dict__):
+            if key not in original:
+                del module.__dict__[key]
+        module.__dict__.update(original)
+    for limiter, allow in limiters:
+        limiter.allow = allow
+
+# Modules that go over real HTTP against a running API and a seeded database.
+# They share this conftest's helpers (login, free table). Marked automatically so
+# CI can run the hermetic suite with -m "not integration".
+INTEGRATION_MODULES = {
+    "test_admin_today",
+    "test_audit_fixes",
+    "test_caja_charge",
+    "test_caja_history",
+    "test_caja_void",
+    "test_cash_close",
+    "test_cash_history",
+    "test_combos_and_guest",
+    "test_functions_combo",
+    "test_invariants",
+    "test_kitchen_kds",
+    "test_mozo_floor",
+    "test_product_import",
+    "test_public_bridge",
+    "test_zones",
+}
+
+
+def pytest_collection_modifyitems(config, items):
+    for item in items:
+        module = getattr(item, "module", None)
+        name = getattr(module, "__name__", "").rsplit(".", 1)[-1]
+        if name in INTEGRATION_MODULES:
+            item.add_marker(pytest.mark.integration)
 
 
 def admin_headers():
