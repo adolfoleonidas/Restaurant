@@ -101,7 +101,7 @@ function Restaurante() {
     useEffect(() => { api.get('/restaurants/current').then((res) => setR(res.data)); }, []);
     const save = async () => {
         try { const { data } = await api.patch('/restaurants/current', r); setR(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la configuración. Revisá tu conexión y reintentá.'); }
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (

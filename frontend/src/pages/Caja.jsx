@@ -448,7 +448,7 @@ function OpenCajaCard({ onOpened, branchId, canOpen = true, runMutation }) {
             }));
             toast.success('Caja abierta');
             onOpened && onOpened();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
         finally { setLoading(false); }
     };
     return (
@@ -484,7 +484,7 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
             onOpenChange(false);
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
     };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -538,7 +538,7 @@ function MovementCard({ register, onAdded, runMutation }) {
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
     };
     return (
         <Card><CardContent className="p-5">

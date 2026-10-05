@@ -131,12 +131,12 @@ export function ZonasPanel() {
             if (editing) await api.patch(`/zones/${editing.id}`, payload);
             else await api.post('/zones', payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const doDelete = async (z) => {
         try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const getBranchName = (id) => {
@@ -299,7 +299,7 @@ export function TablesManager() {
             if (editing) await api.patch(`/tables/${editing.id}`, payload);
             else await api.post('/tables', payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
         finally { setSaving(false); }
     };
     const doDelete = async (t) => {

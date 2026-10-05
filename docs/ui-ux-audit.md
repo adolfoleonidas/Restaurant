@@ -478,6 +478,28 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 |---|---|
 | Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
 
+---
+
+## 🔄 Ronda 8 del objetivo — microcopy de error: del literal "Error" a un mensaje que dice qué hacer
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R8-1 | P2-17 de la auditoría: errores genéricos "Error" | Se sustituyen las **15 instancias** de || 'Error' y 'Error al cobrar' por mensajes que dicen qué operación falló y qué hacer (por ejemplo *"No se pudo guardar la categoría. Revisá tu conexión y reintentá."*). Antes el usuario solo veía la palabra "Error", sin saber si el dato se guardó ni si podía reintentar | Caja.jsx (3), Local.jsx (3), Productos.jsx (2), Categorias.jsx (2), Usuarios.jsx (2), Configuracion.jsx (1), PedidoTracking.jsx (1), CobrarDialog.jsx (1) |
+
+### Verificación
+
+- **Código:** 15 sustituciones, **0 ocurrencias restantes** de los literales antiguos en los 8 archivos, reescritas como UTF-8 sin BOM y releyéndolas para confirmar que no hubo mojibake ni pérdida de acentos (el mensaje usa "Revisá", con tilde, y se comprobó al releer).
+- **Matriz de regresión:** el cambio es solo de texto (no toca estilos ni estructura), por lo que no se esperaba impacto en axe ni en layout. La matriz de verificación quedó corriendo al cierre de esta ronda y queda anotado aquí, como en la ronda 4, para no dar por medida una medición que no se completó.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
+| P2-20 de la auditoría: diálogos de borrado sin consecuencias | El AlertDialog de producto/usuario/zona/mesa no calcula el impacto (combos que incluyen el plato, pedidos activos); requiere datos que hoy no están en el cliente |
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)

@@ -293,12 +293,12 @@ export default function Productos({ section = 'platos' }) {
             }
             setOpenDlg(false);
             await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const doDelete = async (p) => {
         try { await api.delete(`/products/${p.id}`); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const toggleAvail = async (p) => {

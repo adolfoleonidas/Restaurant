@@ -31,11 +31,11 @@ export default function Categorias() {
             if (editing) { await api.patch(`/categories/${editing.id}`, payload); toast.success('Actualizado'); }
             else { await api.post('/categories', payload); toast.success('Creado'); }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
     const doDelete = async (c) => {
         try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
 
     return (

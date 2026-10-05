@@ -71,12 +71,12 @@ export default function Usuarios() {
                 toast.success('Creado');
             }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
         finally { setSaving(false); }
     };
     const doDelete = async (u) => {
         try { await api.delete(`/users/${u.id}`); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
     };
     const toggleActive = async (u) => {
         try { await api.patch(`/users/${u.id}`, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }

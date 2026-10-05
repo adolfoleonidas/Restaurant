@@ -90,7 +90,7 @@ export default function PedidoTracking() {
     const upload = async () => {
         setUploading(true);
         try { await api.post(`/public/orders/${code}/proof`, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.'); }
         finally { setUploading(false); }
     };
     const needsProof = !order.has_proof && ['yape', 'plin', 'transferencia'].includes(order.payment_method_choice);

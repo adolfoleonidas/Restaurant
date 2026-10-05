@@ -385,7 +385,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 if (e.response?.status === 409 && detail?.code === 'account_changed') {
                     setStale(detail);
                 } else {
-                    toast.error(typeof detail === 'string' ? detail : (detail?.message || 'Error al cobrar'));
+                    toast.error(typeof detail === 'string' ? detail : (detail?.message || 'No se pudo registrar el pago. Revisá tu conexión y reintentá.'));
                     idempotencyRef.current = newIdempotencyKey();
                 }
             }
