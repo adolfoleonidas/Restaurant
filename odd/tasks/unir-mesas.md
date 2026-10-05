@@ -57,4 +57,8 @@ Verification is local: FastAPI routes are exercised against in-memory collection
 Rollback: revert the group endpoints/collection and the transfer route together with their helpers, UI and tests; drop `table_groups` and the `group_id`/`group_joined_status` fields on `tables` (the operational reset already unsets them). No existing order, payment, attention or cash behavior depends on the new feature.
 
 ## Progress and next step
-Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in two work-unit commits (backend, then frontend + docs). Nothing is pushed. Next possible steps, if requested: publish the branch, or extend the feature (for example a group-level "una sola cuenta" that deliberately merges accounts, which is a different and money-touching decision).
+Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in three work-unit commits (backend, frontend, docs). The user authorized publishing the branch, so `refs/heads/feat/unir-mesas` = `8f40b07` now exists on origin. `main` was **not** touched, so the `Deploy to VPS` workflow (triggered only by a push to `main`) did not run.
+
+`main` advanced while this ran (`f3d5d0f..255de43`, five commits: cash/payments/public/TLS-deploy work). None of those commits touch a file this branch changed, and `git merge-tree` reports a clean merge against the new `main`, so no rebase is required.
+
+Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main` locally, or extend the feature (for example a group-level "una sola cuenta" that deliberately merges accounts, which is a different and money-touching decision).

@@ -131,6 +131,6 @@
 
 La implementación T1–T4 de aislamiento operativo y contexto de reportes está guardada en commits locales y cuenta con regresiones locales verificadas; el [tracker de aislamiento por sucursal](odd/tasks/branch-isolation.md) conserva el alcance y la evidencia detallada. Esto no certifica autenticación en vivo, navegación en navegador, migración/índice de base de datos ni despliegue. La transición controlada de índice y rollout sigue pendiente de autorización. El roadmap V3 conserva otras capacidades multi-sucursal aún no implementadas.
 
-## Unir mesas y mover el pedido de mesa (rama local `feat/unir-mesas`)
+## Unir mesas y mover el pedido de mesa (rama publicada `feat/unir-mesas`)
 
-Implementado en la worktree `.worktrees/unir-mesas` y pendiente de publicación: agrupar mesas como marca del salón (cada mesa conserva su propia cuenta) y mover una visita abierta —pedido y visita— a otra mesa libre de la misma sucursal. Alcance, decisiones y evidencia en el [tracker de unir mesas](odd/tasks/unir-mesas.md). Unir dos cuentas en curso está bloqueado por decisión del usuario: fusionar cuentas es otra capacidad, todavía no implementada. Nada de esto está desplegado ni mergeado.
+Implementado en la worktree `.worktrees/unir-mesas` y publicado como rama `feat/unir-mesas` (sin merge a main, así que no dispara el deploy): agrupar mesas como marca del salón (cada mesa conserva su propia cuenta) y mover una visita abierta —pedido y visita— a otra mesa libre de la misma sucursal. Alcance, decisiones y evidencia en el [tracker de unir mesas](odd/tasks/unir-mesas.md). Unir dos cuentas en curso está bloqueado por decisión del usuario: fusionar cuentas es otra capacidad, todavía no implementada. Nada de esto está desplegado ni mergeado.
