@@ -1024,3 +1024,23 @@ def test_proof_status_falls_back_to_payment_status_for_legacy_orders():
     assert proof_is_pending({"payment_status": "parcial"}) is False
     assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "pendiente"}) is True
     assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "verificado"}) is False
+
+
+def test_replaying_a_payment_returns_the_settled_shape():
+    """A retry after a network cut must report the bill as covered."""
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = _payment_body(idempotency_key="retry-key")
+        first = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        replay = await create_payment(body, _cashier())
+        return first, stored, replay
+
+    first, stored, replay = asyncio.run(run())
+    assert replay["id"] == first["id"]
+    assert stored["amount_paid"] == 20
+    assert replay["fully_paid"] is True
+    assert replay["remaining"] == 0.0

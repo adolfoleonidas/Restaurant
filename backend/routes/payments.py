@@ -65,7 +65,16 @@ async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
 def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     if payment.get("order_id") != order_id or payment.get("branch_id") != order.get("branch_id"):
         raise HTTPException(status_code=409, detail="El pago existente no coincide con el pedido y sucursal originales")
-    return payment
+    # Same shape as a fresh charge. The dialog and the printed receipt read these
+    # to decide whether the bill is settled, and a retry after a network cut used
+    # to come back without them (the cashier saw a blank remainder).
+    total = round(float(order.get("total") or 0), 2)
+    paid = round(float(order.get("amount_paid") or 0), 2)
+    replay = {key: value for key, value in payment.items() if key != "_id"}
+    replay["remaining"] = round(max(0.0, total - paid), 2)
+    replay["fully_paid"] = paid + 0.009 >= total
+    replay["table_released"] = False
+    return replay
 
 
 def _validated_staff_proof(value: str) -> tuple[str, str]:
