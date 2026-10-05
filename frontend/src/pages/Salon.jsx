@@ -1068,6 +1068,14 @@ export default function Salon() {
                                                     </Button>
                                                 )}
                                             </div>
+                                            {order && (
+                                                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-secondary/50 px-2 py-1 text-xs" data-testid="mesa-sheet-pedido-resumen">
+                                                    <span className="text-muted-foreground">
+                                                        {orderItems.reduce((s, i) => s + Number(i.quantity || 0), 0)} en esta cuenta
+                                                    </span>
+                                                    <span className="font-mono font-semibold tabular-nums">{fmtMoney(order.total)}</span>
+                                                </div>
+                                            )}
                                             <div className="relative">
                                                 <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
                                                 <Input className="pl-9 h-9" placeholder="Buscar plato" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} data-testid="mesa-sheet-buscar-producto" />
@@ -1083,6 +1091,9 @@ export default function Salon() {
                                             <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto" data-testid="mesa-sheet-productos">
                                                 {pickerProducts.map((p) => {
                                                     const out = !p.is_available || (p.is_combo && p.components_available === false);
+                                                    const qty = orderItems
+                                                        .filter((i) => i.product_id === p.id)
+                                                        .reduce((s, i) => s + Number(i.quantity || 0), 0);
                                                     return (
                                                         <button
                                                             key={p.id}
@@ -1090,10 +1101,25 @@ export default function Salon() {
                                                             disabled={out || savingItem}
                                                             onClick={() => addProductToAccount(p)}
                                                             data-testid={`mesa-sheet-producto-${p.id}`}
-                                                            className={`flex flex-col items-start rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'}`}
+                                                            className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'}`}
                                                         >
-                                                            <span className="w-full truncate font-medium">{p.name}</span>
-                                                            <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
+                                                            <span className="flex min-w-0 flex-col">
+                                                                <span className="w-full truncate font-medium">{p.name}</span>
+                                                                <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
+                                                            </span>
+                                                            <span className="flex shrink-0 items-center gap-1">
+                                                                {qty > 0 && (
+                                                                    <span
+                                                                        className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-semibold tabular-nums text-primary-foreground"
+                                                                        data-testid={`mesa-sheet-producto-cantidad-${p.id}`}
+                                                                    >
+                                                                        {qty}
+                                                                    </span>
+                                                                )}
+                                                                <span className="grid h-6 w-6 place-items-center rounded-full border border-border" aria-hidden="true">
+                                                                    <Plus className="h-3.5 w-3.5" />
+                                                                </span>
+                                                            </span>
                                                         </button>
                                                     );
                                                 })}

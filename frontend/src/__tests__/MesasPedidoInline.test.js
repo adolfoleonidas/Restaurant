@@ -35,7 +35,9 @@ const order = (id, number, status, items, total) => ({
     attention_id: 'att-1', attention_state: 'open', items,
 });
 
-const item = (id, name, qty, price) => ({ id, product_name: name, quantity: qty, subtotal: qty * price, status: 'pendiente' });
+const item = (id, name, qty, price, productId = 'prod-1') => ({
+    id, product_id: productId, product_name: name, quantity: qty, subtotal: qty * price, status: 'pendiente',
+});
 
 async function renderPage() {
     const container = document.createElement('div');
@@ -147,6 +149,24 @@ describe('pedido inline en el salón', () => {
         });
         await click(document.body.querySelector('[data-testid="mesa-sheet-alias-guardar"]'));
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan' });
+    });
+
+    it('muestra la cantidad ya pedida por producto y el resumen de la cuenta', async () => {
+        const existing = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 2, 38)], 76);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, existing);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: existing });
+            return Promise.resolve({ data: [existing] });
+        });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const badge = document.body.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-1"]');
+        expect(badge).not.toBeNull();
+        expect(badge.textContent).toBe('2');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-pedido-resumen"]').textContent).toContain('76.00');
     });
 
     it('resume los platos de todas las cuentas de la mesa', async () => {
