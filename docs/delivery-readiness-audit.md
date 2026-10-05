@@ -134,6 +134,10 @@ sin tocar datos. Los tres primeros están **confirmados leyendo el código**.
 
 ## ✅ Checklist de entrega (mañana)
 
+> **Guía paso a paso**: [`docs/day-one-runbook.md`](day-one-runbook.md) — el orden exacto de la
+> puesta en marcha (sucursal → zonas → mesas → carta → usuarios → **pagos** → caja), con los
+> bloqueos típicos y cómo resolverlos.
+
 ### Antes de tocar el servidor
 - [ ] Decidir: ¿instalación **limpia** (arreglar compose primero) o **reutilizar** la base del VPS (aplican caja heredada + datos de prueba)?
 - [ ] Cambiar las 4 contraseñas demo (o borrar esas cuentas)
