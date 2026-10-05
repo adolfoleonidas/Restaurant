@@ -395,6 +395,8 @@ class OrderCreate(BaseModel):
     order_type: OrderType = "mesa"
     items: List[OrderItemInput] = []
     notes: Optional[str] = None
+    # Cuenta adicional dentro de la misma visita de la mesa (multi-cuenta).
+    new_account: bool = False
     # Staff can take counter/pickup/delivery orders too, so they need the customer.
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None

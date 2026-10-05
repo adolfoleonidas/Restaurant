@@ -284,6 +284,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     if assigned_branch_id is not None and data.branch_id is not None and data.branch_id != assigned_branch_id:
         raise HTTPException(status_code=403, detail="No puede crear pedidos para otra sucursal")
     table = None
+    reused_attention_id = None
     if data.order_type == "mesa" and not data.table_id:
         raise HTTPException(status_code=400, detail="Se requiere mesa")
     if data.order_type == "delivery" and not (data.customer_address or "").strip():
@@ -295,23 +296,31 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         assert_record_branch_access(table, user, "Mesa no encontrada")
         if data.branch_id is not None and data.branch_id != table.get("branch_id"):
             raise HTTPException(status_code=400, detail="La sucursal del pedido no coincide con la mesa")
-        if table.get("active_attention_id"):
-            raise HTTPException(status_code=400, detail="La mesa pertenece a una visita abierta")
-        if table.get("status") not in ("disponible", "ocupada"):
-            raise HTTPException(status_code=400, detail="La mesa no está disponible")
-        existing = await db.orders.find_one({
-            "restaurant_id": user["restaurant_id"], "table_id": data.table_id,
-            "status": {"$nin": ["pagado", "cancelado"]},
-            **record_branch_filter(user),
-        })
-        if existing:
-            raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
-        try:
-            await capture_attention_context(
-                db, tenant_id=user["restaurant_id"], branch_id=table.get("branch_id"), confirmed_at=_now()
-            )
-        except AttentionAcceptanceError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if getattr(data, "new_account", False):
+            # Cuenta adicional dentro de la visita ya abierta de la mesa.
+            if not table.get("active_attention_id"):
+                raise HTTPException(status_code=400, detail="La mesa no tiene una visita abierta para agregar una cuenta")
+            if table.get("status") not in ("ocupada", "esperando_pago"):
+                raise HTTPException(status_code=400, detail="La mesa no está ocupada")
+            reused_attention_id = table["active_attention_id"]
+        else:
+            if table.get("active_attention_id"):
+                raise HTTPException(status_code=400, detail="La mesa pertenece a una visita abierta")
+            if table.get("status") not in ("disponible", "ocupada"):
+                raise HTTPException(status_code=400, detail="La mesa no está disponible")
+            existing = await db.orders.find_one({
+                "restaurant_id": user["restaurant_id"], "table_id": data.table_id,
+                "status": {"$nin": ["pagado", "cancelado"]},
+                **record_branch_filter(user),
+            })
+            if existing:
+                raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+            try:
+                await capture_attention_context(
+                    db, tenant_id=user["restaurant_id"], branch_id=table.get("branch_id"), confirmed_at=_now()
+                )
+            except AttentionAcceptanceError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     if table is not None:
         branch_id = table.get("branch_id")
     elif assigned_branch_id is not None:
@@ -329,7 +338,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     enriched, subtotal = await _compute_total(items, user["restaurant_id"]) if items else ([], 0.0)
     order_no = await _next_order_number(user["restaurant_id"])
     order_id = str(uuid.uuid4())
-    attention_id = str(uuid.uuid4()) if data.table_id else None
+    attention_id = reused_attention_id or (str(uuid.uuid4()) if data.table_id else None)
     o = {
         "id": order_id, "order_number": order_no, "restaurant_id": user["restaurant_id"],
         "table_id": data.table_id, "created_by": user["id"], "created_by_name": user["full_name"],
@@ -345,15 +354,20 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         if value:
             o[field] = value
     if attention_id:
-        o.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
+        o.update({
+            "attention_id": attention_id,
+            "attention_state": "open" if reused_attention_id else "opening",
+            "attention_open": bool(reused_attention_id),
+        })
         o["_id"] = order_id
-        try:
-            await reserve_table_opening(
-                db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"],
-                allowed_statuses=("disponible", "ocupada"), intent=o,
-            )
-        except AttentionBlocked as exc:
-            raise HTTPException(status_code=409, detail=exc.detail)
+        if not reused_attention_id:
+            try:
+                await reserve_table_opening(
+                    db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"],
+                    allowed_statuses=("disponible", "ocupada"), intent=o,
+                )
+            except AttentionBlocked as exc:
+                raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(o)
     except DuplicateKeyError:
@@ -371,10 +385,17 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         # Keep the durable intent: an insert may have committed before its error reached us.
         raise
     if attention_id:
-        try:
-            await open_table_attention(db, order=o, user=user, now=_now())
-        except AttentionBlocked as exc:
-            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
+        if reused_attention_id:
+            # Registra la nueva cuenta en la visita existente (no abre visita nueva).
+            await db.attentions.update_one(
+                {"id": reused_attention_id, "restaurant_id": user["restaurant_id"]},
+                {"$addToSet": {"order_ids": order_id}},
+            )
+        else:
+            try:
+                await open_table_attention(db, order=o, user=user, now=_now())
+            except AttentionBlocked as exc:
+                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no, branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)

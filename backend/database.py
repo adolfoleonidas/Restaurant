@@ -28,9 +28,14 @@ async def ensure_indexes():
         partialFilterExpression={"request_id": {"$type": "string"}},
         name="uniq_public_order_request",
     )
+    # Multi-cuenta: una mesa puede tener varias órdenes activas simultáneas, así
+    # que el índice de "una orden activa por mesa" deja de ser único.
+    try:
+        await db.orders.drop_index("uniq_active_order_per_table")
+    except Exception:
+        pass
     await db.orders.create_index(
         [("restaurant_id", 1), ("table_id", 1)],
-        unique=True,
         partialFilterExpression={
             "table_id": {"$type": "string"},
             "status": {
@@ -44,7 +49,7 @@ async def ensure_indexes():
                 ]
             },
         },
-        name="uniq_active_order_per_table",
+        name="active_order_per_table",
     )
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
