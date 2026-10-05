@@ -8,7 +8,18 @@ db = client[os.environ.get('DB_NAME', 'restaurant_db')]
 
 async def ensure_indexes():
     await db.users.create_index("email", unique=True)
-    await db.tables.create_index([("restaurant_id", 1), ("number", 1)], unique=True)
+    # Table numbers and zone names are unique per branch, not per restaurant:
+    # two salons each need their own "Mesa 1" and "Salón". The old per-restaurant
+    # unique indexes are dropped so an existing venue can keep operating.
+    await db.tables.create_index(
+        [("restaurant_id", 1), ("branch_id", 1), ("number", 1)],
+        unique=True,
+        name="uniq_table_number_per_branch",
+    )
+    try:
+        await db.tables.drop_index("restaurant_id_1_number_1")
+    except Exception:
+        pass
     await db.orders.create_index([("restaurant_id", 1), ("status", 1), ("created_at", -1)])
     await db.orders.create_index("tracking_code", sparse=True)
     await db.orders.create_index(
@@ -80,7 +91,15 @@ async def ensure_indexes():
     )
     await db.audit_logs.create_index("event_id", unique=True, sparse=True, name="uniq_audit_event_id")
     await db.audit_logs.create_index([("created_at", -1)])
-    await db.zones.create_index([("restaurant_id", 1), ("name", 1)], unique=True)
+    await db.zones.create_index(
+        [("restaurant_id", 1), ("branch_id", 1), ("name", 1)],
+        unique=True,
+        name="uniq_zone_name_per_branch",
+    )
+    try:
+        await db.zones.drop_index("restaurant_id_1_name_1")
+    except Exception:
+        pass
     await db.branches.create_index("id", unique=True, name="uniq_branch_id")
     await db.branches.create_index([("restaurant_id", 1), ("name", 1)], name="branches_by_tenant_name")
 
