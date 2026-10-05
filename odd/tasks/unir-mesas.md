@@ -69,7 +69,7 @@ Implementation and both local suites are green in the worktree `.worktrees/unir-
 
 - `c3645de Merge main into feat/unir-mesas`. Everything auto-merged except one hunk in `database.py`: the index block, resolved by keeping this branch's `table_groups`/`group_id` indexes **and** main's per-branch zone index (which supersedes the tenant-wide one, so the old line is not re-created). The auto-merge of `tests/test_data_reset.py` correctly kept both sides' assertions.
 - Merged state re-verified: backend `python.exe -m pytest tests -m "not integration" -q` -> **387 passed, 49 deselected** (includes main's new tests); frontend `craco test --watchAll=false --runInBand` -> **33 suites / 213 tests passed**.
-- `main` is now an ancestor of this branch, so merging the branch into `main` is a fast-forward and `git merge-tree` reports no conflicts. Any push to `main` still triggers the production deploy.
+- When F1 was pushed, `main` had moved again (`8f88e76..5f77ae1`, five more commits: auth/admin scope, public tracking throttle, system info, feature-switch UI, e2e smoke). None of them touch a file this branch changed and `git merge-tree` still reports a **clean** merge, but the branch is no longer a fast-forward of `main`. `main` has moved five times during this delivery, so re-check the merge right before merging. Any push to `main` still triggers the production deploy.
 
 Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main`, or build F2 (the remaining future capability specified below).
 
