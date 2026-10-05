@@ -3,6 +3,10 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
+  # Pull requests run the same Tests job so a red branch never reaches main
+  # unnoticed; only a push to main deploys (see the `deploy` job guard).
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
@@ -69,6 +73,9 @@ jobs:
 
   deploy:
     needs: test
+    # Tests run for pull requests too; only a push to main (or a manual run)
+    # touches the VPS.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Prepare SSH key
