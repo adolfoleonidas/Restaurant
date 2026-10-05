@@ -46,13 +46,25 @@ const statusIndex = (s) => {
 export default function PedidoTracking() {
     const { code } = useParams();
     const [restaurant, setRestaurant] = useState(null);
+    const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
     const { generation } = usePublicStream({ trackingCode: code });
+    useEffect(() => {
+        if (typeof document === 'undefined') return undefined;
+        const onVisibility = () => setVisible(!document.hidden);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, []);
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data)).catch(() => {});
     }, []);
+    // El SSE ya empuja cada cambio de estado; el sondeo queda como red de
+    // seguridad. A 5 s eran 12 peticiones/minuto de datos y batería, así que
+    // baja a 30 s y se alarga mientras la pestaña está oculta (el intervalo es
+    // un parámetro del hook, no hace falta tocar usePolling).
+    const pollInterval = visible ? 30000 : 300000;
     const { data: order, loading, error, refetch } = usePolling(
         () => api.get(`/public/orders/${code}`).then((r) => r.data),
-        5000,
+        pollInterval,
         [code, generation]
     );
     const [proof, setProof] = useState(null);

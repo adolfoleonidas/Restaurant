@@ -41,9 +41,9 @@ export default function Categorias() {
     return (
         <div className="space-y-5" data-testid="categorias-root">
             <p className="page-kicker mb-1">Administración</p>
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Tags className="h-6 w-6 text-primary" /> Categorías</h1>
+            <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="min-w-0">
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2 min-w-0"><Tags className="h-6 w-6 text-primary shrink-0" /> <span className="truncate">Categorías</span></h1>
                     <p className="text-muted-foreground text-sm">Organizá los platos de la carta en grupos.</p>
                 </div>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
@@ -51,9 +51,9 @@ export default function Categorias() {
             <Card><CardContent className="p-0">
                 <div className="divide-y">
                     {cats.map((c) => (
-                        <div key={c.id} className="flex items-center justify-between p-4">
-                            <div>
-                                <div className="font-medium">{c.name}</div>
+                        <div key={c.id} className="flex items-center justify-between gap-3 p-4">
+                            <div className="min-w-0">
+                                <div className="font-medium truncate">{c.name}</div>
                                 <div className="text-xs text-muted-foreground">{c.description || 'Sin descripción'} · Orden: {c.sort_order}</div>
                             </div>
                             <div className="flex items-center gap-1">

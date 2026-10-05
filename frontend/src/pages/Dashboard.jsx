@@ -202,14 +202,14 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
                         <div className="divide-y">
                             {attention.map((a, i) => (
                                 <div key={a.approval_id || a.order_id || a.product_id || i} className="py-3 flex items-start justify-between gap-3">
-                                    <div>
+                                    <div className="min-w-0">
                                         <div className="font-medium">{a.title}</div>
                                         <div className="text-sm text-muted-foreground">{a.body}</div>
                                     </div>
                                     {a.kind === 'approval' ? (
-                                        <Button size="sm" className="h-10 shrink-0" onClick={() => setApproval(a.payload || a)}>Revisar</Button>
+                                        <Button size="sm" className="shrink-0" onClick={() => setApproval(a.payload || a)}>Revisar</Button>
                                     ) : (
-                                        <Button size="sm" className="h-10 shrink-0" asChild>
+                                        <Button size="sm" className="shrink-0" asChild>
                                             <Link to={a.href || '/dashboard'}>Ver <ArrowRight className="h-3.5 w-3.5 ml-1" /></Link>
                                         </Button>
                                     )}
@@ -224,19 +224,19 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
                 <CardContent className="p-5">
                     <h2 className="font-display text-lg font-semibold mb-3">Resumen del turno</h2>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
+                        <div className="min-w-0">
                             <div className="text-xs text-muted-foreground">Mesas</div>
-                            <div className="font-mono text-xl font-semibold">{summary.occupied_tables ?? '—'} / {summary.total_tables ?? '—'}</div>
+                            <div className="font-mono text-lg sm:text-xl font-semibold">{summary.occupied_tables ?? '—'} / {summary.total_tables ?? '—'}</div>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="text-xs text-muted-foreground">En preparación</div>
-                            <div className="font-mono text-xl font-semibold">{summary.kitchen_orders ?? '—'}</div>
+                            <div className="font-mono text-lg sm:text-xl font-semibold">{summary.kitchen_orders ?? '—'}</div>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="text-xs text-muted-foreground">Cuentas solicitadas</div>
-                            <div className="font-mono text-xl font-semibold">{summary.bill_requests ?? '—'}</div>
+                            <div className="font-mono text-lg sm:text-xl font-semibold">{summary.bill_requests ?? '—'}</div>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <div className="text-xs text-muted-foreground">Caja</div>
                             <div className="font-semibold">{summary.cash_open ? 'Abierta' : 'Cerrada'}</div>
                             {summary.cash_opened_by && <div className="text-xs text-muted-foreground">{summary.cash_opened_by}</div>}

@@ -109,6 +109,44 @@ function itemQty(items, predicate) {
     return (items || []).filter(predicate).reduce((s, it) => s + (it.quantity || 0), 0);
 }
 
+/** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
+const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
+
+/**
+ * Estados agregados de los platos de una cuenta, en el orden en que reclaman
+ * acción: lo listo se sirve antes de enviar nada nuevo, y lo que ya salió no
+ * cuenta para ninguna acción.
+ */
+function accountTally(order) {
+    const items = (order?.items || []).filter((it) => it.status !== 'cancelado');
+    return {
+        ready: itemQty(items, (it) => it.status === 'listo'),
+        drafts: itemQty(items, itemPending),
+        kitchen: itemQty(items, (it) => ['pendiente', 'enviado_cocina', 'en_preparacion'].includes(it.status)),
+        served: itemQty(items, (it) => it.status === 'entregado'),
+    };
+}
+
+/** Texto corto del estado agregado ("Listo para servir · 2"). */
+function tallyLabel(tally) {
+    if (tally.ready > 0) return `Listo para servir · ${tally.ready}`;
+    if (tally.drafts > 0) return `Por enviar · ${tally.drafts}`;
+    if (tally.kitchen > 0) return `En cocina · ${tally.kitchen}`;
+    if (tally.served > 0) return `Servido · ${tally.served}`;
+    return 'Sin platos todavía';
+}
+
+/**
+ * Padding inferior del contenido cuando la barra fija del pedido activo está
+ * visible.
+ *
+ * `!` (important) es deliberado: el hueco normal de la barra de navegación lo
+ * pone `.has-bottom-nav`, que vive en la capa `components` y le gana a
+ * cualquier utilidad `pb-*` de la capa `utilities`. Con `md:!pb-0` se devuelve
+ * el hueco al shell en escritorio, donde el mini va pegado al borde inferior.
+ */
+const MINI_OPEN_CLASS = 'pb-44 md:!pb-0';
+
 export default function Salon() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
@@ -129,6 +167,10 @@ export default function Salon() {
     const [moveAccountId, setMoveAccountId] = useState(null);
     const [savingItem, setSavingItem] = useState(false);
     const [aliasDraft, setAliasDraft] = useState('');
+    // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
+    // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
+    // hoja sin depender de que la mesa siga en el listado del polling.
+    const [lastOpened, setLastOpened] = useState(null);
     const searchRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
@@ -213,7 +255,10 @@ export default function Salon() {
 
     // ── Filters ────────────────────────────────────────────────────────────
     const areas = useMemo(() => {
-        const s = new Set((tables || []).map((t) => t.area));
+        // `t.area` puede venir vacío (mesas antiguas sin zona). Sin filtrar, la
+        // fila de zonas pintaba un chip "undefined" y React avisaba de una clave
+        // ausente en la lista (`key={undefined}` no cuenta como clave).
+        const s = new Set((tables || []).map((t) => t.area).filter(Boolean));
         return ['todas', ...Array.from(s)];
     }, [tables]);
 
@@ -485,13 +530,23 @@ export default function Salon() {
         }
     };
 
-    const sendCurrentToKitchen = async () => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
+    /**
+     * Envía a cocina los borradores de la cuenta.
+     *
+     * El id es opcional para que el mini-reproductor pueda mandar la cuenta que
+     * mantiene a la vista sin abrir su hoja; sin id, usa la cuenta abierta.
+     */
+    const sendCurrentToKitchen = async (orderId = null) => {
+        // Un `onClick={handler}` cuela el evento de React como primer argumento:
+        // solo un id de texto identifica una cuenta. Sin esta guarda, el destino
+        // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
+        const requested = typeof orderId === 'string' ? orderId : null;
+        const targetId = requested || openTable?.order?.id || openTable?.accountId;
+        if (!targetId || !canTake) return;
         try {
-            await api.post(`/orders/${orderId}/send-to-kitchen`);
+            await api.post(`/orders/${targetId}/send-to-kitchen`);
             toast.success('Enviado a cocina');
-            await reloadCurrentOrder(orderId);
+            await reloadCurrentOrder(targetId);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
@@ -539,8 +594,31 @@ export default function Salon() {
         if (!canConfirmJoin || joining) return;
         setJoining(true);
         try {
-            await api.post('/table-groups', { table_ids: selected });
-            toast.success('Mesas unidas');
+            const { data } = await api.post('/table-groups', { table_ids: selected });
+            const groupId = data?.id || data?.group?.id || null;
+            // Unir mesas tiene inversa fiel: la misma disolución que ya usa la
+            // hoja (`DELETE /table-groups/:id`). Solo se ofrece si la API
+            // devolvió el grupo; sin id no se puede deshacer y no se promete.
+            if (groupId) {
+                toast.success('Mesas unidas', {
+                    duration: 8000,
+                    action: {
+                        label: 'Deshacer',
+                        onClick: async () => {
+                            try {
+                                await api.delete(`/table-groups/${groupId}`);
+                                toast.success('Mesas separadas');
+                            } catch (e) {
+                                toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
+                            } finally {
+                                refreshAll();
+                            }
+                        },
+                    },
+                });
+            } else {
+                toast.success('Mesas unidas');
+            }
             cancelSelection();
             refreshAll();
         } catch (e) {
@@ -697,8 +775,67 @@ export default function Salon() {
         setAliasDraft(openTable?.order?.customer_name || '');
     }, [openTable?.order?.id, openTable?.order?.customer_name]);
 
+    // ── Mini-reproductor del pedido activo ─────────────────────────────────
+    // Mientras la hoja está abierta con una cuenta cargada, esa cuenta pasa a
+    // ser "la última": es la que el mini mantiene a la vista cuando el mozo
+    // vuelve al plano. El setter está guardado por id para que el polling no
+    // re-renderice en cada refresco.
+    useEffect(() => {
+        const t = openTable?.table;
+        const orderId = openTable?.order?.id;
+        if (!t || !orderId) return;
+        setLastOpened((prev) => (prev && prev.tableId === t.id && prev.accountId === orderId
+            ? prev
+            : { tableId: t.id, accountId: orderId, table: t, account: openTable.order }));
+    }, [openTable?.table, openTable?.order?.id, openTable?.order]);
+
+    const openTrackedSheet = () => {
+        if (!lastOpened) return;
+        void openSheet(lastOpened.table, lastOpened.accountId);
+    };
+
+    // La cuenta puede haberse cerrado, cobrado o movido desde el último vistazo:
+    // el mini solo vive mientras el pedido siga abierto en la lista viva.
+    const miniOrder = useMemo(() => {
+        if (!lastOpened) return null;
+        const live = orders.find((o) => o.id === lastOpened.accountId && o.table_id === lastOpened.tableId);
+        const order = live || lastOpened.account;
+        if (!order || ['pagado', 'cancelado'].includes(order.status)) return null;
+        return order;
+    }, [orders, lastOpened]);
+
+    const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
+        && !moveAccountId && !selectMode;
+
+    /**
+     * "Ahora" — lo que reclama acción inmediata en el piso.
+     *
+     * Se construye sobre las tarjetas ya decoradas y filtradas (respeta buscador
+     * y zona), y solo ofrece las dos acciones que no necesitan más contexto:
+     * servir una cuenta con platos listos y cobrar una cuenta pedida. El cobro
+     * es el mismo camino que la tarjeta: sale a la pantalla de pedidos.
+     */
+    const nowActions = useMemo(() => {
+        const out = [];
+        for (const unit of filteredUnits) {
+            const entries = unit.type === 'group' ? unit.members : [unit.entry];
+            for (const entry of entries) {
+                const order = entry.serviceOrder;
+                if (!order || ['pagado', 'cancelado'].includes(order.status)) continue;
+                const sellable = entry.floor.key === 'listo' && entry.pendingPrep === 0 && entry.ready > 0;
+                if (sellable && canServe) { out.push({ kind: 'servir', order, entry }); continue; }
+                if (entry.floor.key === 'cuenta' && canCharge) out.push({ kind: 'cobrar', order, entry });
+            }
+        }
+        // Lo listo primero: es lo único que se enfría si nadie lo lleva a la mesa.
+        return out.sort((a, b) => (a.kind === b.kind ? 0 : (a.kind === 'servir' ? -1 : 1)));
+    }, [filteredUnits, canServe, canCharge]);
+
     return (
-        <div className={selectMode ? 'space-y-5 pb-28' : 'space-y-5'} data-testid="salon-root">
+        <div
+            className={`space-y-5 ${selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
+            data-testid="salon-root"
+        >
             {/* Header + summary */}
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
@@ -710,22 +847,22 @@ export default function Salon() {
                         En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
                     </p>
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                     <div className="relative">
-                        <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                        <Input ref={searchRef} className="pl-9 h-10 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
+                        <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
+                        <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
                     </div>
                     {summary.toPrep > 0 && (
-                        <Button variant="outline" className="h-10" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
+                        <Button variant="outline" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
                             Cocina ({summary.toPrep})
                         </Button>
                     )}
                     {canTake && !selectMode && (
                         <>
-                            <Button variant="outline" onClick={startSelection} className="h-10" data-testid="salon-unir-mesas">
+                            <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
                                 <Link2 className="h-4 w-4 mr-1" /> Unir mesas
                             </Button>
-                            <Button onClick={() => openAreas()} className="h-10" data-testid="salon-nuevo-pedido">
+                            <Button onClick={() => openAreas()} data-testid="salon-nuevo-pedido">
                                 <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
                             </Button>
                         </>
@@ -733,9 +870,10 @@ export default function Salon() {
                 </div>
             </div>
 
-            {/* Join mode: bottom action bar (thumb-friendly, like the reference prototype) */}
+            {/* Join mode: bottom action bar (thumb-friendly). En móvil sube por
+                encima de la barra de navegación inferior: las dos están en z-40. */}
             {selectMode && (
-                <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)]" data-testid="salon-seleccion">
+                <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-40 border-t bg-card px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)] md:bottom-0" data-testid="salon-seleccion">
                     <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
                         <div className="min-w-[200px] flex-1">
                             <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
@@ -748,10 +886,10 @@ export default function Salon() {
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" className="h-10" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
+                            <Button variant="outline" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
                                 Cancelar
                             </Button>
-                            <Button className="h-10" disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
+                            <Button disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
                                 <Link2 className="h-4 w-4 mr-1" /> {joining ? 'Uniendo…' : 'Unir mesas'}
                             </Button>
                         </div>
@@ -759,8 +897,49 @@ export default function Salon() {
                 </div>
             )}
 
+            {/* Banda "Ahora": lo que reclama acción inmediata, a un toque y sin
+                abrir ninguna mesa. Es un carril con scroll horizontal para no
+                empujar la rejilla hacia abajo cuando hay varias cuentas. */}
+            {nowActions.length > 0 && (
+                <section role="region" aria-label="Ahora" data-testid="salon-ahora">
+                    <h2 className="page-kicker mb-1.5">Ahora</h2>
+                    <div className="scroll-x flex gap-2 pb-1">
+                        {nowActions.map(({ kind, order, entry }) => {
+                            const serving = kind === 'servir';
+                            const s = FLOOR_STYLE[serving ? 'listo' : 'cuenta'];
+                            const quantity = serving ? entry.ready : entry.pendingPrep;
+                            return (
+                                <button
+                                    key={`${kind}-${order.id}`}
+                                    type="button"
+                                    onClick={() => (serving ? deliver(order.id) : openCharge(order))}
+                                    data-testid={`salon-ahora-${kind === 'servir' ? 'servir' : 'cobrar'}-${order.order_number}`}
+                                    aria-label={`${serving ? `Servir ${quantity} plato${quantity === 1 ? '' : 's'} de` : 'Cobrar'} Mesa ${entry.table.number}${order.customer_name ? `, ${order.customer_name}` : ''}`}
+                                    className="shrink-0 w-[13rem] min-h-touch rounded-xl border-2 px-2.5 py-1.5 text-left flex flex-col justify-center gap-0.5 transition-transform active:scale-[0.99]"
+                                    style={{ background: s.bg, borderColor: s.border, color: s.fg }}
+                                >
+                                    <span className="flex items-center gap-1.5 min-w-0">
+                                        <span className="font-display text-lg font-bold leading-none tabular-nums">{entry.table.number}</span>
+                                        <span className="min-w-0 truncate text-xs font-semibold">
+                                            {order.customer_name || `Cuenta #${order.order_number}`}
+                                        </span>
+                                    </span>
+                                    <span className="flex items-center gap-1.5 text-xs font-medium min-w-0">
+                                        <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white tabular-nums" style={{ background: s.dot }}>
+                                            {quantity}
+                                        </span>
+                                        <span className="truncate">{serving ? 'Listo para servir' : 'Pidió la cuenta'}</span>
+                                        <span className="ml-auto shrink-0 font-mono font-semibold tabular-nums">{fmtMoney(order.total)}</span>
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
+            )}
+
             {/* State filter */}
-            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
+            <div className="scroll-x flex gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
                 {STATE_FILTERS.map((f) => (
                     <button
                         key={f.key}
@@ -769,35 +948,52 @@ export default function Salon() {
                         data-testid={`salon-filtro-${f.key}`}
                         className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                     >
-                        {f.label} <span className="ml-1.5 text-xs opacity-70 tabular-nums">{stateCounts[f.key]}</span>
+                        {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
                     </button>
                 ))}
             </div>
 
-            {/* Zones + legend */}
-            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-                {areas.map((a) => (
-                    <button
-                        key={a}
-                        type="button"
-                        onClick={() => setAreaFilter(a)}
-                        data-testid={`mesas-area-${a}`}
-                        className={`shrink-0 px-3 py-1.5 rounded-sm text-sm font-medium transition-colors border ${areaFilter === a ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
-                    >
-                        {areaLabel(a)}
-                    </button>
-                ))}
-                <div className="flex flex-wrap gap-2 items-center lg:ml-auto" data-testid="salon-legend">
-                    {LEGEND.map((k) => {
-                        const s = FLOOR_STYLE[k];
-                        return (
-                            <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5 shrink-0" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
-                                <span className="h-2 w-2 rounded-full" style={{ background: s.dot }} />
-                                {s.label}
-                            </span>
-                        );
-                    })}
+            {/* Zones as a segmented control: same behaviour and same testids as
+                the old chip row, but the active zone reads as a pressed segment
+                (aria-pressed) inside a labelled group, instead of a run of
+                independent pills. Still a horizontal scroller at 360 px. */}
+            <div
+                role="group"
+                aria-label="Zona de la mesa"
+                data-testid="salon-zonas"
+                className="scroll-x sm:overflow-visible sm:pb-0"
+            >
+                <div className="inline-flex w-max gap-1 rounded-sm border border-border bg-secondary/60 p-1 sm:w-auto sm:flex-wrap">
+                    {areas.map((a) => (
+                        <button
+                            key={a}
+                            type="button"
+                            onClick={() => setAreaFilter(a)}
+                            aria-pressed={areaFilter === a}
+                            data-testid={`mesas-area-${a}`}
+                            className={`shrink-0 min-h-touch rounded-sm px-3 text-sm font-medium transition-colors sm:min-h-9 ${areaFilter === a ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            {areaLabel(a)}
+                        </button>
+                    ))}
                 </div>
+            </div>
+
+            {/* La leyenda va en su propia fila: dentro del carril con scroll
+                quedaba a la derecha, fuera de la vista en móvil. Es una clave,
+                no un control, así que se compacta al máximo: con padding de
+                píldora ocupaba 94 px en 360 px (tres filas) y empujaba la
+                primera mesa hasta el píxel 525 de 640. */}
+            <div className="flex w-full flex-wrap gap-1 items-center lg:justify-end" data-testid="salon-legend">
+                {LEGEND.map((k) => {
+                    const s = FLOOR_STYLE[k];
+                    return (
+                        <span key={k} className="text-xs px-1.5 py-0.5 rounded-full border flex items-center gap-1 shrink-0" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
+                            <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.dot }} />
+                            {s.label}
+                        </span>
+                    );
+                })}
             </div>
 
             {(tablesError || ordersError) && (
@@ -958,37 +1154,80 @@ export default function Salon() {
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
                                     {((accounts && accounts.length > 1) || (t.active_attention_id && canTake)) && (
-                                        <div className="flex flex-wrap gap-1.5" data-testid="mesa-sheet-cuentas">
-                                            {accounts.map((o) => (
-                                                <button
-                                                    key={o.id}
-                                                    type="button"
-                                                    onClick={() => selectAccount(o.id)}
-                                                    data-testid={`mesa-sheet-cuenta-${o.order_number}`}
-                                                    className={`rounded-lg border px-2 py-1 text-xs font-medium ${currentAccountId === o.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
-                                                >
-                                                    {o.customer_name ? o.customer_name : `#${o.order_number}`} · {fmtMoney(o.total)}
-                                                </button>
-                                            ))}
-                                            {t.active_attention_id && canTake && (
-                                                <button
-                                                    type="button"
-                                                    onClick={addAccount}
-                                                    data-testid="mesa-sheet-nueva-cuenta"
-                                                    className="rounded-lg border border-dashed border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
-                                                >
-                                                    <Plus className="h-3 w-3 inline mr-1" />Cuenta
-                                                </button>
+                                        <div className="space-y-2" data-testid="mesa-sheet-cuentas">
+                                            {/* Con más de una cuenta cada una es una tarjeta: alias,
+                                                total y estado de sus platos en el mismo bloque. Antes
+                                                eran píldoras de una línea donde el estado no cabía. */}
+                                            {accounts.length > 1 && (
+                                                <div className="scroll-x flex gap-2 pb-1">
+                                                    {accounts.map((o) => {
+                                                        const detail = activeOrders[o.id] || o;
+                                                        const isCurrent = currentAccountId === o.id;
+                                                        const readyCount = itemQty(detail.items, (it) => it.status === 'listo');
+                                                        const pendingCount = itemQty(detail.items, itemPending);
+                                                        const accountState = detail.status === 'nuevo'
+                                                            ? 'Por enviar'
+                                                            : readyCount > 0
+                                                                ? `Listo · ${readyCount}`
+                                                                : detail.status === 'pendiente_pago'
+                                                                    ? 'Pidió la cuenta'
+                                                                    : detail.status === 'listo'
+                                                                        ? 'Listo'
+                                                                        : pendingCount > 0
+                                                                            ? `En cocina · ${pendingCount}`
+                                                                            : 'Sin platos';
+                                                        return (
+                                                            <button
+                                                                key={o.id}
+                                                                type="button"
+                                                                onClick={() => selectAccount(o.id)}
+                                                                aria-pressed={isCurrent}
+                                                                data-testid={`mesa-sheet-cuenta-${o.order_number}`}
+                                                                className={`flex w-36 shrink-0 flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${isCurrent ? 'border-primary bg-primary/5' : 'border-border bg-card hover:bg-secondary'}`}
+                                                            >
+                                                                <span className="w-full truncate text-sm font-semibold">
+                                                                    {o.customer_name ? o.customer_name : `#${o.order_number}`}
+                                                                </span>
+                                                                <span className="font-mono text-xs font-semibold tabular-nums">{fmtMoney(o.total)}</span>
+                                                                <span className="text-xs text-muted-foreground">{accountState}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    {t.active_attention_id && canTake && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={addAccount}
+                                                            data-testid="mesa-sheet-nueva-cuenta"
+                                                            className="flex w-24 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border px-2 py-2 text-xs font-medium text-muted-foreground hover:bg-secondary"
+                                                        >
+                                                            <Plus className="h-4 w-4" />Cuenta
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {t.active_attention_id && canTake && accounts.length <= 1 && (
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={addAccount}
+                                                        data-testid="mesa-sheet-nueva-cuenta"
+                                                        className="min-h-9 rounded-lg border border-dashed border-border px-3 py-1 text-xs font-medium hover:bg-secondary"
+                                                    >
+                                                        <Plus className="h-3 w-3 inline mr-1" />Cuenta
+                                                    </button>
+                                                </div>
                                             )}
                                             {accounts.length > 1 && canTake && (
-                                                <button
-                                                    type="button"
-                                                    onClick={mergeAccounts}
-                                                    data-testid="mesa-sheet-fusionar-cuentas"
-                                                    className="rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
-                                                >
-                                                    <Link2 className="h-3 w-3 inline mr-1" />Fusionar
-                                                </button>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={mergeAccounts}
+                                                        data-testid="mesa-sheet-fusionar-cuentas"
+                                                        className="min-h-9 rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-secondary"
+                                                    >
+                                                        <Link2 className="h-3 w-3 inline mr-1" />Fusionar
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     )}
@@ -996,7 +1235,6 @@ export default function Salon() {
                                         <div className="space-y-1" data-testid="mesa-sheet-alias-row">
                                             <div className="flex items-center gap-2">
                                                 <Input
-                                                    className="h-9"
                                                     placeholder={accounts.length > 1 ? 'Alias (ej. Juan)' : 'Alias de la cuenta (opcional)'}
                                                     value={aliasDraft}
                                                     onChange={(e) => setAliasDraft(e.target.value)}
@@ -1005,7 +1243,7 @@ export default function Salon() {
                                                 />
                                                 <Button
                                                     size="sm"
-                                                    className="h-9 shrink-0"
+                                                    className="h-11 shrink-0"
                                                     onClick={saveAlias}
                                                     disabled={aliasDraft.trim() === (order.customer_name || '')}
                                                     data-testid="mesa-sheet-alias-guardar"
@@ -1080,14 +1318,14 @@ export default function Salon() {
                                                         style={{ background: '#F3F0FF', borderColor: '#D9D2F0', color: '#3B2A66' }}
                                                     >
                                                         Mesa {member.number}
-                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-[10px] opacity-80">· cuenta</span>}
+                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-xs text-muted-foreground">· cuenta</span>}
                                                         {member.id !== t.id && canTake && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => removeGroupMember(group, member)}
                                                                 aria-label={`Separar Mesa ${member.number}`}
                                                                 data-testid={`mesa-sheet-quitar-grupo-${member.number}`}
-                                                                className="ml-0.5 rounded-full hover:bg-black/10 p-0.5"
+                                                                className="ml-0.5 grid min-h-touch min-w-touch place-items-center rounded-full hover:bg-black/10"
                                                             >
                                                                 <Unlink className="h-3 w-3" />
                                                             </button>
@@ -1282,7 +1520,7 @@ export default function Salon() {
                                 No hay mesas libres de la misma sucursal para mover el pedido.
                             </p>
                         ) : (
-                            <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-pedido-mesas">
+                            <div className="grid grid-cols-3 gap-2 max-h-[50dvh] overflow-y-auto" data-testid="mover-pedido-mesas">
                                 {transferTargets.map((target) => (
                                     <button
                                         key={target.id}
@@ -1323,7 +1561,7 @@ export default function Salon() {
                                     No hay mesas libres para mover la cuenta.
                                 </p>
                             ) : (
-                                <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-cuenta-mesas">
+                                <div className="grid grid-cols-3 gap-2 max-h-[50dvh] overflow-y-auto" data-testid="mover-cuenta-mesas">
                                     {targets.map((target) => (
                                         <button
                                             key={target.id}
@@ -1347,6 +1585,55 @@ export default function Salon() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Mini-reproductor del pedido activo: mantiene a la vista la última
+                cuenta abierta mientras el mozo se mueve por el salón, con una
+                sola acción contextual (servir lo listo, enviar los borradores o
+                agregar). z-30: siempre por debajo de hojas y diálogos (z-50). */}
+            {miniVisible && (() => {
+                const order = miniOrder;
+                const trackedTable = lastOpened.table;
+                const tally = accountTally(order);
+                const total = order.total != null ? fmtMoney(order.total) : '—';
+                const statusSummary = `${tallyLabel(tally)} · ${total}`;
+                const actionVerb = tally.ready > 0 ? 'Servir' : tally.drafts > 0 ? `Enviar · ${tally.drafts}` : 'Agregar';
+                const runAction = () => {
+                    if (tally.ready > 0) return deliver(order.id);
+                    if (tally.drafts > 0) return sendCurrentToKitchen(order.id);
+                    return openTrackedSheet();
+                };
+                return (
+                    <div
+                        data-testid="salon-mini"
+                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 mx-auto flex max-w-md items-center gap-2 rounded-sm border border-border bg-card p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.14)] md:bottom-0"
+                    >
+                        <button
+                            type="button"
+                            onClick={openTrackedSheet}
+                            aria-label={`Pedido activo: Mesa ${trackedTable?.number}. ${statusSummary}`}
+                            className="flex min-h-touch min-w-0 flex-1 items-center gap-2 rounded-sm px-1 text-left transition-colors active:bg-secondary sm:min-h-9"
+                        >
+                            <span
+                                aria-hidden="true"
+                                className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-secondary font-display text-base font-bold"
+                            >
+                                {trackedTable?.number}
+                            </span>
+                            <span className="flex min-w-0 flex-col">
+                                <span className="truncate text-sm font-semibold leading-tight">
+                                    {order.customer_name || `Cuenta #${order.order_number}`}
+                                </span>
+                                <span className="truncate text-xs text-muted-foreground">
+                                    Mesa {trackedTable?.number} · {statusSummary}
+                                </span>
+                            </span>
+                        </button>
+                        <Button size="sm" className="shrink-0" onClick={runAction} data-testid="salon-mini-accion">
+                            {actionVerb}
+                        </Button>
+                    </div>
+                );
+            })()}
         </div>
     );
 }

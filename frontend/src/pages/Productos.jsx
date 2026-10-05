@@ -153,7 +153,8 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Sin max-h del llamador: anulaba el 85dvh del diálogo y en iOS la barra del navegador tapaba el pie */}
+            <DialogContent className="max-w-2xl overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Importar platos desde Excel</DialogTitle>
                 </DialogHeader>
@@ -414,8 +415,8 @@ export default function Productos({ section = 'platos' }) {
                                         ))}
                                     </ul>
                                 )}
-                                <div className="mt-3 flex items-center justify-between">
-                                    <label className="flex items-center gap-2 text-sm"><Switch checked={p.is_available} onCheckedChange={() => toggleAvail(p)} data-testid={`producto-disp-${p.id}`} /> {p.is_available ? 'Disponible' : 'Agotado'}</label>
+                                <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
+                                    <label className="flex items-center gap-2 text-sm min-h-11 sm:min-h-0"><Switch checked={p.is_available} onCheckedChange={() => toggleAvail(p)} data-testid={`producto-disp-${p.id}`} /> {p.is_available ? 'Disponible' : 'Agotado'}</label>
                                     <div className="flex items-center gap-1">
                                         <Button size="icon" variant="ghost" aria-label={`Editar ${p.name}`} onClick={() => openEdit(p)} data-testid={`producto-edit-${p.id}`}><Pencil className="h-4 w-4" /></Button>
                                         <Button size="icon" variant="ghost" aria-label={`Eliminar ${p.name}`} onClick={() => setConfirmDel(p)} data-testid={`producto-del-${p.id}`}><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -428,7 +429,7 @@ export default function Productos({ section = 'platos' }) {
             )}
 
             <Dialog open={openDlg} onOpenChange={setOpenDlg}>
-                <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="max-w-xl overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>
                             {form.is_combo
@@ -516,7 +517,7 @@ export default function Productos({ section = 'platos' }) {
                                 </Button>
                             </div>
                         )}
-                        <label className="flex items-center gap-2 text-sm"><Switch checked={form.is_available} onCheckedChange={(v) => setForm({ ...form, is_available: v })} /> Disponible</label>
+                        <label className="flex items-center gap-2 text-sm min-h-11 sm:min-h-0"><Switch checked={form.is_available} onCheckedChange={(v) => setForm({ ...form, is_available: v })} /> Disponible</label>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setOpenDlg(false)}>Cancelar</Button>

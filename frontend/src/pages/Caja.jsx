@@ -209,7 +209,7 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
                                     </button>
                                     <div className="text-right shrink-0 space-y-1">
                                         <div className={`font-mono font-semibold tabular-nums ${isVoided ? 'line-through text-muted-foreground' : ''}`}>{fmtMoney(p.amount)}</div>
-                                        <Button size="sm" variant="outline" className="h-8" onClick={() => reprint(p)} data-testid={`caja-reimprimir-${p.id}`}>
+                                        <Button size="sm" variant="outline" onClick={() => reprint(p)} data-testid={`caja-reimprimir-${p.id}`}>
                                             <Printer className="h-3.5 w-3.5 mr-1" />Comprobante
                                         </Button>
                                     </div>
@@ -376,8 +376,9 @@ function CashHistory({ refreshKey, scopeParams = {} }) {
                         </TabsList>
                     </Tabs>
                 </div>
+                {/* grid-cols-2 en móvil: en 3 columnas los importes quedaban en ~90 px. */}
                 {data && (
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         <div>
                             <div className="text-xs text-muted-foreground">Turnos</div>
                             <div className="font-mono font-semibold tabular-nums">{data.sessions}</div>
@@ -735,7 +736,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
             {cobrables.length > 0 && (
                 <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-3.5 text-muted-foreground" />
+                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input className="pl-9 h-11 sm:max-w-xs" placeholder="Buscar mesa, cliente o #pedido" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="caja-buscar" />
                 </div>
             )}
@@ -752,7 +753,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>
                             </div>
@@ -777,7 +778,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-10" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
+                                    {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>
                             </div>
@@ -792,7 +793,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
             <div className="space-y-4">
                 <div className="flex gap-2 flex-wrap">
                     {[['pagos', 'Pagos'], ['platos', 'Platos'], ['turnos', 'Turnos']].map(([k, lab]) => (
-                        <Button key={k} variant={histKind === k ? 'default' : 'outline'} className="h-10" onClick={() => setHistKind(k)} data-testid={`caja-hist-${k}`}>
+                        <Button key={k} variant={histKind === k ? 'default' : 'outline'} className="h-11" onClick={() => setHistKind(k)} data-testid={`caja-hist-${k}`}>
                             {lab}
                         </Button>
                     ))}

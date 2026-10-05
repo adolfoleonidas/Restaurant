@@ -5,6 +5,7 @@ import "@/index.css";
 import App from "@/App";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { ThemeProvider } from "@/contexts/ThemeContext";
+import { registerServiceWorker } from "@/lib/serviceWorker";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,3 +28,7 @@ root.render(
     </QueryClientProvider>
   </React.StrictMode>,
 );
+
+// La PWA (caché y pantalla de inicio) se registra después de montar, para que
+// nunca retrase el primer render.
+registerServiceWorker();

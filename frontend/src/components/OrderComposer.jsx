@@ -50,7 +50,7 @@ export default function OrderComposer({
             <div className="flex items-center justify-between gap-2">
                 <span className="page-kicker">{label}</span>
                 {showKitchen && (
-                    <Button size="sm" className="h-8" onClick={onSendToKitchen} data-testid={`${testIdPrefix}-enviar-cocina`}>
+                    <Button size="sm" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
                         Enviar a cocina
                     </Button>
                 )}
@@ -64,9 +64,9 @@ export default function OrderComposer({
                 </div>
             )}
             <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
+                <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                 <Input
-                    className="pl-9 h-9"
+                    className="pl-9"
                     placeholder="Buscar plato"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -74,7 +74,7 @@ export default function OrderComposer({
                 />
             </div>
             {categories.length > 0 && (
-                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                <div className="scroll-x flex gap-1.5 pb-1">
                     <button
                         type="button"
                         onClick={() => setCategoryId('all')}
@@ -94,7 +94,7 @@ export default function OrderComposer({
                     ))}
                 </div>
             )}
-            <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
+            <div className="grid grid-cols-2 gap-1.5 max-h-[38dvh] overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
                 {visible.map((p) => {
                     const out = !p.is_available || (p.is_combo && p.components_available === false);
                     const qty = lines
@@ -155,7 +155,7 @@ export function OrderItems({ items = [], canCompose = false, total = null, onCha
                                     onClick={() => onChangeQty?.(it, -1)}
                                     aria-label={`Quitar uno de ${it.product_name}`}
                                     data-testid={`${testIdPrefix}-item-menos-${it.id}`}
-                                    className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"
+                                    className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"
                                 >
                                     <Minus className="h-3.5 w-3.5" />
                                 </button>
@@ -164,7 +164,7 @@ export function OrderItems({ items = [], canCompose = false, total = null, onCha
                                     onClick={() => onChangeQty?.(it, 1)}
                                     aria-label={`Agregar uno de ${it.product_name}`}
                                     data-testid={`${testIdPrefix}-item-mas-${it.id}`}
-                                    className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"
+                                    className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"
                                 >
                                     <Plus className="h-3.5 w-3.5" />
                                 </button>

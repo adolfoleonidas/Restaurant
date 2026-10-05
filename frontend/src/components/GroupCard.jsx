@@ -15,7 +15,7 @@ import { FLOOR_STYLE } from '@/lib/floorStyle';
  * else lives in the sheet, which lists members and accounts.
  */
 
-const ACTION_BASE = 'h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
+const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
 
 export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpen, onOpenMember, onDeliver, onCharge }) {
     const { floor, anchor, accounts, amount, elapsed, minutes, urgency, isLate, members } = unit;
@@ -55,7 +55,7 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                                 data-testid={`mesa-grupo-miembro-${m.table.number}`}
                                 aria-label={`Abrir Mesa ${m.table.number}`}
                                 onClick={(e) => { e.stopPropagation(); onOpenMember(m.table); }}
-                                className="h-6 min-w-6 px-1 grid place-items-center rounded-md bg-black/5 text-sm font-bold leading-none cursor-pointer"
+                                className="min-h-touch min-w-touch px-1 grid place-items-center rounded-md bg-black/5 text-sm font-bold leading-none cursor-pointer"
                             >
                                 {m.table.number}
                             </button>
@@ -71,7 +71,7 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
                     <span className="text-sm font-semibold">{s.label}</span>
                     {accounts > 1 && (
-                        <span data-testid="mesa-grupo-cuentas" className="text-[10px] font-medium rounded-full px-2 py-0.5 border" style={{ background: FLOOR_STYLE.cuenta.bg, color: FLOOR_STYLE.cuenta.fg, borderColor: FLOOR_STYLE.cuenta.border }}>
+                        <span data-testid="mesa-grupo-cuentas" className="text-xs font-medium rounded-full px-2 py-0.5 border" style={{ background: FLOOR_STYLE.cuenta.bg, color: FLOOR_STYLE.cuenta.fg, borderColor: FLOOR_STYLE.cuenta.border }}>
                             {accounts} cuentas
                         </span>
                     )}
@@ -91,14 +91,17 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                 )}
             </div>
             {!selectMode && showActions && (
-                <div className="px-3 pb-3 sm:px-4 sm:pb-4 flex flex-col gap-1.5">
+                // La tarjeta de grupo ocupa dos columnas: sus dos acciones (como
+                // mucho) caben en una fila en móvil y la tarjeta no crece. En
+                // escritorio se conserva la columna de siempre.
+                <div className="px-3 pb-3 sm:px-4 sm:pb-4 flex gap-1.5 sm:flex-col">
                     {showEntregar && (
-                        <button type="button" data-testid="mesa-grupo-entregar" className={`${ACTION_BASE} text-white`} style={{ background: FLOOR_STYLE.listo.dot }} onClick={(e) => { e.stopPropagation(); onDeliver(entregable[0].serviceOrder.id); }}>
+                        <button type="button" data-testid="mesa-grupo-entregar" className={`${ACTION_BASE} grow text-white`} style={{ background: FLOOR_STYLE.listo.dot }} onClick={(e) => { e.stopPropagation(); onDeliver(entregable[0].serviceOrder.id); }}>
                             <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" />Entregar
                         </button>
                     )}
                     {showCobrar && (
-                        <button type="button" data-testid="mesa-grupo-cobrar" className={`${ACTION_BASE} text-white`} style={{ background: FLOOR_STYLE.cuenta.dot }} onClick={(e) => { e.stopPropagation(); onCharge(cobrable[0].serviceOrder); }}>
+                        <button type="button" data-testid="mesa-grupo-cobrar" className={`${ACTION_BASE} grow text-white`} style={{ background: FLOOR_STYLE.cuenta.dot }} onClick={(e) => { e.stopPropagation(); onCharge(cobrable[0].serviceOrder); }}>
                             <Receipt className="h-3.5 w-3.5 inline mr-1" />Cobrar
                         </button>
                     )}

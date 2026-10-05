@@ -10,7 +10,7 @@ export function ThemeToggle() {
             type="button"
             variant="outline"
             size="icon"
-            className="h-9 w-9 rounded-sm"
+            className="rounded-sm"
             onClick={toggle}
             aria-label={darkMode ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
             data-testid="theme-toggle"

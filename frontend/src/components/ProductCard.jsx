@@ -32,7 +32,7 @@ export function ProductCard({ product, children }) {
                 data-testid={`landing-product-${product.id}`}
             >
                 {product.image_url ? (
-                    <img src={product.image_url} alt="" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
+                    <img src={product.image_url} alt="" width={96} height={112} loading="lazy" decoding="async" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
                 ) : (
                     <div className="h-28 w-24 sm:h-32 sm:w-32 bg-secondary shrink-0" aria-hidden="true" />
                 )}
@@ -107,7 +107,7 @@ export function ProductCard({ product, children }) {
             data-testid={`landing-product-${product.id}`}
         >
             {product.image_url ? (
-                <img src={product.image_url} alt="" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
+                <img src={product.image_url} alt="" width={96} height={112} loading="lazy" decoding="async" className="h-28 w-24 sm:h-32 sm:w-32 object-cover shrink-0" />
             ) : (
                 <div className="h-28 w-24 sm:h-32 sm:w-32 bg-secondary shrink-0" aria-hidden="true" />
             )}

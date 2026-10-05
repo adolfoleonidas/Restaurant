@@ -136,13 +136,13 @@ export default function PedidoNuevo() {
             </div>
 
             {isTableOrder && !lockedTableId && (
-                <div className="flex gap-2 overflow-x-auto pb-1">
+                <div className="scroll-x flex gap-2 pb-1">
                     {(tables || []).filter((t) => t.status === 'disponible' || t.id === tableId).map((t) => (
                         <button
                             key={t.id}
                             type="button"
                             onClick={() => setTableId(t.id)}
-                            className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${tableId === t.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
+                            className={`min-h-11 md:min-h-0 shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${tableId === t.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
                         >
                             Mesa {t.number}
                         </button>
@@ -155,11 +155,11 @@ export default function PedidoNuevo() {
                 <Input className="pl-9 h-12 text-base" placeholder="Buscar plato" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="pedido-buscar-producto" />
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="scroll-x flex gap-2 pb-1">
                 <button
                     type="button"
                     onClick={() => setCategoryId('all')}
-                    className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${categoryId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
+                    className={`min-h-11 md:min-h-0 shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${categoryId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
                 >
                     Todas
                 </button>
@@ -168,7 +168,7 @@ export default function PedidoNuevo() {
                         key={c.id}
                         type="button"
                         onClick={() => setCategoryId(c.id)}
-                        className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${categoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
+                        className={`min-h-11 md:min-h-0 shrink-0 px-4 py-2 rounded-full text-sm font-medium border ${categoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
                     >
                         {c.name}
                     </button>
@@ -199,7 +199,7 @@ export default function PedidoNuevo() {
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="font-display text-lg font-semibold leading-tight truncate">{p.name}</div>
                                         {agotado && (
-                                            <span className="shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                                            <span className="shrink-0 text-xs font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                                         )}
                                     </div>
                                     {p.description && <div className="text-xs text-muted-foreground line-clamp-2 mt-1">{p.description}</div>}
@@ -228,7 +228,9 @@ export default function PedidoNuevo() {
 
             <Textarea placeholder="Observaciones (sin cebolla, término…)" value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} className="text-base" data-testid="pedido-notas" />
 
-            <div className="sticky bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border mt-4">
+            {/* El pie sube por encima de la barra inferior de navegación (60 px +
+                área segura) en móvil; en escritorio la barra no existe. */}
+            <div className="sticky bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border mt-4">
                 <Button
                     onClick={submit}
                     disabled={loading || cart.length === 0 || (isTableOrder && !tableId)}

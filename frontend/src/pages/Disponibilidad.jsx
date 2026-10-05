@@ -63,11 +63,12 @@ export default function Disponibilidad() {
                 <CardContent className="p-0 divide-y">
                     {list.map((p) => (
                         <div key={p.id} className="px-4 py-3 flex items-center justify-between gap-3" data-testid={`disp-${p.id}`}>
-                            <div>
-                                <div className="font-medium">{p.name}</div>
+                            <div className="min-w-0">
+                                <div className="font-medium truncate" title={p.name}>{p.name}</div>
                                 <div className="text-xs text-muted-foreground">{p.is_available ? 'Disponible' : 'Agotado'}</div>
                             </div>
-                            <Button variant={p.is_available ? 'outline' : 'default'} className="h-10" onClick={() => toggle(p)}>
+                            {/* Sin h-10: el botón recupera los 44 px móviles del primitivo (acción de estado del plato) */}
+                            <Button variant={p.is_available ? 'outline' : 'default'} className="shrink-0" onClick={() => toggle(p)}>
                                 {p.is_available ? 'Marcar agotado' : 'Volver a habilitar'}
                             </Button>
                         </div>
