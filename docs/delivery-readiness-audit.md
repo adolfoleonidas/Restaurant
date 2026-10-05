@@ -104,7 +104,8 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 ## 💰 Bugs de dinero (reproducidos con el arnés del repo)
 
 Ejecutados contra las rutas reales sobre el fake in-memory de `tests/test_money_integrity.py`.
-Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite hermética da **346 ✅ / 0 ❌**.
+**El bloque de dinero queda cerrado**: los 4 P1 y los 5 P2/P3 están resueltos, con test de regresión
+(excepto las mutaciones públicas, verificadas en vivo). La suite hermética da **355 ✅ / 0 ❌**.
 
 | Sev | Bug | Estado |
 |---|---|---|
@@ -116,7 +117,7 @@ Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite herméti
 | P2 | **El reintento idempotente devolvía un payload sin `fully_paid`/`remaining`** (el diálogo decía "Restante: —" con la cuenta ya cubierta) | ✅ **resuelto**: el replay devuelve la misma forma que un cobro nuevo, calculada del pedido actual |
 | P2 | **Movimientos de caja sin control**: cualquier cajero creaba `ingreso`/`egreso` de cualquier monto, sin auditoría, y eso mueve el efectivo esperado | ✅ **resuelto**: descripción obligatoria (mínimo 5 caracteres), **entrada de auditoría** en cada movimiento y tope de **S/ 200 para cajeros** (arriba lo registra un administrador). La UI avisa antes de enviar |
 | P2 | **Mutaciones públicas que no recalculaban `payment_status`**: el cliente agregaba un postre a una cuenta ya pagada, subía el total y la deuda **no se cobraba nunca** | ✅ **resuelto**: las tres mutaciones públicas (agregar, editar, quitar) recalculan el estado del pago. **Verificado en vivo**: tras cobrar S/ 10 y agregar un plato desde la web, el pedido pasó a `parcial` (total 15, pagado 10) |
-| P3 | Métodos de pago deshabilitados se pueden usar igual | ⏳ pendiente |
+| P3 | **Métodos de pago deshabilitados que se podían usar igual** (el local apaga "tarjeta" y una llamada directa igual cobraba) | ✅ **resuelto**: `POST /payments` valida contra `payment_configs`, incluidos los métodos de un pago **mixto**. Solo bloquea un `false` explícito, así un local sin configuración sigue funcionando |
 
 ---
 

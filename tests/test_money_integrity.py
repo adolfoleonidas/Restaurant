@@ -164,6 +164,7 @@ class _DB:
         self.attentions = _Collection()
         self.products = _Collection()
         self.branches = _Collection()
+        self.payment_configs = _Collection()
         self.branches.docs.append({"id": "branch-1", "restaurant_id": RID})
 
 
@@ -1044,3 +1045,41 @@ def test_replaying_a_payment_returns_the_settled_shape():
     assert stored["amount_paid"] == 20
     assert replay["fully_paid"] is True
     assert replay["remaining"] == 0.0
+
+
+def test_a_disabled_payment_method_is_rejected():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        db.payment_configs.docs.append({"restaurant_id": RID, "enable_efectivo": True, "enable_tarjeta": False})
+        _bind(db)
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(_payment_body(method="tarjeta", idempotency_key="card-key"), _cashier())
+        return caught.value, db.payments.docs
+
+    error, payments = asyncio.run(run())
+    assert error.status_code == 400
+    assert "tarjeta" in error.detail
+    assert payments == []
+
+
+def test_a_mixed_payment_with_a_disabled_method_is_rejected():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=100.0, total=100.0))
+        db.cash_registers.docs.append(_open_register())
+        db.payment_configs.docs.append({"restaurant_id": RID, "enable_efectivo": True, "enable_plin": False})
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1", method="mixto", amount=100, idempotency_key="mix-key",
+            splits=[PaymentSplit(method="efectivo", amount=50), PaymentSplit(method="plin", amount=50)],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db.payments.docs
+
+    error, payments = asyncio.run(run())
+    assert error.status_code == 400
+    assert "plin" in error.detail
+    assert payments == []

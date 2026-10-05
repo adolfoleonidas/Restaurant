@@ -310,6 +310,20 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
         raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
 
+    # The venue may switch a method off in Datos de cobro; the UI hides it, but a
+    # cached screen or a direct call still got through. Only an explicit `false`
+    # blocks, so venues without a config (or legacy rows) keep working.
+    config = await db.payment_configs.find_one({"restaurant_id": user["restaurant_id"]}, {"_id": 0}) or {}
+    requested_methods = (
+        [split.method for split in (data.splits or [])] if data.method == "mixto" else [data.method]
+    )
+    disabled = sorted({m for m in requested_methods if config.get(f"enable_{m}") is False})
+    if disabled:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El método de pago no está disponible: {', '.join(disabled)}",
+        )
+
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
