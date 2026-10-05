@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     FlowError,
@@ -284,6 +284,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     if assigned_branch_id is not None and data.branch_id is not None and data.branch_id != assigned_branch_id:
         raise HTTPException(status_code=403, detail="No puede crear pedidos para otra sucursal")
     table = None
+    reused_attention_id = None
     if data.order_type == "mesa" and not data.table_id:
         raise HTTPException(status_code=400, detail="Se requiere mesa")
     if data.order_type == "delivery" and not (data.customer_address or "").strip():
@@ -295,23 +296,31 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         assert_record_branch_access(table, user, "Mesa no encontrada")
         if data.branch_id is not None and data.branch_id != table.get("branch_id"):
             raise HTTPException(status_code=400, detail="La sucursal del pedido no coincide con la mesa")
-        if table.get("active_attention_id"):
-            raise HTTPException(status_code=400, detail="La mesa pertenece a una visita abierta")
-        if table.get("status") not in ("disponible", "ocupada"):
-            raise HTTPException(status_code=400, detail="La mesa no está disponible")
-        existing = await db.orders.find_one({
-            "restaurant_id": user["restaurant_id"], "table_id": data.table_id,
-            "status": {"$nin": ["pagado", "cancelado"]},
-            **record_branch_filter(user),
-        })
-        if existing:
-            raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
-        try:
-            await capture_attention_context(
-                db, tenant_id=user["restaurant_id"], branch_id=table.get("branch_id"), confirmed_at=_now()
-            )
-        except AttentionAcceptanceError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if getattr(data, "new_account", False):
+            # Cuenta adicional dentro de la visita ya abierta de la mesa.
+            if not table.get("active_attention_id"):
+                raise HTTPException(status_code=400, detail="La mesa no tiene una visita abierta para agregar una cuenta")
+            if table.get("status") not in ("ocupada", "esperando_pago"):
+                raise HTTPException(status_code=400, detail="La mesa no está ocupada")
+            reused_attention_id = table["active_attention_id"]
+        else:
+            if table.get("active_attention_id"):
+                raise HTTPException(status_code=400, detail="La mesa pertenece a una visita abierta")
+            if table.get("status") not in ("disponible", "ocupada"):
+                raise HTTPException(status_code=400, detail="La mesa no está disponible")
+            existing = await db.orders.find_one({
+                "restaurant_id": user["restaurant_id"], "table_id": data.table_id,
+                "status": {"$nin": ["pagado", "cancelado"]},
+                **record_branch_filter(user),
+            })
+            if existing:
+                raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
+            try:
+                await capture_attention_context(
+                    db, tenant_id=user["restaurant_id"], branch_id=table.get("branch_id"), confirmed_at=_now()
+                )
+            except AttentionAcceptanceError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
     if table is not None:
         branch_id = table.get("branch_id")
     elif assigned_branch_id is not None:
@@ -329,7 +338,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     enriched, subtotal = await _compute_total(items, user["restaurant_id"]) if items else ([], 0.0)
     order_no = await _next_order_number(user["restaurant_id"])
     order_id = str(uuid.uuid4())
-    attention_id = str(uuid.uuid4()) if data.table_id else None
+    attention_id = reused_attention_id or (str(uuid.uuid4()) if data.table_id else None)
     o = {
         "id": order_id, "order_number": order_no, "restaurant_id": user["restaurant_id"],
         "table_id": data.table_id, "created_by": user["id"], "created_by_name": user["full_name"],
@@ -345,15 +354,20 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         if value:
             o[field] = value
     if attention_id:
-        o.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
+        o.update({
+            "attention_id": attention_id,
+            "attention_state": "open" if reused_attention_id else "opening",
+            "attention_open": bool(reused_attention_id),
+        })
         o["_id"] = order_id
-        try:
-            await reserve_table_opening(
-                db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"],
-                allowed_statuses=("disponible", "ocupada"), intent=o,
-            )
-        except AttentionBlocked as exc:
-            raise HTTPException(status_code=409, detail=exc.detail)
+        if not reused_attention_id:
+            try:
+                await reserve_table_opening(
+                    db, table=table, order_id=order_id, restaurant_id=user["restaurant_id"],
+                    allowed_statuses=("disponible", "ocupada"), intent=o,
+                )
+            except AttentionBlocked as exc:
+                raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(o)
     except DuplicateKeyError:
@@ -371,10 +385,17 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         # Keep the durable intent: an insert may have committed before its error reached us.
         raise
     if attention_id:
-        try:
-            await open_table_attention(db, order=o, user=user, now=_now())
-        except AttentionBlocked as exc:
-            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
+        if reused_attention_id:
+            # Registra la nueva cuenta en la visita existente (no abre visita nueva).
+            await db.attentions.update_one(
+                {"id": reused_attention_id, "restaurant_id": user["restaurant_id"]},
+                {"$addToSet": {"order_ids": order_id}},
+            )
+        else:
+            try:
+                await open_table_attention(db, order=o, user=user, now=_now())
+            except AttentionBlocked as exc:
+                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no, branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
@@ -433,6 +454,196 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/merge")
+async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Fusiona la cuenta `source_order_id` dentro de `order_id` (misma mesa y visita)."""
+    target = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    source = await db.orders.find_one(await _order_lookup_scope(data.source_order_id, user), {"_id": 0})
+    if not source:
+        raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
+    if source["id"] == target["id"]:
+        raise HTTPException(status_code=400, detail="Elegí cuentas distintas")
+    if target["status"] in ("pagado", "cancelado") or source["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="Solo se pueden fusionar cuentas abiertas")
+    if target.get("table_id") != source.get("table_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben estar en la misma mesa")
+    if target.get("attention_id") != source.get("attention_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma visita")
+    if (source.get("amount_paid") or 0) > 0.009:
+        raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anulalos antes de fusionar")
+    combined = (target.get("items") or []) + (source.get("items") or [])
+    subtotal, total = _apply_bill(target, combined)
+    new_status = _derive_kitchen_status(combined, target["status"])
+    if target["status"] in ("entregado", "pendiente_pago"):
+        new_status = "enviado_cocina"
+    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    patch.update(ticket_fields(target, new_status, target.get("amount_paid"), total))
+    await _save_order(target, patch)
+    await _save_order(source, {
+        "status": "cancelado",
+        "cancellation_reason": f"Fusionada con #{target.get('order_number')}",
+        "updated_at": _now(),
+    })
+    emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/move")
+async def move_order(order_id: str, data: OrderMove, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Mueve una cuenta a una mesa libre; la desprende de la visita de origen."""
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if not order.get("table_id"):
+        raise HTTPException(status_code=400, detail="La cuenta no está en una mesa")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=409, detail="La cuenta ya está cerrada; no se puede mover")
+    source_table_id = order["table_id"]
+    target = await db.tables.find_one(
+        {"id": data.target_table_id, "restaurant_id": user["restaurant_id"], **record_branch_filter(user)},
+        {"_id": 0},
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Mesa destino no encontrada")
+    if target["id"] == source_table_id:
+        raise HTTPException(status_code=400, detail="Elegí una mesa distinta")
+    if target.get("branch_id") != order.get("branch_id"):
+        raise HTTPException(status_code=400, detail="Las mesas pertenecen a sucursales distintas")
+    if target.get("group_id"):
+        raise HTTPException(status_code=409, detail="La mesa destino está unida a un grupo")
+    if target.get("active_attention_id") or target.get("opening_order_id"):
+        raise HTTPException(status_code=409, detail="La mesa destino tiene una visita en curso")
+    target_active = await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"], "table_id": target["id"],
+        "status": {"$nin": ["pagado", "cancelado"]}, **record_branch_filter(user),
+    })
+    if target_active:
+        raise HTTPException(status_code=409, detail="La mesa destino ya tiene un pedido activo")
+    if target.get("status") not in ("disponible", "ocupada"):
+        raise HTTPException(status_code=409, detail="La mesa destino no está disponible")
+
+    old_attention_id = order.get("attention_id")
+    now = _now()
+    new_attention_id = str(uuid.uuid4())
+
+    # 1. Nueva visita para la cuenta en la mesa destino.
+    attention_doc = {
+        "id": new_attention_id, "restaurant_id": order["restaurant_id"],
+        "table_id": target["id"], "order_id": order["id"], "order_ids": [order["id"]],
+        "status": "open", "opened_by": user.get("id"), "opened_at": now,
+    }
+    if "branch_id" in order:
+        attention_doc["branch_id"] = order["branch_id"]
+    await db.attentions.insert_one(attention_doc)
+
+    # 2. Mueve la orden a la mesa destino con su nueva visita.
+    await db.orders.update_one(
+        {"id": order["id"], "restaurant_id": order["restaurant_id"]},
+        {"$set": {"table_id": target["id"], "attention_id": new_attention_id, "updated_at": now}},
+    )
+
+    # 3. Reclama la mesa destino.
+    await db.tables.update_one(
+        {"id": target["id"], "restaurant_id": user["restaurant_id"], "status": {"$in": ("disponible", "ocupada")}, "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
+        {"$set": {"status": "ocupada", "active_attention_id": new_attention_id, "updated_at": now}},
+    )
+
+    # 4. Desprende la cuenta de la visita de origen (y libera la mesa si quedó vacía).
+    if old_attention_id:
+        old_att = await db.attentions.find_one({"id": old_attention_id, "restaurant_id": order["restaurant_id"]}, {"_id": 0})
+        if old_att:
+            remaining = [i for i in (old_att.get("order_ids") or []) if i != order["id"]]
+            patch = {"$set": {"order_ids": remaining}}
+            if old_att.get("order_id") == order["id"] and remaining:
+                patch["$set"]["order_id"] = remaining[0]
+            await db.attentions.update_one({"id": old_attention_id, "restaurant_id": order["restaurant_id"]}, patch)
+            if not remaining:
+                await db.tables.update_one(
+                    {"id": source_table_id, "restaurant_id": user["restaurant_id"], "active_attention_id": old_attention_id},
+                    {"$set": {"status": "disponible", "updated_at": now}, "$unset": {"active_attention_id": ""}},
+                )
+                emit_notice(user["restaurant_id"], "table", table_id=source_table_id, status="disponible", branch_id=order.get("branch_id"))
+
+    emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="moved", branch_id=order.get("branch_id"))
+    emit_notice(user["restaurant_id"], "table", table_id=target["id"], status="ocupada", branch_id=order.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/split")
+async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Reparte los productos de una cuenta en `parts` cuentas (misma mesa y visita)."""
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede dividir una cuenta cerrada")
+    if (order.get("amount_paid") or 0) > 0.009:
+        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anulalos antes de dividir")
+    items = order.get("items") or []
+    parts = data.parts
+    if parts < 2:
+        raise HTTPException(status_code=400, detail="Elegí 2 o más partes")
+    if parts > len(items):
+        raise HTTPException(status_code=400, detail="No hay suficientes productos para dividir en tantas partes")
+
+    # Reparto round-robin de los productos en `parts` grupos.
+    groups = [[] for _ in range(parts)]
+    for idx, it in enumerate(items):
+        groups[idx % parts].append(it)
+
+    def _split_total(group):
+        subtotal = round(sum(float(i.get("subtotal") or 0) for i in group), 2)
+        return subtotal, subtotal
+
+    # La cuenta original conserva el primer grupo (sin descuento ni propina).
+    subtotal0, total0 = _split_total(groups[0])
+    await _save_order(order, {
+        "items": groups[0], "subtotal": subtotal0, "total": total0,
+        "discount": 0.0, "tip": 0.0, "updated_at": _now(),
+        **ticket_fields(order, order.get("fulfillment_status") or order.get("status"), order.get("amount_paid"), total0),
+    })
+
+    # Las cuentas nuevas heredan mesa, visita y estado de la original.
+    created = []
+    for group in groups[1:]:
+        subtotal_g, total_g = _split_total(group)
+        new_id = str(uuid.uuid4())
+        order_no = await _next_order_number(user["restaurant_id"])
+        new_order = {
+            "id": new_id, "order_number": order_no, "restaurant_id": order["restaurant_id"],
+            "table_id": order.get("table_id"), "created_by": user["id"], "created_by_name": user.get("full_name"),
+            "status": order["status"], "order_type": order.get("order_type") or "mesa", "items": group,
+            "subtotal": subtotal_g, "discount": 0.0, "tip": 0.0, "total": total_g,
+            "notes": None, "cancellation_reason": None, "sent_to_kitchen_at": None,
+            "ready_at": None, "paid_at": None, "created_at": _now(), "updated_at": _now(),
+            "attention_id": order.get("attention_id"),
+            "attention_state": order.get("attention_state") or "open",
+            "attention_open": True,
+        }
+        if order.get("branch_id") is not None:
+            new_order["branch_id"] = order["branch_id"]
+        await db.orders.insert_one(new_order)
+        created.append(new_id)
+
+    # Registra las cuentas nuevas en la visita compartida.
+    if order.get("attention_id"):
+        att = await db.attentions.find_one({"id": order["attention_id"], "restaurant_id": order["restaurant_id"]}, {"_id": 0})
+        if att:
+            ids = list(att.get("order_ids") or [])
+            for c in created:
+                if c not in ids:
+                    ids.append(c)
+            await db.attentions.update_one(
+                {"id": order["attention_id"], "restaurant_id": order["restaurant_id"]},
+                {"$set": {"order_ids": ids}},
+            )
+
+    emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 

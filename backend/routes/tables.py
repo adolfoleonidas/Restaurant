@@ -91,16 +91,24 @@ async def list_tables(
     else:
         active_query.update(active_filter)
     active_orders = await db.orders.find(active_query, proj).to_list(1000)
-    by_table = {o["table_id"]: o for o in active_orders if o.get("table_id")}
+    by_table = {}
+    for o in active_orders:
+        if o.get("table_id"):
+            by_table.setdefault(o["table_id"], []).append(o)
+    for orders in by_table.values():
+        orders.sort(key=lambda o: (o.get("created_at") or "", str(o.get("order_number") or "")))
     await attach_groups(items, user)
     for table in items:
         for field in _PRIVATE_OPENING_FIELDS:
             table.pop(field, None)
-        active = by_table.get(table["id"])
-        if active:
+        orders = by_table.get(table["id"], [])
+        for active in orders:
             raw_items = active.pop("items", None) or []
             active["item_count"] = sum(int(item.get("quantity") or 0) for item in raw_items)
-        table["active_order"] = active
+        # Backward compatible: `active_order` keeps the primary (oldest) account
+        # while `active_orders` exposes every simultaneous account of the table.
+        table["active_order"] = orders[0] if orders else None
+        table["active_orders"] = orders
         nonce = table.pop("qr_nonce", None)
         if table.pop("qr_revoked", False):
             table["qr_status"] = "revoked"

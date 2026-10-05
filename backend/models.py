@@ -395,6 +395,8 @@ class OrderCreate(BaseModel):
     order_type: OrderType = "mesa"
     items: List[OrderItemInput] = []
     notes: Optional[str] = None
+    # Cuenta adicional dentro de la misma visita de la mesa (multi-cuenta).
+    new_account: bool = False
     # Staff can take counter/pickup/delivery orders too, so they need the customer.
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -404,6 +406,24 @@ class OrderCreate(BaseModel):
     @classmethod
     def validate_branch_id(cls, value: Optional[str]) -> Optional[str]:
         return _user_branch_id(value) if value is not None else None
+
+
+class OrderMerge(BaseModel):
+    """Fusiona la cuenta `source_order_id` dentro de la cuenta destino (ruta)."""
+
+    source_order_id: str
+
+
+class OrderMove(BaseModel):
+    """Mueve una cuenta (orden) a otra mesa libre de la misma sucursal."""
+
+    target_table_id: str
+
+
+class OrderSplit(BaseModel):
+    """Reparte los productos de una cuenta en `parts` cuentas (2 a 4)."""
+
+    parts: int = Field(ge=2, le=4)
 
 
 class PublicOrderCreate(BaseModel):

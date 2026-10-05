@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
-from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
+from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, split_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
 from order_flow import ticket_fields
 from routes.reports import sales_report
@@ -454,6 +454,178 @@ def test_editing_items_keeps_the_delivery_fee():
     updated = asyncio.run(run())
     assert updated["subtotal"] == 30
     assert updated["total"] == 35
+
+
+def _table_item(item_id, product_id, name, price):
+    return {
+        "id": item_id, "product_id": product_id, "product_name": name,
+        "quantity": 1, "unit_price": price, "subtotal": price,
+        "paid_qty": 0, "status": "pendiente",
+    }
+
+
+def test_merge_fuses_accounts_and_cancels_source():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+            items=[_table_item("i1", "prod-1", "Lomo", 20.0)],
+        ))
+        db.orders.docs.append(_order(
+            id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+            items=[_table_item("i2", "prod-2", "Agua", 10.0)],
+        ))
+        _bind(db)
+        result = await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db, result
+
+    db, result = asyncio.run(run())
+    assert result["id"] == "order-1"
+    assert [i["id"] for i in result["items"]] == ["i1", "i2"]
+    assert result["total"] == 30.0
+    source = next(o for o in db.orders.docs if o["id"] == "order-2")
+    assert source["status"] == "cancelado"
+    assert "Fusionada" in (source.get("cancellation_reason") or "")
+
+
+def test_merge_rejects_a_source_with_collected_money():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1",
+        ))
+        db.orders.docs.append(_order(
+            id="order-2", order_number=13, order_type="mesa", status="pendiente_pago",
+            table_id="table-1", attention_id="att-1", amount_paid=5.0,
+        ))
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        assert exc.value.status_code == 400
+
+    asyncio.run(run())
+
+
+def _table_row(table_id, status, attention=None):
+    row = {"id": table_id, "restaurant_id": RID, "branch_id": "branch-1", "status": status}
+    if attention:
+        row["active_attention_id"] = attention
+    return row
+
+
+def test_move_account_to_free_table_detaches_from_source_visit():
+    async def run():
+        from models import OrderMove
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.tables.docs.append(_table_row("table-2", "disponible"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1", "order-2"], "status": "open",
+        })
+        db.orders.docs.append(_order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        db.orders.docs.append(_order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        _bind(db)
+        result = await move_order("order-2", OrderMove(target_table_id="table-2"), _mozo())
+        return db, result
+
+    db, result = asyncio.run(run())
+    assert result["table_id"] == "table-2"
+    assert result["attention_id"] != "att-1"
+    source_att = next(a for a in db.attentions.docs if a["id"] == "att-1")
+    assert source_att["order_ids"] == ["order-1"]
+    assert source_att["order_id"] == "order-1"
+    target_table = next(t for t in db.tables.docs if t["id"] == "table-2")
+    assert target_table["active_attention_id"] == result["attention_id"]
+    assert target_table["status"] == "ocupada"
+    source_table = next(t for t in db.tables.docs if t["id"] == "table-1")
+    assert source_table["active_attention_id"] == "att-1"  # la otra cuenta sigue
+
+
+def test_move_sole_account_releases_source_table():
+    async def run():
+        from models import OrderMove
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.tables.docs.append(_table_row("table-2", "disponible"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        _bind(db)
+        await move_order("order-1", OrderMove(target_table_id="table-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    source_table = next(t for t in db.tables.docs if t["id"] == "table-1")
+    assert "active_attention_id" not in source_table
+    assert source_table["status"] == "disponible"
+
+
+def test_split_distributes_items_into_accounts():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(rid):
+            return 99
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=65.0, total=65.0,
+            items=[
+                _table_item("i1", "prod-1", "Lomo", 20.0),
+                _table_item("i2", "prod-2", "Agua", 10.0),
+                _table_item("i3", "prod-3", "Ceviche", 30.0),
+                _table_item("i4", "prod-4", "Chicha", 5.0),
+            ],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    original = next(o for o in db.orders.docs if o["id"] == "order-1")
+    assert [i["id"] for i in original["items"]] == ["i1", "i3"]
+    assert original["total"] == 50.0
+    new_orders = [o for o in db.orders.docs if o["id"] != "order-1"]
+    assert len(new_orders) == 1
+    assert [i["id"] for i in new_orders[0]["items"]] == ["i2", "i4"]
+    assert new_orders[0]["total"] == 15.0
+    assert new_orders[0]["attention_id"] == "att-1"
+    assert new_orders[0]["order_number"] == 99
+    att = next(a for a in db.attentions.docs if a["id"] == "att-1")
+    assert set(att["order_ids"]) == {"order-1", new_orders[0]["id"]}
+
+
+def test_split_rejects_an_account_with_collected_money():
+    async def run():
+        from models import OrderSplit
+
+        db = _DB()
+        db.orders.docs.append(_order(id="order-1", amount_paid=5.0, status="pendiente_pago"))
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        assert exc.value.status_code == 400
+
+    asyncio.run(run())
 
 
 def test_shift_totals_ignore_other_registers():

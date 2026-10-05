@@ -113,6 +113,14 @@ class _Collection:
                     doc.update(copy.deepcopy(update.get("$set") or {}))
                     for key in (update.get("$unset") or {}):
                         doc.pop(key, None)
+                    for key, value in (update.get("$addToSet") or {}).items():
+                        bucket = doc.get(key)
+                        if not isinstance(bucket, list):
+                            bucket = []
+                        for item in (value if isinstance(value, list) else [value]):
+                            if item not in bucket:
+                                bucket.append(item)
+                        doc[key] = bucket
                     return _Result(1)
         return _Result(0)
 
@@ -402,6 +410,61 @@ def test_open_and_paid_order_cannot_admit_second_table_visit(monkeypatch):
     db = asyncio.run(run())
     assert len(db.orders.docs) == 1
     assert db.tables.docs[0]["active_attention_id"] == "attention-1"
+
+
+def test_new_account_joins_existing_visit_and_registers_order():
+    async def run():
+        from types import SimpleNamespace
+        import routes.orders as order_routes
+
+        db = _ready_db(_order(status="pagado", attention_state="open"))
+        db.attentions.docs[0]["order_ids"] = ["order-1"]
+        order_routes.db = db
+
+        async def order_number(restaurant_id):
+            return 2
+
+        async def no_audit(*args, **kwargs):
+            return None
+
+        async def response(order_id, user):
+            return await db.orders.find_one({"id": order_id})
+
+        order_routes._next_order_number = order_number
+        order_routes._audit = no_audit
+        order_routes.emit_order = lambda *a, **k: None
+        order_routes._current_order_response = response
+        data = SimpleNamespace(order_type="mesa", table_id="table-1", branch_id=None, items=[], notes=None, new_account=True)
+        await order_routes.create_order(data, {**_user(), "full_name": "Waiter"})
+        return db
+
+    db = asyncio.run(run())
+    assert len(db.orders.docs) == 2
+    second = db.orders.docs[1]
+    assert second["attention_id"] == "attention-1"
+    assert second["attention_state"] == "open"
+    assert second["attention_open"] is True
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", second["id"]}
+    assert db.tables.docs[0]["active_attention_id"] == "attention-1"
+
+
+def test_close_blocks_until_every_account_is_settled():
+    async def run():
+        db = _ready_db()  # order-1 liquidada (pagado), visita abierta
+        db.attentions.docs[0]["order_ids"] = ["order-1", "order-2"]
+        db.orders.docs.append(_order(
+            id="order-2", order_number=2, status="en_preparacion",
+            payment_status=None, amount_paid=0, total=30,
+            items=[{"id": "item-2", "quantity": 1, "status": "entregado"}],
+        ))
+        with pytest.raises(AttentionBlocked, match="no está lista"):
+            await close_table_attention(db, order=db.orders.docs[0], user=_user(), now="2026-09-30T13:00:00+00:00")
+        return db
+
+    db = asyncio.run(run())
+    assert db.attentions.docs[0]["status"] == "open"
+    assert db.tables.docs[0]["active_attention_id"] == "attention-1"
+    assert db.orders.docs[1]["attention_state"] == "open"
 
 
 def test_cash_close_rejects_paid_order_with_open_attention():

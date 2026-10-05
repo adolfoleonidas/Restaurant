@@ -149,8 +149,8 @@ def test_payment_rejected_when_cash_register_closed(tokens, product_id, free_tab
     )
 
 
-def test_mongo_rejects_second_active_order_same_table():
-    """Partial unique index: two active orders on the same table cannot exist."""
+def test_mongo_allows_multiple_active_orders_same_table():
+    """Multi-cuenta: several active orders can share one table (index no longer unique)."""
     env = _load_env()
     mongo_url = env.get("MONGO_URL") or os.environ.get("MONGO_URL")
     db_name = env.get("DB_NAME") or os.environ.get("DB_NAME", "restaurant_db")
@@ -159,21 +159,21 @@ def test_mongo_rejects_second_active_order_same_table():
     db = client[db_name]
     table_id = f"test-table-{uuid.uuid4()}"
     restaurant_id = "test-restaurant"
-    doc = {
+    db.orders.insert_one({
         "id": str(uuid.uuid4()),
         "restaurant_id": restaurant_id,
         "table_id": table_id,
         "status": "nuevo",
-    }
-    db.orders.insert_one(dict(doc))
+    })
     try:
-        with pytest.raises(DuplicateKeyError):
-            db.orders.insert_one({
-                "id": str(uuid.uuid4()),
-                "restaurant_id": restaurant_id,
-                "table_id": table_id,
-                "status": "en_preparacion",
-            })
+        # A second active order on the same table is now allowed.
+        db.orders.insert_one({
+            "id": str(uuid.uuid4()),
+            "restaurant_id": restaurant_id,
+            "table_id": table_id,
+            "status": "en_preparacion",
+        })
+        assert db.orders.count_documents({"table_id": table_id}) == 2
     finally:
         db.orders.delete_many({"table_id": table_id})
         client.close()

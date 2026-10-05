@@ -62,10 +62,12 @@ async def _load_attention(db, order: dict) -> dict | None:
     attention_id = order.get("attention_id")
     if not attention_id:
         return None
+    # La visita (attention) ahora puede contener varias órdenes (cuentas); se
+    # identifica por su id, no por la orden. `order_id` sigue siendo la cuenta
+    # principal (canónica) para el fence de cierre.
     query = {
         "id": attention_id,
         "restaurant_id": order.get("restaurant_id"),
-        "order_id": order.get("id"),
         "table_id": order.get("table_id"),
     }
     if "branch_id" in order:
@@ -192,6 +194,7 @@ async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict
             "restaurant_id": restaurant_id,
             "table_id": table_id,
             "order_id": order["id"],
+            "order_ids": [order["id"]],
             **({"branch_id": order["branch_id"]} if "branch_id" in order else {}),
             "status": "opening",
             "opened_by": user.get("id"),
@@ -261,6 +264,14 @@ async def _completed_payments(db, order: dict) -> list:
     }, {"_id": 0}).to_list(None)
 
 
+async def _attention_orders(db, attention: dict) -> list:
+    """Todas las cuentas (órdenes) que pertenecen a una visita."""
+    return await db.orders.find({
+        "restaurant_id": attention["restaurant_id"],
+        "attention_id": attention["id"],
+    }, {"_id": 0}).to_list(None)
+
+
 async def _restore_open(db, order: dict, attention: dict) -> bool:
     # The order remains fenced until the final state write succeeds.
     restored = await db.attentions.update_one({
@@ -324,19 +335,16 @@ async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str)
             "active_attention_id": attention["id"],
         }, {"$set": {"status": "disponible", "updated_at": now},
             "$unset": {"active_attention_id": ""}})
-    changed = await db.orders.update_one({
-        "id": order["id"], "restaurant_id": order["restaurant_id"],
-        "attention_id": attention["id"],
-        "$or": [
-            {"attention_state": "closed"},
-            {"attention_state": "closing", "attention_close_token": attention["id"]},
-        ],
-    }, {"$set": {"attention_state": "closed", "attention_open": False, "updated_at": now},
-        "$unset": {"attention_close_token": "", "attention_close_actor": "",
-                    "attention_close_actor_name": ""}})
-    if getattr(changed, "matched_count", 0) != 1:
-        latest = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
-        if not latest or latest.get("attention_state") != "closed":
+    # Cierra todas las cuentas (órdenes) de la visita, no solo la canónica.
+    for sibling in await _attention_orders(db, attention):
+        await db.orders.update_one(
+            {"id": sibling["id"], "restaurant_id": order["restaurant_id"], "attention_id": attention["id"]},
+            {"$set": {"attention_state": "closed", "attention_open": False, "updated_at": now},
+             "$unset": {"attention_close_token": "", "attention_close_actor": "", "attention_close_actor_name": ""}},
+        )
+    # Verifica que ninguna cuenta quedó abierta (reconciliación).
+    for sibling in await _attention_orders(db, attention):
+        if sibling.get("attention_state") != "closed":
             raise AttentionBlocked("El cierre quedó pendiente de reconciliación; reintentá la misma visita")
     return await _load_attention(db, order) or attention
 
@@ -412,6 +420,15 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
         if not await _restore_open(db, order, attention):
             raise AttentionBlocked("No se pudo revertir el intento; la visita permanece bloqueada")
         raise AttentionBlocked(reason)
+
+    # Multi-cuenta: cada cuenta de la visita debe estar liquidada antes de cerrar.
+    siblings = [o for o in await _attention_orders(db, attention) if o["id"] != order["id"]]
+    for sibling in siblings:
+        sreason = close_block_reason(sibling, await _completed_payments(db, sibling))
+        if sreason:
+            if not await _restore_open(db, order, attention):
+                raise AttentionBlocked("No se pudo revertir el intento; la visita permanece bloqueada")
+            raise AttentionBlocked(f"La cuenta #{sibling.get('order_number')} no está lista: {sreason}")
 
     await _write_close_audit(db, order, attention, user, now)
     changed = await db.attentions.update_one({
