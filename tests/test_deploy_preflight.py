@@ -205,10 +205,10 @@ class DeployPreflightTests(unittest.TestCase):
     def test_deploy_requires_main_fast_forward_of_exact_workflow_commit(self):
         self.assertIn('git symbolic-ref --short -q HEAD', self.script)
         self.assertIn('git status --porcelain --untracked-files=no', self.script)
-        self.assertIn('git fetch --quiet origin main', self.script)
-        self.assertIn('git rev-parse --verify refs/remotes/origin/main', self.script)
+        self.assertIn('git fetch --quiet origin "$EXPECTED_COMMIT"', self.script)
         self.assertIn('git merge --ff-only "$EXPECTED_COMMIT"', self.script)
-        self.assertLess(self.script.index('fetched_commit='), self.script.index('git merge --ff-only'))
+        self.assertLess(self.script.index('git fetch --quiet origin "$EXPECTED_COMMIT"'),
+                        self.script.index('git merge --ff-only'))
 
 
 if __name__ == "__main__":
