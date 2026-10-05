@@ -8,8 +8,9 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
-import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
-import { Search, Grid2X2, Plus, Minus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import OrderComposer, { OrderItems } from '@/components/OrderComposer';
+import NewOrderSheet from '@/components/NewOrderSheet';
+import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
@@ -157,7 +158,6 @@ export default function Salon() {
     const [stateFilter, setStateFilter] = useState('todas');
     const [openTable, setOpenTable] = useState(null);
     const [showNewOrder, setShowNewOrder] = useState(false);
-    const [pendingTable, setPendingTable] = useState(null);
     const [closing, setClosing] = useState(null);
     const [selectMode, setSelectMode] = useState(false);
     const [selected, setSelected] = useState([]);
@@ -165,8 +165,6 @@ export default function Salon() {
     const [transferSource, setTransferSource] = useState(null);
     const [movingVisit, setMovingVisit] = useState(false);
     const [moveAccountId, setMoveAccountId] = useState(null);
-    const [productCategory, setProductCategory] = useState('all');
-    const [productSearch, setProductSearch] = useState('');
     const [savingItem, setSavingItem] = useState(false);
     const [aliasDraft, setAliasDraft] = useState('');
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
@@ -192,11 +190,6 @@ export default function Salon() {
     const { data: liveCategories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
     const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
     const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);
-    const pickerProducts = useMemo(() => (products || []).filter((p) => {
-        if (productCategory !== 'all' && p.category_id !== productCategory) return false;
-        if (productSearch && !String(p.name || '').toLowerCase().includes(productSearch.toLowerCase())) return false;
-        return true;
-    }), [products, productCategory, productSearch]);
 
     const canServe = ['admin', 'mozo', 'cocina'].includes(user?.role);
     const canTake = ['admin', 'mozo'].includes(user?.role);
@@ -544,7 +537,11 @@ export default function Salon() {
      * mantiene a la vista sin abrir su hoja; sin id, usa la cuenta abierta.
      */
     const sendCurrentToKitchen = async (orderId = null) => {
-        const targetId = orderId || openTable?.order?.id || openTable?.accountId;
+        // Un `onClick={handler}` cuela el evento de React como primer argumento:
+        // solo un id de texto identifica una cuenta. Sin esta guarda, el destino
+        // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
+        const requested = typeof orderId === 'string' ? orderId : null;
+        const targetId = requested || openTable?.order?.id || openTable?.accountId;
         if (!targetId || !canTake) return;
         try {
             await api.post(`/orders/${targetId}/send-to-kitchen`);
@@ -736,32 +733,15 @@ export default function Salon() {
         }
     };
 
-    const closeAreas = () => {
-        setShowNewOrder(false);
-        setPendingTable(null);
-    };
+    const closeAreas = () => setShowNewOrder(false);
 
-    const openAreas = (table = null) => {
-        setPendingTable(table || null);
-        setShowNewOrder(true);
-    };
+    // El botón "Nuevo pedido" abre el compositor con las pestañas de tipo.
+    const openAreas = () => setShowNewOrder(true);
 
-    // Every entry point lands here. Dine-in keeps its two gestures: seat the
-    // table already in hand (card or sheet), otherwise open the composer for the
-    // table picked in the grid. The other areas route straight by order type.
-    const handleAreaSelect = (type, table) => {
-        const tableInHand = pendingTable;
+    // Elegir mesa en el compositor lleva al sheet de esa mesa (mismo panel).
+    const pickTableForOrder = (t) => {
         closeAreas();
-        // Dine-in composes inline (sheet + carta); the other areas keep their page.
-        if (type === 'mesa') {
-            const target = tableInHand || table;
-            if (!target) { toast.error('Seleccioná una mesa'); return; }
-            void takeOrderInline(target);
-            return;
-        }
-        const path = newOrderPath(type, table);
-        if (!path) { toast.error('Seleccioná una mesa'); return; }
-        navigate(path);
+        void takeOrderInline(t);
     };
 
     const areaLabel = (a) => (a === 'todas' ? 'Todas las zonas' : a);
@@ -1290,81 +1270,17 @@ export default function Salon() {
                                             </div>
                                         </div>
                                     )}
-                                    {canCompose && (
-                                        <div className="space-y-2 rounded-xl border p-3" data-testid="mesa-sheet-pedido">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className="page-kicker">
-                                                    {order
-                                                        ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
-                                                        : 'Agregar productos'}
-                                                </span>
-                                                {draft && orderItems.length > 0 && (
-                                                    <Button size="sm" className="h-11" onClick={() => sendCurrentToKitchen()} data-testid="mesa-sheet-enviar-cocina">
-                                                        Enviar a cocina
-                                                    </Button>
-                                                )}
-                                            </div>
-                                            {order && (
-                                                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-secondary/50 px-2 py-1 text-xs" data-testid="mesa-sheet-pedido-resumen">
-                                                    <span className="text-muted-foreground">
-                                                        {orderItems.reduce((s, i) => s + Number(i.quantity || 0), 0)} en esta cuenta
-                                                    </span>
-                                                    <span className="font-mono font-semibold tabular-nums">{fmtMoney(order.total)}</span>
-                                                </div>
-                                            )}
-                                            <div className="relative">
-                                                <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
-                                                <Input className="pl-9" placeholder="Buscar plato" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} data-testid="mesa-sheet-buscar-producto" />
-                                            </div>
-                                            {categories.length > 0 && (
-                                                <div className="scroll-x flex gap-1.5 pb-1">
-                                                    <button type="button" onClick={() => setProductCategory('all')} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>Todas</button>
-                                                    {categories.map((c) => (
-                                                        <button key={c.id} type="button" onClick={() => setProductCategory(c.id)} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{c.name}</button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            <div className="grid grid-cols-2 gap-1.5 max-h-[38dvh] overflow-y-auto" data-testid="mesa-sheet-productos">
-                                                {pickerProducts.map((p) => {
-                                                    const out = !p.is_available || (p.is_combo && p.components_available === false);
-                                                    const qty = orderItems
-                                                        .filter((i) => i.product_id === p.id)
-                                                        .reduce((s, i) => s + Number(i.quantity || 0), 0);
-                                                    return (
-                                                        <button
-                                                            key={p.id}
-                                                            type="button"
-                                                            disabled={out || savingItem}
-                                                            onClick={() => addProductToAccount(p)}
-                                                            data-testid={`mesa-sheet-producto-${p.id}`}
-                                                            className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'}`}
-                                                        >
-                                                            <span className="flex min-w-0 flex-col">
-                                                                <span className="w-full truncate font-medium">{p.name}</span>
-                                                                <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
-                                                            </span>
-                                                            <span className="flex shrink-0 items-center gap-1">
-                                                                {qty > 0 && (
-                                                                    <span
-                                                                        className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-semibold tabular-nums text-primary-foreground"
-                                                                        data-testid={`mesa-sheet-producto-cantidad-${p.id}`}
-                                                                    >
-                                                                        {qty}
-                                                                    </span>
-                                                                )}
-                                                                <span className="grid h-6 w-6 place-items-center rounded-full border border-border" aria-hidden="true">
-                                                                    <Plus className="h-3.5 w-3.5" />
-                                                                </span>
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })}
-                                                {pickerProducts.length === 0 && (
-                                                    <p className="col-span-2 text-xs text-muted-foreground py-2 text-center">Sin productos.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
+                                    <OrderComposer
+                                        order={order}
+                                        items={orderItems}
+                                        products={products}
+                                        categories={categories}
+                                        savingItem={savingItem}
+                                        canCompose={canCompose}
+                                        showKitchen={draft && orderItems.length > 0}
+                                        onAddProduct={addProductToAccount}
+                                        onSendToKitchen={sendCurrentToKitchen}
+                                    />
                                     {order && (
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">
@@ -1373,24 +1289,12 @@ export default function Salon() {
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
-                                            <div className="border rounded-xl divide-y" data-testid="mesa-sheet-items">
-                                                {orderItems.map((it) => (
-                                                    <div key={it.id} className="flex items-center justify-between gap-2 py-2 px-3 text-sm">
-                                                        <span className="min-w-0 truncate">{it.quantity}× {it.product_name}</span>
-                                                        <span className="font-mono tabular-nums shrink-0">{fmtMoney(it.subtotal)}</span>
-                                                        {canCompose && (
-                                                            <span className="flex items-center gap-1 shrink-0">
-                                                                <button type="button" onClick={() => changeItemQty(it, -1)} aria-label={`Quitar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-menos-${it.id}`} className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"><Minus className="h-3.5 w-3.5" /></button>
-                                                                <button type="button" onClick={() => changeItemQty(it, 1)} aria-label={`Agregar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-mas-${it.id}`} className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"><Plus className="h-3.5 w-3.5" /></button>
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="flex justify-between font-display text-lg font-bold">
-                                                <span>Total</span>
-                                                <span className="font-mono tabular-nums">{order.total != null ? fmtMoney(order.total) : '—'}</span>
-                                            </div>
+                                            <OrderItems
+                                                items={orderItems}
+                                                canCompose={canCompose}
+                                                total={order.total}
+                                                onChangeQty={changeItemQty}
+                                            />
                                         </>
                                     )}
                                     {!t.active_order && !canCompose && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
@@ -1586,13 +1490,16 @@ export default function Salon() {
                 </SheetContent>
             </Sheet>
 
-            {/* Sales areas — first decision of every order */}
-            <SalesAreasDialog
+            {/* Nuevo pedido: un solo compositor para las cuatro áreas de venta */}
+            <NewOrderSheet
                 open={showNewOrder}
                 onOpenChange={(open) => { if (!open) closeAreas(); }}
-                pendingTable={pendingTable}
                 tables={tables}
-                onSelect={handleAreaSelect}
+                products={products}
+                categories={categories}
+                canTake={canTake}
+                onPickTable={pickTableForOrder}
+                onCreated={refreshAll}
             />
 
             {/* Move an open visit to another free table of the same branch */}
