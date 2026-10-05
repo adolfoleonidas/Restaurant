@@ -63,6 +63,15 @@ jobs:
         working-directory: frontend
         run: |
           npm ci
+          echo "--- TEMP DIAGNOSTIC ---"
+          ls -la node_modules/react-router-dom || true
+          ls -la node_modules/react-router-dom/dist || true
+          node -p "JSON.stringify(require('./node_modules/react-router-dom/package.json').main)" || true
+          node -p "require.resolve('react-router-dom')" || true
+          printf "test('tmp resolve', () => { jest.mock('react-router-dom', () => ({})); expect(1).toBe(1); });\n" > src/__tests__/tmpResolve.test.js
+          npx craco test --watchAll=false --runInBand --testPathPattern=tmpResolve || true
+          rm -f src/__tests__/tmpResolve.test.js
+          echo "--- END TEMP DIAGNOSTIC ---"
           npx craco test --watchAll=false --runInBand
 
       - name: Frontend build
