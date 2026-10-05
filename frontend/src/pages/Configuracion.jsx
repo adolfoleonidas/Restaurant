@@ -307,7 +307,11 @@ function Funciones() {
             </p>
             <div className="space-y-2" data-testid="funciones-lista">
                 {FEATURE_DEFS.map((def) => (
-                    <label key={def.key} className="flex items-start justify-between gap-3 rounded-xl border border-border p-3 cursor-pointer">
+                    // A <label> here made the browser forward the click to the switch
+                    // on top of the switch's own click, toggling twice (once back to
+                    // where it started). The row is a plain container; the switch is
+                    // the only control.
+                    <div key={def.key} className="flex items-start justify-between gap-3 rounded-xl border border-border p-3">
                         <span className="min-w-0">
                             <span className="block text-sm font-medium">{def.label}</span>
                             <span className="block text-xs text-muted-foreground">{def.description}</span>
@@ -317,7 +321,7 @@ function Funciones() {
                             onCheckedChange={(value) => setFeatures((current) => ({ ...current, [def.key]: value }))}
                             data-testid={`funcion-${def.key}`}
                         />
-                    </label>
+                    </div>
                 ))}
             </div>
         </CardContent></Card>
