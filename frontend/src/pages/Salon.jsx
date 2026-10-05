@@ -319,10 +319,10 @@ export default function Salon() {
         // A joined table with no account of its own reads the group's account,
         // but only when the group holds exactly one: with two separate bills
         // there is nothing unambiguous to follow, so the sheet lists them.
-        const accounts = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
-        const followed = accounts.length === 1 && accounts[0].id !== t.id && !t.active_order ? accounts[0] : null;
+        const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
+        const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
         const targetOrderId = t.active_order?.id || followed?.active_order?.id || null;
-        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId) });
+        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
@@ -333,13 +333,41 @@ export default function Salon() {
         }
         try {
             const { data } = await api.get('/orders', { params: { table_id: t.id, limit: 50 } });
-            const past = (data || []).filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
-            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, history: past } : s));
+            const all = data || [];
+            const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
+            const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
+            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
         } catch { /* historial opcional */ }
     };
 
     const closeSheet = () => setOpenTable(null);
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
+
+    // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
+    const selectAccount = async (orderId) => {
+        setOpenTable((s) => (s ? { ...s, accountId: orderId, loading: true } : s));
+        try {
+            const { data } = await api.get(`/orders/${orderId}`);
+            setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
+        } catch {
+            setOpenTable((s) => (s ? { ...s, loading: false } : s));
+        }
+    };
+
+    // Multi-cuenta: abre una cuenta adicional dentro de la misma visita.
+    const addAccount = async () => {
+        const t = openTable?.table;
+        if (!t || !canTake) return;
+        try {
+            const { data } = await api.post('/orders', { table_id: t.id, order_type: 'mesa', new_account: true });
+            toast.success('Cuenta agregada');
+            closeSheet();
+            navigate(`/pedidos/${data.id}`);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo agregar la cuenta');
+        }
+    };
 
     const toggleSelected = (t) => {
         setSelected((ids) => (ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id]));
@@ -764,11 +792,12 @@ export default function Salon() {
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
                 <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
                     {openTable && (() => {
-                        const { table: t, history, loading, accountTable } = openTable;
+                        const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
                         const group = openTable.group || t.group || null;
                         const members = group ? groupMembers(group, tables) : [];
                         const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
                         const order = sheetOrder;
+                        const currentAccountId = order?.id || accountId || t.active_order?.id || null;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
                         const closeable = canClose && canCloseAttention(t, order);
@@ -787,6 +816,31 @@ export default function Salon() {
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
+                                    {((accounts && accounts.length > 1) || (t.active_attention_id && canTake)) && (
+                                        <div className="flex flex-wrap gap-1.5" data-testid="mesa-sheet-cuentas">
+                                            {accounts.map((o) => (
+                                                <button
+                                                    key={o.id}
+                                                    type="button"
+                                                    onClick={() => selectAccount(o.id)}
+                                                    data-testid={`mesa-sheet-cuenta-${o.order_number}`}
+                                                    className={`rounded-lg border px-2 py-1 text-xs font-medium ${currentAccountId === o.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                                                >
+                                                    #{o.order_number} · {fmtMoney(o.total)}
+                                                </button>
+                                            ))}
+                                            {t.active_attention_id && canTake && (
+                                                <button
+                                                    type="button"
+                                                    onClick={addAccount}
+                                                    data-testid="mesa-sheet-nueva-cuenta"
+                                                    className="rounded-lg border border-dashed border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                                >
+                                                    <Plus className="h-3 w-3 inline mr-1" />Cuenta
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                     {order && (
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">
@@ -907,7 +961,7 @@ export default function Salon() {
                                     {t.active_order ? (
                                         <>
                                             {floor.key === 'listo' && canServe && (
-                                                <Button className="w-full h-12" onClick={() => deliver(t.active_order.id)} data-testid="mesa-sheet-entregar">Entregar</Button>
+                                                <Button className="w-full h-12" onClick={() => deliver(currentAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
                                             )}
                                             {closeable && (
                                                 <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(order)} disabled={closing === order.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
@@ -928,7 +982,7 @@ export default function Salon() {
                                             <Button
                                                 variant={floor.key === 'listo' ? 'outline' : 'default'}
                                                 className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${t.active_order.id}`); }}
+                                                onClick={() => { closeSheet(); navigate(`/pedidos/${currentAccountId}`); }}
                                                 data-testid="mesa-sheet-ver-pedido"
                                             >
                                                 {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
