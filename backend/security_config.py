@@ -19,6 +19,11 @@ _DEMO_PASSWORDS = {
 _KNOWN_PASSWORDS = set(_DEMO_PASSWORDS.values())
 
 
+def known_demo_passwords() -> set:
+    """The published demo passwords a real venue must never keep."""
+    return set(_KNOWN_PASSWORDS)
+
+
 def _env(environ):
     return os.environ if environ is None else environ
 
