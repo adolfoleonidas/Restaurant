@@ -5,7 +5,8 @@ import platform
 from fastapi import APIRouter, Depends
 
 from database import db
-from auth import require_roles
+from auth import require_roles, verify_password
+from security_config import known_demo_passwords
 
 router = APIRouter()
 
@@ -27,6 +28,28 @@ _COUNTED = (
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"true", "1", "yes"}
+
+
+async def _accounts_with_demo_passwords(restaurant_id: str) -> list:
+    """Staff accounts that still open with a published demo password.
+
+    bcrypt is one-way, so the only honest check is verifying the known values
+    against each hash. Bounded, and only the admin screen calls it.
+    """
+    flagged = []
+    accounts = await db.users.find(
+        {"restaurant_id": restaurant_id, "status": "active"},
+        {"_id": 0, "email": 1, "password_hash": 1},
+    ).limit(25).to_list(25)
+    for account in accounts:
+        digest = account.get("password_hash") or ""
+        if not digest:
+            continue
+        for demo in known_demo_passwords():
+            if verify_password(demo, digest):
+                flagged.append(account.get("email"))
+                break
+    return flagged
 
 
 @router.get("/info")
@@ -54,13 +77,15 @@ async def system_info(user: dict = Depends(require_roles(["admin"]))):
     )
 
     now = datetime.now(timezone.utc)
+    demo_accounts = await _accounts_with_demo_passwords(restaurant_id)
     return {
         "app_version": APP_VERSION,
         "environment": (os.environ.get("APP_ENV") or "production"),
         "demo_seed": _env_flag("SEED_DEMO"),
-        "demo_passwords": not all(os.environ.get(k) for k in (
-            "SEED_ADMIN_PASSWORD", "SEED_CAJERO_PASSWORD", "SEED_MOZO_PASSWORD", "SEED_COCINA_PASSWORD",
-        )),
+        # Actually verified against the accounts, not guessed from the env: an
+        # earlier development boot can leave admin123 in production.
+        "demo_passwords": bool(demo_accounts),
+        "demo_password_accounts": demo_accounts,
         "database": {
             "name": os.environ.get("DB_NAME", "restaurant_db"),
             "connected": connected,

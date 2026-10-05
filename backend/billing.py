@@ -51,18 +51,23 @@ def method_amounts(payment: dict) -> dict:
         key = method if method in DRAWER_METHODS else "efectivo"
         return {key: amount} if amount else {}
     out = {name: 0.0 for name in DRAWER_METHODS}
-    left = amount
     for split in payment.get("splits") or []:
-        if left <= 0:
-            break
-        take = min(money(split.get("amount") or 0), left)
+        take = money(split.get("amount") or 0)
         if take <= 0:
             continue
         key = split.get("method") if split.get("method") in DRAWER_METHODS else "efectivo"
         out[key] = money(out[key] + take)
-        left = money(left - take)
-    if left > 0:
-        out["efectivo"] = money(out["efectivo"] + left)
+    # The change is handed back in cash, so it leaves the drawer. Without this
+    # the cash portion stays at the amount handed over and the shift closes with
+    # a phantom surplus.
+    change = money(payment.get("change_amount") or 0)
+    if change > 0:
+        out["efectivo"] = money(max(0.0, out["efectivo"] - change))
+    # Whatever the splits could not cover lands in cash, so the attribution
+    # always adds up to the amount actually charged.
+    residual = money(amount - sum(out.values()))
+    if residual:
+        out["efectivo"] = money(max(0.0, out["efectivo"] + residual))
     return {key: value for key, value in out.items() if value}
 
 

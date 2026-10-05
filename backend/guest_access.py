@@ -53,6 +53,12 @@ class RateLimiter:
 
 public_order_limiter = RateLimiter()
 
+# The tracking endpoints take the code as a bearer token and return the
+# customer's name, phone and address. Only *failed* lookups are counted, per
+# client: a customer browsing their own order never spends this budget, while
+# someone enumerating codes hits it fast.
+public_miss_limiter = RateLimiter(limit=30, window_seconds=600)
+
 
 def client_host(request) -> str:
     forwarded = ""

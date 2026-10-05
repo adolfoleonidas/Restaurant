@@ -15,6 +15,7 @@ from routes import (
     users_router,
     restaurants_router,
     tables_router,
+    table_groups_router,
     categories_router,
     products_router,
     orders_router,
@@ -49,8 +50,11 @@ async def health():
     try:
         await db.command("ping")
         return {"status": "ok", "database": "connected"}
-    except Exception as e:
-        return {"status": "degraded", "database": "disconnected", "detail": str(e)}
+    except Exception:
+        # Unauthenticated endpoint: never leak driver errors (hosts, collection
+        # names). The detail goes to the server log instead.
+        logger.exception("Health check failed")
+        return {"status": "degraded", "database": "disconnected"}
 
 
 # Mount all module routers
@@ -58,6 +62,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(restaurants_router, prefix="/restaurants", tags=["restaurants"])
 api_router.include_router(tables_router, prefix="/tables", tags=["tables"])
+api_router.include_router(table_groups_router, prefix="/table-groups", tags=["table-groups"])
 api_router.include_router(categories_router, prefix="/categories", tags=["categories"])
 api_router.include_router(products_router, prefix="/products", tags=["products"])
 api_router.include_router(orders_router, prefix="/orders", tags=["orders"])

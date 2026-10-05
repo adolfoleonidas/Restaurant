@@ -12,6 +12,11 @@ from notify import emit_notice
 
 BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
 
+# A cashier may move small amounts (change for the drawer, a petty expense).
+# Anything above this needs an admin, so a shortfall cannot be quietly balanced
+# by one big movement.
+CASHIER_MOVEMENT_LIMIT = 200.0
+
 
 async def _resolve_timezone(restaurant_id: str) -> ZoneInfo:
     """Use the fixed Peru business timezone for cash reporting periods."""
@@ -230,6 +235,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
     unresolved_status = [
         {"status": {"$nin": ["pagado", "cancelado"]}},
         {"payment_status": {"$in": ["comprobante_subido", "confirmado"]}},
+        {"payment_proof_status": "pendiente"},
         {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
     ]
     unresolved_query = {"restaurant_id": user["restaurant_id"], "$or": unresolved_status}
@@ -260,6 +266,16 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
 
 @router.post("/movements")
 async def add_movement(data: CashMovement, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    # A movement shifts the expected cash, so it needs a real description, an
+    # audit entry, and an admin once it is large enough to hide a shortfall.
+    description = (data.description or "").strip()
+    if len(description) < 5:
+        raise HTTPException(status_code=400, detail="El movimiento necesita una descripción (mínimo 5 caracteres)")
+    if not has_tenantwide_branch_access(user) and float(data.amount) > CASHIER_MOVEMENT_LIMIT:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Un movimiento mayor a S/ {CASHIER_MOVEMENT_LIMIT:.2f} lo registra un administrador",
+        )
     branch = await _cash_branch(user, data.branch_id, owner_selection=has_tenantwide_branch_access(user))
     if branch is None and not has_tenantwide_branch_access(user):
         raise HTTPException(status_code=403, detail="El usuario no tiene una sucursal asignada")
@@ -269,9 +285,22 @@ async def add_movement(data: CashMovement, user: dict = Depends(require_roles(["
     movement = {
         "id": str(uuid.uuid4()), "cash_register_id": reg["id"],
         "restaurant_id": user["restaurant_id"], "branch_id": reg.get("branch_id"),
-        "type": data.type, "amount": data.amount, "description": data.description,
+        "type": data.type, "amount": data.amount, "description": description,
         "created_by": user["id"], "created_by_name": user["full_name"], "created_at": _now(),
     }
     await db.cash_movements.insert_one(movement)
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": user["restaurant_id"],
+        "user_id": user["id"],
+        "action": "cash_movement",
+        "entity": "cash_register",
+        "entity_id": reg["id"],
+        "details": {
+            "type": data.type, "amount": data.amount, "description": description,
+            "branch_id": reg.get("branch_id"),
+        },
+        "created_at": movement["created_at"],
+    })
     emit_notice(user["restaurant_id"], "cash", status="movement", register_id=reg["id"], branch_id=reg.get("branch_id"))
     return {k: v for k, v in movement.items() if k != "_id"}

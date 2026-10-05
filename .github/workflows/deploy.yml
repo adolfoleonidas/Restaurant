@@ -3,6 +3,10 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
+  # Pull requests run the same Tests job so a red branch never reaches main
+  # unnoticed; only a push to main deploys (see the `deploy` job guard).
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
@@ -22,7 +26,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Nothing reaches production unless the hermetic suite and the build pass.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # The suite talks to Mongo but not to a live API: modules that need a
+      # running server are marked `integration` and excluded here.
+      - name: Backend tests
+        env:
+          MONGO_URL: mongodb://127.0.0.1:27017
+          DB_NAME: restaurant_ci
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          python -m pytest tests -m "not integration" -q
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: |
+          npm ci
+          npx craco test --watchAll=false --runInBand
+
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          CI: "true"
+        run: npx craco build
+
   deploy:
+    needs: test
+    # Tests run for pull requests too; only a push to main (or a manual run)
+    # touches the VPS.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Prepare SSH key
@@ -41,12 +94,16 @@ jobs:
           EXPECTED_COMMIT: ${{ github.sha }}
           EXPECTED_SERVER_COMMIT: ${{ github.event.inputs.expected_server_commit || '' }}
           MIGRATION_RUN_ID: ${{ github.run_id }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+          SEED_CAJERO_PASSWORD: ${{ secrets.SEED_CAJERO_PASSWORD }}
+          SEED_MOZO_PASSWORD: ${{ secrets.SEED_MOZO_PASSWORD }}
+          SEED_COCINA_PASSWORD: ${{ secrets.SEED_COCINA_PASSWORD }}
         with:
           host: ${{ vars.VPS_HOST }}
           username: root
           key_path: /home/runner/.ssh/vps_key
           command_timeout: 20m
-          envs: DEPLOY_OPERATION,EXPECTED_COMMIT,EXPECTED_SERVER_COMMIT,MIGRATION_RUN_ID
+          envs: DEPLOY_OPERATION,EXPECTED_COMMIT,EXPECTED_SERVER_COMMIT,MIGRATION_RUN_ID,SEED_ADMIN_PASSWORD,SEED_CAJERO_PASSWORD,SEED_MOZO_PASSWORD,SEED_COCINA_PASSWORD
           script: |
             set -eu
             case "$DEPLOY_OPERATION" in
@@ -748,6 +805,35 @@ jobs:
             export CORS_ORIGINS="$cors"
             export APP_ENV=production
             unset SEED_DEMO || true
+            # docker compose refuses to interpolate without the staff seed
+            # passwords. They only matter when a database is seeded for the
+            # first time, but the requirement is unconditional, so the workflow
+            # copies them from repository secrets into .env when they are not
+            # already there. An operator-managed .env is never overwritten.
+            missing_seed=""
+            for seed_var in SEED_ADMIN_PASSWORD SEED_CAJERO_PASSWORD SEED_MOZO_PASSWORD SEED_COCINA_PASSWORD; do
+              if grep -q "^${seed_var}=" .env; then
+                echo "seed password present: ${seed_var}"
+                continue
+              fi
+              case "$seed_var" in
+                SEED_ADMIN_PASSWORD) seed_value="${SEED_ADMIN_PASSWORD:-}" ;;
+                SEED_CAJERO_PASSWORD) seed_value="${SEED_CAJERO_PASSWORD:-}" ;;
+                SEED_MOZO_PASSWORD) seed_value="${SEED_MOZO_PASSWORD:-}" ;;
+                SEED_COCINA_PASSWORD) seed_value="${SEED_COCINA_PASSWORD:-}" ;;
+              esac
+              if [ -z "$seed_value" ]; then
+                missing_seed="${missing_seed} ${seed_var}"
+                continue
+              fi
+              printf '%s=%s\n' "$seed_var" "$seed_value" >> .env
+              echo "seed password written: ${seed_var}"
+            done
+            if [ -n "$missing_seed" ]; then
+              echo "Missing repository secrets:${missing_seed}"
+              echo "Set them in Settings > Secrets and variables > Actions, or add the variables to /docker/restaurant/.env"
+              exit 1
+            fi
             docker compose up -d --build
             ok=0
             for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do

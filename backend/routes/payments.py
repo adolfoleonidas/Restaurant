@@ -23,6 +23,18 @@ _STAFF_PROOF_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z
 _STAFF_PROOF_MAX_BYTES = 1_800_000
 
 
+def proof_is_pending(order: dict) -> bool:
+    """Whether the order carries a proof still waiting for review.
+
+    Newer orders track it in `payment_proof_status`; legacy ones only carried
+    `payment_status == 'comprobante_subido'`.
+    """
+    status = order.get("payment_proof_status")
+    if status:
+        return status == "pendiente"
+    return order.get("payment_status") == "comprobante_subido"
+
+
 async def _authorized_order(order_id: str, user: dict) -> dict:
     order = await db.orders.find_one(
         {"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
@@ -53,7 +65,16 @@ async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
 def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     if payment.get("order_id") != order_id or payment.get("branch_id") != order.get("branch_id"):
         raise HTTPException(status_code=409, detail="El pago existente no coincide con el pedido y sucursal originales")
-    return payment
+    # Same shape as a fresh charge. The dialog and the printed receipt read these
+    # to decide whether the bill is settled, and a retry after a network cut used
+    # to come back without them (the cashier saw a blank remainder).
+    total = round(float(order.get("total") or 0), 2)
+    paid = round(float(order.get("amount_paid") or 0), 2)
+    replay = {key: value for key, value in payment.items() if key != "_id"}
+    replay["remaining"] = round(max(0.0, total - paid), 2)
+    replay["fully_paid"] = paid + 0.009 >= total
+    replay["table_released"] = False
+    return replay
 
 
 def _validated_staff_proof(value: str) -> tuple[str, str]:
@@ -133,6 +154,9 @@ async def upload_staff_proof(
         raise HTTPException(status_code=409, detail="La visita está cambiando; vuelva a cargar el pedido")
     result = await db.orders.update_one(order_filter, {"$set": {
         "payment_status": "comprobante_subido",
+        # Its own field: `payment_status` moves to parcial/pagado on the first
+        # payment and used to take the pending proof out of review with it.
+        "payment_proof_status": "pendiente",
         "payment_proof_url": proof,
         "payment_proof_method": method,
         "payment_proof_sha256": digest,
@@ -215,10 +239,16 @@ async def list_payment_proofs(
         **await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only),
     }
     if pending:
-        filt["payment_status"] = "comprobante_subido"
+        # Legacy orders only carried payment_status; new ones track the proof in
+        # its own field so a partial payment cannot hide it from review.
+        filt["$or"] = [
+            {"payment_proof_status": "pendiente"},
+            {"payment_proof_status": {"$exists": False}, "payment_status": "comprobante_subido"},
+        ]
 
     rows = await db.orders.find(filt, {
         "_id": 0, "id": 1, "order_number": 1, "status": 1, "payment_status": 1,
+        "payment_proof_status": 1,
         "payment_proof_method": 1, "payment_proof_uploaded_at": 1, "payment_proof_uploaded_by": 1,
         "total": 1, "amount_paid": 1, "table_id": 1, "customer_name": 1, "source": 1,
         "order_type": 1, "created_at": 1, "branch_id": 1,
@@ -243,8 +273,8 @@ async def list_payment_proofs(
         for row in rows:
             row["payment_proof_uploaded_by_name"] = name_map.get(row.get("payment_proof_uploaded_by"))
 
-    pending_rows = [row for row in rows if row.get("payment_status") == "comprobante_subido"]
-    other_rows = [row for row in rows if row.get("payment_status") != "comprobante_subido"]
+    pending_rows = [row for row in rows if proof_is_pending(row)]
+    other_rows = [row for row in rows if not proof_is_pending(row)]
     return {"pending": len(pending_rows), "items": pending_rows + other_rows}
 
 
@@ -280,6 +310,20 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
         raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
 
+    # The venue may switch a method off in Datos de cobro; the UI hides it, but a
+    # cached screen or a direct call still got through. Only an explicit `false`
+    # blocks, so venues without a config (or legacy rows) keep working.
+    config = await db.payment_configs.find_one({"restaurant_id": user["restaurant_id"]}, {"_id": 0}) or {}
+    requested_methods = (
+        [split.method for split in (data.splits or [])] if data.method == "mixto" else [data.method]
+    )
+    disabled = sorted({m for m in requested_methods if config.get(f"enable_{m}") is False})
+    if disabled:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El método de pago no está disponible: {', '.join(disabled)}",
+        )
+
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
@@ -290,16 +334,22 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         })
 
     subtotal = float(order.get("subtotal", 0.0))
+    stored_discount = float(order.get("discount") or 0.0)
     discount = float(data.discount or 0.0)
     if discount > 0.009:
-        if not user.get("can_discount"):
-            raise HTTPException(status_code=403, detail="No tenés permiso para aplicar descuentos")
-        if len((data.discount_reason or "").strip()) < 5:
-            raise HTTPException(status_code=400, detail="El descuento requiere un motivo")
-    elif float(order.get("amount_paid") or 0) > 0:
-        discount = float(order.get("discount") or 0.0)
+        # A discount that is new or changed needs permission and a motive; reusing
+        # the one the account already carries does not.
+        if abs(discount - stored_discount) > 0.009:
+            if not user.get("can_discount"):
+                raise HTTPException(status_code=403, detail="No tenés permiso para aplicar descuentos")
+            if len((data.discount_reason or "").strip()) < 5:
+                raise HTTPException(status_code=400, detail="El descuento requiere un motivo")
+    else:
+        # No new discount requested: keep the account's. Otherwise voiding a
+        # payment silently raises the bill back to the undiscounted total.
+        discount = stored_discount
     tip = float(data.tip or 0.0)
-    if tip <= 0.009 and float(order.get("amount_paid") or 0) > 0:
+    if tip <= 0.009:
         tip = float(order.get("tip") or 0.0)
     bill_total = account_total(
         subtotal=subtotal,
@@ -455,6 +505,8 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
                 "updated_at": order.get("updated_at"),
                 "items": previous_items,
                 "status": order.get("status"),
+                "payment_status": order.get("payment_status"),
+                "fulfillment_status": order.get("fulfillment_status"),
                 "paid_at": order.get("paid_at"),
             }},
         )
@@ -692,6 +744,15 @@ async def _verify_attention_void(order: dict, payment: dict) -> dict:
     return payment
 
 
+def _has_open_visit(order: dict) -> bool:
+    """Whether the order belongs to a visit (table/attention).
+
+    A public pickup carries an `attention_id` for numbering but no visit state,
+    so checking the id alone made its payments impossible to void (permanent 409).
+    """
+    return bool(order.get("attention_id") and order.get("attention_state"))
+
+
 async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: str, kind: str) -> dict:
     payment_id = payment["id"]
     token = f"void:{payment_id}"
@@ -757,7 +818,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if (has_tenantwide_branch_access(user) and pay.get("branch_id") is not None
             and pay.get("branch_id") != order.get("branch_id")):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
-    if order.get("attention_id"):
+    if _has_open_visit(order):
         return await _apply_attention_void(payment=pay, order=order, user=user, reason=reason, kind=kind)
 
     token = f"void:{payment_id}"
@@ -822,7 +883,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
 
     mutation_claimed = False
-    if order.get("attention_id") and not recovering:
+    if _has_open_visit(order) and not recovering:
         try:
             await claim_attention_mutation(db.orders, order, token)
         except VersionError:
@@ -844,7 +905,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
             raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
 
     try:
-        if order.get("attention_id"):
+        if _has_open_visit(order):
             await finish_attention_mutation(db.orders, order, token, order_set)
         else:
             await claim_order(db.orders, order, order_set)

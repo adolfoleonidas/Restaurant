@@ -352,8 +352,10 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 order_id: acct.id,
                 method: backendMethod,
                 amount: chargeAmount,
-                discount: Number(discount || 0),
-                discount_reason: Number(discount || 0) > 0 ? discountReason.trim() : undefined,
+                // Send the effective discount (the account's unless the cashier
+                // changed it): sending 0 used to drop a discount on the account.
+                discount: d,
+                discount_reason: discountReason.trim() ? discountReason.trim() : undefined,
                 tip: tipVal,
                 idempotency_key: idempotencyRef.current,
                 expected_updated_at: acct.updated_at,

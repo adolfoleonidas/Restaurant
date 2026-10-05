@@ -532,9 +532,10 @@ function MovementCard({ register, onAdded, runMutation }) {
     const [amount, setAmount] = useState('');
     const [desc, setDesc] = useState('');
     const submit = async () => {
-        if (!amount || !desc) { toast.error('Completa los campos'); return; }
+        if (!amount || Number(amount) <= 0) { toast.error('Ingresá un monto mayor a 0'); return; }
+        if (desc.trim().length < 5) { toast.error('Escribe una descripción (mínimo 5 caracteres)'); return; }
         try {
-            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc }));
+            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc.trim() }));
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
@@ -619,7 +620,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
         // Un pedido web con comprobante ya subido se resuelve en su propio bloque
         // (Ver comprobante / Confirmar). Se excluye de las listas de cobro para que
         // una misma cuenta no ofrezca dos acciones de dinero a la vez.
-        const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado' && o.payment_status !== 'comprobante_subido');
+        const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
         const requested = list.filter((o) => o.payment_requested || o.status === 'pendiente_pago');
         const rest = list.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago'));
         return [...requested, ...rest].map((o) => ({

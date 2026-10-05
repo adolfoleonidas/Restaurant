@@ -68,6 +68,9 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
     // coexistir (mozo/cajero con administracion).
     const seen = new Set();
     const items = ALL_NAV.filter((n) => {
+        // Staff accounts and passwords belong to the owner: the `administracion`
+        // function opens every other panel, but not this one.
+        if (n.to === '/usuarios' && user.role !== 'admin') return false;
         const allowed = n.roles.includes(user.role)
             || (n.roles.includes('admin') && hasFn(user, 'administracion'))
             || (n.roles.includes('cajero') && hasFn(user, 'cobro'))

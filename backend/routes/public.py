@@ -13,11 +13,11 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
-from order_flow import VersionError, claim_order, version_conflict
+from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
-from guest_access import client_host, public_order_limiter, read_table_token
+from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
@@ -184,9 +184,22 @@ async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
     return _public_order_response(order)
 
 
-def _public_mutate_guard(o: dict):
+def _public_order_missing(request: Request):
+    """Count a failed tracking lookup and answer 404.
+
+    The tracking code behaves like a bearer token and the payload carries the
+    customer's name, phone and address, so guessing it must be expensive. Only
+    misses are counted, by client, so a restaurant's shared wifi does not punish
+    customers reading their own order.
+    """
+    if not public_miss_limiter.allow(client_host(request)):
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+    raise HTTPException(status_code=404, detail="Pedido no encontrado")
+
+
+def _public_mutate_guard(o: dict, request: Request):
     if not o:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        _public_order_missing(request)
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if o["status"] == "pendiente_pago":
@@ -599,28 +612,34 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
 
 
 @router.get("/orders/{tracking_code}")
-async def public_get_order(tracking_code: str):
+async def public_get_order(tracking_code: str, request: Request):
     o = await db.orders.find_one(
         {"tracking_code": tracking_code.upper()},
         {"_id": 0, "created_by": 0}
     )
     if not o:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        _public_order_missing(request)
     return _public_order_view(o)
 
 
 @router.post("/orders/{tracking_code}/items")
-async def public_add_items(tracking_code: str, data: PublicItemsAdd):
+async def public_add_items(tracking_code: str, data: PublicItemsAdd, request: Request):
     r = await _get_restaurant()
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
-    _public_mutate_guard(o)
+    _public_mutate_guard(o, request)
     enriched, _ = await _enrich_items(data.items, r)
     combined = list(o.get("items") or []) + enriched
     subtotal, total = _money_totals(o, combined)
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
-    await _save_public_order(o, {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": combined, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        # Adding a dish to an already paid order raises the bill: without this the
+        # order stayed 'pagado' with a bigger total and nobody collected the debt.
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -637,10 +656,10 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd):
 
 
 @router.patch("/orders/{tracking_code}/items/{item_id}")
-async def public_update_item(tracking_code: str, item_id: str, data: PublicItemUpdate):
+async def public_update_item(tracking_code: str, item_id: str, data: PublicItemUpdate, request: Request):
     r = await _get_restaurant()
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
-    _public_mutate_guard(o)
+    _public_mutate_guard(o, request)
     items = o.get("items") or []
     target = next((i for i in items if i["id"] == item_id), None)
     if not target:
@@ -651,7 +670,11 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     target["subtotal"] = target["unit_price"] * data.quantity
     subtotal, total = _money_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
-    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": items, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -668,10 +691,10 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
 
 
 @router.delete("/orders/{tracking_code}/items/{item_id}")
-async def public_remove_item(tracking_code: str, item_id: str):
+async def public_remove_item(tracking_code: str, item_id: str, request: Request):
     r = await _get_restaurant()
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()}, {"_id": 0})
-    _public_mutate_guard(o)
+    _public_mutate_guard(o, request)
     items = o.get("items") or []
     target = next((i for i in items if i["id"] == item_id), None)
     if not target:
@@ -681,7 +704,11 @@ async def public_remove_item(tracking_code: str, item_id: str):
     items = [i for i in items if i["id"] != item_id]
     subtotal, total = _money_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
-    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": items, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -769,10 +796,10 @@ def _validated_public_proof(value: str) -> str:
 
 
 @router.post("/orders/{tracking_code}/proof")
-async def upload_proof(tracking_code: str, data: PublicProofUpload):
+async def upload_proof(tracking_code: str, data: PublicProofUpload, request: Request):
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()})
     if not o:
-        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        _public_order_missing(request)
     if o.get("status") in ("pagado", "cancelado") or o.get("payment_status") in ("pagado", "confirmado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     proof = _validated_public_proof(data.payment_proof or "")

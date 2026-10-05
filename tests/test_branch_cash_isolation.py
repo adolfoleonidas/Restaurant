@@ -506,7 +506,8 @@ def test_new_database_installs_branch_and_legacy_uniqueness_without_tenant_uniqu
     class FakeDatabase:
         def __init__(self):
             for name in ("users", "tables", "orders", "payment_configs", "products", "payments",
-                         "cash_registers", "attentions", "audit_logs", "zones", "branches"):
+                         "cash_registers", "attentions", "audit_logs", "zones", "branches",
+                         "table_groups"):
                 setattr(self, name, IndexCollection())
 
     fake = FakeDatabase()
@@ -548,7 +549,7 @@ def test_existing_tenant_unique_cash_index_is_preserved_without_startup_replacem
     class FakeDatabase:
         def __init__(self):
             for name in ("users", "tables", "orders", "payment_configs", "products", "payments",
-                         "attentions", "audit_logs", "zones", "branches"):
+                         "attentions", "audit_logs", "zones", "branches", "table_groups"):
                 setattr(self, name, IndexCollection())
             self.cash_registers = IndexCollection(existing=(True,))
 
