@@ -1,0 +1,23 @@
+# Opt-in HTTPS. The plain `docker compose up` keeps working over HTTP; use this
+# override once you have certificates:
+#
+#   mkdir -p certs
+#   # with a domain pointing at the server (recommended):
+#   docker run --rm -p 80:80 -v "$PWD/certs:/etc/letsencrypt" certbot/certbot \
+#     certonly --standalone -d tu-dominio.com --agree-tos -m tu@correo.com --non-interactive
+#   # then copy the files nginx expects:
+#   cp certs/live/tu-dominio.com/fullchain.pem certs/fullchain.pem
+#   cp certs/live/tu-dominio.com/privkey.pem   certs/privkey.pem
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+#
+# Don't forget to add the https origin to CORS_ORIGINS in .env, and to open 443
+# on the server firewall.
+services:
+  frontend:
+    ports:
+      - "8081:80"
+      - "443:443"
+    volumes:
+      - ./frontend/nginx.tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/nginx/certs:ro

@@ -86,7 +86,7 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 
 | # | Hallazgo | Evidencia | Impacto |
 |---|---|---|---|
-| 1 | **HTTP sin TLS** en `:8081` con token en `localStorage` | `frontend/nginx.conf:2`, `api.js:9` | Credenciales y tokens en claro en la red del local |
+| 1 | **HTTP sin TLS** en `:8081` con token en `localStorage` | `frontend/nginx.conf:2`, `api.js:9` | Credenciales y tokens en claro en la red. 🟠 **Herramienta lista**: `docker-compose.tls.yml` + `frontend/nginx.tls.conf` (redirect a HTTPS, HSTS, TLS 1.2/1.3) + sección HTTPS del runbook. **Falta un dominio** y el certificado en el servidor (`certs/` está ignorado por git) |
 | 2 | **Contraseñas demo activas** hasta que se cambien | `seed.py:204-232`, `security_config.py:13-19` | Acceso al panel con credenciales públicas del repo |
 | 3 | **Fuga cross-sucursal**: `POST /products/{id}/availability` devuelve pedidos activos de **todas** las sucursales | `products.py:236-243,256` | Un cocinero ve mesas/pedidos de otra sucursal en la respuesta |
 | 4 | **No se pueden operar 2 sucursales**: `tables.number` y `zones.name` son únicos por **restaurante** | `database.py:11,83`, `tables.py:107`, `zones.py:45` | "Mesa 1" en la sucursal B responde `400 ya existe` |
