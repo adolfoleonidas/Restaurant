@@ -23,6 +23,18 @@ _STAFF_PROOF_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z
 _STAFF_PROOF_MAX_BYTES = 1_800_000
 
 
+def proof_is_pending(order: dict) -> bool:
+    """Whether the order carries a proof still waiting for review.
+
+    Newer orders track it in `payment_proof_status`; legacy ones only carried
+    `payment_status == 'comprobante_subido'`.
+    """
+    status = order.get("payment_proof_status")
+    if status:
+        return status == "pendiente"
+    return order.get("payment_status") == "comprobante_subido"
+
+
 async def _authorized_order(order_id: str, user: dict) -> dict:
     order = await db.orders.find_one(
         {"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
@@ -133,6 +145,9 @@ async def upload_staff_proof(
         raise HTTPException(status_code=409, detail="La visita está cambiando; vuelva a cargar el pedido")
     result = await db.orders.update_one(order_filter, {"$set": {
         "payment_status": "comprobante_subido",
+        # Its own field: `payment_status` moves to parcial/pagado on the first
+        # payment and used to take the pending proof out of review with it.
+        "payment_proof_status": "pendiente",
         "payment_proof_url": proof,
         "payment_proof_method": method,
         "payment_proof_sha256": digest,
@@ -215,10 +230,16 @@ async def list_payment_proofs(
         **await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only),
     }
     if pending:
-        filt["payment_status"] = "comprobante_subido"
+        # Legacy orders only carried payment_status; new ones track the proof in
+        # its own field so a partial payment cannot hide it from review.
+        filt["$or"] = [
+            {"payment_proof_status": "pendiente"},
+            {"payment_proof_status": {"$exists": False}, "payment_status": "comprobante_subido"},
+        ]
 
     rows = await db.orders.find(filt, {
         "_id": 0, "id": 1, "order_number": 1, "status": 1, "payment_status": 1,
+        "payment_proof_status": 1,
         "payment_proof_method": 1, "payment_proof_uploaded_at": 1, "payment_proof_uploaded_by": 1,
         "total": 1, "amount_paid": 1, "table_id": 1, "customer_name": 1, "source": 1,
         "order_type": 1, "created_at": 1, "branch_id": 1,
@@ -243,8 +264,8 @@ async def list_payment_proofs(
         for row in rows:
             row["payment_proof_uploaded_by_name"] = name_map.get(row.get("payment_proof_uploaded_by"))
 
-    pending_rows = [row for row in rows if row.get("payment_status") == "comprobante_subido"]
-    other_rows = [row for row in rows if row.get("payment_status") != "comprobante_subido"]
+    pending_rows = [row for row in rows if proof_is_pending(row)]
+    other_rows = [row for row in rows if not proof_is_pending(row)]
     return {"pending": len(pending_rows), "items": pending_rows + other_rows}
 
 

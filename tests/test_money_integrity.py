@@ -19,7 +19,8 @@ from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCr
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
-from routes.payments import apply_void_payment, create_payment
+from routes.payments import apply_void_payment, create_payment, proof_is_pending
+from order_flow import ticket_fields
 from routes.reports import sales_report
 import routes.cash as cash_routes
 import routes.orders as order_routes
@@ -1003,3 +1004,23 @@ def test_cash_movement_needs_a_description_and_is_audited():
     assert created["amount"] == 10
     assert len(movements) == 1
     assert any(row.get("action") == "cash_movement" for row in audit)
+
+
+def test_partial_payment_does_not_hide_a_pending_proof():
+    """The proof has its own status, so a partial payment keeps it in review."""
+    order = {
+        "payment_status": "comprobante_subido",
+        "payment_proof_status": "pendiente",
+        "items": [],
+    }
+    fields = ticket_fields(order, "entregado", 10.0, 100.0)
+    assert fields["payment_status"] == "parcial"
+    assert order["payment_proof_status"] == "pendiente"
+    assert proof_is_pending({**order, **fields}) is True
+
+
+def test_proof_status_falls_back_to_payment_status_for_legacy_orders():
+    assert proof_is_pending({"payment_status": "comprobante_subido"}) is True
+    assert proof_is_pending({"payment_status": "parcial"}) is False
+    assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "pendiente"}) is True
+    assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "verificado"}) is False

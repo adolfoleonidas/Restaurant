@@ -665,7 +665,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
-    await _save_order(o, {"payment_status": "confirmado", "updated_at": _now()})
+    await _save_order(o, {"payment_status": "confirmado", "payment_proof_status": "verificado", "updated_at": _now()})
     await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), payment_status="confirmado", branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
