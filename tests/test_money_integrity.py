@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
-from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, update_item
+from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, split_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
 from order_flow import ticket_fields
 from routes.reports import sales_report
@@ -570,6 +570,62 @@ def test_move_sole_account_releases_source_table():
     source_table = next(t for t in db.tables.docs if t["id"] == "table-1")
     assert "active_attention_id" not in source_table
     assert source_table["status"] == "disponible"
+
+
+def test_split_distributes_items_into_accounts():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(rid):
+            return 99
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=65.0, total=65.0,
+            items=[
+                _table_item("i1", "prod-1", "Lomo", 20.0),
+                _table_item("i2", "prod-2", "Agua", 10.0),
+                _table_item("i3", "prod-3", "Ceviche", 30.0),
+                _table_item("i4", "prod-4", "Chicha", 5.0),
+            ],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    original = next(o for o in db.orders.docs if o["id"] == "order-1")
+    assert [i["id"] for i in original["items"]] == ["i1", "i3"]
+    assert original["total"] == 50.0
+    new_orders = [o for o in db.orders.docs if o["id"] != "order-1"]
+    assert len(new_orders) == 1
+    assert [i["id"] for i in new_orders[0]["items"]] == ["i2", "i4"]
+    assert new_orders[0]["total"] == 15.0
+    assert new_orders[0]["attention_id"] == "att-1"
+    assert new_orders[0]["order_number"] == 99
+    att = next(a for a in db.attentions.docs if a["id"] == "att-1")
+    assert set(att["order_ids"]) == {"order-1", new_orders[0]["id"]}
+
+
+def test_split_rejects_an_account_with_collected_money():
+    async def run():
+        from models import OrderSplit
+
+        db = _DB()
+        db.orders.docs.append(_order(id="order-1", amount_paid=5.0, status="pendiente_pago"))
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        assert exc.value.status_code == 400
+
+    asyncio.run(run())
 
 
 def test_shift_totals_ignore_other_registers():

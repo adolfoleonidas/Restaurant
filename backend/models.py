@@ -420,6 +420,12 @@ class OrderMove(BaseModel):
     target_table_id: str
 
 
+class OrderSplit(BaseModel):
+    """Reparte los productos de una cuenta en `parts` cuentas (2 a 4)."""
+
+    parts: int = Field(ge=2, le=4)
+
+
 class PublicOrderCreate(BaseModel):
     request_id: Optional[constr(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$", min_length=36, max_length=36)] = None
     order_type: Literal["local", "recojo", "delivery"]

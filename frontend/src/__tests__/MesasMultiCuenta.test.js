@@ -136,4 +136,28 @@ describe('multi-cuenta en el salón', () => {
         await click(dialog.querySelector('[data-testid="mover-cuenta-mesa-3"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/move', { target_table_id: 'table-3' });
     });
+
+    it('divide la cuenta en N partes', async () => {
+        const o1 = {
+            ...order('order-1', 11, 'Lomo', 30),
+            items: [
+                { id: 'i1', product_name: 'Lomo', quantity: 1, subtotal: 20, status: 'pendiente' },
+                { id: 'i2', product_name: 'Agua', quantity: 1, subtotal: 10, status: 'pendiente' },
+            ],
+        };
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, o1);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url.startsWith('/orders/')) return Promise.resolve({ data: o1 });
+            return Promise.resolve({ data: [o1] });
+        });
+        api.post.mockResolvedValue({ data: o1 });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-dividir-2"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/split', { parts: 2 });
+    });
 });

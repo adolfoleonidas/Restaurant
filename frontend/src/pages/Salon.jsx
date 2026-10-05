@@ -404,6 +404,21 @@ export default function Salon() {
         }
     };
 
+    // Multi-cuenta: reparte los productos de la cuenta seleccionada en N cuentas.
+    const splitAccount = async (parts) => {
+        const s = openTable;
+        const targetId = s?.order?.id || s?.accountId || s?.table?.active_order?.id;
+        if (!targetId || !canTake) return;
+        try {
+            await api.post(`/orders/${targetId}/split`, { parts });
+            toast.success(`Cuenta dividida en ${parts}`);
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo dividir la cuenta');
+        }
+    };
+
     const toggleSelected = (t) => {
         setSelected((ids) => (ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id]));
     };
@@ -1032,6 +1047,14 @@ export default function Salon() {
                                             >
                                                 {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
                                             </Button>
+                                            {canTake && order && (order.items || []).filter((i) => i.status !== 'cancelado').length >= 2 && (
+                                                <div className="flex gap-2">
+                                                    <span className="text-xs text-muted-foreground self-center">Dividir:</span>
+                                                    {[2, 3, 4].map((n) => (
+                                                        <Button key={n} variant="outline" className="flex-1 h-11" onClick={() => splitAccount(n)} data-testid={`mesa-sheet-dividir-${n}`}>÷{n}</Button>
+                                                    ))}
+                                                </div>
+                                            )}
                                             {canTake && (
                                                 <Button
                                                     variant="outline"

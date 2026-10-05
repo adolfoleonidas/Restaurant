@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     FlowError,
@@ -571,6 +571,79 @@ async def move_order(order_id: str, data: OrderMove, user: dict = Depends(requir
 
     emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="moved", branch_id=order.get("branch_id"))
     emit_notice(user["restaurant_id"], "table", table_id=target["id"], status="ocupada", branch_id=order.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/split")
+async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Reparte los productos de una cuenta en `parts` cuentas (misma mesa y visita)."""
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede dividir una cuenta cerrada")
+    if (order.get("amount_paid") or 0) > 0.009:
+        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anulalos antes de dividir")
+    items = order.get("items") or []
+    parts = data.parts
+    if parts < 2:
+        raise HTTPException(status_code=400, detail="Elegí 2 o más partes")
+    if parts > len(items):
+        raise HTTPException(status_code=400, detail="No hay suficientes productos para dividir en tantas partes")
+
+    # Reparto round-robin de los productos en `parts` grupos.
+    groups = [[] for _ in range(parts)]
+    for idx, it in enumerate(items):
+        groups[idx % parts].append(it)
+
+    def _split_total(group):
+        subtotal = round(sum(float(i.get("subtotal") or 0) for i in group), 2)
+        return subtotal, subtotal
+
+    # La cuenta original conserva el primer grupo (sin descuento ni propina).
+    subtotal0, total0 = _split_total(groups[0])
+    await _save_order(order, {
+        "items": groups[0], "subtotal": subtotal0, "total": total0,
+        "discount": 0.0, "tip": 0.0, "updated_at": _now(),
+        **ticket_fields(order, order.get("fulfillment_status") or order.get("status"), order.get("amount_paid"), total0),
+    })
+
+    # Las cuentas nuevas heredan mesa, visita y estado de la original.
+    created = []
+    for group in groups[1:]:
+        subtotal_g, total_g = _split_total(group)
+        new_id = str(uuid.uuid4())
+        order_no = await _next_order_number(user["restaurant_id"])
+        new_order = {
+            "id": new_id, "order_number": order_no, "restaurant_id": order["restaurant_id"],
+            "table_id": order.get("table_id"), "created_by": user["id"], "created_by_name": user.get("full_name"),
+            "status": order["status"], "order_type": order.get("order_type") or "mesa", "items": group,
+            "subtotal": subtotal_g, "discount": 0.0, "tip": 0.0, "total": total_g,
+            "notes": None, "cancellation_reason": None, "sent_to_kitchen_at": None,
+            "ready_at": None, "paid_at": None, "created_at": _now(), "updated_at": _now(),
+            "attention_id": order.get("attention_id"),
+            "attention_state": order.get("attention_state") or "open",
+            "attention_open": True,
+        }
+        if order.get("branch_id") is not None:
+            new_order["branch_id"] = order["branch_id"]
+        await db.orders.insert_one(new_order)
+        created.append(new_id)
+
+    # Registra las cuentas nuevas en la visita compartida.
+    if order.get("attention_id"):
+        att = await db.attentions.find_one({"id": order["attention_id"], "restaurant_id": order["restaurant_id"]}, {"_id": 0})
+        if att:
+            ids = list(att.get("order_ids") or [])
+            for c in created:
+                if c not in ids:
+                    ids.append(c)
+            await db.attentions.update_one(
+                {"id": order["attention_id"], "restaurant_id": order["restaurant_id"]},
+                {"$set": {"order_ids": ids}},
+            )
+
+    emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 
