@@ -92,12 +92,12 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 | 4 | **No se pueden operar 2 sucursales**: `tables.number` y `zones.name` son únicos por **restaurante** | `database.py:11,83`, `tables.py:107`, `zones.py:45` | "Mesa 1" en la sucursal B responde `400 ya existe` |
 | 5 | ~~**La suite backend es roja**: 52 fallos (15 módulos de integración HTTP viejos, previos al aislamiento por sucursal)~~ **RESUELTO**: los 15 módulos HTTP quedaron marcados `integration` (necesitan API viva) y la suite hermética da **342 ✅ / 0 ❌** | `tests/conftest.py` (marcado automático + aislación de módulos), `pytest.ini` | — |
 | 6 | ~~**El comando documentado ejecuta 0 tests**~~ **RESUELTO**: el `sys.path.insert` iba después del import de `models`; ahora un `pytest.ini` aporta `pythonpath = backend` | `tests/test_attention_lifecycle.py`, `pytest.ini` | — |
-| 7 | **Rate limit de login por IP de socket**: detrás de nginx todos comparten IP | `routes/auth.py:28`, `nginx.conf:8-14` | 10 intentos fallidos de uno bloquean el login de **todo** el local 5 min |
+| 7 | ~~**Rate limit de login por IP de socket**~~ **NO ERA UN BUG (verificado)**: la clave es `IP + email`, así que un usuario bloqueado no bloquea a los demás. Solo comparten IP, no cubeta | `routes/auth.py:28,15-19` | — (queda un test que lo fija: `tests/test_login_rate_limit.py`) |
 | 8 | **Tracking público sin rate limit** con código de 8 chars, y devuelve teléfono y dirección del cliente | `public.py:33,601-609,102-103` | Enumeración de datos de clientes |
 | 9 | **`administracion` da admin total**: `require_roles` lo trata como pase universal, incluido resetear la contraseña de otro usuario | `auth.py:130-139`, `branch_access.py:8`, `users.py:64-73` | Un mozo con esa función puede tomar la cuenta del admin. Confirmar si es intencional |
-| 10 | `GET /api/health` devuelve `str(e)` sin auth | `server.py:47-53` | Fuga de errores internos de la base |
-| 11 | `/api/system/info` expone nombre de base y versiones | `routes/system.py:59-70` | Reconocimiento (es admin-only) |
-| 12 | `data/reset` no limpia `attention_number_assignments` | `data.py:18-27` | Contadores de atención arrastrados |
+| 10 | ~~`GET /api/health` devuelve `str(e)` sin auth~~ **RESUELTO**: el detalle va al log del servidor | `server.py:47-56` | — |
+| 11 | `/api/system/info` expone nombre de base y versiones — **se mantiene a propósito**: es admin-only y alimenta la tarjeta "Datos del sistema" del panel | `routes/system.py:59-70` | Riesgo aceptado (diagnóstico del dueño) |
+| 12 | ~~`data/reset` no limpia `attention_number_assignments`~~ **RESUELTO**: la colección entró en el reset (verificado en vivo) | `data.py:18-28` | — |
 
 ---
 

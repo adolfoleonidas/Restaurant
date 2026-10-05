@@ -24,6 +24,7 @@ OPERATIONAL_COLLECTIONS = (
     "approvals",
     "audit_logs",
     "counters",
+    "attention_number_assignments",
 )
 
 # Catalogue collections wiped by the catalogue reset. The seed ships a demo menu
