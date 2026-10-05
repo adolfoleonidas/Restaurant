@@ -4,11 +4,13 @@ import { useTheme } from "@/contexts/ThemeContext"
 const Toaster = ({
   ...props
 }) => {
-  const { theme = "light" } = useTheme()
+  // `theme` es el id del tema (fresco/restaurante/cálido); lo que decide el
+  // claro/oscuro es `darkMode`.
+  const { darkMode = false } = useTheme()
 
   return (
     <Sonner
-      theme={theme === "dark" ? "dark" : "light"}
+      theme={darkMode ? "dark" : "light"}
       className="toaster group"
       toastOptions={{
         classNames: {

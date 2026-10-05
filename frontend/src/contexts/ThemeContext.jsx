@@ -7,6 +7,26 @@ const themes = [
   { id: 'calido', name: 'Cálido', description: 'Naranja/Marrón - Acogedor tradicional' },
 ];
 
+// Carga bajo demanda la hoja del tema activo. Vive fuera del componente para
+// que sea estable y no entre en las dependencias de los efectos.
+function applyThemeCSS(themeId) {
+  const existingLink = document.getElementById('theme-css');
+  if (existingLink) {
+    existingLink.remove();
+  }
+
+  if (themeId === 'fresco') {
+    // Fresco es el default en index.css, no necesita cargar nada.
+    return;
+  }
+
+  const link = document.createElement('link');
+  link.id = 'theme-css';
+  link.rel = 'stylesheet';
+  link.href = `/themes/theme-${themeId}.css`;
+  document.head.appendChild(link);
+}
+
 // Default value so components (and tests) can render outside a ThemeProvider.
 const fallbackTheme = {
   theme: 'fresco',
@@ -69,45 +89,35 @@ export function ThemeProvider({ children }) {
   const kitchenDark = (activePath || '').startsWith('/cocina');
   const effectiveDark = darkMode || kitchenDark;
 
-  // Aplicar tema y dark mode
+  // Aplicar el tema (clase + hoja CSS) SOLO cuando cambia el tema. Recargar la
+  // hoja en cada toggle de modo oscuro provocaba un parpadeo (FOUC) y una
+  // petición de red extra por cada clic.
   useEffect(() => {
     if (loading) return;
 
-    // Remover clases de tema anteriores
-    themes.forEach(t => document.body.classList.remove(`theme-${t.id}`));
-    // Agregar clase del tema actual
+    // Quita cualquier clase theme-* previa, incluidas variantes que ya no están
+    // en la lista de temas (si no, podrían quedar dos temas aplicados a la vez).
+    Array.from(document.body.classList)
+      .filter((cls) => cls.startsWith('theme-'))
+      .forEach((cls) => document.body.classList.remove(cls));
     document.body.classList.add(`theme-${theme}`);
-    
-    // Aplicar dark mode (solo la elección del usuario se persiste: el modo de
-    // la cocina no debe quedar grabado al salir de la pantalla).
+
+    applyThemeCSS(theme);
+  }, [theme, loading]);
+
+  // Aplicar el modo oscuro SOLO cuando cambia el modo (o la ruta, para el modo
+  // cocina). La elección del usuario se persiste; el modo de la cocina no debe
+  // quedar grabado al salir de la pantalla.
+  useEffect(() => {
+    if (loading) return;
+
     if (effectiveDark) {
       document.body.classList.add('dark');
     } else {
       document.body.classList.remove('dark');
     }
     localStorage.setItem('restaurant-dark-mode', darkMode.toString());
-    
-    // Cargar CSS del tema
-    loadThemeCSS(theme);
-  }, [theme, effectiveDark, darkMode, loading]);
-
-  const loadThemeCSS = (themeId) => {
-    const existingLink = document.getElementById('theme-css');
-    if (existingLink) {
-      existingLink.remove();
-    }
-    
-    if (themeId === 'fresco') {
-      // Fresco es el default en index.css, no necesita cargar nada
-      return;
-    }
-    
-    const link = document.createElement('link');
-    link.id = 'theme-css';
-    link.rel = 'stylesheet';
-    link.href = `/themes/theme-${themeId}.css`;
-    document.head.appendChild(link);
-  };
+  }, [effectiveDark, darkMode, loading]);
 
   const setTheme = (newTheme) => {
     setThemeState(newTheme);
