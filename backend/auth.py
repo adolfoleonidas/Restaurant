@@ -126,6 +126,20 @@ async def get_current_user(creds: Optional[HTTPAuthorizationCredentials] = Depen
     return apply_permissions(user)
 
 
+def require_role_exact(role: str):
+    """Require the literal role, ignoring the `administracion` universal pass.
+
+    Staff accounts and passwords stay with the owner: someone with the
+    administracion function can run the venue and open every panel, but must not
+    be able to reset the admin's password or delete the account.
+    """
+    async def _checker(user: dict = Depends(get_current_user)) -> dict:
+        if user.get("role") != role:
+            raise HTTPException(status_code=403, detail=f"Requiere rol: {role}")
+        return user
+    return _checker
+
+
 def require_roles(roles: List[str]):
     async def _checker(user: dict = Depends(get_current_user)) -> dict:
         if user.get("role") in roles:

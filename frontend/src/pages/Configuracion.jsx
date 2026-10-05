@@ -307,7 +307,11 @@ function Funciones() {
             </p>
             <div className="space-y-2" data-testid="funciones-lista">
                 {FEATURE_DEFS.map((def) => (
-                    <label key={def.key} className="flex items-start justify-between gap-3 rounded-xl border border-border p-3 cursor-pointer">
+                    // A <label> here made the browser forward the click to the switch
+                    // on top of the switch's own click, toggling twice (once back to
+                    // where it started). The row is a plain container; the switch is
+                    // the only control.
+                    <div key={def.key} className="flex items-start justify-between gap-3 rounded-xl border border-border p-3">
                         <span className="min-w-0">
                             <span className="block text-sm font-medium">{def.label}</span>
                             <span className="block text-xs text-muted-foreground">{def.description}</span>
@@ -317,7 +321,7 @@ function Funciones() {
                             onCheckedChange={(value) => setFeatures((current) => ({ ...current, [def.key]: value }))}
                             data-testid={`funcion-${def.key}`}
                         />
-                    </label>
+                    </div>
                 ))}
             </div>
         </CardContent></Card>
@@ -442,7 +446,24 @@ function Datos() {
                         <SystemItem label="En línea desde" value={fmtUptime(info.uptime_seconds)} />
                         <SystemItem label="Python" value={info.runtime?.python || '—'} />
                         <SystemItem label="Datos demo" value={info.demo_seed ? 'Sí' : 'No'} />
+                        <SystemItem
+                            label="Claves demo activas"
+                            value={(info.demo_password_accounts || []).length
+                                ? `${info.demo_password_accounts.length} cuenta(s)`
+                                : 'Ninguna'}
+                        />
                     </div>
+                    {(info.demo_password_accounts || []).length > 0 && (
+                        <p
+                            role="alert"
+                            className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+                            data-testid="demo-passwords-warning"
+                        >
+                            Hay {info.demo_password_accounts.length} cuenta(s) con contraseña demo
+                            ({info.demo_password_accounts.join(', ')}).
+                            Cambialas en <strong>Equipo</strong> antes de abrir el local.
+                        </p>
+                    )}
                     <div className="mt-5 border-t pt-4" data-testid="system-counts">
                         <div className="page-kicker mb-2">Registros</div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
