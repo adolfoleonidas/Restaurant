@@ -214,3 +214,73 @@ Google, que en este entorno no tiene salida a internet.
 - Los controles de 36-40 px que quedan en escritorio son deliberados: el
   contrato pide 44 px **en móvil** y recupera la densidad de escritorio en `sm:`.
 
+## 8. Salón: qué se toma del concepto «Salón Mozo»
+
+Punto de partida: un prototipo funcional del dueño (`Salón Mozo.html`, fuera
+del repositorio, 742 líneas con datos en memoria, arrastre de mesas, hojas,
+mini-reproductor y flujo de cobro). Su lenguaje visual es "tipo Spotify"
+(verde `#1ed760`, oscuro, Figtree). **Se adopta la estructura y las
+interacciones, no el aspecto**: la app mantiene el sistema Fresco.
+
+| Pieza del concepto | Decisión | Motivo |
+|---|---|---|
+| Mini-reproductor del pedido activo (`#mini`) | **Entra** | El mozo no pierde el hilo de la cuenta que está trabajando al moverse por el salón. No necesita backend |
+| Banda "Ahora" con acciones inmediatas (`drawNow`) | **Entra** | Es lo que ahorra toques: platos listos → *Servir*; mesas por cobrar → *Cobrar*, sin abrir nada |
+| Zonas como control segmentado (`#zs`) | **Entra** | Sustituye una fila de chips por un segmentado con `aria-pressed`: menos alto y más claro |
+| Cuentas como tarjetas con estado y total (`.pcs`/`.pcd`) | **Entra** | Con multi-cuenta y mesas unidas, elegir cuenta es la decisión más frecuente de la hoja |
+| Deshacer en el aviso (`#bUndo`) | **Entra acotado** | Solo donde la inversa existe de verdad en la API (unir mesas → separar). **Nunca** en dinero: un cobro no se "deshace", se anula con su flujo |
+| Plano espacial con posiciones libres (`#plan`, `#tab`) | **No entra (aún)** | El modelo no tiene coordenadas: `TableCreate`/`TableUpdate` solo llevan number, name, capacity, area, status y branch_id. Necesita migración, endpoint y un editor que persista. El comportamiento a 360 px lo decidirá la medición |
+| Lenguaje verde / oscuro / Figtree | **No entra** | Rompería el sistema de diseño único (hallazgo P2 ya cerrado) y, peor, el verde **ya significa "mesa libre"**: usarlo como color de marca y de acción mezclaría el estado con la identidad |
+| Conmutador Mesas / Pedidos dentro del Salón | **No entra** | `/pedidos` ya es pantalla propia con su entrada en la barra inferior; duplicarla sería mantener dos veces lo mismo |
+| Objetivos táctiles del prototipo (píldoras 36 px, steppers 30 px, selects 30 px) | **No se copian** | Están por debajo de los 44 px que el contrato fija y que la auditoría ya dejó en 0 incidencias |
+
+Lo que el concepto **confirma** y la app ya tenía, así que no se reimplementa:
+filtros de estado con contador, leyenda de estados, tarjetas de mesa, el flujo
+de unir mesas con su barra de acciones, las hojas inferiores en móvil y el
+multi-cuenta.
+
+### 8.1 Qué se implementó y cómo se verificó
+
+| Pieza | Dónde | Detalle |
+|---|---|---|
+| Mini-reproductor del pedido activo | `Salon.jsx` (`salon-mini`, `salon-mini-accion`) | Barra fija sobre la barra inferior (`bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))]`, `md:bottom-0`), `z-30` por debajo de hojas y diálogos. Muestra cuenta, mesa, estado agregado y total, con una sola acción contextual (*Servir* / *Enviar · N* / *Agregar*). Se oculta con la hoja abierta, el flujo de pedido nuevo, el traspaso, mover cuenta y en modo unir: no puede solaparse con la barra de "Unir mesas" |
+| Banda "Ahora" | `Salon.jsx` (`salon-ahora`) | `role="region"` con carril `.scroll-x`: cuentas con platos listos → *Servir*; mesas por cobrar → *Cobrar*. Usa los tokens `FLOOR_STYLE`, no colores nuevos |
+| Zonas segmentadas | `Salon.jsx` (`salon-zonas`) | `role="group"` + `aria-pressed`, conserva los `data-testid` de cada zona |
+| Cuentas como tarjetas | `Salon.jsx` (`mesa-sheet-cuentas`) | Con más de una cuenta, carril de tarjetas con alias, total y estado de sus platos; la activa lleva `aria-pressed` |
+| Deshacer | `Salon.jsx` | Tras unir mesas y **solo si la API devuelve el id del grupo**, aviso con deshacer que disuelve con `DELETE /table-groups/:id`. Sin inversa fiel no se promete: en dinero no se aplica |
+
+Pruebas nuevas: `src/__tests__/SalonActiveOrderBar.test.js` (4 casos: reabrir la
+cuenta desde la barra, servir desde ella, pintar la banda y no pintarla cuando
+no hay nada que reclamar). Comprobación en vivo: `e2e/audit/verify-mini.mjs`
+(que la barra no tape la última fila, no se solape con la navegación y no
+produzca scroll horizontal a 360×640).
+
+### 8.2 Densidad medida a 360×640 (y su límite)
+
+El arnés mide ahora, en cada visita, a qué píxel cae la primera tarjeta de mesa
+y cuántas asoma el primer pantallazo (`fold` en `lib.mjs`):
+
+| Medida | Valor |
+|---|---|
+| Primera tarjeta de mesa | **500 px** de 640 |
+| Tarjetas que asoman (admin / mozo) | 4 / 2 |
+| Desbordamiento horizontal | 0 |
+| Reparto del chrome | cabecera 56 · filtros 38 · zonas 54 · **leyenda 74** |
+
+La leyenda se compactó (94 → 74 px) porque es una clave, no un control: se le
+puede reducir el relleno sin romper el contrato táctil. Aun así, **el recorte
+que falta no es de píxeles sino de filas**: con 8 estados y etiquetas como
+"Cuenta pagada", los chips siguen ocupando tres líneas. Para que la primera mesa
+suba de verdad hay que quitar una fila entera —fusionar filtros y zonas, o
+llevar "Nuevo pedido" a la fila del buscador— y eso cambia decisiones de
+producto (dónde vive la acción principal), así que queda para que lo decidas.
+
+Dos avisos de honestidad sobre esta tabla: el instrumento `fold` se añadió en
+este mismo cambio, así que **no hay una medición equivalente "antes"** con la que
+comparar (la estimación de la captura anterior, ~450 px, sale de mirar una
+imagen, no de medir). Y el mini-reproductor y la banda "Ahora" midieron 0 en esta
+corrida porque la sesión de auditoría no tenía ningún pedido abierto: son
+condicionales, y cuando aparecen suman ~56 px y ~90 px respectivamente.
+
+
+

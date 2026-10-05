@@ -2,3 +2,6 @@
 # Se regeneran con `run-audit.ps1`; no se versionan.
 out/
 .chrome-profile/
+# Perfiles alternativos (p. ej. el de una verificación puntual): el comodín
+# evita que un `.chrome-profile-verify` acabe versionado con 700 archivos.
+.chrome-profile*/
