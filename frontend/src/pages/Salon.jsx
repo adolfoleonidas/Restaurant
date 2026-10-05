@@ -881,13 +881,25 @@ export default function Salon() {
                                             )}
                                         </>
                                     ) : accountTable && order ? (
-                                        <Button
-                                            className="w-full h-12"
-                                            onClick={() => { closeSheet(); navigate(`/pedidos/${order.id}`); }}
-                                            data-testid="mesa-sheet-ver-pedido-grupo"
-                                        >
-                                            Ver pedido de Mesa {accountTable.number}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                className="w-full h-12"
+                                                onClick={() => { closeSheet(); navigate(`/pedidos/${order.id}`); }}
+                                                data-testid="mesa-sheet-ver-pedido-grupo"
+                                            >
+                                                Ver pedido de Mesa {accountTable.number}
+                                            </Button>
+                                            {canTake && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full h-12"
+                                                    onClick={() => openAreas(t)}
+                                                    data-testid="mesa-sheet-pedir-grupo"
+                                                >
+                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
+                                                </Button>
+                                            )}
+                                        </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
                                             Liberar mesa
