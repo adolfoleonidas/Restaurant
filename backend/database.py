@@ -91,6 +91,12 @@ async def ensure_indexes():
     )
     await db.audit_logs.create_index("event_id", unique=True, sparse=True, name="uniq_audit_event_id")
     await db.audit_logs.create_index([("created_at", -1)])
+    await db.table_groups.create_index("id", unique=True, name="uniq_table_group_id")
+    await db.table_groups.create_index(
+        [("restaurant_id", 1), ("status", 1), ("created_at", -1)],
+        name="table_groups_by_tenant_status",
+    )
+    await db.tables.create_index([("restaurant_id", 1), ("group_id", 1)], sparse=True, name="tables_by_group")
     await db.zones.create_index(
         [("restaurant_id", 1), ("branch_id", 1), ("name", 1)],
         unique=True,

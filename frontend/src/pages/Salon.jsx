@@ -4,18 +4,30 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Clock, UtensilsCrossed, Receipt, Bell, CheckCheck, ShoppingBag, PackageCheck, Bike } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
+import MesaCard from '@/components/MesaCard';
 import useBranchNames from '@/hooks/useBranchNames';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
+import { FLOOR_STYLE } from '@/lib/floorStyle';
+import {
+    groupAccountTables,
+    groupLabel,
+    groupMembers,
+    ordersByTable,
+    selectionProblem,
+    transferCandidates,
+    transferProblem,
+} from '@/lib/tableGroups';
 
 /**
  * Salón — unified floor + service screen.
@@ -24,23 +36,17 @@ import { partitionPriorPickupOrders } from '@/lib/serviceDay';
  * (inline actions, summary, visit closure, pickups) screens into one
  * touch-first operating surface for the mozo/cajero/admin.
  *
+ * Two floor operations live here on top of that surface:
+ *   * "Unir mesas" — a visual group of tables serving the same party. Each
+ *     member keeps its own account; the group blocks the free member tables and
+ *     is dissolved explicitly.
+ *   * "Mover pedido" — relocates the open visit (order + visit) of a table to
+ *     another free table of the same branch.
+ *
  * Kept `data-testid` contracts: `mesa-card-*`, `mesa-card-deliver-*`,
  * `mesa-card-cobrar-*`, `data-floor-state`, `mesa-sheet-*`, `servicio-cerrar-*`,
  * `servicio-recojos-activos`, `servicio-recojo-*`, `servicio-dias-anteriores`.
  */
-
-const FLOOR_STYLE = {
-    libre: { label: 'Libre', bg: '#E7F6EE', fg: '#0F5132', border: '#BFE7D0', dot: '#22C55E' },
-    sentados: { label: 'Ocupada', bg: '#FDE3E3', fg: '#8C1D1D', border: '#F5B5B5', dot: '#EF4444' },
-    preparando: { label: 'Preparando', bg: '#FFF6DB', fg: '#6B4E00', border: '#F3E2A6', dot: '#F59E0B' },
-    listo: { label: 'Listo', bg: '#E0EEFF', fg: '#0B3A66', border: '#A9CFF5', dot: '#3B82F6' },
-    cuenta: { label: 'Cuenta', bg: '#FFE0CC', fg: '#8C3A12', border: '#F5B488', dot: '#E07A5F' },
-    entregado: { label: 'Entregado', bg: '#EAF6F5', fg: '#0F4F49', border: '#BFE5E0', dot: '#14B8A6' },
-    pagada: { label: 'Cuenta pagada', bg: '#F2F2F2', fg: '#3F3F46', border: '#D4D4D8', dot: '#71717A' },
-    atencion: { label: 'Atención abierta', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
-    reservada: { label: 'Reservada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
-    inactiva: { label: 'Inactiva', bg: '#EFEFEF', fg: '#71717A', border: '#D4D4D8', dot: '#A1A1AA' },
-};
 
 const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'atencion', 'reservada'];
 
@@ -84,6 +90,11 @@ export default function Salon() {
     const [showNewOrder, setShowNewOrder] = useState(false);
     const [pendingTable, setPendingTable] = useState(null);
     const [closing, setClosing] = useState(null);
+    const [selectMode, setSelectMode] = useState(false);
+    const [selected, setSelected] = useState([]);
+    const [joining, setJoining] = useState(false);
+    const [transferSource, setTransferSource] = useState(null);
+    const [movingVisit, setMovingVisit] = useState(false);
 
     const { data: tables, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
@@ -107,6 +118,17 @@ export default function Salon() {
         for (const o of orders) if (o.table_id) map[o.table_id] = o;
         return map;
     }, [orders]);
+
+    // Only the orders that still own their table: these decide what a joined
+    // table can offer (join, transfer) and which member holds the account.
+    const activeOrders = useMemo(() => ordersByTable(orders), [orders]);
+
+    const selectionIssue = selected.length >= 2 ? selectionProblem(tables || [], activeOrders, selected) : null;
+    const canConfirmJoin = selected.length >= 2 && !selectionIssue;
+    const transferTargets = useMemo(
+        () => transferCandidates(tables || [], activeOrders, transferSource),
+        [tables, activeOrders, transferSource]
+    );
 
     const openOrderId = openTable?.order?.id || null;
     const { data: liveOrderData } = usePolling(
@@ -164,9 +186,21 @@ export default function Salon() {
                 : 0;
             const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
             const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
-            return { table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested, showVisitaActiva };
+            const group = t.group || null;
+            // A joined group reports how many bills it holds: with two, the
+            // card must not pretend there is a single account.
+            const groupBadge = group
+                ? {
+                    label: groupLabel(group, tables),
+                    accounts: groupAccountTables(group, tables, activeOrders).length,
+                }
+                : null;
+            return {
+                table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested,
+                showVisitaActiva, group, groupBadge,
+            };
         });
-    }, [tables, byTable, orders]);
+    }, [tables, byTable, orders, activeOrders]);
 
     const filtered = useMemo(() => {
         const list = decorated.filter(({ table: t, floor }) => {
@@ -186,10 +220,16 @@ export default function Salon() {
 
     // ── Actions ────────────────────────────────────────────────────────────
     const openSheet = async (t) => {
-        setOpenTable({ table: t, order: null, history: null, loading: Boolean(t.active_order) });
-        if (t.active_order) {
+        // A joined table with no account of its own reads the group's account,
+        // but only when the group holds exactly one: with two separate bills
+        // there is nothing unambiguous to follow, so the sheet lists them.
+        const accounts = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
+        const followed = accounts.length === 1 && accounts[0].id !== t.id && !t.active_order ? accounts[0] : null;
+        const targetOrderId = t.active_order?.id || followed?.active_order?.id || null;
+        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId) });
+        if (targetOrderId) {
             try {
-                const { data } = await api.get(`/orders/${t.active_order.id}`);
+                const { data } = await api.get(`/orders/${targetOrderId}`);
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
             } catch {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
@@ -204,6 +244,91 @@ export default function Salon() {
 
     const closeSheet = () => setOpenTable(null);
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
+
+    const toggleSelected = (t) => {
+        setSelected((ids) => (ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id]));
+    };
+
+    const startSelection = () => {
+        setSelected([]);
+        setSelectMode(true);
+    };
+
+    const cancelSelection = () => {
+        setSelectMode(false);
+        setSelected([]);
+    };
+
+    const joinTables = async () => {
+        if (!canConfirmJoin || joining) return;
+        setJoining(true);
+        try {
+            await api.post('/table-groups', { table_ids: selected });
+            toast.success('Mesas unidas');
+            cancelSelection();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudieron unir las mesas');
+            refreshAll();
+        } finally {
+            setJoining(false);
+        }
+    };
+
+    const dissolveGroup = async (group) => {
+        if (!group?.id) return;
+        try {
+            await api.delete(`/table-groups/${group.id}`);
+            toast.success('Mesas separadas');
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
+            refreshAll();
+        }
+    };
+
+    const removeGroupMember = async (group, member) => {
+        if (!group?.id || !member?.id) return;
+        try {
+            await api.delete(`/table-groups/${group.id}/tables/${member.id}`);
+            toast.success(`Mesa ${member.number} separada`);
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo separar la mesa');
+            refreshAll();
+        }
+    };
+
+    const openTransfer = (t) => {
+        const problem = transferProblem(t, activeOrders);
+        if (problem) { toast.info(problem); return; }
+        closeSheet();
+        setTransferSource(t);
+    };
+
+    const moveVisit = async (target) => {
+        if (!transferSource || movingVisit) return;
+        setMovingVisit(true);
+        try {
+            const { data } = await api.post(`/tables/${transferSource.id}/transfer`, { target_table_id: target.id });
+            toast.success(`Pedido movido a Mesa ${data?.to_number ?? target.number}`);
+            setTransferSource(null);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo mover el pedido');
+            refreshAll();
+        } finally {
+            setMovingVisit(false);
+        }
+    };
+
+    // Charging leaves the floor: the cash screen owns the whole payment flow.
+    const openCharge = (order) => {
+        closeSheet();
+        navigate(`/pedidos/${order.id}`);
+    };
 
     const deliver = async (orderId) => {
         try {
@@ -321,13 +446,40 @@ export default function Salon() {
                             Cocina ({summary.toPrep})
                         </Button>
                     )}
-                    {canTake && (
-                        <Button onClick={() => openAreas()} className="h-10" data-testid="salon-nuevo-pedido">
-                            <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
-                        </Button>
+                    {canTake && !selectMode && (
+                        <>
+                            <Button variant="outline" onClick={startSelection} className="h-10" data-testid="salon-unir-mesas">
+                                <Link2 className="h-4 w-4 mr-1" /> Unir mesas
+                            </Button>
+                            <Button onClick={() => openAreas()} className="h-10" data-testid="salon-nuevo-pedido">
+                                <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
+                            </Button>
+                        </>
                     )}
                 </div>
             </div>
+
+            {/* Join mode: pick two or more tables of the same party */}
+            {selectMode && (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2" data-testid="salon-seleccion">
+                    <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
+                        {selected.length === 0
+                            ? 'Elegí dos o más mesas para unirlas'
+                            : `Elegidas: ${(tables || []).filter((t) => selected.includes(t.id)).sort((a, b) => Number(a.number) - Number(b.number)).map((t) => t.number).join(' + ')}`}
+                    </span>
+                    {selectionIssue && (
+                        <span className="text-xs text-destructive" data-testid="salon-seleccion-aviso">{selectionIssue}</span>
+                    )}
+                    <div className="flex gap-2 ml-auto">
+                        <Button variant="outline" className="h-10" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
+                            Cancelar
+                        </Button>
+                        <Button className="h-10" disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
+                            <Link2 className="h-4 w-4 mr-1" /> {joining ? 'Uniendo…' : 'Unir seleccionadas'}
+                        </Button>
+                    </div>
+                </div>
+            )}
 
             {/* State filter */}
             <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
@@ -375,120 +527,29 @@ export default function Salon() {
                 <div className="py-16 text-center text-muted-foreground border rounded-xl">No hay mesas con esos filtros.</div>
             ) : (
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                    {filtered.map(({ table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva }) => {
-                        const s = FLOOR_STYLE[floor.key];
-                        const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
-                        const elapsed = displayOrder?.created_at ? fmtElapsed(displayOrder.created_at) : null;
-                        const closeable = canClose && canCloseAttention(t, serviceOrder);
-                        const showDeliver = canServe && (floor.key === 'listo' || ready > 0) && Boolean(serviceOrder);
-                        const showCobrar = canCharge && floor.key === 'cuenta' && serviceOrder;
-                        const overdue = due > 0 && serviceOrder;
-                        return (
-                            <div
-                                key={t.id}
-                                data-testid={`mesa-card-${t.number}`}
-                                data-floor-state={floor.key}
-                                onClick={() => openSheet(t)}
-                                className={`rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
-                                style={{
-                                    background: s.bg,
-                                    borderColor: needsAttention ? s.dot : s.border,
-                                    ...(needsAttention ? { ['--tw-ring-color']: s.dot } : {}),
-                                }}
-                            >
-                                <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform">
-                                    <div className="flex items-start justify-between gap-1">
-                                        <div className="font-display text-3xl sm:text-4xl font-bold leading-none" style={{ color: s.fg }}>{t.number}</div>
-                                        {needsAttention && (
-                                            <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
-                                                <Bell className="h-3.5 w-3.5 text-white" />
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
-                                        <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
-                                        {billRequested && <span className="text-[10px] font-medium rounded-full bg-[#FFE0CC] text-[#8C3A12] border border-[#F5B488] px-2 py-0.5">Cuenta solicitada</span>}
-                                    </div>
-                                    {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
-                                        <div className="flex items-center gap-1 text-xs" style={{ color: s.fg, opacity: 0.75 }}>
-                                            <Clock className="h-3 w-3" />
-                                            <span>Hace {elapsed}</span>
-                                        </div>
-                                    )}
-                                    {showVisitaActiva && <div className="text-xs" style={{ color: s.fg, opacity: 0.8 }}>Visita activa</div>}
-                                    {displayOrder && <AttentionReference order={displayOrder} branchNames={branchNames} />}
-                                    {overdue && <div className="text-xs font-semibold" style={{ color: s.fg }}>Debe {fmtMoney(due)}</div>}
-                                    {displayOrder?.total != null && (
-                                        <div className="text-xs font-mono font-semibold tabular-nums mt-auto" style={{ color: s.fg, opacity: 0.85 }}>{fmtMoney(displayOrder.total)}</div>
-                                    )}
-                                </div>
-                                {(showDeliver || showCobrar || closeable || floor.key === 'libre' || floor.key === 'sentados') && (
-                                    <div className="px-3 pb-3 sm:px-4 sm:pb-4 flex flex-col gap-1.5">
-                                        {showDeliver && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.listo.dot }}
-                                                onClick={(e) => { e.stopPropagation(); deliver(serviceOrder.id); }}
-                                                data-testid={`mesa-card-deliver-${t.number}`}
-                                            >
-                                                <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" /> Entregar
-                                            </button>
-                                        )}
-                                        {showCobrar && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold text-white transition-colors active:scale-[0.98]"
-                                                style={{ background: FLOOR_STYLE.cuenta.dot }}
-                                                onClick={(e) => { e.stopPropagation(); closeSheet(); navigate(`/pedidos/${serviceOrder.id}`); }}
-                                                data-testid={`mesa-card-cobrar-${t.number}`}
-                                            >
-                                                <Receipt className="h-3.5 w-3.5 inline mr-1" /> Cobrar
-                                            </button>
-                                        )}
-                                        {/* Card shortcut for taking an order: it opens the same sales-area
-                                            decision as the sheet button, so no table is seated before the
-                                            waiter picks mesa / llevar / recojo / delivery. */}
-                                        {floor.key === 'libre' && canTake && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
-                                                style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); openAreas(t); }}
-                                                data-testid={`mesa-card-pedir-${t.number}`}
-                                            >
-                                                <Plus className="h-3.5 w-3.5 inline mr-1" /> Tomar pedido
-                                            </button>
-                                        )}
-                                        {floor.key === 'sentados' && canTake && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
-                                                style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); openAreas(t); }}
-                                                data-testid={`mesa-card-pedir-${t.number}`}
-                                            >
-                                                Tomar pedido
-                                            </button>
-                                        )}
-                                        {closeable && (
-                                            <button
-                                                type="button"
-                                                className="h-9 rounded-lg text-sm font-semibold border transition-colors active:scale-[0.98]"
-                                                style={{ borderColor: s.border, color: s.fg }}
-                                                disabled={closing === serviceOrder.id}
-                                                onClick={(e) => { e.stopPropagation(); closeAttention(serviceOrder); }}
-                                                data-testid={`servicio-cerrar-${t.number}`}
-                                            >
-                                                <CheckCheck className="h-3.5 w-3.5 inline mr-1" /> {closing === serviceOrder.id ? 'Cerrando…' : 'Finalizar mesa'}
-                                            </button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {/* The card shortcut for taking an order opens the same sales-area
+                        decision as the sheet, so no table is seated before the waiter
+                        picks mesa / llevar / recojo / delivery. */}
+                    {filtered.map((entry) => (
+                        <MesaCard
+                            key={entry.table.id}
+                            item={entry}
+                            branchNames={branchNames}
+                            canServe={canServe}
+                            canCharge={canCharge}
+                            canClose={canClose}
+                            canTake={canTake}
+                            closing={closing}
+                            selectMode={selectMode}
+                            picked={selected.includes(entry.table.id)}
+                            onSelect={toggleSelected}
+                            onOpen={openSheet}
+                            onDeliver={deliver}
+                            onCharge={openCharge}
+                            onCloseAttention={closeAttention}
+                            onTake={openAreas}
+                        />
+                    ))}
                 </div>
             )}
 
@@ -546,7 +607,10 @@ export default function Salon() {
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
                 <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" data-testid="mesa-sheet">
                     {openTable && (() => {
-                        const { table: t, history, loading } = openTable;
+                        const { table: t, history, loading, accountTable } = openTable;
+                        const group = openTable.group || t.group || null;
+                        const members = group ? groupMembers(group, tables) : [];
+                        const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
                         const order = sheetOrder;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
@@ -589,8 +653,80 @@ export default function Salon() {
                                         </>
                                     )}
                                     {!t.active_order && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
+                                    {accountTable && order && (
+                                        <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
+                                            Cuenta de Mesa {accountTable.number}
+                                        </p>
+                                    )}
                                     {t.active_attention_id && order && (
                                         <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalizala cuando el cobro y la entrega estén completos.</p>
+                                    )}
+                                    {group && (
+                                        <div className="rounded-xl border p-3 space-y-2" data-testid="mesa-sheet-grupo">
+                                            <div className="page-kicker">Mesas unidas</div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {members.map((member) => (
+                                                    <span
+                                                        key={member.id}
+                                                        data-testid={`mesa-sheet-grupo-miembro-${member.number}`}
+                                                        className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium"
+                                                        style={{ background: '#F3F0FF', borderColor: '#D9D2F0', color: '#3B2A66' }}
+                                                    >
+                                                        Mesa {member.number}
+                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-[10px] opacity-80">· cuenta</span>}
+                                                        {member.id !== t.id && canTake && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeGroupMember(group, member)}
+                                                                aria-label={`Separar Mesa ${member.number}`}
+                                                                data-testid={`mesa-sheet-quitar-grupo-${member.number}`}
+                                                                className="ml-0.5 rounded-full hover:bg-black/10 p-0.5"
+                                                            >
+                                                                <Unlink className="h-3 w-3" />
+                                                            </button>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            {groupAccounts.length > 0 && (
+                                                <div className="space-y-1" data-testid="mesa-sheet-grupo-cuentas">
+                                                    {groupAccounts.map((owner) => {
+                                                        const ownerOrder = activeOrders[owner.id] || owner.active_order || null;
+                                                        return (
+                                                            <button
+                                                                key={owner.id}
+                                                                type="button"
+                                                                onClick={() => { closeSheet(); navigate(`/pedidos/${ownerOrder.id}`); }}
+                                                                data-testid={`mesa-sheet-grupo-cuenta-${owner.number}`}
+                                                                className="w-full rounded-lg border border-border px-2 py-1.5 text-left text-xs hover:bg-secondary"
+                                                            >
+                                                                <span className="font-medium">Mesa {owner.number}</span>
+                                                                {ownerOrder?.order_number ? ` · #${ownerOrder.order_number}` : ''}
+                                                                {ownerOrder?.total != null ? ` · ${fmtMoney(ownerOrder.total)}` : ''}
+                                                                {owner.id === t.id ? ' · esta mesa' : ''}
+                                                                <span className="float-right underline">Abrir</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                            <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-grupo-resumen">
+                                                {groupAccounts.length === 0
+                                                    ? 'Todavía no hay una cuenta abierta en el grupo: cada mesa puede pedir la suya.'
+                                                    : groupAccounts.length === 1
+                                                        ? `Cada mesa conserva su propia cuenta; por ahora hay una: la de Mesa ${groupAccounts[0].number}.`
+                                                        : `Cada mesa conserva su propia cuenta: hay ${groupAccounts.length} cuentas separadas en el grupo.`}
+                                            </p>
+                                            <Button
+                                                variant="outline"
+                                                className="w-full"
+                                                onClick={() => dissolveGroup(group)}
+                                                disabled={!canTake}
+                                                data-testid="mesa-sheet-separar-grupo"
+                                            >
+                                                <Unlink className="h-4 w-4 mr-1" /> Separar mesas
+                                            </Button>
+                                        </div>
                                     )}
                                     {history && history.length > 0 && (
                                         <div className="space-y-2">
@@ -640,6 +776,36 @@ export default function Salon() {
                                             >
                                                 {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
                                             </Button>
+                                            {canTake && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full h-12"
+                                                    onClick={() => openTransfer(t)}
+                                                    data-testid="mesa-sheet-mover-pedido"
+                                                >
+                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover pedido a otra mesa
+                                                </Button>
+                                            )}
+                                        </>
+                                    ) : accountTable && order ? (
+                                        <>
+                                            <Button
+                                                className="w-full h-12"
+                                                onClick={() => { closeSheet(); navigate(`/pedidos/${order.id}`); }}
+                                                data-testid="mesa-sheet-ver-pedido-grupo"
+                                            >
+                                                Ver pedido de Mesa {accountTable.number}
+                                            </Button>
+                                            {canTake && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full h-12"
+                                                    onClick={() => openAreas(t)}
+                                                    data-testid="mesa-sheet-pedir-grupo"
+                                                >
+                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
+                                                </Button>
+                                            )}
                                         </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
@@ -669,6 +835,49 @@ export default function Salon() {
                 tables={tables}
                 onSelect={handleAreaSelect}
             />
+
+            {/* Move an open visit to another free table of the same branch */}
+            <Dialog open={Boolean(transferSource)} onOpenChange={(open) => { if (!open) setTransferSource(null); }}>
+                <DialogContent className="sm:max-w-lg" data-testid="mover-pedido">
+                    <DialogHeader>
+                        <DialogTitle className="font-display text-2xl">Mover pedido</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        {transferSource && (
+                            <div className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm" data-testid="mover-pedido-origen">
+                                Mesa <strong>{transferSource.number}</strong> → elegí la mesa destino.
+                                El pedido y su visita se mueven completos; Mesa {transferSource.number} queda libre.
+                            </div>
+                        )}
+                        {transferTargets.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4" data-testid="mover-pedido-sin-mesas">
+                                No hay mesas libres de la misma sucursal para mover el pedido.
+                            </p>
+                        ) : (
+                            <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-pedido-mesas">
+                                {transferTargets.map((target) => (
+                                    <button
+                                        key={target.id}
+                                        type="button"
+                                        onClick={() => moveVisit(target)}
+                                        disabled={movingVisit}
+                                        data-testid={`mover-pedido-mesa-${target.number}`}
+                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
+                                    >
+                                        <span className="font-display text-2xl font-bold">{target.number}</span>
+                                        <span className="text-xs text-muted-foreground mt-1">{target.area}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setTransferSource(null)} data-testid="mover-pedido-cancelar">
+                            {movingVisit ? 'Moviendo…' : 'Cancelar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

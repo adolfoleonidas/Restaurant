@@ -2,6 +2,7 @@ from .auth import router as auth_router
 from .users import router as users_router
 from .restaurants import router as restaurants_router
 from .tables import router as tables_router
+from .table_groups import router as table_groups_router
 from .categories import router as categories_router
 from .products import router as products_router
 from .orders import router as orders_router
@@ -22,6 +23,7 @@ __all__ = [
     "users_router",
     "restaurants_router",
     "tables_router",
+    "table_groups_router",
     "categories_router",
     "products_router",
     "orders_router",

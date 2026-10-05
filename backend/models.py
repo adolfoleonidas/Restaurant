@@ -168,6 +168,46 @@ class TableUpdate(BaseModel):
         return _user_branch_id(value) if value is not None else None
 
 
+# ============== TABLE GROUP (unir mesas) ==============
+def _table_id_list(value: List[str]) -> List[str]:
+    normalized = [item.strip() for item in value]
+    if any(not item for item in normalized):
+        raise ValueError("Table identifiers cannot be blank")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Table identifiers cannot repeat")
+    return normalized
+
+
+class TableGroupCreate(BaseModel):
+    """Join two or more tables into one floor group."""
+
+    table_ids: List[str] = Field(min_length=2, max_length=12)
+    name: Optional[str] = Field(default=None, max_length=60)
+    # The table the staff reads as the group's reference. It is forced to the
+    # table that already owns the open visit, when there is one.
+    anchor_table_id: Optional[str] = None
+
+    @field_validator("table_ids")
+    @classmethod
+    def validate_table_ids(cls, value: List[str]) -> List[str]:
+        return _table_id_list(value)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: Optional[str]) -> Optional[str]:
+        return value.strip() or None if isinstance(value, str) else value
+
+
+class TableGroupAddTable(BaseModel):
+    table_id: str = Field(min_length=1)
+
+
+class TableTransfer(BaseModel):
+    """Move the open visit of a table to another table of the same branch."""
+
+    target_table_id: str = Field(min_length=1)
+
+
 # ============== ZONE ==============
 class ZoneCreate(BaseModel):
     name: str = Field(min_length=1, max_length=60)

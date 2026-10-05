@@ -22,6 +22,7 @@ OPERATIONAL_COLLECTIONS = (
     "cash_movements",
     "attentions",
     "approvals",
+    "table_groups",
     "audit_logs",
     "counters",
     "attention_number_assignments",
@@ -74,7 +75,8 @@ async def reset_operational_data(data: DataResetRequest, user: dict = Depends(re
         {"restaurant_id": rid},
         {
             "$set": {"status": "disponible", "updated_at": now},
-            "$unset": {"active_order": "", "active_attention_id": "", "opening_order_id": ""},
+            "$unset": {"active_order": "", "active_attention_id": "", "opening_order_id": "",
+                       "group_id": "", "group_joined_status": ""},
         },
     )
 

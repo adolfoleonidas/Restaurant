@@ -107,6 +107,8 @@ describe('Servicio attention closure', () => {
     it('preserves the legacy pending-payment status badge', async () => {
         mockRows.orders = [{ ...mockVisit, status: 'pendiente_pago', payment_requested: false }];
         const { container, root } = await renderPage();
+        // The table still reads "Ocupada": the badge adds the fact the state
+        // does not carry, so it must stay.
         expect(container.textContent).toContain('Cuenta solicitada');
         await act(async () => root.unmount());
         container.remove();

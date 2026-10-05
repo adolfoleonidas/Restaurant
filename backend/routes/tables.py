@@ -4,15 +4,23 @@ import secrets
 import uuid
 from database import db
 from auth import get_current_user, require_roles
-from models import TableCreate, TableUpdate
+from models import TableCreate, TableTransfer, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
 from attention import AttentionBlocked, open_table_attention, recover_opening_intent
 from branch_access import read_branch_filter, record_branch_filter, validate_user_branch
+from routes.table_groups import attach_groups, record_audit
 
 router = APIRouter()
 
 _PRIVATE_OPENING_FIELDS = ("opening_intent", "opening_order_id", "opening_branch_id")
+
+# An order still owns its table while it is unsettled or while its visit is open.
+_OPEN_ORDER = {"$or": [
+    {"status": {"$nin": ["pagado", "cancelado"]}},
+    {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
+]}
+_TRANSFERABLE_TABLE_STATUSES = ("disponible", "ocupada")
 
 
 def _table_response(table: dict) -> dict:
@@ -76,10 +84,7 @@ async def list_tables(
             "attention_id": 1, "attention_state": 1}
     if user.get("role") != "cocina":
         proj["total"] = 1
-    active_filter = {"$or": [
-        {"status": {"$nin": ["pagado", "cancelado"]}},
-        {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
-    ]}
+    active_filter = _OPEN_ORDER
     active_query = {"restaurant_id": user["restaurant_id"], **branch_filter}
     if "$or" in active_query:
         active_query = {"restaurant_id": user["restaurant_id"], "$and": [branch_filter, active_filter]}
@@ -87,6 +92,7 @@ async def list_tables(
         active_query.update(active_filter)
     active_orders = await db.orders.find(active_query, proj).to_list(1000)
     by_table = {o["table_id"]: o for o in active_orders if o.get("table_id")}
+    await attach_groups(items, user)
     for table in items:
         for field in _PRIVATE_OPENING_FIELDS:
             table.pop(field, None)
@@ -291,6 +297,8 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
         table = await db.tables.find_one(scope, {"_id": 0})
         if not table:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")
+        if table.get("group_id"):
+            raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de cambiar de sucursal")
         if table.get("active_attention_id") or table.get("opening_order_id") or table.get("status") != "disponible":
             raise HTTPException(status_code=409, detail="No se puede cambiar la sucursal de una mesa ocupada o en apertura")
         active = await db.orders.find_one({
@@ -312,6 +320,8 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
         table = table or await db.tables.find_one(scope, {"_id": 0})
         if not table:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")
+        if update.get("status") == "inactiva" and table.get("group_id"):
+            raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de desactivarla")
         if table.get("active_attention_id") or table.get("opening_order_id"):
             raise HTTPException(status_code=409, detail="Cerrá la visita antes de cambiar el estado de la mesa")
         scope["active_attention_id"] = {"$exists": False}
@@ -328,7 +338,208 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
 
 @router.delete("/{table_id}")
 async def delete_table(table_id: str, user: dict = Depends(require_roles(["admin"]))):
+    grouped = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "group_id": 1}
+    )
+    if grouped and grouped.get("group_id"):
+        raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de eliminarla")
     res = await db.tables.delete_one({"id": table_id, "restaurant_id": user["restaurant_id"], "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
     return {"ok": True}
+
+
+# ============== MOVE AN OPEN VISIT TO ANOTHER TABLE ==============
+async def _load_scoped_table(table_id: str, user: dict, detail: str = "Mesa no encontrada") -> dict:
+    table = await db.tables.find_one(await _table_lookup_scope(table_id, user), {"_id": 0})
+    if not table:
+        raise HTTPException(status_code=404, detail=detail)
+    return table
+
+
+async def _open_order_for_table(table_id: str, user: dict) -> dict | None:
+    return await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"],
+        "table_id": table_id,
+        **_OPEN_ORDER,
+        **record_branch_filter(user),
+    }, {"_id": 0})
+
+
+def _table_fence(table: dict, user: dict) -> dict:
+    return {
+        "id": table["id"],
+        "restaurant_id": user["restaurant_id"],
+        "branch_id": table["branch_id"] if "branch_id" in table else {"$exists": False},
+    }
+
+
+async def _undo_reservation(target: dict, attention_id: str | None, user: dict, now: str) -> None:
+    query = _table_fence(target, user)
+    update = {"$set": {"status": target.get("status") or "disponible", "updated_at": now}}
+    if attention_id:
+        query["active_attention_id"] = attention_id
+        update["$unset"] = {"active_attention_id": ""}
+    await db.tables.update_one(query, update)
+
+
+async def _finish_move(*, order: dict, source: dict, target: dict, attention_id: str | None,
+                       user: dict, now: str) -> bool:
+    """Idempotently complete a move whose order document already points at the target.
+
+    It keeps the destination fenced for the visit and frees the source table only
+    while that table still owns this visit, so a retry after a partial failure
+    lands on the same end state instead of releasing somebody else's table.
+    """
+    restaurant_id = user["restaurant_id"]
+    if attention_id:
+        attention_filter = {"id": attention_id, "restaurant_id": restaurant_id, "order_id": order["id"]}
+        attention = await db.attentions.find_one(attention_filter, {"_id": 0, "table_id": 1})
+        if not attention or attention.get("table_id") not in (source["id"], target["id"]):
+            return False
+        if attention.get("table_id") != target["id"]:
+            await db.attentions.update_one(
+                {**attention_filter, "table_id": attention["table_id"]},
+                {"$set": {"table_id": target["id"]}},
+            )
+            attention = await db.attentions.find_one(attention_filter, {"_id": 0, "table_id": 1})
+            if not attention or attention.get("table_id") != target["id"]:
+                return False
+        await db.tables.update_one(
+            {**_table_fence(target, user), "active_attention_id": {"$exists": False},
+             "opening_order_id": {"$exists": False}},
+            {"$set": {"status": "ocupada", "active_attention_id": attention_id, "updated_at": now}},
+        )
+    release = _table_fence(source, user)
+    release["active_attention_id"] = attention_id if attention_id else {"$exists": False}
+    await db.tables.update_one(
+        release,
+        {"$set": {"status": "disponible", "updated_at": now}, "$unset": {"active_attention_id": ""}},
+    )
+    return True
+
+
+async def _transfer_response(order_id: str, source: dict, target: dict, user: dict,
+                             *, reconciled: bool = False) -> dict:
+    from routes.orders import _current_order_response
+    emit_notice(user["restaurant_id"], "table", table_id=source["id"], status="disponible",
+                branch_id=source.get("branch_id"))
+    emit_notice(user["restaurant_id"], "table", table_id=target["id"], status="ocupada",
+                branch_id=target.get("branch_id"))
+    await record_audit("transfer", "order", order_id, user, {
+        "from_table": source.get("number"), "to_table": target.get("number"),
+        "from_table_id": source["id"], "to_table_id": target["id"],
+        **({"reconciled": True} if reconciled else {}),
+    })
+    return {
+        "ok": True,
+        "order_id": order_id,
+        "from_table_id": source["id"],
+        "to_table_id": target["id"],
+        "from_number": source.get("number"),
+        "to_number": target.get("number"),
+        "order": await _current_order_response(order_id, user),
+    }
+
+
+@router.post("/{table_id}/transfer")
+async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Move the open visit of a table — order and visit together — to a free table.
+
+    The destination is reserved first, the order document moves second (that is
+    the point of no return) and the visit projection plus the freed source table
+    are completed last. A retry finishes an interrupted move instead of
+    duplicating it.
+    """
+    if data.target_table_id == table_id:
+        raise HTTPException(status_code=400, detail="Elegí una mesa destino distinta")
+    source = await _load_scoped_table(table_id, user)
+    target = await _load_scoped_table(data.target_table_id, user, "Mesa destino no encontrada")
+    if source.get("branch_id") != target.get("branch_id"):
+        raise HTTPException(status_code=400, detail="Las mesas pertenecen a sucursales distintas")
+    if source.get("group_id") or target.get("group_id"):
+        raise HTTPException(
+            status_code=409,
+            detail="Hay mesas unidas en el grupo; separá las mesas antes de mover el pedido",
+        )
+
+    order = await _open_order_for_table(table_id, user)
+    now = _now()
+    if not order:
+        # The order already left this table: either an interrupted move to finish
+        # or a retry of a move that completed. Both end in the same floor state.
+        stranded = await _open_order_for_table(target["id"], user)
+        attention_id = (stranded or {}).get("attention_id")
+        if not stranded or not attention_id:
+            raise HTTPException(status_code=409, detail="La mesa no tiene un pedido activo para mover")
+        attention = await db.attentions.find_one({
+            "id": attention_id, "restaurant_id": user["restaurant_id"], "order_id": stranded["id"],
+        }, {"_id": 0, "table_id": 1})
+        if not attention or attention.get("table_id") not in (source["id"], target["id"]):
+            raise HTTPException(status_code=409, detail="La mesa no tiene un pedido activo para mover")
+        if not await _finish_move(order=stranded, source=source, target=target,
+                                  attention_id=attention_id, user=user, now=now):
+            raise HTTPException(
+                status_code=409,
+                detail="El movimiento quedó a medias; reintentá la operación para completarlo",
+            )
+        return await _transfer_response(stranded["id"], source, target, user, reconciled=True)
+
+    if order.get("status") in ("pagado", "cancelado") or order.get("attention_state") == "closed":
+        raise HTTPException(status_code=409, detail="La cuenta ya está cerrada; no se puede mover")
+    attention_id = order.get("attention_id")
+    if attention_id:
+        attention = await db.attentions.find_one({
+            "id": attention_id, "restaurant_id": user["restaurant_id"], "order_id": order["id"],
+        }, {"_id": 0, "table_id": 1})
+        if not attention:
+            raise HTTPException(
+                status_code=409,
+                detail="La visita de la mesa todavía no está abierta; reintentá abrirla antes de moverla",
+            )
+        if attention.get("table_id") != source["id"]:
+            raise HTTPException(status_code=409, detail="La visita cambió de mesa; volvé a cargar el salón")
+
+    target_order = await _open_order_for_table(target["id"], user)
+    if target_order:
+        raise HTTPException(status_code=409, detail=f"La mesa {target.get('number')} ya tiene un pedido activo")
+    if target.get("active_attention_id") or target.get("opening_order_id"):
+        raise HTTPException(status_code=409, detail=f"La mesa {target.get('number')} tiene una visita en curso")
+    if target.get("status") not in _TRANSFERABLE_TABLE_STATUSES:
+        raise HTTPException(status_code=409, detail=f"La mesa {target.get('number')} no está disponible")
+    if target.get("group_id"):
+        raise HTTPException(status_code=409, detail=f"La mesa {target.get('number')} está unida a un grupo de mesas")
+
+    fields = {"status": "ocupada", "updated_at": now}
+    if attention_id:
+        fields["active_attention_id"] = attention_id
+    reserved = await db.tables.update_one({
+        **_table_fence(target, user),
+        "status": {"$in": list(_TRANSFERABLE_TABLE_STATUSES)},
+        "active_attention_id": {"$exists": False},
+        "opening_order_id": {"$exists": False},
+    }, {"$set": fields})
+    if getattr(reserved, "modified_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La mesa destino cambió; volvé a cargar el salón")
+
+    order_filter = {"id": order["id"], "restaurant_id": user["restaurant_id"], "table_id": source["id"]}
+    if attention_id:
+        order_filter["attention_id"] = attention_id
+    stamp = order.get("updated_at")
+    if stamp is None:
+        order_filter["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
+    else:
+        order_filter["updated_at"] = stamp
+    moved = await db.orders.update_one(order_filter, {"$set": {"table_id": target["id"], "updated_at": now}})
+    if getattr(moved, "modified_count", 0) != 1:
+        await _undo_reservation(target, attention_id, user, now)
+        raise HTTPException(status_code=409, detail="El pedido cambió; volvé a cargarlo antes de mover la mesa")
+
+    moved_order = await db.orders.find_one({"id": order["id"], "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    if not await _finish_move(order=moved_order or order, source=source, target=target,
+                              attention_id=attention_id, user=user, now=now):
+        raise HTTPException(
+            status_code=409,
+            detail="El pedido se movió pero la visita quedó pendiente; reintentá la operación para completarla",
+        )
+    return await _transfer_response(order["id"], source, target, user)

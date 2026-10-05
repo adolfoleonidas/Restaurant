@@ -95,6 +95,7 @@ class _DB:
         self.cash_movements = _Collection()
         self.attentions = _Collection()
         self.approvals = _Collection()
+        self.table_groups = _Collection()
         self.audit_logs = _Collection()
         self.counters = _Collection()
         self.tables = _Collection()
@@ -123,6 +124,8 @@ def _seed(db):
     db.cash_movements.docs.append({"id": "m1", "restaurant_id": RID})
     db.attentions.docs.append({"id": "a1", "restaurant_id": RID})
     db.approvals.docs.append({"id": "ap1", "restaurant_id": RID})
+    db.table_groups.docs.append({"id": "g1", "restaurant_id": RID, "status": "active",
+                                 "table_ids": ["t1"], "anchor_table_id": "t1"})
     db.audit_logs.docs.append({"id": "al1", "restaurant_id": RID})
     db.counters.docs.append({"restaurant_id": RID, "key": "order_x", "value": 5})
     db.attention_number_assignments.docs.append({"id": "ana1", "restaurant_id": RID})
@@ -133,10 +136,13 @@ def _seed(db):
     db.tables.docs.append({
         "id": "t1", "restaurant_id": RID, "status": "esperando_pago",
         "active_order": "o1", "active_attention_id": "a1",
+        "group_id": "g1", "group_joined_status": "disponible",
     })
     # Another tenant's data must be untouched.
     db.orders.docs.append({"id": "o2", "restaurant_id": "tenant-2", "status": "nuevo"})
     db.tables.docs.append({"id": "t2", "restaurant_id": "tenant-2", "status": "ocupada"})
+    db.table_groups.docs.append({"id": "g2", "restaurant_id": "tenant-2", "status": "active",
+                                 "table_ids": ["t2"], "anchor_table_id": "t2"})
 
 
 def test_reset_clears_operational_and_keeps_catalog(monkeypatch):
@@ -156,16 +162,18 @@ def test_reset_clears_operational_and_keeps_catalog(monkeypatch):
         assert db.cash_movements.docs == []
         assert db.attentions.docs == []
         assert db.approvals.docs == []
+        assert [g["id"] for g in db.table_groups.docs] == ["g2"]
         assert db.counters.docs == []
         assert db.attention_number_assignments.docs == []
         # Catalog preserved.
         assert len(db.products.docs) == 1
         assert len(db.categories.docs) == 1
         assert len(db.branches.docs) == 1
-        # Tenant table reset to disponible; other tenant untouched.
+        # Tenant table reset to disponible, with no group marker left behind.
         t1 = next(t for t in db.tables.docs if t["restaurant_id"] == RID)
         assert t1["status"] == "disponible"
         assert "active_order" not in t1 and "active_attention_id" not in t1
+        assert "group_id" not in t1 and "group_joined_status" not in t1
         t2 = next(t for t in db.tables.docs if t["restaurant_id"] == "tenant-2")
         assert t2["status"] == "ocupada"
         # A fresh audit entry documents the reset.

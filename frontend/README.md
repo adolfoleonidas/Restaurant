@@ -2,6 +2,27 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Two things CI needs before it can run the suite
+
+Both live in this folder and both are deliberate; without them `npm ci` or the
+jest run fails on a clean machine (CI), even though a developer machine with a
+stale `node_modules` may look green:
+
+1. **`.npmrc` sets `legacy-peer-deps=true`.** `react-day-picker@8` declares
+   `date-fns ^2.28.0 || ^3.0.0` while the app is on `date-fns@4.1.0`, so a strict
+   `npm ci` aborts with `ERESOLVE`. The tree works with the installed version;
+   aligning those two packages is a separate, verifiable change.
+2. **`package.json` maps `react-router-dom` to `react-router` for jest.**
+   `react-router-dom@7` declares `"main": "./dist/main.js"`, a file the published
+   package does not contain: Node and webpack resolve it through the `exports`
+   map, but the jest resolver bundled with react-scripts 5 only reads `main`, so
+   every suite that imports or `jest.mock`s `react-router-dom` fails with
+   `Cannot find module 'react-router-dom'`. In v7 `react-router-dom` is a thin
+   re-export of `react-router`, which does resolve, so the mapper points the name
+   at it. If the app ever needs `react-router/dom` (`RouterProvider`,
+   `createBrowserRouter`), map that subpath to
+   `node_modules/react-router/dist/development/dom-export.js` as well.
+
 ## Available Scripts
 
 In the project directory, you can run:
