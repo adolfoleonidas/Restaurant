@@ -686,7 +686,7 @@
   .cobro-checkout .scope-tabs { margin-bottom: 18px; gap: 3px; padding: 3px; }
   .cobro-checkout .order-heading { margin-bottom: 8px; }
   .cobro-checkout .item-count { display: none; }
-  .cobro-checkout .detail-toggle { display: flex; min-height: 40px; }
+  .cobro-checkout .detail-toggle { display: flex; min-height: 44px; }
   .cobro-checkout .line-items-region[hidden] { display: none !important; }
   .cobro-checkout .line-items { font-size: 12px; }
   .cobro-checkout .line-items td { padding-top: 12px; padding-bottom: 12px; }
@@ -702,7 +702,7 @@
   .cobro-checkout .account-layout { grid-template-columns: 112px minmax(0, 1fr); gap: 14px; }
   .cobro-checkout .data-row { padding: 8px 52px 8px 12px; min-height: 52px; }
   .cobro-checkout .data-row .account-number { font-size: 16px; letter-spacing: 0; }
-  .cobro-checkout .data-row .copy-button { width: 38px; min-width: 38px; height: 38px; top: 6px; right: 7px; padding: 8px; }
+  .cobro-checkout .data-row .copy-button { width: 44px; min-width: 44px; height: 44px; top: 6px; right: 7px; padding: 8px; }
   .cobro-checkout .qr-expand { width: 28px; height: 28px; }
   /* Presets de efectivo: una sola línea, más compactos */
   .cobro-checkout .preset-cash { flex-wrap: nowrap; overflow-x: auto; gap: 8px; margin: -4px 0 12px; padding-bottom: 4px; }
@@ -743,6 +743,22 @@
   .cobro-checkout .dialog-body { padding-inline: 20px; }
   .cobro-checkout .dialog-actions { padding-inline: 20px; }
   .cobro-toast { bottom: 88px; max-width: calc(100vw - 30px); font-size: 11px; padding: 10px 14px; }
+}
+
+/* ---- Objetivos táctiles ≥44 px (solo móvil) ----
+   El control que decide qué platos se cobran (`.item-check`) medía 22x22 px, y
+   los demás controles del cobro bajaban de 44 px. Todo esto vive detrás de
+   max-width: 767px, así que la densidad de escritorio no cambia. */
+@media (max-width: 767px) {
+  /* La casilla crece a 44 px dentro de la celda: la columna fija se ensancha
+     para que el check no desborde la tabla (12 px de padding + 44 px). */
+  .cobro-checkout .item-check { min-width: 44px; min-height: 44px; }
+  .cobro-checkout .line-items th:first-child { width: 64px; }
+  .cobro-checkout .split-select { min-height: 44px; }
+  .cobro-checkout .secondary-button { min-height: 44px; }
+  /* Los campos de descuento no traen estilo propio: sin esto quedan en el alto
+     nativo del navegador (~22 px), por debajo incluso de 24 px. */
+  .cobro-checkout .discount-fields input { min-height: 44px; }
 }
 
 /* ---- Responsive: Small Mobile (max 420px) ---- */

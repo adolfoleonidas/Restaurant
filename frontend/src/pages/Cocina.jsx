@@ -98,7 +98,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                             {stage === 'fuego' && (
                                 <button
                                     type="button"
-                                    className="min-h-10 shrink-0 text-sm font-semibold px-3 py-2 rounded-sm border border-primary text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    className="min-h-11 sm:min-h-10 shrink-0 text-sm font-semibold px-3 py-2 rounded-sm border border-primary text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     aria-label={`Marcar ${it.product_name} listo`}
                                     onClick={(e) => { e.stopPropagation(); onItem(order, it); }}
                                 >
@@ -215,20 +215,21 @@ export default function Cocina() {
                     <p className="page-kicker mb-1">Pase</p>
                     <h1 className="font-display text-3xl font-semibold">Cocina</h1>
                 </div>
-                <Button asChild variant="outline" className="h-10">
+                {/* Sin `h-10`: el override anulaba el h-11 móvil del primitivo. */}
+                <Button asChild variant="outline">
                     <Link to="/disponibilidad">Agotar plato</Link>
                 </Button>
             </div>
 
             {(zones.length > 0 || enriched.some((o) => !o.table_id)) && (
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <div className="scroll-x flex items-center gap-2 pb-1">
                     {['todas', ...zones, 'llevar'].map((z) => (
                         <button
                             key={z}
                             type="button"
                             onClick={() => setZone(z)}
                             data-testid={`cocina-zona-${z}`}
-                            className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${zone === z ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
+                            className={`min-h-11 md:min-h-0 shrink-0 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${zone === z ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                         >
                             {z === 'todas' ? 'Todas' : z === 'llevar' ? 'Para llevar' : z}
                         </button>
@@ -245,10 +246,16 @@ export default function Cocina() {
 
             <div role="status" aria-live="polite" className="sr-only">{boardSummary}</div>
 
+            {/* El alto del pase sale del layout, no de un número mágico: el tablero
+                se topa con el chrome real (cabecera + barra inferior) y cada columna
+                es una columna flex cuya lista de tickets es flex-1 min-h-0. Antes, a
+                844x390, `max-h-[calc(100dvh-300px)]` dejaba la columna en ~90 px (un
+                solo ticket). Los 4 carriles pasan a xl: a 1024 px cada columna
+                quedaba en ~210 px y el nombre del plato se apretaba. */}
             <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
-                <div data-testid="cocina-kanban" className="flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
+                <div data-testid="cocina-kanban" className="flex w-full min-w-0 max-h-[calc(100dvh-var(--header-h)-var(--safe-top)-var(--bottom-nav-h)-var(--safe-bottom))] snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:max-h-none md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 xl:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
                 {columns.map((col) => (
-                    <section key={col.key} className="w-[90%] max-w-[24rem] shrink-0 snap-start min-w-0 rounded-sm border border-border bg-card p-3 md:w-auto md:max-w-none md:shrink md:p-4" data-testid={`cocina-columna-${col.key}`}>
+                    <section key={col.key} className="flex w-[90%] max-w-[24rem] shrink-0 snap-start min-w-0 flex-col rounded-sm border border-border bg-card p-3 md:block md:w-auto md:max-w-none md:shrink md:p-4" data-testid={`cocina-columna-${col.key}`}>
                         <div className="flex items-center justify-between mb-3">
                             <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
                             <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
@@ -257,7 +264,7 @@ export default function Cocina() {
                             role="region"
                             aria-label={`Pedidos en ${col.label}`}
                             tabIndex={0}
-                            className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-h-[calc(100dvh-230px)]"
+                            className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-y-contain pr-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-h-[calc(100dvh-230px)]"
                         >
                             {col.cards.length === 0 ? (
                                 <div className="text-center text-sm text-muted-foreground py-10">
@@ -283,7 +290,8 @@ export default function Cocina() {
 
             {priorPickups.length > 0 && (
                 <details className="rounded-md border border-border bg-card/50 p-3" data-testid="cocina-dias-anteriores">
-                    <summary className="cursor-pointer font-semibold">
+                    {/* El resumen es lo único que se pulsa del bloque: 44 px en móvil. */}
+                    <summary className="cursor-pointer font-semibold py-2.5 md:py-0">
                         Días anteriores · {priorPickups.length} recojo(s) listos
                     </summary>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
