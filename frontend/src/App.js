@@ -8,6 +8,7 @@ import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
 import { AssistantProvider } from '@/contexts/AssistantContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppShell } from '@/components/AppShell';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { PublicLayout } from '@/components/PublicLayout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
@@ -92,6 +93,13 @@ function ThemeRouteSync() {
     return null;
 }
 
+// Un error de una pantalla no debe dejar la app en blanco: el límite se rearma
+// al cambiar de ruta, así navegar fuera de la pantalla rota recupera.
+function RouteErrorBoundary({ children }) {
+    const { pathname } = useLocation();
+    return <ErrorBoundary key={pathname}>{children}</ErrorBoundary>;
+}
+
 function App() {
     return (
         <div className="App">
@@ -103,6 +111,7 @@ function App() {
                                 <ScrollToTop />
                                 <RouteTitle />
                                 <ThemeRouteSync />
+                                <RouteErrorBoundary>
                                 <Routes>
                                 {/* PUBLIC ROUTES */}
                                 <Route element={<PublicLayout />}>
@@ -142,6 +151,7 @@ function App() {
 
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
+                            </RouteErrorBoundary>
                         </BrowserRouter>
                             </AssistantProvider>
                     </LiveOrderProvider>
