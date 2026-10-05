@@ -300,15 +300,32 @@ ve más porque el salón tiene mesas reales.
 **Estado actual:** axe-core reporta **0 violaciones** en las 49 visitas comparables. El único
 desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y la cocina.
 
+## 🔄 Ronda 2 del objetivo — arquitectura de información del menú y regiones vivas
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R2-1 | Arquitectura de información del menú | El menú deja de reemplazarse: se filtra `ALL_NAV` por rol y por funciones y se deduplica por destino. Antes un admin multifunción (que también atiende y cobra) **perdía "Pedidos"**, y un mozo/cajero con `administracion` veía el mismo ítem dos veces. Etiquetas unificadas con el título real de cada pantalla: "Casa" → **Configuración**, "Agotar" → **Disponibilidad**, y `/dashboard` se rotula **"Hoy"** en todos los perfiles (antes "Hoy" o "Gestión" según el perfil) | `components/AppShell.jsx` |
+| R2-2 | Los cambios por polling no se anuncian | Salón y Cocina añaden una región `role="status" aria-live="polite"` con el resumen del tablero ("En preparación 2 · listos para entregar 1 · cuentas por cobrar 0"). El texto solo cambia si cambian los conteos, así que no se repite en cada refresco | `Salon.jsx`, `Cocina.jsx` |
+| R2-3 | Título de la pestaña vs. menú | El título de `/dashboard` pasa de "Turno" a "Hoy", para que el menú, el título de la pestaña y el kicker de la página digan lo mismo | `App.js` |
+
+### Verificación
+
+- **Sonda de navegación** (`e2e/audit/checks4.mjs`) sobre los 4 roles, con `problems: []`:
+  - **admin** (16 entradas): Hoy · Salón · Carta · Caja · Comprobantes · Reportes · Cocina · Disponibilidad · **Pedidos** · Combos · Categorías · Datos de cobro · Local · Equipo · **Configuración** · Mi página web — sin destinos duplicados.
+  - **mozo**: Salón + Pedidos · **cajero**: Salón, Caja, Comprobantes, Pedidos · **cocina**: Cocina + Disponibilidad.
+  - Las **5 regiones vivas** (`role="status" aria-live="polite"`, ocultas visualmente) presentes en `/salon` y `/cocina` para los roles que las usan.
+- **Remedienda de regresión** con `compare.mjs` (49 visitas comparables vs. `report-baseline.json`): axe-core **sigue en 0 violaciones**, sin nuevos errores de consola ni respuestas ≥400.
+
 ### Pendiente (siguientes rondas)
 
 | Pendiente | Por qué quedó fuera |
 |---|---|
-| Arquitectura de información del menú | Renombrar "Casa"/"Agotar"/"Equipo", quitar `/pedidos` y `/cocina` duplicados y devolver "Pedidos" al admin multifunción: toca la navegación de todos los roles y depende de los `data-testid` que usan los E2E |
 | `CobrarDialog` al `Dialog` de Radix | Da trampa de foco completa; se optó por el arreglo mínimo (`aria-modal` + foco + Escape) para no tocar el diálogo de dinero |
-| `aria-live` para los cambios por polling | Mezcla de accesibilidad y latencia: los avisos del pase y del salón se actualizan sin anuncio |
 | Modo oscuro global por preferencia del SO | La guía lo limita a cocina; hoy `matchMedia` lo aplica a toda la app (incluida Caja) |
-| Texto <12 px en salón/cocina | Ver nota ¹: `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado |
+| Texto <12 px en salón/cocina | Ver nota ¹ de la ronda 1: `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado; crece con los datos reales |
+| Un solo ítem "Carta" en el menú | "Carta", "Combos" y "Categorías" son tres accesos a lo mismo (`Combos` es un tab de `Productos`); unificar requiere tocar el flujo de Productos, no solo el menú |
 | Datos de prueba (mesas `9xxxx`, "Carta E2E…", combos "Test") | Es limpieza de datos operativos, no de interfaz: `Ajustes → Restablecer datos operativos` |
 
 ---

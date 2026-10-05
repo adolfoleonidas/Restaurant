@@ -135,6 +135,11 @@ export default function Salon() {
         return { toPrep, toReady, toPay };
     }, [orders]);
 
+    // Región viva para lectores de pantalla: el salón se actualiza por polling y
+    // los cambios de estado llegan sin aviso (4.1.3). El texto solo cambia si
+    // cambian los conteos, así que no se repite en cada refresco.
+    const floorSummary = `En preparación ${summary.toPrep} · listos para entregar ${summary.toReady} · cuentas por cobrar ${summary.toPay}`;
+
     const pickupProjection = useMemo(() => {
         const { live, prior } = partitionPriorPickupOrders(orders);
         const active = live.filter((o) => (
@@ -393,6 +398,8 @@ export default function Salon() {
                     <Button variant="outline" className="h-11" onClick={() => { refetchTables(); refetchOrders(); }}>Reintentar</Button>
                 </div>
             )}
+
+            <div role="status" aria-live="polite" className="sr-only">{floorSummary}</div>
 
             {/* Floor grid */}
             {tablesLoading && !tables ? (

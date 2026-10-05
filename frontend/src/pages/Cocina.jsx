@@ -180,6 +180,13 @@ export default function Cocina() {
         ];
     }, [liveOrders]);
 
+    // Región viva para lectores de pantalla: el pase se actualiza por polling y
+    // un pase nuevo llega sin aviso (4.1.3). Solo se anuncia al cambiar.
+    const boardSummary = useMemo(() => {
+        const byKey = Object.fromEntries(columns.map((c) => [c.key, c.cards.length]));
+        return `${byKey.llegan} nuevos · ${byKey.fuego} en fuego · ${byKey.listo} listos para retiro · ${byKey.retirado} retirados`;
+    }, [columns]);
+
     const bump = async (order, stage) => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
         try {
@@ -233,6 +240,8 @@ export default function Cocina() {
                     <Button variant="outline" className="h-11" onClick={() => refetch()}>Reintentar</Button>
                 </div>
             )}
+
+            <div role="status" aria-live="polite" className="sr-only">{boardSummary}</div>
 
             <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
                 <div data-testid="cocina-kanban" className="flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">

@@ -52,7 +52,7 @@ const ROUTE_TITLES = [
     ['/pedido', 'Seguimiento'],
     ['/login', 'Ingreso'],
     ['/unauthorized', 'Sin permisos'],
-    ['/dashboard', 'Turno'],
+    ['/dashboard', 'Hoy'],
     ['/salon', 'Salón'],
     ['/local', 'Local'],
     ['/pedidos', 'Pedidos'],
