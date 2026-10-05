@@ -65,14 +65,17 @@ describe('Mesas floor priority and actions (T04)', () => {
   });
   afterEach(async () => { await act(async () => root.unmount()); host.remove(); document.body.innerHTML = ''; });
 
-  it('renders attention-needed tables before idle ones', async () => {
+  it('keeps a fixed order by table number regardless of state', async () => {
     await act(async () => root.render(<Salon />));
-    const cards = host.querySelectorAll('[data-floor-state]');
-    const states = Array.from(cards).map((c) => c.getAttribute('data-floor-state'));
-    // cuenta (index 0) and listo (index 1) must precede preparando and libre
-    expect(states.indexOf('cuenta')).toBeLessThan(states.indexOf('preparando'));
-    expect(states.indexOf('listo')).toBeLessThan(states.indexOf('preparando'));
-    expect(states.indexOf('preparando')).toBeLessThan(states.indexOf('libre'));
+    const cards = Array.from(host.querySelectorAll('[data-floor-state]'));
+    // Table 5 is waiting for payment and 3 has food ready, but the floor must
+    // never reshuffle: order is always by table number.
+    expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual([
+      'mesa-card-1', 'mesa-card-3', 'mesa-card-5', 'mesa-card-7',
+    ]);
+    expect(cards.map((c) => c.getAttribute('data-floor-state'))).toEqual([
+      'libre', 'listo', 'cuenta', 'preparando',
+    ]);
   });
 
   it('shows a bell indicator on attention-needed cards', async () => {

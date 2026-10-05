@@ -5,7 +5,13 @@ import { api } from '@/lib/api';
 import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
 
 const mockNavigate = jest.fn();
-const mockTables = [{ id: 'table-1', number: 7, name: 'Mesa 7', area: 'Salón', capacity: 4, status: 'disponible', active_order: null }];
+// Deliberately out of order and in different states: the floor must still list
+// them by table number (12 pending payment, 7 preparing, 3 free).
+const mockTables = [
+    { id: 'table-3', number: 12, name: 'Mesa 12', area: 'Salón', capacity: 4, status: 'ocupada', active_order: { id: 'o12', status: 'pendiente_pago', items: [] } },
+    { id: 'table-1', number: 7, name: 'Mesa 7', area: 'Salón', capacity: 4, status: 'disponible', active_order: null },
+    { id: 'table-2', number: 3, name: 'Mesa 3', area: 'Salón', capacity: 4, status: 'ocupada', active_order: { id: 'o3', status: 'en_preparacion', items: [] } },
+];
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn() } }));
 jest.mock('@/hooks/usePolling', () => ({
@@ -44,6 +50,13 @@ describe('sales areas', () => {
             expect(ORDER_TYPE_LABELS[area.key]).toBeTruthy();
             expect(area.hint).toBeTruthy();
         }
+    });
+
+    it('keeps the floor in table-number order no matter the state', async () => {
+        await act(async () => root.render(<Salon />));
+        const numbers = [...host.querySelectorAll('[data-floor-state]')]
+            .map((el) => el.getAttribute('data-testid').replace('mesa-card-', ''));
+        expect(numbers).toEqual(['3', '7', '12']);
     });
 
     it('offers the four areas when taking an order', async () => {

@@ -67,26 +67,6 @@ function floorState(t) {
     return { key: 'sentados' };
 }
 
-function priorityRank(floorKey) {
-    if (floorKey === 'cuenta') return 0;
-    if (floorKey === 'listo') return 1;
-    if (floorKey === 'atencion') return 2;
-    if (floorKey === 'preparando') return 3;
-    if (floorKey === 'entregado') return 4;
-    if (floorKey === 'sentados') return 5;
-    if (floorKey === 'libre') return 6;
-    if (floorKey === 'reservada') return 7;
-    if (floorKey === 'pagada') return 8;
-    if (floorKey === 'inactiva') return 9;
-    return 10;
-}
-
-function orderTimestamp(order) {
-    if (!order?.created_at) return 0;
-    const t = new Date(order.created_at).getTime();
-    return Number.isFinite(t) ? t : 0;
-}
-
 function itemQty(items, predicate) {
     return (items || []).filter(predicate).reduce((s, it) => s + (it.quantity || 0), 0);
 }
@@ -199,17 +179,10 @@ export default function Salon() {
             if (search && !`${t.number} ${t.name}`.toLowerCase().includes(search.toLowerCase())) return false;
             return true;
         });
-        return list.slice().sort((a, b) => {
-            const ra = priorityRank(a.floor.key);
-            const rb = priorityRank(b.floor.key);
-            if (ra !== rb) return ra - rb;
-            const ta = orderTimestamp(a.displayOrder);
-            const tb = orderTimestamp(b.displayOrder);
-            if (ta && tb) return ta - tb;
-            if (ta) return -1;
-            if (tb) return 1;
-            return Number(a.table.number) - Number(b.table.number);
-        });
+        // Fixed order by table number: the floor must not reshuffle on every
+        // state change (it disorients the waiter mid-service). Urgency is shown
+        // by colour, the state filters and the summary bar instead.
+        return list.slice().sort((a, b) => Number(a.table.number) - Number(b.table.number));
     }, [decorated, areaFilter, stateFilter, search]);
 
     // ── Actions ────────────────────────────────────────────────────────────
