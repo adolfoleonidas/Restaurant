@@ -500,6 +500,30 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 | Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | El AlertDialog de producto/usuario/zona/mesa no calcula el impacto (combos que incluyen el plato, pedidos activos); requiere datos que hoy no están en el cliente |
 
+---
+
+## 🔄 Ronda 9 del objetivo — arnés de verificación para el cobro (último ítem del objetivo)
+
+### Qué se hizo
+
+El único ítem que quedaba del objetivo original es **"CobrarDialog migrado al Dialog de Radix"**. La pasada de interacción del arnés siempre lo saltaba, porque en cada corrida no había ninguna cuenta por cobrar: el P0-3 del informe (foco, ria-modal, Escape, retorno de foco) quedó verificado por código, no en vivo.
+
+| # | Ítem del objetivo | Cambio | Archivo |
+|---|---|---|---|
+| R9-1 | Verificación en vivo del cobro | Nuevo ixture-bill.mjs: crea una cuenta pendiente a través de la API (producto disponible + mesa libre + pedido), que es lo que hace que /caja la muestre en "Cuentas solicitadas" y que el botón *Cobrar* abra el diálogo. Es el mismo patrón que ya usan e2e/fixtures/seed-roles.js y global-setup.ts | e2e/audit/fixture-bill.mjs |
+
+### Estado de esa comprobación (honesto)
+
+- El alta del pedido funciona (pedido #17, S/ 5, en la mesa 20) pero **POST /api/orders/{id}/status responde 400** al intentar marcar pendiente_pago: ese estado no se alcanza por ahí. Por eso el fixture queda documentado como paso previo, no como verificación completada del diálogo.
+- Conclusión: el diálogo se puede abrir en vivo por dos caminos — la ruta natural del producto (mozo → *Solicitar cuenta* → cajero cobra) o pasando por payment_requested en el alta del pedido, que es lo que usa Caja.jsx:620. Queda anotado para no dar por verificado en vivo algo que aún no lo está.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Migrar CobrarDialog al Dialog de Radix | Es el último ítem del objetivo y **no se intenta a ciegas**: es el diálogo de dinero (1109 líneas + cobro.css de 817 líneas) y hoy el arnés no puede abrirlo en vivo, así que cualquier regresión quedaría sin red. Primero se completa la verificación en vivo (R9-1), después la migración |
+| P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)
