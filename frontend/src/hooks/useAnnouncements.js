@@ -60,7 +60,7 @@ export default function useAnnouncements() {
                 const order = data || {};
                 const table = order.table_id ? tablesRef.current.get(order.table_id) : null;
                 const count = (order.items || []).reduce((sum, it) => sum + (it.quantity || 0), 0);
-                emit({ table, count });
+                emit({ table, count, orderType: order.order_type });
             })
             .catch(() => emit());
     }, [enabled, lastEvent, user, announce]);

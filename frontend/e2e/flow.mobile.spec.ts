@@ -18,6 +18,9 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
   await card.click();
   await expect(page.getByTestId('mesa-sheet')).toBeVisible();
   await page.getByTestId('mesa-sheet-tomar').click();
+  // Sales areas: pick dine-in, which keeps the table flow.
+  await expect(page.getByTestId('areas-venta')).toBeVisible();
+  await page.getByTestId('area-mesa').click();
   await expect(page.getByTestId('pedido-nuevo-root')).toBeVisible({ timeout: 15_000 });
 
   await page.locator('[data-testid^="producto-add-"]:not([disabled])').first().click();

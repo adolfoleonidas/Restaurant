@@ -34,6 +34,14 @@ describe('assistant phrase mapping', () => {
         expect(textFor({ kind: 'ready' }, {})).toBe('Un pedido está listo para entregar');
         expect(textFor({ kind: 'bill' }, { table: 5 })).toBe('Mesa 5 pidió la cuenta');
     });
+
+    it('names the sales area when the order is not at a table', () => {
+        expect(textFor({ kind: 'new_order' }, { orderType: 'llevar', count: 2 })).toBe('Nuevo pedido para llevar, 2 platos');
+        expect(textFor({ kind: 'new_order' }, { orderType: 'recojo' })).toBe('Nuevo pedido para recoger');
+        expect(textFor({ kind: 'new_order' }, { orderType: 'delivery' })).toBe('Nuevo pedido para envío a domicilio');
+        // A table wins over the area wording.
+        expect(textFor({ kind: 'new_order' }, { table: 5, orderType: 'llevar' })).toBe('Nuevo pedido, mesa 5');
+    });
 });
 
 function makeQueue() {

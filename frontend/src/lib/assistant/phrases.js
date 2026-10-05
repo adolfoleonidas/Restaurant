@@ -39,15 +39,27 @@ export function pendingAnnouncement(event, role) {
     return null;
 }
 
+/** Spoken wording for orders that are not at a table. */
+const AREA_SPOKEN = {
+    llevar: 'para llevar',
+    recojo: 'para recoger',
+    delivery: 'para envío a domicilio',
+};
+
 /** Builds the spoken text for a descriptor. `table`/`count` are best effort. */
-export function textFor(item, { table, count } = {}) {
+export function textFor(item, { table, count, orderType } = {}) {
     if (!item) return null;
     switch (item.kind) {
-        case 'new_order':
-            if (!table) return 'Nuevo pedido en cocina';
+        case 'new_order': {
+            const area = AREA_SPOKEN[orderType];
+            if (!table) {
+                if (area) return count ? `Nuevo pedido ${area}, ${plural(count, 'plato', 'platos')}` : `Nuevo pedido ${area}`;
+                return 'Nuevo pedido en cocina';
+            }
             return count
                 ? `Nuevo pedido, mesa ${table}, ${plural(count, 'plato', 'platos')}`
                 : `Nuevo pedido, mesa ${table}`;
+        }
         case 'ready':
             return table ? `Mesa ${table} lista para entregar` : 'Un pedido está listo para entregar';
         case 'bill':

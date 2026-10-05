@@ -73,9 +73,22 @@ export const ORDER_STATUS_LABELS = {
 export const ORDER_TYPE_LABELS = {
     mesa: 'Mesa',
     local: 'En local',
+    llevar: 'Llevar',
     recojo: 'Recojo',
     delivery: 'Delivery',
 };
+
+/**
+ * Sales areas the waiter picks before taking an order. Labels come from
+ * ORDER_TYPE_LABELS so there is a single source of truth; order matters because
+ * it is the order shown on the touch grid (dine-in first).
+ */
+export const ORDER_AREAS = [
+    { key: 'mesa', hint: 'Ocupa una mesa del salón' },
+    { key: 'llevar', hint: 'Se lo lleva del mostrador' },
+    { key: 'recojo', hint: 'Lo recoge más tarde' },
+    { key: 'delivery', hint: 'Con envío a domicilio' },
+];
 
 export function waMeLink(phone, text) {
     const n = String(phone || '').replace(/\D/g, '');

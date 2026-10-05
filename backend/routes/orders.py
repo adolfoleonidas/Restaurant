@@ -273,6 +273,8 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     table = None
     if data.order_type == "mesa" and not data.table_id:
         raise HTTPException(status_code=400, detail="Se requiere mesa")
+    if data.order_type == "delivery" and not (data.customer_address or "").strip():
+        raise HTTPException(status_code=400, detail="Se requiere la dirección para un envío")
     if data.table_id:
         table = await db.tables.find_one({"id": data.table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
         if not table:
@@ -325,6 +327,10 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     }
     if branch_id is not None:
         o["branch_id"] = branch_id
+    for field in ("customer_name", "customer_phone", "customer_address"):
+        value = (getattr(data, field, None) or "").strip()
+        if value:
+            o[field] = value
     if attention_id:
         o.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
         o["_id"] = order_id

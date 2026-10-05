@@ -340,7 +340,7 @@ OrderStatus = Literal[
     "entregado", "pendiente_pago", "pagado", "cancelado"
 ]
 OrderItemStatus = Literal["pendiente", "en_preparacion", "listo", "entregado", "cancelado"]
-OrderType = Literal["mesa", "local", "recojo", "delivery"]
+OrderType = Literal["mesa", "local", "recojo", "delivery", "llevar"]
 
 
 class OrderItemInput(BaseModel):
@@ -355,6 +355,10 @@ class OrderCreate(BaseModel):
     order_type: OrderType = "mesa"
     items: List[OrderItemInput] = []
     notes: Optional[str] = None
+    # Staff can take counter/pickup/delivery orders too, so they need the customer.
+    customer_name: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_address: Optional[str] = None
 
     @field_validator("branch_id")
     @classmethod

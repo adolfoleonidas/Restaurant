@@ -5,7 +5,7 @@ import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Plus, Minus, Search, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,11 +15,16 @@ export default function PedidoNuevo() {
     const navigate = useNavigate();
     const [params] = useSearchParams();
     const lockedTableId = params.get('mesa') || '';
+    const orderType = params.get('tipo') || 'mesa';
+    const isTableOrder = orderType === 'mesa';
     const [tableId, setTableId] = useState(lockedTableId);
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
     const [cart, setCart] = useState([]);
     const [orderNotes, setOrderNotes] = useState('');
+    const [customerName, setCustomerName] = useState('');
+    const [customerPhone, setCustomerPhone] = useState('');
+    const [customerAddress, setCustomerAddress] = useState('');
     const [loading, setLoading] = useState(false);
     const { generation } = useNotify();
 
@@ -82,14 +87,25 @@ export default function PedidoNuevo() {
     };
 
     const submit = async () => {
-        if (!tableId) { toast.error('Falta la mesa'); return; }
+        if (isTableOrder && !tableId) { toast.error('Falta la mesa'); return; }
+        if (orderType === 'delivery' && !customerAddress.trim()) { toast.error('Falta la dirección del envío'); return; }
         if (cart.length === 0) { toast.error('Agregá al menos un plato'); return; }
         setLoading(true);
         try {
             const items = cart.map((it) => ({ product_id: it.product.id, quantity: it.quantity, notes: it.notes || null }));
-            const { data: order } = await api.post('/orders', { table_id: tableId, order_type: 'mesa', items, notes: orderNotes || null });
+            const payload = {
+                order_type: orderType,
+                items,
+                notes: orderNotes || null,
+                ...(isTableOrder ? { table_id: tableId } : {}),
+                ...(customerName.trim() ? { customer_name: customerName.trim() } : {}),
+                ...(customerPhone.trim() ? { customer_phone: customerPhone.trim() } : {}),
+                ...(orderType === 'delivery' ? { customer_address: customerAddress.trim() } : {}),
+            };
+            const { data: order } = await api.post('/orders', payload);
             await api.post(`/orders/${order.id}/send-to-kitchen`);
-            toast.success(`Mesa ${table?.number || ''} enviada a cocina`);
+            const where = isTableOrder ? `Mesa ${table?.number || ''}` : (ORDER_TYPE_LABELS[orderType] || 'Pedido');
+            toast.success(`${where.trim()} enviado a cocina`);
             navigate('/salon', { replace: true });
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar');
@@ -107,8 +123,10 @@ export default function PedidoNuevo() {
                     </Button>
                     <div>
                         <p className="page-kicker">Borrador · no está en cocina</p>
-                        <h1 className="font-display text-3xl font-semibold">
-                            {table ? `Mesa ${table.number}` : 'Tomar pedido'}
+                        <h1 className="font-display text-3xl font-semibold" data-testid="pedido-nuevo-titulo">
+                            {!isTableOrder
+                                ? (ORDER_TYPE_LABELS[orderType] || 'Pedido')
+                                : (table ? `Mesa ${table.number}` : 'Elegí una mesa')}
                         </h1>
                     </div>
                 </div>
@@ -117,7 +135,7 @@ export default function PedidoNuevo() {
                 </Button>
             </div>
 
-            {!lockedTableId && (
+            {isTableOrder && !lockedTableId && (
                 <div className="flex gap-2 overflow-x-auto pb-1">
                     {(tables || []).filter((t) => t.status === 'disponible' || t.id === tableId).map((t) => (
                         <button
@@ -156,6 +174,19 @@ export default function PedidoNuevo() {
                     </button>
                 ))}
             </div>
+
+            {!isTableOrder && (
+                <Card>
+                    <CardContent className="p-4 space-y-3" data-testid="pedido-cliente">
+                        <div className="page-kicker">Datos del cliente</div>
+                        <Input className="h-11" placeholder="Nombre" value={customerName} onChange={(e) => setCustomerName(e.target.value)} data-testid="pedido-cliente-nombre" />
+                        <Input className="h-11" placeholder="Teléfono" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} data-testid="pedido-cliente-telefono" />
+                        {orderType === 'delivery' && (
+                            <Input className="h-11" placeholder="Dirección de envío" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} data-testid="pedido-cliente-direccion" />
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredProducts.map((p) => {
@@ -200,7 +231,7 @@ export default function PedidoNuevo() {
             <div className="sticky bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border mt-4">
                 <Button
                     onClick={submit}
-                    disabled={loading || cart.length === 0 || !tableId}
+                    disabled={loading || cart.length === 0 || (isTableOrder && !tableId)}
                     className="w-full h-14 rounded-full text-base md:max-w-2xl md:mx-auto"
                     data-testid="pedido-enviar-cocina"
                 >

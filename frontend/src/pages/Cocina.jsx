@@ -37,6 +37,13 @@ function timerClass(iso) {
     return 'text-muted-foreground';
 }
 
+/** Non-table areas need packaging, so the badge is loud and colour-coded. */
+const AREA_BADGE = {
+    llevar: 'bg-amber-100 text-amber-900 border-amber-300',
+    recojo: 'bg-blue-100 text-blue-900 border-blue-300',
+    delivery: 'bg-violet-100 text-violet-900 border-violet-300',
+};
+
 const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }) => {
     const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
@@ -59,13 +66,18 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                             #{order.order_number}
                             {order.source === 'public' ? ' · carta web' : ''}
                             {order.order_type && order.order_type !== 'mesa' && (
-                                <span className="ml-1 shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5" data-testid={`cocina-tipo-${order.order_number}`}>
+                                <span className={`ml-1 shrink-0 text-xs font-bold uppercase tracking-wide rounded-sm border px-2 py-0.5 ${AREA_BADGE[order.order_type] || 'bg-[#F2F2F2] text-[#3F3F46] border-[#D4D4D8]'}`} data-testid={`cocina-tipo-${order.order_number}`}>
                                     {ORDER_TYPE_LABELS[order.order_type] || order.order_type}
                                 </span>
                             )}
                             {added ? ' · AGREGADO' : ''}
                         </div>
                         <AttentionReference order={order} branchNames={branchNames} />
+                        {(order.customer_name || order.customer_address) && (
+                            <div className="text-[11px] mt-0.5 text-muted-foreground" data-testid={`cocina-cliente-${order.order_number}`}>
+                                {[order.customer_name, order.customer_phone, order.customer_address].filter(Boolean).join(' · ')}
+                            </div>
+                        )}
                     </div>
                     <span className={`font-mono text-sm tabular-nums ${stage === 'retirado' ? 'text-muted-foreground' : timerClass(when)}`}>
                         {stage === 'retirado' ? `hace ${fmtElapsed(when)}` : fmtElapsed(when)}
