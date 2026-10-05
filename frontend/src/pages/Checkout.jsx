@@ -122,7 +122,7 @@ export default function Checkout() {
         return (
             <div className="max-w-2xl mx-auto px-4 py-16 text-center">
                 <ShoppingBag className="h-12 w-12 mx-auto opacity-40 mb-4" />
-                <h2 className="font-display text-2xl font-semibold mb-2">Tu carrito está vacío</h2>
+                <h1 className="font-display text-2xl font-semibold mb-2">Tu carrito está vacío</h1>
                 <p className="text-muted-foreground mb-6">Agrega algunos platos para continuar.</p>
                 <Button asChild><Link to="/">Ver menú</Link></Button>
             </div>

@@ -28,6 +28,14 @@ Auditoría **en vivo + de código** sobre la app que se sirve en `http://localho
 
 ---
 
+> **Nota sobre las cifras:** las tablas de este informe describen el estado **baseline** (la
+> primera corrida de 131 visitas). Después de los arreglos P0/P1 y de la **ronda 1** del objetivo
+> (sección correspondiente), el subconjunto comparable de **49 visitas** mide **0 violaciones de
+> axe-core** y CLS máximo **0,56**. El arnés permite repetir la medición en cualquier momento:
+> `node frontend/e2e/audit/compare.mjs`.
+
+---
+
 ## Cómo se auditó (y qué límites tiene)
 
 **Método.** Se lanzó un Chromium headless controlado por CDP (el sandbox de este entorno bloquea
@@ -151,7 +159,7 @@ sistema; el resto usa Radix (`ui/dialog.jsx`), que ya resuelve foco, Escape y re
 | 4 | **El script anti-parpadeo del tema oscuro es código muerto**: lee `sp-theme`, pero el tema se guarda en `restaurant-dark-mode` | `index.html:16` vs `ThemeContext.jsx:27,75` |
 | 5 | **Modo oscuro global por preferencia del SO**, aunque la guía lo limita a cocina; las tarjetas del salón son de tema claro y quedan crema sobre app oscura | `ThemeContext.jsx:29,68-72`; ver `04-salon-modo-oscuro.jpg` |
 | 6 | **31 de 48 componentes `ui/*` no se importan**, incluidos `skeleton` y `progress` que la guía exige para cargas: 22 textos planos "Cargando…" | `ui/skeleton.jsx` sin consumidores; `Caja.jsx:194,325,396,657` |
-| 7 | **`document.title` fijo** ("Sabor Peruano") en todas las rutas | `public/index.html:15` |
+| 7 | ~~**`document.title` fijo** ("Sabor Peruano") en todas las rutas~~ | ~~`public/index.html:15`~~ **resuelto en la ronda 1** (nuevo `RouteTitle` en `App.js`) |
 | 8 | **Los cambios por polling no se anuncian** (sin `aria-live`/`role="status"` en Cocina/Salón) | `Cocina.jsx:126`, `Salon.jsx:89`, `hooks/usePolling.js` |
 | 9 | **Región con scroll sin acceso por teclado** en las columnas del pase | axe `scrollable-region-focusable` en `section[data-testid="cocina-columna-listo"] > .max-h-[calc(100dvh-300px)]` |
 | 10 | **IDs ARIA inválidos de Radix** (`aria-controls` apuntando a un panel inexistente) | axe `aria-valid-attr-value` (12 nodos) en `#radix-…-trigger-activos` |
@@ -240,18 +248,68 @@ git) y se midió con `run-audit.ps1 -CrossOrigin`, porque el backend solo autori
 `:3000` por CORS. **Ese flag relaja CORS en el navegador de pruebas; no cambia la app ni el
 backend**, y la línea base se midió sin él.
 
-### Pendiente (documentado, no incluido en esta pasada)
+## 🔄 Ronda 1 del objetivo — arreglos adicionales y verificación
+
+Esta sección queda después de los arreglos P0/P1 y documenta la primera ronda del objetivo
+persistente. Se sirvió el build del worktree en `http://localhost:3001` y se midió con el mismo
+arnés (`run-audit.ps1 -CrossOrigin`, porque el backend solo autoriza el origen `:3000`).
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R1-1 | `h1` faltante | El "El turno empieza en la carta" del login deja de ser un `<div>`; el panel hero sigue oculto en móvil, así que el `h1` de la página pasa a un `sr-only` que siempre existe. El seguimiento gana `h1` en los estados de carga y "no encontrado"; el carrito vacío de Checkout y la vista consolidada de Caja dejan de usar `h2` | `Login.jsx`, `PedidoTracking.jsx`, `Checkout.jsx`, `Caja.jsx` |
+| R1-2 | Landmarks en el login | El login entero pasa a ser un `<main>` (antes no tenía ningún landmark, y6 nodos de contenido quedaban "fuera de región") | `Login.jsx` |
+| R1-3 | `document.title` fijo | Nuevo `RouteTitle` en el router: cada ruta fija el título de la pestaña ("Caja · Sabor Peruano"), con la base tomada del `<title>` de `index.html`, así el nombre del negocio se ajusta en un solo lugar y no se hardcodea en JS | `App.js` |
+| R1-4 | `aria-controls` inválido (4 nodos críticos) | Los filtros de Pedidos y el período de Reportes dejan de ser `Tabs` sin `TabsContent` y pasan a `ToggleGroup`: se elimina el atributo fantasma y cada opción expone `aria-pressed` (además deja de comunicarse la selección solo por color) | `Pedidos.jsx`, `Reportes.jsx` |
+| R1-5 | CLS 0,89 en la carta pública y 0,56 en el salón | `ui/skeleton.jsx` por fin se usa: portada y dos secciones de la carta con esqueleto mientras cargan, y grilla de 12 tarjetas esqueleto en el salón | `Landing.jsx`, `Salon.jsx` |
+| R1-6 | Estado de carga de "Datos de cobro" sin estructura | El `Cargando…` de Pagos no tenía `h1` ni jerarquía; ahora muestra el mismo encabezado que la página | `Pagos.jsx` |
+| R1-7 | Objetivos táctiles de 28 px | El selector de período de Reportes y los filtros de Pedidos pasan a `min-h-9` (36 px) | `Reportes.jsx`, `Pedidos.jsx` |
+
+### Verificación: medición contra la línea base
+
+Subconjunto comparable: **49 visitas** (admin + público × desktop + móvil) presentes en ambas
+corridas; se descarta el resto de la baseline (131 visitas, que incluía tablet y otros roles) para
+que la comparación sea del mismo tamaño de muestra.
+
+| Métrica | Baseline | Ronda 1 | Δ |
+|---|---|---|---|
+| **Nodos infractores de axe (WCAG A+AA y buenas prácticas)** | **168** | **0** | **−168** |
+| `meta-viewport` (zoom bloqueado) | 49 | 0 | −49 |
+| `button-name` (botones sin nombre) | 74 | 0 | −74 |
+| `page-has-heading-one` | 12 | 0 | −12 |
+| `region` (contenido fuera de landmarks) | 11 | 0 | −11 |
+| `label` (campos sin etiqueta) | 6 | 0 | −6 |
+| `color-contrast` | 6 | 0 | −6 |
+| `aria-valid-attr-value` | 4 | 0 | −4 |
+| `landmark-one-main`, `select-name`, `aria-prohibited-attr`, `scrollable-region-focusable` | 2+1+2+1 | 0 | −6 |
+| Visitas con errores de consola | 16 | 2 | −14 |
+| Visitas con respuesta ≥400 | 13 | 2 | −11 |
+| Visitas con desbordamiento horizontal | 0 | 0 | — |
+| Controles <24 px (suma sobre las visitas) | 59 | 32 | −27 |
+| CLS máximo | 0,846 | 0,5635 | −0,28 |
+| Nodos de texto <12 px | 149 | 209 | +60 ¹ |
+
+¹ **No es una regresión.** La baseline se midió con una base de datos en blanco (2 pedidos, mesas
+de prueba); esta corrida corre sobre datos reales (16 pedidos, mesas ocupadas con notas). El
+gráfico por ruta lo confirma: `landing` y `menu` son idénticos (10 → 10) y el crecimiento está en
+`salon` (+34) y `cocina` (+16), que ahora muestran tickets reales con metadatos a 11 px. El
+hallazgo P3 ("`text-[10px]`/`text-[11px]` fuera de la escala declarada") sigue abierto y ahora se
+ve más porque el salón tiene mesas reales.
+
+**Estado actual:** axe-core reporta **0 violaciones** en las 49 visitas comparables. El único
+desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y la cocina.
+
+### Pendiente (siguientes rondas)
 
 | Pendiente | Por qué quedó fuera |
 |---|---|
-| CLS 0,89 en la carta pública y 0,56 en el salón | Requiere reservar espacio con esqueletos en dos pantallas de mucho tráfico (`ui/skeleton.jsx` existe y no se usa) |
-| `page-has-heading-one` (11 nodos, 5 pantallas) | Falta un `h1` en login, checkout, seguimiento y categoría |
-| `aria-valid-attr-value` (4 nodos) | `aria-controls` inválido en las pestañas Radix de Pedidos y Reportes (ids generados) |
-| Arquitectura de información del menú | Renombrar "Casa"/"Agotar"/"Equipo", quitar `/pedidos` y `/cocina` duplicados y devolver "Pedidos" al admin multifunción |
-| `CobrarDialog` al `Dialog` de Radix | Da trampa de foco completa; se optó por el arreglo mínimo para no tocar el diálogo de dinero |
-| `document.title` por ruta y `aria-live` del polling | Mejora de orientación y de anuncio de cambios |
-| Modo oscuro global por preferencia del SO | La guía lo limita a cocina; hoy afecta a toda la app |
-| Datos de prueba (≈90 mesas `9xxxx`, "Carta E2E…", combos "Test") | Es limpieza de datos operativos, no de interfaz: `Ajustes → Restablecer datos operativos` |
+| Arquitectura de información del menú | Renombrar "Casa"/"Agotar"/"Equipo", quitar `/pedidos` y `/cocina` duplicados y devolver "Pedidos" al admin multifunción: toca la navegación de todos los roles y depende de los `data-testid` que usan los E2E |
+| `CobrarDialog` al `Dialog` de Radix | Da trampa de foco completa; se optó por el arreglo mínimo (`aria-modal` + foco + Escape) para no tocar el diálogo de dinero |
+| `aria-live` para los cambios por polling | Mezcla de accesibilidad y latencia: los avisos del pase y del salón se actualizan sin anuncio |
+| Modo oscuro global por preferencia del SO | La guía lo limita a cocina; hoy `matchMedia` lo aplica a toda la app (incluida Caja) |
+| Texto <12 px en salón/cocina | Ver nota ¹: `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado |
+| Datos de prueba (mesas `9xxxx`, "Carta E2E…", combos "Test") | Es limpieza de datos operativos, no de interfaz: `Ajustes → Restablecer datos operativos` |
 
 ---
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -394,7 +395,15 @@ export default function Salon() {
             )}
 
             {/* Floor grid */}
-            {filtered.length === 0 ? (
+            {tablesLoading && !tables ? (
+                // Reserva la rejilla mientras llegan las mesas: sin esto la
+                // grilla aparece entera tras la respuesta (CLS 0,56).
+                <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" data-testid="salon-skeleton" aria-hidden="true">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        <Skeleton key={i} className="h-32 rounded-xl" />
+                    ))}
+                </div>
+            ) : filtered.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground border rounded-xl">
                     {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
                 </div>

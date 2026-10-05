@@ -40,6 +40,45 @@ function ScrollToTop() {
     return null;
 }
 
+// El título de la pestaña no cambia por ruta: todas las pestañas se llaman igual
+// y quien navega con lector de pantalla pierde la confirmación del cambio de
+// vista. La base sale del <title> de index.html, así que el nombre del negocio
+// se ajusta en un solo lugar.
+const BASE_TITLE = document.title;
+const ROUTE_TITLES = [
+    ['/', 'Carta pública'],
+    ['/menu', 'Carta pública'],
+    ['/checkout', 'Confirmar pedido'],
+    ['/pedido', 'Seguimiento'],
+    ['/login', 'Ingreso'],
+    ['/unauthorized', 'Sin permisos'],
+    ['/dashboard', 'Turno'],
+    ['/salon', 'Salón'],
+    ['/local', 'Local'],
+    ['/pedidos', 'Pedidos'],
+    ['/cocina', 'Pase de cocina'],
+    ['/caja', 'Caja'],
+    ['/comprobantes', 'Comprobantes'],
+    ['/reportes', 'Reportes'],
+    ['/disponibilidad', 'Disponibilidad'],
+    ['/productos', 'Carta'],
+    ['/combos', 'Combos'],
+    ['/categorias', 'Categorías'],
+    ['/usuarios', 'Equipo'],
+    ['/pagos', 'Datos de cobro'],
+    ['/configuracion', 'Configuración'],
+];
+
+function RouteTitle() {
+    const { pathname } = useLocation();
+    const hit = ROUTE_TITLES.find(([p]) => (p === '/' ? pathname === '/' : pathname === p || pathname.startsWith(`${p}/`)));
+    const section = hit ? hit[1] : null;
+    useEffect(() => {
+        document.title = section ? `${section} · ${BASE_TITLE}` : BASE_TITLE;
+    }, [section]);
+    return null;
+}
+
 function App() {
     return (
         <div className="App">
@@ -49,6 +88,7 @@ function App() {
                             <AssistantProvider>
                             <BrowserRouter>
                                 <ScrollToTop />
+                                <RouteTitle />
                                 <Routes>
                                 {/* PUBLIC ROUTES */}
                                 <Route element={<PublicLayout />}>

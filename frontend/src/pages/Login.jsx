@@ -68,7 +68,11 @@ export default function Login() {
     };
 
     return (
-        <div className="min-h-screen w-full flex items-stretch bg-background">
+        <main className="min-h-screen w-full flex items-stretch bg-background">
+            {/* El panel hero está oculto en móvil (hidden lg:flex): el h1 de la
+                página se coloca aquí para que siempre exista un único encabezado
+                de nivel 1 visible o accesible. */}
+            <h1 className="sr-only">Ingreso de personal</h1>
             <div className="hidden lg:flex lg:w-[52%] relative overflow-hidden">
                 <img
                     src="https://images.pexels.com/photos/14590691/pexels-photo-14590691.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=900&w=1200"
@@ -78,7 +82,7 @@ export default function Login() {
                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent" />
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
-                    <div className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</div>
+                    <p className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</p>
                     <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
                 </div>
             </div>
@@ -149,6 +153,6 @@ export default function Login() {
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     );
 }

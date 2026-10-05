@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { BarChart3, TrendingUp, ShoppingCart, Ban, Printer, FileDown } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, Legend } from 'recharts';
@@ -152,13 +152,21 @@ function ReportesView({ userKey, isOwner }) {
                     )}
                     <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Imprimir</Button>
                     <Button data-testid="reportes-export" variant="outline" onClick={() => exportCsv(data)} disabled={!data}><FileDown className="h-4 w-4 mr-2" />Exportar CSV</Button>
-                    <Tabs value={period} onValueChange={setPeriod}>
-                        <TabsList>
-                            <TabsTrigger value="day" data-testid="reportes-periodo-day">Hoy</TabsTrigger>
-                            <TabsTrigger value="week" data-testid="reportes-periodo-week">7 días</TabsTrigger>
-                            <TabsTrigger value="month" data-testid="reportes-periodo-month">30 días</TabsTrigger>
-                        </TabsList>
-                    </Tabs>
+                    {/* Selector de período: grupo de toggles (no pestañas), con
+                        aria-pressed y un objetivo táctil de 36 px */}
+                    <ToggleGroup
+                        type="single"
+                        value={period}
+                        onValueChange={(v) => v && setPeriod(v)}
+                        aria-label="Período del reporte"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                    >
+                        <ToggleGroupItem value="day" data-testid="reportes-periodo-day" className="min-h-9">Hoy</ToggleGroupItem>
+                        <ToggleGroupItem value="week" data-testid="reportes-periodo-week" className="min-h-9">7 días</ToggleGroupItem>
+                        <ToggleGroupItem value="month" data-testid="reportes-periodo-month" className="min-h-9">30 días</ToggleGroupItem>
+                    </ToggleGroup>
                 </div>
             </div>
 

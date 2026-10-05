@@ -43,7 +43,15 @@ export default function Pagos() {
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
-    if (!cfg) return <div className="text-muted-foreground">Cargando…</div>;
+    if (!cfg) return (
+        <div className="space-y-5" data-testid="pagos-root">
+            <div>
+                <p className="page-kicker mb-1">Administración</p>
+                <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">Cargando métodos de pago…</p>
+        </div>
+    );
 
     return (
         <div className="space-y-5" data-testid="pagos-root">
