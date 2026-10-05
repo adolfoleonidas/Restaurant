@@ -19,15 +19,8 @@ test.describe('smoke', () => {
     expect(token).toBeTruthy();
     await page.screenshot({ path: 'e2e/artifacts/smoke-03-after-login.png' });
 
-    // Voice assistant: off by default, switchable per device.
-    const voiceToggle = page.getByTestId('assistant-toggle');
-    await expect(voiceToggle).toBeVisible();
-    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
-    await voiceToggle.click();
-    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('assistant-silence')).toBeVisible();
-    await voiceToggle.click();
-    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
+    // The voice module ships disabled: nothing appears until Ajustes turns it on.
+    await expect(page.getByTestId('assistant-toggle')).toHaveCount(0);
 
     // Admin management modules are reachable (Local holds sedes/zonas/mesas).
     await page.goto('/local');
@@ -36,6 +29,33 @@ test.describe('smoke', () => {
     await expect(page.getByTestId('mesa-config-nueva')).toBeVisible({ timeout: 15_000 });
     await page.goto('/configuracion');
     await expect(page.getByTestId('config-root')).toBeVisible({ timeout: 15_000 });
+
+    // Feature registry (Ajustes > Funciones) lists every optional module.
+    await expect(page.getByTestId('funciones-lista')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('funcion-voice_assistant')).toBeVisible();
+    await expect(page.getByTestId('funcion-proof_ocr')).toBeVisible();
+
+    // Enabling the module exposes the assistant control; disabling hides it again.
+    const saveFeatures = () => Promise.all([
+      page.waitForResponse((r) => r.url().includes('/restaurants/current') && r.request().method() === 'PATCH'),
+      page.getByTestId('funciones-save').click(),
+    ]);
+    await page.getByTestId('funcion-voice_assistant').click();
+    await saveFeatures();
+
+    const voiceToggle = page.getByTestId('assistant-toggle');
+    await expect(voiceToggle).toBeVisible({ timeout: 15_000 });
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
+    await voiceToggle.click();
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('assistant-silence')).toBeVisible();
+    await voiceToggle.click();
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
+
+    // Restore the module to off for the shared test database.
+    await page.getByTestId('funcion-voice_assistant').click();
+    await saveFeatures();
+    await expect(page.getByTestId('assistant-toggle')).toHaveCount(0);
 
     // The system panel renders real backend data.
     await expect(page.getByTestId('system-info')).toBeVisible({ timeout: 15_000 });

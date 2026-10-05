@@ -4,12 +4,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Trash2, Palette, Database, Image as ImageIcon } from 'lucide-react';
+import { Settings, Save, Trash2, Palette, Database, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
+import { FEATURE_DEFS, mergeFeatures, notifyFeaturesChanged } from '@/lib/features';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -242,6 +243,59 @@ function Marca() {
     );
 }
 
+function Funciones() {
+    const [features, setFeatures] = useState(null);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        api.get('/restaurants/current').then((res) => setFeatures(mergeFeatures(res.data?.features)));
+    }, []);
+
+    const save = async () => {
+        setSaving(true);
+        try {
+            await api.patch('/restaurants/current', { features });
+            notifyFeaturesChanged();
+            toast.success('Funciones guardadas');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudieron guardar las funciones');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!features) return <div className="text-muted-foreground">Cargando…</div>;
+
+    return (
+        <Card><CardContent className="p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+                <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Sparkles className="h-5 w-5" /> Funciones</h2>
+                <Button onClick={save} disabled={saving} data-testid="funciones-save">
+                    <Save className="h-4 w-4 mr-2" />{saving ? 'Guardando…' : 'Guardar funciones'}
+                </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
+                Activá solo lo que vas a usar. Lo que está apagado no se muestra, no se ejecuta ni consume.
+            </p>
+            <div className="space-y-2" data-testid="funciones-lista">
+                {FEATURE_DEFS.map((def) => (
+                    <label key={def.key} className="flex items-start justify-between gap-3 rounded-xl border border-border p-3 cursor-pointer">
+                        <span className="min-w-0">
+                            <span className="block text-sm font-medium">{def.label}</span>
+                            <span className="block text-xs text-muted-foreground">{def.description}</span>
+                        </span>
+                        <Switch
+                            checked={Boolean(features[def.key])}
+                            onCheckedChange={(value) => setFeatures((current) => ({ ...current, [def.key]: value }))}
+                            data-testid={`funcion-${def.key}`}
+                        />
+                    </label>
+                ))}
+            </div>
+        </CardContent></Card>
+    );
+}
+
 function fmtServerTime(iso) {
     if (!iso) return '—';
     try { return new Date(iso).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }); }
@@ -404,6 +458,7 @@ export default function Configuracion() {
             <Temas />
             <Restaurante />
             <Marca />
+            <Funciones />
             <Datos />
         </div>
     );

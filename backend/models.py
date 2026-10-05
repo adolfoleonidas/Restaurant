@@ -80,6 +80,14 @@ class UserUpdate(BaseModel):
 
 
 # ============== RESTAURANT ==============
+class RestaurantFeatures(BaseModel):
+    """Optional modules the venue can switch on from Ajustes. Everything defaults to off."""
+    voice_assistant: bool = False
+    voice_commands: bool = False
+    voice_queries: bool = False
+    proof_ocr: bool = False
+
+
 class RestaurantUpdate(BaseModel):
     name: Optional[str] = None
     ruc: Optional[str] = None
@@ -99,6 +107,7 @@ class RestaurantUpdate(BaseModel):
     prep_mode: Optional[Literal["simple", "detailed"]] = None
     auto_release_table: Optional[bool] = None
     theme_id: Optional[str] = None
+    features: Optional[RestaurantFeatures] = None
 
 
 # ============== PAYMENT CONFIG ==============

@@ -14,10 +14,10 @@ const ELIGIBLE_ROLES = ['admin', 'cocina', 'mozo', 'cajero'];
  */
 export function AssistantBar() {
     const { user } = useAuth();
-    const { enabled, setEnabled, supported, caption, cancel } = useAssistant();
+    const { enabled, available, setEnabled, supported, caption, cancel } = useAssistant();
     useAnnouncements();
 
-    if (!user || !ELIGIBLE_ROLES.includes(user.role)) return null;
+    if (!user || !ELIGIBLE_ROLES.includes(user.role) || !available) return null;
 
     return (
         <div className="flex items-center gap-1.5">
