@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, fmtDateTime, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -16,6 +16,7 @@ import { hasFn } from '@/lib/functions';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
+import GroupCard from '@/components/GroupCard';
 import useBranchNames from '@/hooks/useBranchNames';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
@@ -59,6 +60,14 @@ const STATE_FILTERS = [
     { key: 'cuenta', label: 'Por cobrar' },
 ];
 
+// Estados del piso que cuenta cada filtro (para los conteos de los filtros).
+const STATE_FILTER_FLOORS = {
+    libre: ['libre'],
+    activas: ['sentados', 'preparando', 'entregado', 'atencion'],
+    listo: ['listo'],
+    cuenta: ['cuenta'],
+};
+
 function floorState(t) {
     const o = t.active_order;
     if (t.status === 'inactiva') return { key: 'inactiva' };
@@ -72,6 +81,27 @@ function floorState(t) {
     if (o && ['enviado_cocina', 'en_preparacion', 'nuevo'].includes(o.status)) return { key: 'preparando' };
     if (t.status === 'ocupada' && !o) return { key: 'sentados' };
     return { key: 'sentados' };
+}
+
+// Urgencia relativa de cada estado: al unir mesas, el grupo hereda el estado
+// más urgente (cuenta > listo > atención > preparando > …). Menor = más urgente.
+const FLOOR_RANK = {
+    cuenta: 0,
+    listo: 1,
+    atencion: 2,
+    preparando: 3,
+    entregado: 4,
+    sentados: 5,
+    reservada: 6,
+    pagada: 7,
+    libre: 8,
+    inactiva: 9,
+};
+
+function groupFloorState(members) {
+    return members.reduce((best, m) => (
+        (FLOOR_RANK[m.floor.key] ?? 9) < (FLOOR_RANK[best.floor.key] ?? 9) ? m : best
+    )).floor;
 }
 
 function itemQty(items, predicate) {
@@ -96,6 +126,7 @@ export default function Salon() {
     const [joining, setJoining] = useState(false);
     const [transferSource, setTransferSource] = useState(null);
     const [movingVisit, setMovingVisit] = useState(false);
+    const searchRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
@@ -201,28 +232,87 @@ export default function Salon() {
                     accounts: groupAccountTables(group, tables, activeOrders).length,
                 }
                 : null;
+            const groupNumbers = group ? groupMembers(group, tables).map((m) => m.number) : null;
             return {
                 table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested,
-                showVisitaActiva, group, groupBadge,
+                showVisitaActiva, group, groupBadge, groupNumbers,
             };
         });
     }, [tables, byTable, orders, activeOrders]);
 
-    const filtered = useMemo(() => {
-        const list = decorated.filter(({ table: t, floor }) => {
-            if (areaFilter !== 'todas' && t.area !== areaFilter) return false;
-            if (stateFilter === 'libre' && floor.key !== 'libre') return false;
-            if (stateFilter === 'activas' && !['sentados', 'preparando', 'entregado', 'atencion'].includes(floor.key)) return false;
-            if (stateFilter === 'listo' && floor.key !== 'listo') return false;
-            if (stateFilter === 'cuenta' && floor.key !== 'cuenta') return false;
-            if (search && !`${t.number} ${t.name}`.toLowerCase().includes(search.toLowerCase())) return false;
+    // Unidades del piso: una mesa individual = una tarjeta; un grupo = UNA
+    // tarjeta grande con mesa principal + mini-mesas (igual que el prototipo).
+    const units = useMemo(() => {
+        const byGroup = new Map();
+        const singles = [];
+        for (const entry of decorated) {
+            const gid = entry.group?.id;
+            if (gid) {
+                if (!byGroup.has(gid)) byGroup.set(gid, []);
+                byGroup.get(gid).push(entry);
+            } else {
+                singles.push(entry);
+            }
+        }
+        const groupUnits = [...byGroup.values()].map((members) => {
+            members.sort((a, b) => Number(a.table.number) - Number(b.table.number));
+            const group = members[0].group;
+            const anchor = members.find((m) => m.table.id === group.anchor_table_id) || members[0];
+            const floor = groupFloorState(members);
+            const numbers = members.map((m) => Number(m.table.number));
+            const accounts = groupAccountTables(group, tables, activeOrders).length;
+            const dueSum = members.reduce((s, m) => s + (m.due || 0), 0);
+            const totalSum = members.reduce((s, m) => s + (Number(m.serviceOrder?.total) || Number(m.displayOrder?.total) || 0), 0);
+            const amount = dueSum > 0 ? `Debe ${fmtMoney(dueSum)}` : (totalSum > 0 ? fmtMoney(totalSum) : null);
+            const maxCreated = members.reduce((acc, m) => {
+                const iso = m.displayOrder?.created_at || m.serviceOrder?.created_at || null;
+                if (!iso) return acc;
+                return (!acc || new Date(iso) > new Date(acc)) ? iso : acc;
+            }, null);
+            const minutes = elapsedMinutes(maxCreated);
+            const urgency = minutes >= 45 ? 'bad' : minutes >= 30 ? 'warn' : null;
+            return {
+                type: 'group', group, members, anchor, floor, numbers, accounts, amount,
+                elapsed: maxCreated ? fmtElapsed(maxCreated) : null, minutes, urgency,
+                isLate: floor.key === 'cuenta' && urgency === 'bad',
+                anchorNumber: Number(anchor.table.number),
+            };
+        });
+        return [
+            ...singles.map((entry) => ({ type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number) })),
+            ...groupUnits,
+        ];
+    }, [decorated, tables, activeOrders]);
+
+    // Conteos por estado para los filtros: cuentan tarjetas (una por unidad),
+    // de modo que "Todas" refleja lo que se ve en pantalla.
+    const stateCounts = useMemo(() => {
+        const counts = { todas: units.length };
+        for (const f of STATE_FILTERS) {
+            if (f.key === 'todas') continue;
+            const floors = STATE_FILTER_FLOORS[f.key] || [];
+            counts[f.key] = units.filter((u) => floors.includes(u.floor.key)).length;
+        }
+        return counts;
+    }, [units]);
+
+    const filteredUnits = useMemo(() => {
+        const list = units.filter((unit) => {
+            const entries = unit.type === 'group' ? unit.members : [unit.entry];
+            if (areaFilter !== 'todas' && !entries.some((e) => e.table.area === areaFilter)) return false;
+            const key = unit.floor.key;
+            if (stateFilter === 'libre' && key !== 'libre') return false;
+            if (stateFilter === 'activas' && !['sentados', 'preparando', 'entregado', 'atencion'].includes(key)) return false;
+            if (stateFilter === 'listo' && key !== 'listo') return false;
+            if (stateFilter === 'cuenta' && key !== 'cuenta') return false;
+            if (search && !entries.some((e) => `${e.table.number} ${e.table.name}`.toLowerCase().includes(search.toLowerCase()))) return false;
             return true;
         });
-        // Fixed order by table number: the floor must not reshuffle on every
+        // Fixed order by anchor number: the floor must not reshuffle on every
         // state change (it disorients the waiter mid-service). Urgency is shown
         // by colour, the state filters and the summary bar instead.
-        return list.slice().sort((a, b) => Number(a.table.number) - Number(b.table.number));
-    }, [decorated, areaFilter, stateFilter, search]);
+        return list.slice().sort((a, b) => a.anchorNumber - b.anchorNumber);
+    }, [units, areaFilter, stateFilter, search]);
 
     // ── Actions ────────────────────────────────────────────────────────────
     const openSheet = async (t) => {
@@ -429,8 +519,32 @@ export default function Salon() {
 
     const areaLabel = (a) => (a === 'todas' ? 'Todas las zonas' : a);
 
+    // Atajo "/" para enfocar la búsqueda (igual que el prototipo de referencia).
+    useEffect(() => {
+        const onKey = (e) => {
+            if (e.key !== '/') return;
+            const el = document.activeElement;
+            const typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+            if (typing) return;
+            e.preventDefault();
+            searchRef.current?.focus();
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, []);
+
+    // Esc sale del modo "unir mesas".
+    useEffect(() => {
+        if (!selectMode) return undefined;
+        const onKey = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); cancelSelection(); }
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [selectMode, cancelSelection]);
+
     return (
-        <div className="space-y-5" data-testid="salon-root">
+        <div className={selectMode ? 'space-y-5 pb-28' : 'space-y-5'} data-testid="salon-root">
             {/* Header + summary */}
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
@@ -445,7 +559,7 @@ export default function Salon() {
                 <div className="flex gap-2 items-center">
                     <div className="relative">
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                        <Input className="pl-9 h-10 w-44" placeholder="Buscar mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
+                        <Input ref={searchRef} className="pl-9 h-10 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
                     </div>
                     {summary.toPrep > 0 && (
                         <Button variant="outline" className="h-10" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
@@ -465,24 +579,28 @@ export default function Salon() {
                 </div>
             </div>
 
-            {/* Join mode: pick two or more tables of the same party */}
+            {/* Join mode: bottom action bar (thumb-friendly, like the reference prototype) */}
             {selectMode && (
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2" data-testid="salon-seleccion">
-                    <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
-                        {selected.length === 0
-                            ? 'Elegí dos o más mesas para unirlas'
-                            : `Elegidas: ${(tables || []).filter((t) => selected.includes(t.id)).sort((a, b) => Number(a.number) - Number(b.number)).map((t) => t.number).join(' + ')}`}
-                    </span>
-                    {selectionIssue && (
-                        <span className="text-xs text-destructive" data-testid="salon-seleccion-aviso">{selectionIssue}</span>
-                    )}
-                    <div className="flex gap-2 ml-auto">
-                        <Button variant="outline" className="h-10" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
-                            Cancelar
-                        </Button>
-                        <Button className="h-10" disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
-                            <Link2 className="h-4 w-4 mr-1" /> {joining ? 'Uniendo…' : 'Unir seleccionadas'}
-                        </Button>
+                <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)]" data-testid="salon-seleccion">
+                    <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
+                        <div className="min-w-[200px] flex-1">
+                            <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
+                                {selected.length === 0
+                                    ? 'Elegí dos o más mesas para unirlas'
+                                    : `Elegidas: ${(tables || []).filter((t) => selected.includes(t.id)).sort((a, b) => Number(a.number) - Number(b.number)).map((t) => t.number).join(' + ')}`}
+                            </span>
+                            {selectionIssue && (
+                                <span className="block text-xs text-destructive" data-testid="salon-seleccion-aviso">{selectionIssue}</span>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" className="h-10" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
+                                Cancelar
+                            </Button>
+                            <Button className="h-10" disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
+                                <Link2 className="h-4 w-4 mr-1" /> {joining ? 'Uniendo…' : 'Unir mesas'}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -497,7 +615,7 @@ export default function Salon() {
                         data-testid={`salon-filtro-${f.key}`}
                         className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                     >
-                        {f.label}
+                        {f.label} <span className="ml-1.5 text-xs opacity-70 tabular-nums">{stateCounts[f.key]}</span>
                     </button>
                 ))}
             </div>
@@ -546,7 +664,7 @@ export default function Salon() {
                         <Skeleton key={i} className="h-32 rounded-xl" />
                     ))}
                 </div>
-            ) : filtered.length === 0 ? (
+            ) : filteredUnits.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground border rounded-xl">
                     {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
                 </div>
@@ -555,25 +673,39 @@ export default function Salon() {
                     {/* The card shortcut for taking an order opens the same sales-area
                         decision as the sheet, so no table is seated before the waiter
                         picks mesa / llevar / recojo / delivery. */}
-                    {filtered.map((entry) => (
-                        <MesaCard
-                            key={entry.table.id}
-                            item={entry}
-                            branchNames={branchNames}
-                            canServe={canServe}
-                            canCharge={canCharge}
-                            canClose={canClose}
-                            canTake={canTake}
-                            closing={closing}
-                            selectMode={selectMode}
-                            picked={selected.includes(entry.table.id)}
-                            onSelect={toggleSelected}
-                            onOpen={openSheet}
-                            onDeliver={deliver}
-                            onCharge={openCharge}
-                            onCloseAttention={closeAttention}
-                            onTake={openAreas}
-                        />
+                    {filteredUnits.map((unit) => (
+                        unit.type === 'group' ? (
+                            <GroupCard
+                                key={unit.group.id}
+                                unit={unit}
+                                canServe={canServe}
+                                canCharge={canCharge}
+                                selectMode={selectMode}
+                                onOpen={() => openSheet(unit.anchor.table)}
+                                onOpenMember={(table) => openSheet(table)}
+                                onDeliver={deliver}
+                                onCharge={openCharge}
+                            />
+                        ) : (
+                            <MesaCard
+                                key={unit.entry.table.id}
+                                item={unit.entry}
+                                branchNames={branchNames}
+                                canServe={canServe}
+                                canCharge={canCharge}
+                                canClose={canClose}
+                                canTake={canTake}
+                                closing={closing}
+                                selectMode={selectMode}
+                                picked={selected.includes(unit.entry.table.id)}
+                                onSelect={toggleSelected}
+                                onOpen={openSheet}
+                                onDeliver={deliver}
+                                onCharge={openCharge}
+                                onCloseAttention={closeAttention}
+                                onTake={openAreas}
+                            />
+                        )
                     ))}
                 </div>
             )}

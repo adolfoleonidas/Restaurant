@@ -210,6 +210,18 @@ body {
     .pulse-dot { animation: none; }
 }
 
+/* Mesa tardía (Salón): borde de urgencia pulsante cuando la cuenta lleva
+   demasiado tiempo sin cobrar. */
+.floor-late {
+    animation: floor-late-pulse 2s ease-in-out infinite;
+}
+@keyframes floor-late-pulse {
+    50% { box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.25); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .floor-late { animation: none; }
+}
+
 .App {
     min-height: 100vh;
 }

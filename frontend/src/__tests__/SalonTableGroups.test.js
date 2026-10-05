@@ -78,7 +78,7 @@ describe('salón table groups', () => {
         document.body.innerHTML = '';
     });
 
-    it('marks every member of a group and keeps the floor in table order', async () => {
+    it('collapses a joined group into one big card and keeps the floor in table order', async () => {
         mockRows.tables = [
             freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
             freeTable('table-2', 2, { status: 'ocupada', group: joinedGroup, group_id: 'group-1' }),
@@ -87,13 +87,20 @@ describe('salón table groups', () => {
         mockRows.orders = [order('table-1', 'order-1')];
         ({ container, root } = await renderPage());
 
-        expect(container.querySelector('[data-testid="mesa-card-grupo-1"]').textContent).toContain('Mesas 1 + 2');
-        expect(container.querySelector('[data-testid="mesa-card-grupo-2"]').textContent).toContain('Mesas 1 + 2');
+        // Tables 1 and 2 collapse into ONE group card (anchor = 1); 3 stays alone.
+        expect(container.querySelector('[data-testid="mesa-grupo-1"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-grupo-1"]').getAttribute('data-grouped')).toBe('true');
+        expect(container.querySelector('[data-testid="mesa-grupo-miembro-2"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-card-1"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mesa-card-2"]')).toBeNull();
         expect(container.querySelector('[data-testid="mesa-card-3"]').getAttribute('data-grouped')).toBeNull();
-        expect(container.querySelector('[data-testid="mesa-card-1"]').getAttribute('data-grouped')).toBe('true');
+
+        // Fixed order by anchor number: group (1) first, then table 3.
+        const cards = Array.from(container.querySelectorAll('[data-floor-state]'));
+        expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual(['mesa-grupo-1', 'mesa-card-3']);
     });
 
-    it('reads the group account from a joined table without its own order', async () => {
+    it('reads the group account from a member without its own order', async () => {
         mockRows.tables = [
             freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
             freeTable('table-2', 2, { status: 'ocupada', group: joinedGroup, group_id: 'group-1' }),
@@ -102,7 +109,8 @@ describe('salón table groups', () => {
         mockOrderDetails['order-1'] = order('table-1', 'order-1');
         ({ container, root } = await renderPage());
 
-        await click(container.querySelector('[data-testid="mesa-card-2"]'));
+        // The mini-badge of member 2 opens its sheet, which follows the group's account.
+        await click(container.querySelector('[data-testid="mesa-grupo-miembro-2"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
         expect(sheet).not.toBeNull();
@@ -164,7 +172,7 @@ describe('salón table groups', () => {
         mockOrderDetails['order-1'] = order('table-1', 'order-1');
         ({ container, root } = await renderPage());
 
-        await click(container.querySelector('[data-testid="mesa-card-2"]'));
+        await click(container.querySelector('[data-testid="mesa-grupo-miembro-2"]'));
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
         expect(sheet.querySelector('[data-testid="mesa-sheet-ver-pedido-grupo"]')).not.toBeNull();
 
@@ -173,7 +181,7 @@ describe('salón table groups', () => {
         expect(toast.error).not.toHaveBeenCalled();
     });
 
-    it('joins two occupied tables and shows both separate bills', async () => {
+    it('shows a joined group as one big card with both separate bills summed', async () => {
         mockRows.tables = [
             freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
             freeTable('table-2', 2, { status: 'ocupada', active_attention_id: 'visit-table-2', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-2', status: 'en_preparacion', items: [] } }),
@@ -181,11 +189,13 @@ describe('salón table groups', () => {
         mockRows.orders = [order('table-1', 'order-1'), order('table-2', 'order-2', { order_number: 12, total: 18 })];
         ({ container, root } = await renderPage());
 
-        // The group says how many bills it holds instead of hiding one of them.
-        expect(container.querySelector('[data-testid="mesa-card-grupo-1"]').textContent).toContain('2 cuentas');
-        expect(container.querySelector('[data-testid="mesa-card-grupo-2"]').textContent).toContain('2 cuentas');
+        // One card, summed balance (30 + 18) and a "2 cuentas" badge: it never
+        // pretends there is a single bill.
+        expect(container.querySelector('[data-testid="mesa-grupo-1"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-grupo-cuentas"]').textContent).toContain('2 cuentas');
+        expect(container.querySelector('[data-testid="mesa-grupo-total"]').textContent).toContain('Debe S/ 48.00');
 
-        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(container.querySelector('[data-testid="mesa-grupo-1"]'));
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
         expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-resumen"]').textContent).toContain('2 cuentas separadas');
         expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-cuenta-1"]').textContent).toContain('Mesa 1');
@@ -224,11 +234,11 @@ describe('salón table groups', () => {
         mockOrderDetails['order-1'] = order('table-1', 'order-1');
         ({ container, root } = await renderPage());
 
-        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(container.querySelector('[data-testid="mesa-grupo-1"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-separar-grupo"]'));
         expect(api.delete).toHaveBeenCalledWith('/table-groups/group-1');
 
-        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(container.querySelector('[data-testid="mesa-grupo-1"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-quitar-grupo-2"]'));
         expect(api.delete).toHaveBeenCalledWith('/table-groups/group-1/tables/table-2');
     });
