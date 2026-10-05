@@ -39,6 +39,10 @@ test.describe('smoke', () => {
     await expect(page.getByTestId('funcion-voice_assistant')).toBeVisible();
     await expect(page.getByTestId('funcion-proof_ocr')).toBeVisible();
 
+    // Danger zone offers both wipes (never clicked here: they are destructive).
+    await expect(page.getByTestId('data-reset-button')).toBeVisible();
+    await expect(page.getByTestId('catalog-reset-button')).toBeVisible();
+
     // Enabling the module exposes the assistant control; disabling hides it again.
     const saveFeatures = () => Promise.all([
       page.waitForResponse((r) => r.url().includes('/restaurants/current') && r.request().method() === 'PATCH'),

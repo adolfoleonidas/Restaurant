@@ -42,6 +42,8 @@ def _match(doc, filt):
                 return False
             if "$in" in expected and doc.get(key) not in expected["$in"]:
                 return False
+            if "$nin" in expected and doc.get(key) in expected["$nin"]:
+                return False
             if "$ne" in expected and doc.get(key) == expected["$ne"]:
                 return False
         elif doc.get(key) != expected:
@@ -79,6 +81,9 @@ class _Collection:
     async def insert_one(self, doc):
         self.docs.append(copy.deepcopy(doc))
         return _Result(1)
+
+    async def count_documents(self, filt):
+        return sum(1 for doc in self.docs if _match(doc, filt))
 
 
 class _DB:
@@ -192,4 +197,61 @@ def test_reset_rejects_wrong_password(monkeypatch):
         assert caught.value.status_code == 400
         # Nothing was cleared on the failed attempt.
         assert len(db.orders.docs) == 2
+    asyncio.run(run())
+
+
+def test_catalog_reset_clears_the_menu_and_keeps_operations(monkeypatch):
+    async def run():
+        db = _DB()
+        admin = _admin(db)
+        _seed(db)
+        data_routes.db = db
+        result = await data_routes.reset_catalog(
+            DataResetRequest(confirm="ELIMINAR", password=ADMIN_PASSWORD), admin
+        )
+        assert result["status"] == "ok"
+        assert result["cleared"] == {"products": 1, "categories": 1}
+        # Menu gone for this tenant only.
+        assert db.products.docs == []
+        assert db.categories.docs == []
+        # Operational and configuration data untouched.
+        assert db.payments.docs and db.attentions.docs and db.branches.docs and db.tables.docs
+        assert any(d.get("action") == "catalog_reset" for d in db.audit_logs.docs)
+    asyncio.run(run())
+
+
+def test_catalog_reset_refuses_while_orders_are_active():
+    async def run():
+        db = _DB()
+        admin = _admin(db)
+        _seed(db)
+        # A live order for this tenant must block the wipe.
+        db.orders.docs.append({"id": "o9", "restaurant_id": RID, "status": "en_preparacion"})
+        data_routes.db = db
+        with pytest.raises(HTTPException) as caught:
+            await data_routes.reset_catalog(
+                DataResetRequest(confirm="ELIMINAR", password=ADMIN_PASSWORD), admin
+            )
+        assert caught.value.status_code == 409
+        assert len(db.products.docs) == 1
+    asyncio.run(run())
+
+
+def test_catalog_reset_requires_confirmation_and_password():
+    async def run():
+        db = _DB()
+        admin = _admin(db)
+        _seed(db)
+        data_routes.db = db
+        with pytest.raises(HTTPException) as wrong_confirm:
+            await data_routes.reset_catalog(
+                DataResetRequest(confirm="eliminar", password=ADMIN_PASSWORD), admin
+            )
+        assert wrong_confirm.value.status_code == 400
+        with pytest.raises(HTTPException) as wrong_password:
+            await data_routes.reset_catalog(
+                DataResetRequest(confirm="ELIMINAR", password="wrong-password"), admin
+            )
+        assert wrong_password.value.status_code == 400
+        assert len(db.products.docs) == 1
     asyncio.run(run())

@@ -351,6 +351,10 @@ function Datos() {
     const [confirm, setConfirm] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [catalogOpen, setCatalogOpen] = useState(false);
+    const [catalogConfirm, setCatalogConfirm] = useState('');
+    const [catalogPassword, setCatalogPassword] = useState('');
+    const [catalogLoading, setCatalogLoading] = useState(false);
     const [info, setInfo] = useState(null);
     const [infoError, setInfoError] = useState(false);
 
@@ -387,6 +391,31 @@ function Datos() {
         setOpen(false);
         setConfirm('');
         setPassword('');
+    };
+
+    const resetCatalog = async () => {
+        if (catalogConfirm.trim() !== 'ELIMINAR') { toast.error('Escribe ELIMINAR para confirmar'); return; }
+        if (!catalogPassword) { toast.error('Ingresa tu contraseña de administrador'); return; }
+        setCatalogLoading(true);
+        try {
+            const { data } = await api.post('/data/catalog', { confirm: catalogConfirm.trim(), password: catalogPassword });
+            const cleared = data?.cleared || {};
+            toast.success(`Carta vaciada: ${cleared.products ?? 0} platos y ${cleared.categories ?? 0} categorías`);
+            setCatalogOpen(false);
+            setCatalogConfirm('');
+            setCatalogPassword('');
+            loadInfo();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo vaciar la carta');
+        } finally {
+            setCatalogLoading(false);
+        }
+    };
+
+    const cancelCatalog = () => {
+        setCatalogOpen(false);
+        setCatalogConfirm('');
+        setCatalogPassword('');
     };
 
     return (
@@ -439,6 +468,55 @@ function Datos() {
                     <Trash2 className="h-4 w-4 mr-2" /> Restablecer datos operativos
                 </Button>
             </div>
+
+            <div className="mt-5 border-t pt-4">
+                <h3 className="font-display text-base font-semibold flex items-center gap-2 text-destructive">
+                    <Trash2 className="h-4 w-4" /> Vaciar carta
+                </h3>
+                <p className="text-sm text-muted-foreground mt-2 mb-3">
+                    Borra el menú completo (platos, combos y categorías) para cargar el tuyo desde
+                    <strong> Carta → Importar</strong>. No toca pedidos, mesas, sucursales ni usuarios.
+                </p>
+                <Button variant="destructive" onClick={() => setCatalogOpen(true)} data-testid="catalog-reset-button">
+                    <Trash2 className="h-4 w-4 mr-2" /> Vaciar carta
+                </Button>
+            </div>
+
+            <AlertDialog open={catalogOpen} onOpenChange={(o) => { if (!o) cancelCatalog(); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Vaciar la carta completa?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <div className="space-y-3 text-sm">
+                        <p>
+                            Se borrarán <strong>todos los platos, combos y categorías</strong>. Los pedidos ya
+                            registrados conservan su detalle. Esta acción <strong>no se puede deshacer</strong>.
+                        </p>
+                        <p className="text-muted-foreground">
+                            Si hay pedidos activos el sistema lo rechaza: cerralos o restablecé primero los datos operativos.
+                        </p>
+                        <div>
+                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input value={catalogConfirm} onChange={(e) => setCatalogConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="catalog-reset-confirm" />
+                        </div>
+                        <div>
+                            <Label>Contraseña de administrador</Label>
+                            <Input type="password" value={catalogPassword} onChange={(e) => setCatalogPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="catalog-reset-password" />
+                        </div>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={cancelCatalog}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={catalogLoading || catalogConfirm.trim() !== 'ELIMINAR' || !catalogPassword}
+                            onClick={resetCatalog}
+                            data-testid="catalog-reset-confirm-button"
+                        >
+                            {catalogLoading ? 'Vaciando…' : 'Vaciar carta'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={open} onOpenChange={(o) => { if (!o) cancel(); }}>
                 <AlertDialogContent>

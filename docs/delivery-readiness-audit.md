@@ -35,14 +35,20 @@ las pasaba al contenedor**.
 - **Arreglo aplicado**: las 4 `SEED_*_PASSWORD` van ahora en el `environment:` de `docker-compose.yml` con `${VAR:?...}`, así `docker compose up` **falla rápido con un mensaje claro** en vez de reintentar en silencio. `env.example` documenta los dos modos (desarrollo vs restaurante real).
 - **Verificado** (base limpia, `APP_ENV=production`): sin las claves → `RuntimeError: SEED_ADMIN_PASSWORD must be set to a password that is not a demo default`; con ellas → arranca y crea el restaurante + admin. `docker compose config` confirma el fail-fast y la inyección.
 
-### 2. La producción sirve **datos demo** de otro restaurante
+### 2. La producción sirve **datos demo** de otro restaurante — 🟠 herramienta lista, carga pendiente
 Verificado en vivo contra `http://93.127.214.26:8081/api/public/restaurant`:
 > "Sabor Peruano" · Av. Larco 123, Miraflores · +51 999 888 777 · portada de **pexels** · `@saborperuano` · WhatsApp demo
 
-Y el seed demo **habilita Yape/Plin/transferencia con números de teléfono y CCI demo**
-(`seed.py:181-202`): si el restaurante no los cambia, **el dinero de sus clientes puede ir a una
-cuenta ajena**. Además crea 4 cuentas con contraseñas conocidas (`seed.py:204-232`).
-- **Fix**: cargar marca, carta, mesas, usuarios y métodos de pago reales antes de abrir.
+**Lo más urgente, también verificado en vivo**: en `/api/public/payment-config` están **habilitados
+Yape y Plin con el número demo `999 888 777`** y **transferencia con el CCI demo
+`00219400123456780123`**. Si el local abre así, **el dinero de los clientes va a una cuenta ajena**.
+Además la carta pública tiene **8 categorías y 14 productos demo** y hay **10 mesas demo**.
+- **Herramienta agregada**: `Ajustes → Datos → Vaciar carta` (`POST /data/catalog`) borra platos,
+  combos y categorías de una, con las mismas guardas que el reset (admin + `ELIMINAR` + contraseña)
+  **más** un rechazo (409) si hay pedidos activos, para no vaciar el menú a mitad de servicio.
+- **Carga pendiente (la hace el dueño desde el panel)**: marca en `Ajustes → Restaurante/Marca`,
+  carta real con `Carta → Importar` (Excel), mesas/zonas en `Local`, usuarios en `Equipo` y
+  **métodos de pago reales en `Pagos`** — esto último es lo primero que hay que cambiar.
 
 ### 3. Sin sucursal **no se puede operar nada**
 Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
