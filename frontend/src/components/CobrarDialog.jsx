@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { api } from '@/lib/api';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { Banknote, Smartphone, CreditCard, Building2, ArrowLeftRight, CheckCircle2, Printer, Copy, Info, Lock, HelpCircle, X, ChevronDown, Maximize2 } from 'lucide-react';
@@ -518,8 +519,10 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const proofAlreadySent = acct.payment_status === 'comprobante_subido' || proofSent;
 
     return (
-        <div className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }}>
-        <div className="cobro-checkout" ref={dialogRef} tabIndex={-1} data-testid="caja-cobrar-dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+        <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
+        <DialogPrimitive.Portal>
+            <DialogPrimitive.Overlay className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }} />
+        <DialogPrimitive.Content className="cobro-checkout" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-testid="caja-cobrar-dialog" aria-labelledby="checkout-title" onEscapeKeyDown={(e) => { if (loading || result || proofSending) e.preventDefault(); }}>
             {!online && <div className="offline-banner" role="status">Sin conexión. Reconecta para registrar pagos.</div>}
             {/* Header */}
             <header className="cobro-checkout-header">
@@ -1130,7 +1133,8 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
             {/* Toast */}
             {toastMsg && <div className="cobro-toast show" role="status">{toastMsg}</div>}
-        </div>
-        </div>
+        </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+        </DialogPrimitive.Root>
     );
 }

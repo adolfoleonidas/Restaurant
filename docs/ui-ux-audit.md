@@ -554,6 +554,41 @@ Con esta medición el estado real del diálogo es: **aria-modal ✅, foco inicia
 
 La migración completa a Dialog de Radix sigue **pendiente y deliberadamente no intentada**: es el diálogo de dinero (1109 líneas + cobro.css de 817 líneas, con posicionamiento propio que competiría con las clases de DialogContent), y ahora que sí hay verificación en vivo (R9 + R10) queda preparada para hacerse en una ronda dedicada, midiendo antes y después con el mismo arnés.
 
+---
+
+## 🔄 Ronda 11 del objetivo — CobrarDialog migrado a Radix (último ítem del objetivo)
+
+### Arreglos aplicados
+
+| # | Ítem del objetivo | Cambio | Archivo |
+|---|---|---|---|
+| R11-1 | **CobrarDialog migrado al Dialog de Radix** | El overlay artesanal (<div className="cobro-overlay"> + <div role="dialog">) pasa a envolverse en los primitivos de Radix: DialogPrimitive.Root (con open/onOpenChange), Portal, Overlay y Content. Radix aporta el comportamiento de modal: trampa de foco nativa, Escape, retorno de foco, cierre al pulsar fuera y ocultación del fondo para los lectores de pantalla. Se conserva cobro.css completo, así que **el aspecto no cambia**: los primitivos aceptan el className propio. Se conserva además la red de seguridad que ya tenía el diálogo: Escape no cierra si hay un cobro, un pago o un comprobante en curso (onEscapeKeyDown con preventDefault) | components/CobrarDialog.jsx |
+
+### Verificación en vivo (e2e/audit/checks7.mjs, cajero, build de :3001, con la cuenta #27 de la ronda 10)
+
+| Comprobación | Antes (hand-rolled) | Ahora (Radix) |
+|---|---|---|
+| El botón *Cobrar* abre el diálogo | ✅ | ✅ |
+| ole="dialog" + ria-modal="true" | ✅ | ✅ |
+| El foco entra al diálogo al abrirlo | ✅ | ✅ |
+| 25 tabulaciones sin salir del diálogo | ✅ 0 escapes | ✅ 0 escapes |
+| Escape cierra | ✅ | ✅ |
+| El foco vuelve al botón "Cobrar" | ✅ | ✅ |
+| Cierre al pulsar fuera del diálogo | ❌ solo con clic en el overlay | ✅ nativo de Radix |
+
+problems: [] → **PASS** en ambas configuraciones.
+
+### Nota honesta sobre inert
+
+El sondeo sigue mostrando inertBackground: 0: Radix **no** escribe el atributo inert en los hijos de ody, sino que oculta el fondo para los lectores de pantalla con ria-hidden y bloquea la interacción externa con su propia capa dismissable. El efecto práctico —foco atrapado, ria-modal, Escape, retorno de foco y cierre al clic fuera— queda cubierto; queda anotado para no dar por resuelto algo que el medidor dice que no lo está.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
+| Pasa de revisión: el resto del backlog del objetivo quedó cerrado en las rondas 1 a 11 | — |
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)
