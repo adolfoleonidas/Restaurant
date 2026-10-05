@@ -4,6 +4,7 @@ import re
 import uuid
 from database import db
 from auth import get_current_user, require_roles
+from branch_access import record_branch_filter
 from models import ProductCreate, ProductUpdate, ProductAvailability, ProductsImport
 from notify import emit_notice
 
@@ -228,16 +229,19 @@ async def set_availability(product_id: str, data: ProductAvailability, user: dic
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     await db.products.update_one(
-        {"id": product_id},
+        {"id": product_id, "restaurant_id": user["restaurant_id"]},
         {"$set": {"is_available": data.is_available, "updated_at": _now()}},
     )
     pending = []
     if not data.is_available:
+        # Only the caller's own branch: kitchen staff must not learn about other
+        # branches' pending orders through this response.
         orders = await db.orders.find(
             {
                 "restaurant_id": user["restaurant_id"],
                 "status": {"$nin": ["pagado", "cancelado"]},
                 "items.product_id": product_id,
+                **record_branch_filter(user),
             },
             {"_id": 0, "id": 1, "order_number": 1, "table_id": 1, "status": 1, "items": 1},
         ).to_list(200)
@@ -252,7 +256,7 @@ async def set_availability(product_id: str, data: ProductAvailability, user: dic
                     "quantity": qty,
                 })
     emit_notice(user["restaurant_id"], "product", product_id=product_id, is_available=data.is_available)
-    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    updated = await db.products.find_one({"id": product_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     return {"product": updated, "pending_orders": pending}
 
 
