@@ -57,11 +57,15 @@ Verification is local: FastAPI routes are exercised against in-memory collection
 Rollback: revert the group endpoints/collection and the transfer route together with their helpers, UI and tests; drop `table_groups` and the `group_id`/`group_joined_status` fields on `tables` (the operational reset already unsets them). No existing order, payment, attention or cash behavior depends on the new feature.
 
 ## Progress and next step
-Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in work-unit commits (backend, frontend, docs). The user authorized publishing the branch, so `refs/heads/feat/unir-mesas` exists on origin. `main` was **not** touched, so the `Deploy to VPS` workflow (triggered only by a push to `main`) did not run.
+Implementation and both local suites are green in the worktree `.worktrees/unir-mesas` on branch `feat/unir-mesas`, in work-unit commits (backend, frontend, docs, one sheet fix). The user authorized publishing the branch, so `refs/heads/feat/unir-mesas` exists on origin. `main` itself was **not** touched, so the `Deploy to VPS` workflow (triggered only by a push to `main`) did not run.
 
-`main` advanced while this ran (`f3d5d0f..255de43`, five commits: cash/payments/public/TLS-deploy work). None of those commits touch a file this branch changed, and `git merge-tree` reports a clean merge against the new `main`, so no rebase is required.
+`main` moved twice while this ran (`f3d5d0f..8f88e76`: cash/payments/public/TLS-deploy work, then per-branch table numbers and zone names, the login limiter fix and the API error handling). The second batch overlapped this branch in `backend/database.py`, `backend/routes/data.py`, `backend/routes/tables.py`, `backend/server.py` and `tests/test_data_reset.py`, so `main` was merged **into** this branch instead of leaving it stale:
 
-Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main` locally, or build the future capability specified below.
+- `c3645de Merge main into feat/unir-mesas`. Everything auto-merged except one hunk in `database.py`: the index block, resolved by keeping this branch's `table_groups`/`group_id` indexes **and** main's per-branch zone index (which supersedes the tenant-wide one, so the old line is not re-created). The auto-merge of `tests/test_data_reset.py` correctly kept both sides' assertions.
+- Merged state re-verified: backend `python.exe -m pytest tests -m "not integration" -q` -> **387 passed, 49 deselected** (includes main's new tests); frontend `craco test --watchAll=false --runInBand` -> **33 suites / 213 tests passed**.
+- `main` is now an ancestor of this branch, so merging the branch into `main` is a fast-forward and `git merge-tree` reports no conflicts. Any push to `main` still triggers the production deploy.
+
+Next possible steps, if requested: open the pull request (`https://github.com/adolfoleonidas/Restaurant/pull/new/feat/unir-mesas`), merge into `main`, or build the future capability specified below.
 
 ## Future capability (NOT implemented, NOT authorized): join tables that already have their own orders
 
