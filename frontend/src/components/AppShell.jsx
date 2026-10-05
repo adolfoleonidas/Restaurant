@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
+import { AssistantBar } from '@/components/AssistantBar';
 import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import {
@@ -147,6 +148,7 @@ export const AppShell = () => {
                     <div className="flex items-center gap-2">
                         <RoleInbox />
                         <KitchenAlerts />
+                        <AssistantBar />
                         <ThemeToggle />
                         <div className="hidden sm:flex flex-col items-end leading-tight">
                             <span className="text-sm font-medium">{user.full_name}</span>

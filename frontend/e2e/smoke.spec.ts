@@ -19,6 +19,16 @@ test.describe('smoke', () => {
     expect(token).toBeTruthy();
     await page.screenshot({ path: 'e2e/artifacts/smoke-03-after-login.png' });
 
+    // Voice assistant: off by default, switchable per device.
+    const voiceToggle = page.getByTestId('assistant-toggle');
+    await expect(voiceToggle).toBeVisible();
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
+    await voiceToggle.click();
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('assistant-silence')).toBeVisible();
+    await voiceToggle.click();
+    await expect(voiceToggle).toHaveAttribute('aria-pressed', 'false');
+
     // Admin management modules are reachable (Local holds sedes/zonas/mesas).
     await page.goto('/local');
     await expect(page.getByTestId('local-root')).toBeVisible({ timeout: 15_000 });

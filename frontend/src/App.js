@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider } from '@/contexts/AuthContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
+import { AssistantProvider } from '@/contexts/AssistantContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppShell } from '@/components/AppShell';
 import { PublicLayout } from '@/components/PublicLayout';
@@ -45,6 +46,7 @@ function App() {
             <AuthProvider>
                     <CartProvider>
                         <LiveOrderProvider>
+                            <AssistantProvider>
                             <BrowserRouter>
                                 <ScrollToTop />
                                 <Routes>
@@ -87,6 +89,7 @@ function App() {
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
                         </BrowserRouter>
+                            </AssistantProvider>
                     </LiveOrderProvider>
                 </CartProvider>
             </AuthProvider>
