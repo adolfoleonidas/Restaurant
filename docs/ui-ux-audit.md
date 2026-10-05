@@ -436,8 +436,6 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ## Datos duros de la corrida
 
-## Datos duros de la corrida
-
 ### Accesibilidad (axe-core, 131 visitas)
 
 270 instancias de regla que abarcan **428 nodos**.
