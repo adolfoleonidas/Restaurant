@@ -408,6 +408,34 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ---
 
+## 🔄 Ronda 5 del objetivo — landmarks de la pantalla de acceso denegado y h1 de caja en carga
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R5-1 | `/unauthorized` sin landmarks (45 de los 46 nodos de axe que restaban) | La pantalla vive fuera de `AppShell` y de `PublicLayout`, así que **no tenía ningún landmark**: axe marcaba `landmark-one-main` (9) y contenido fuera de región (36, el kicker, el `h1`, el párrafo y el enlace). Se envuelve en `<main>` | `pages/Unauthorized.jsx` |
+| R5-2 | Estado de carga de Caja sin `h1` | El `Cargando…` de Caja no tenía encabezado ni jerarquía (el único nodo de `page-has-heading-one` que quedaba, en `cajero@desktop`). Ahora muestra el mismo kicker y `h1` que la página | `pages/Caja.jsx` |
+
+### Verificación
+
+- **Matriz de verificación** (53 visitas: mozo, cajero y cocina × desktop + móvil, más el público × 2 viewports, contra el build servido en :3001): **0 banderas de axe en las 53 visitas**. En concreto:
+  - las **6 visitas a `/unauthorized`** (antes `axe:2` cada una) quedan **limpias**;
+  - `caja@desktop/cajero` (antes `axe:1`) queda **limpia**;
+  - ninguna pantalla de salón, cocina, pedidos, caja o comprobantes vuelve a marcar.
+- Con esto se cierra la cadena de accesibilidad de la matriz: **`meta-viewport`, `button-name`, `color-contrast`, `page-has-heading-one`, `landmark-one-main`, `region`, `aria-valid-attr-value`, `label`, `select-name`, `scrollable-region-focusable` y `aria-prohibited-attr` pasan de 428 nodos infractores (baseline) a 0** en la última medición completa de la ronda 3 y 0 en esta matriz de verificación.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Texto <12 px en salón y cocina | `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado; toca diez archivos y puede desplazar el layout |
+| Migrar `CobrarDialog` al `Dialog` de Radix | Ya tiene trampa de foco, `aria-modal` y retorno de foco a mano; Radix añadiría `inert` nativo y un manejo más limpio de los subdiálogos |
+
+---
+
+## Datos duros de la corrida
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)

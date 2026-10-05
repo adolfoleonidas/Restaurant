@@ -657,7 +657,15 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     };
 
     if (loading && register == null) {
-        return <div className="text-muted-foreground">Cargando…</div>;
+        return (
+            <div className="space-y-5" data-testid="caja-root">
+                <div>
+                    <p className="page-kicker mb-1">Caja</p>
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+                </div>
+                <p className="text-sm text-muted-foreground">Cargando caja…</p>
+            </div>
+        );
     }
 
     if (!register) return (
