@@ -754,13 +754,8 @@ jobs:
               echo "Server tracked worktree is not clean"
               exit 1
             fi
-            if ! git fetch --quiet origin main; then
-              echo "Cannot fetch main for deployment"
-              exit 1
-            fi
-            fetched_commit=$(git rev-parse --verify refs/remotes/origin/main)
-            if [ "$fetched_commit" != "$EXPECTED_COMMIT" ]; then
-              echo "Fetched main does not match the workflow commit"
+            if ! git fetch --quiet origin "$EXPECTED_COMMIT"; then
+              echo "Cannot fetch the workflow commit for deployment"
               exit 1
             fi
             git merge --ff-only "$EXPECTED_COMMIT"
