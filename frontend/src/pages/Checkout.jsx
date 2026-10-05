@@ -54,6 +54,7 @@ export default function Checkout() {
     const [copied, setCopied] = useState(null);
     const [proofFile, setProofFile] = useState(null); // data URL
     const [uploading, setUploading] = useState(false);
+    const [uploadPct, setUploadPct] = useState(0);
 
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data));
@@ -149,11 +150,18 @@ export default function Checkout() {
     const uploadProof = async () => {
         if (!proofFile || !confirmed) return;
         setUploading(true);
+        setUploadPct(0);
         try {
-            await api.post(`/public/orders/${confirmed.tracking_code}/proof`, { payment_proof: proofFile });
+            // El comprobante es una imagen en base64: en datos móviles el envío
+            // tarda y sin progreso el cliente reintentaba creyendo que colgó.
+            await api.post(`/public/orders/${confirmed.tracking_code}/proof`, { payment_proof: proofFile }, {
+                onUploadProgress: (event) => {
+                    if (event.total) setUploadPct(Math.round((event.loaded / event.total) * 100));
+                },
+            });
             toast.success('Comprobante enviado al restaurante');
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo subir'); }
-        finally { setUploading(false); }
+        finally { setUploading(false); setUploadPct(0); }
     };
 
     const submit = async () => {
@@ -253,7 +261,7 @@ export default function Checkout() {
                                 <div className="flex-1">
                                     <div className="text-sm font-medium">Captura cargada</div>
                                     <div className="flex gap-2 mt-2">
-                                        <Button size="sm" onClick={uploadProof} disabled={uploading} data-testid="checkout-upload-proof"><Upload className="h-4 w-4 mr-1" />Enviar al restaurante</Button>
+                                        <Button size="sm" onClick={uploadProof} disabled={uploading} data-testid="checkout-upload-proof"><Upload className="h-4 w-4 mr-1" />{uploading && uploadPct > 0 ? `Enviando ${uploadPct}%` : 'Enviar al restaurante'}</Button>
                                         <Button size="sm" variant="outline" onClick={() => setProofFile(null)}>Cambiar</Button>
                                     </div>
                                 </div>
@@ -344,9 +352,9 @@ export default function Checkout() {
                                                 className={`rounded-sm border p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
                                             >
                                                 <div className="font-display text-xl font-semibold">{t.number}</div>
-                                                <div className="text-[11px] text-muted-foreground">{t.area}</div>
-                                                {billPending && <div className="mt-1 text-[10px] font-medium text-amber-700">Cuenta solicitada</div>}
-                                                {blocked && !billPending && <div className="mt-1 text-[10px] font-medium text-red-700">Ocupado</div>}
+                                                <div className="text-xs text-muted-foreground">{t.area}</div>
+                                                {billPending && <div className="mt-1 text-xs font-medium text-amber-700">Cuenta solicitada</div>}
+                                                {blocked && !billPending && <div className="mt-1 text-xs font-medium text-red-700">Ocupado</div>}
                                             </button>
                                         );
                                     })}
@@ -388,11 +396,11 @@ export default function Checkout() {
                             <p className="text-sm text-muted-foreground mb-3">Los necesitamos para entregarte el pedido.</p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><Label>Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} className="h-11" data-testid="checkout-nombre" /></div>
-                            <div><Label>Celular{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
-                            <div className="sm:col-span-2"><Label>Correo (opcional)</Label><Input type="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
+                            <div><Label>Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoComplete="name" className="h-11" data-testid="checkout-nombre" /></div>
+                            <div><Label>Celular{orderType === 'local' ? '' : ' *'}</Label><Input type="tel" inputMode="tel" autoComplete="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
+                            <div className="sm:col-span-2"><Label>Correo (opcional)</Label><Input type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
                             {orderType === 'delivery' && (
-                                <div className="sm:col-span-2"><Label>Dirección de entrega *</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
+                                <div className="sm:col-span-2"><Label>Dirección de entrega *</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} autoComplete="street-address" placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
                             )}
                             <div className="sm:col-span-2"><Label>Observaciones del pedido (opcional)</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sin picante, cubiertos extra…" /></div>
                         </div>
@@ -402,7 +410,7 @@ export default function Checkout() {
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-3">Método de pago</h2>
                         <Tabs value={method} onValueChange={setMethod}>
-                            <TabsList className="flex flex-wrap h-auto">
+                            <TabsList className="grid grid-cols-2 gap-1 h-auto sm:grid-cols-none sm:flex sm:flex-wrap">
                                 {enabledMethods.map((m) => {
                                     const Icon = METHOD_ICON[m];
                                     return <TabsTrigger key={m} value={m} data-testid={`checkout-method-${m}`}><Icon className="h-4 w-4 mr-1" />{PAYMENT_LABELS[m]}</TabsTrigger>;
@@ -416,7 +424,12 @@ export default function Checkout() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                                         <div className="flex items-center justify-center">
                                             {paymentCfg[`${method}_qr`] ? (
-                                                <img src={paymentCfg[`${method}_qr`]} alt={`QR ${method}`} className="max-h-56 rounded-xl border bg-white p-2" />
+                                                /* Caja fija para el QR: con max-h-56 la
+                                                   tarjeta crecía justo donde se lee
+                                                   el monto (y el dedo ya está ahí). */
+                                                <div className="h-56 w-56 shrink-0 rounded-xl border bg-white p-2 flex items-center justify-center">
+                                                    <img src={paymentCfg[`${method}_qr`]} alt={`QR ${method}`} width={224} height={224} loading="eager" decoding="async" className="max-h-full max-w-full object-contain" />
+                                                </div>
                                             ) : (
                                                 <div className="h-56 w-56 rounded-xl border-2 border-dashed flex items-center justify-center text-muted-foreground text-sm text-center px-4">QR no configurado aún</div>
                                             )}
@@ -435,15 +448,17 @@ export default function Checkout() {
                             {method === 'transferencia' && paymentCfg && (
                                 <div className="rounded-xl border bg-secondary/30 p-4 space-y-2">
                                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Banco</span><span className="font-semibold">{paymentCfg.bank_name || '—'}</span></div>
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-muted-foreground">Cuenta</span>
-                                        <div className="flex items-center gap-2"><span className="font-mono">{paymentCfg.bank_account || '—'}</span>
-                                            <Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Copiar número de cuenta" onClick={() => copyText(paymentCfg.bank_account || '', 'acc')}><Copy className="h-4 w-4" /></Button></div>
+                                        <div className="flex items-center gap-2 min-w-0 max-w-full">
+                                            <span className="font-mono text-xs break-all">{paymentCfg.bank_account || '—'}</span>
+                                            <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0" aria-label="Copiar número de cuenta" onClick={() => copyText(paymentCfg.bank_account || '', 'acc')}><Copy className="h-4 w-4" /></Button></div>
                                     </div>
-                                    <div className="flex items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
                                         <span className="text-muted-foreground">CCI</span>
-                                        <div className="flex items-center gap-2"><span className="font-mono">{paymentCfg.bank_cci || '—'}</span>
-                                            <Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Copiar CCI" onClick={() => copyText(paymentCfg.bank_cci || '', 'cci')}><Copy className="h-4 w-4" /></Button></div>
+                                        <div className="flex items-center gap-2 min-w-0 max-w-full">
+                                            <span className="font-mono text-xs break-all">{paymentCfg.bank_cci || '—'}</span>
+                                            <Button size="icon" variant="ghost" className="h-11 w-11 shrink-0" aria-label="Copiar CCI" onClick={() => copyText(paymentCfg.bank_cci || '', 'cci')}><Copy className="h-4 w-4" /></Button></div>
                                     </div>
                                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Titular</span><span>{paymentCfg.bank_holder || '—'}</span></div>
                                     {paymentCfg.transfer_instructions && <div className="text-xs text-muted-foreground pt-2">{paymentCfg.transfer_instructions}</div>}
@@ -469,7 +484,7 @@ export default function Checkout() {
                                     <div key={it.product_id} className="py-2 flex justify-between text-sm gap-2">
                                         <div className="flex-1"><div className="font-medium truncate">{it.name}</div>
                                             <div className="text-xs text-muted-foreground tabular-nums">{it.quantity} x {fmtMoney(it.price)}</div>
-                                            {it.notes && <div className="text-[11px] italic text-muted-foreground mt-0.5">“{it.notes}”</div>}
+                                            {it.notes && <div className="text-xs italic text-muted-foreground mt-0.5">“{it.notes}”</div>}
                                         </div>
                                         <div className="tabular-nums font-semibold">{fmtMoney(it.price * it.quantity)}</div>
                                     </div>

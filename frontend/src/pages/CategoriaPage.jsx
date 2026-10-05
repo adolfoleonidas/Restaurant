@@ -4,24 +4,59 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import { Skeleton } from '@/components/ui/skeleton';
 import usePublicStream from '@/hooks/usePublicStream';
 
 const byAvailable = (a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1));
+
+// Mismo esqueleto que la carta (imagen 96×112 + tres líneas): sin él, la
+// categoría arrancaba con items=[] y pintaba "No hay platos en esta categoría"
+// para después meter la rejilla (falso vacío + salto).
+function ProductCardSkeleton() {
+    return (
+        <div className="w-full rounded-xl border border-border bg-card overflow-hidden flex flex-row outline-none">
+            <Skeleton className="h-28 w-24 shrink-0 rounded-none" />
+            <div className="min-w-0 p-3 sm:p-4 flex flex-col gap-2 flex-1">
+                <Skeleton className="h-5 w-3/4" />
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+                <div className="mt-auto pt-2 flex items-center justify-between gap-3">
+                    <Skeleton className="h-6 w-20" />
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                </div>
+            </div>
+        </div>
+    );
+}
 
 export default function CategoriaPage() {
     const { id } = useParams();
     const [restaurant, setRestaurant] = useState(null);
     const [categories, setCategories] = useState([]);
     const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState(false);
+    const [reloadToken, setReloadToken] = useState(0);
     const { generation } = usePublicStream({ restaurantId: restaurant?.id });
 
     useEffect(() => {
+        let active = true;
+        // Sin .catch, un fallo de red se veía como una categoría vacía.
+        setLoadError(false);
         Promise.all([
             api.get('/public/restaurant').then((r) => r.data),
             api.get('/public/categories').then((r) => r.data),
             api.get('/public/products').then((r) => r.data),
-        ]).then(([r, c, p]) => { setRestaurant(r); setCategories(c); setProducts(p); });
-    }, []);
+        ]).then(([r, c, p]) => {
+            if (!active) return;
+            setRestaurant(r); setCategories(c); setProducts(p);
+        }).catch(() => {
+            if (active) setLoadError(true);
+        }).finally(() => {
+            if (active) setLoading(false);
+        });
+        return () => { active = false; };
+    }, [reloadToken]);
 
     useEffect(() => {
         window.scrollTo({ top: 0, behavior: 'instant' });
@@ -63,14 +98,25 @@ export default function CategoriaPage() {
                 </div>
                 <span className="page-kicker">{items.length}</span>
             </div>
-            {items.length === 0 ? (
+            {loading ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4" data-testid="categoria-skeleton" aria-hidden="true">
+                    {Array.from({ length: 6 }).map((_, i) => <ProductCardSkeleton key={i} />)}
+                </div>
+            ) : loadError ? (
+                <div className="py-16 text-center" data-testid="categoria-load-error">
+                    <p className="text-muted-foreground">Revisá tu conexión y volvé a intentar.</p>
+                    <Button type="button" variant="outline" className="mt-3" onClick={() => setReloadToken((n) => n + 1)} data-testid="categoria-retry">
+                        Reintentar
+                    </Button>
+                </div>
+            ) : items.length === 0 ? (
                 <div className="py-20 text-center text-muted-foreground font-display text-xl">No hay platos en esta categoría.</div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
                     {items.map((p) => (
                         <ProductCard key={p.id} product={p}>
                             {isCombos && (
-                                <ul className="text-[11px] text-muted-foreground space-y-0.5">
+                                <ul className="text-xs text-muted-foreground space-y-0.5">
                                     {(p.combo_components || []).map((c) => (
                                         <li key={c.product_id}>{c.quantity}× {c.product_name}</li>
                                     ))}

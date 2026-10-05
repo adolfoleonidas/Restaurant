@@ -22,13 +22,15 @@ export const CartPanel = ({ onClose }) => {
     const cartMode = isActive && mode === 'cart';
     const showLive = isActive && !cartMode;
 
+    // h-11 sm:h-8: elegir mal el modo cambia el pedido, así que en móvil el
+    // cambio de pestaña necesita el área táctil de 44 px.
     const tabs = isActive ? (
         <div className="grid grid-cols-2 gap-1 p-1 bg-secondary/50 rounded-sm mb-4">
             <button
                 type="button"
                 onClick={() => setMode('live')}
                 data-testid="cart-tab-live"
-                className={`h-8 rounded-sm text-sm font-medium transition-colors ${showLive ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`h-11 sm:h-8 rounded-sm text-sm font-medium transition-colors ${showLive ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
                 {(order && !['mesa', 'local'].includes(order.order_type)) ? 'Tu pedido' : 'En tu mesa'}
             </button>
@@ -36,7 +38,7 @@ export const CartPanel = ({ onClose }) => {
                 type="button"
                 onClick={() => setMode('cart')}
                 data-testid="cart-tab-cart"
-                className={`h-8 rounded-sm text-sm font-medium transition-colors ${cartMode ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`h-11 sm:h-8 rounded-sm text-sm font-medium transition-colors ${cartMode ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
                 Para llevar
             </button>
@@ -85,7 +87,7 @@ export const CartPanel = ({ onClose }) => {
                         );
                     })}
                 </div>
-                <div className="border-t border-border p-4 space-y-3">
+                <div className="border-t border-border p-4 pb-[calc(1rem+var(--safe-bottom))] space-y-3">
                     <div className="carta-row font-display text-lg">
                         <span>Total</span>
                         <span className="carta-dots" />
@@ -131,7 +133,7 @@ export const CartPanel = ({ onClose }) => {
                             </div>
                             <span className="font-mono font-semibold tabular-nums text-primary">{fmtMoney(it.price * it.quantity)}</span>
                         </div>
-                        <Input value={it.notes || ''} onChange={(e) => setNotes(it.product_id, e.target.value)} placeholder="Notas (ej: sin cebolla)" className="h-9 text-xs rounded-sm" />
+                        <Input value={it.notes || ''} onChange={(e) => setNotes(it.product_id, e.target.value)} placeholder="Notas (ej: sin cebolla)" className="h-11 rounded-sm" />
                     </div>
                 ))}
             </div>
