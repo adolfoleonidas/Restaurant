@@ -17,7 +17,12 @@ export function newIdempotencyKey() {
 }
 
 export function accountLabel(order) {
-    if (order.table_id) return `Mesa ${order.table_number || order.table_id.slice(0, 4)}`;
+    // Never fall back to the table id: a truncated uuid means nothing to the cashier.
+    if (order.table_id) {
+        const table = order.table_number ? `Mesa ${order.table_number}` : 'Mesa';
+        const ref = order.order_number ? ` · #${order.order_number}` : '';
+        return `${table}${ref}`;
+    }
     if (order.source === 'public') return `Pedido web #${order.order_number}${order.customer_name ? ` — ${order.customer_name}` : ''}`;
     return `${ORDER_TYPE_LABELS[order.order_type] || 'Pedido'} #${order.order_number}`;
 }

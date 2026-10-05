@@ -235,7 +235,9 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         if (!online) return false;
         if (tipInvalid) return false;
         if (chargeAmount <= 0) return false;
-        if (method === 'cash') return r !== null && r >= chargeAmount;
+        // Cash with an empty field means "exact": the payload already defaults
+        // received_amount to the charge, so the cashier is never stuck.
+        if (method === 'cash') return !received.trim() || (r !== null && r >= chargeAmount);
         if (method === 'mixed') return md.valid;
         return true;
     };
@@ -456,7 +458,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         if (result) return '';
         if (tipInvalid) return 'Corrige la propina para continuar';
         if (!canRegister()) {
-            if (method === 'cash' && !r) return 'Ingresa el efectivo recibido';
+            if (method === 'cash' && !r) return 'Monto exacto · escribí el efectivo recibido si te dan un billete mayor';
             if (method === 'cash' && r < chargeAmount) return 'El efectivo recibido no cubre el total';
             if (method === 'mixed') return 'Completa los montos del pago mixto';
             if (chargeAmount <= 0) return 'Selecciona al menos un ítem';
@@ -478,6 +480,12 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 <div>
                     <h1 id="checkout-title">{accountLabel(acct)}</h1>
                     <div className="header-meta">
+                        {acct.attention_number ? (
+                            <>
+                                <span>Atención {acct.attention_number}</span>
+                                <span className="dot" />
+                            </>
+                        ) : null}
                         <span>{(acct.items || []).length} items</span>
                         <span className="dot" />
                         <span>{result ? 'Pagada' : paid > 0 ? 'Pago parcial' : 'Cuenta abierta'}</span>
