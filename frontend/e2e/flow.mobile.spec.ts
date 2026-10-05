@@ -39,8 +39,11 @@ test('mobile: mozo → cocina → caja con CobrarDialog táctil', async ({ page 
   await logout(page);
   await login(page, TEST_USERS.cocina.email, TEST_USERS.cocina.password);
   await expect(page.getByTestId('cocina-kanban')).toBeVisible({ timeout: 15_000 });
+  // Scope to this run's table: stale tickets from other runs share the column.
+  // Tables are seeded as "Mesa E2E <number>", so match the number only.
   const lleganTicket = page
     .locator('[data-testid^="cocina-ticket-"][data-testid$="-llegan"]')
+    .filter({ hasText: String(TABLE) })
     .first();
   await expect(lleganTicket).toBeVisible({ timeout: 15_000 });
   const orderNumber = ((await lleganTicket.getAttribute('data-testid')) || '').match(

@@ -251,7 +251,20 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
         projection
     ).sort("updated_at", -1).to_list(100)
     board.extend(delivered)
-    return [_order_for_user(order, user) for order in board]
+    items = [_order_for_user(order, user) for order in board]
+    # The kitchen must know which table each ticket belongs to: the order only
+    # stores table_id, so resolve the number here.
+    table_ids = [order["table_id"] for order in items if order.get("table_id")]
+    if table_ids:
+        tables = await db.tables.find(
+            {"restaurant_id": user["restaurant_id"], "id": {"$in": table_ids}},
+            {"_id": 0, "id": 1, "number": 1},
+        ).to_list(len(table_ids))
+        numbers = {table["id"]: table["number"] for table in tables}
+        for order in items:
+            if order.get("table_id"):
+                order["table_number"] = numbers.get(order["table_id"])
+    return items
 
 
 @router.get("/{order_id}")

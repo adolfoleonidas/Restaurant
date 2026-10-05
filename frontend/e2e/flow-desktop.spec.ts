@@ -50,8 +50,11 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   await login(page, TEST_USERS.cocina.email, TEST_USERS.cocina.password);
   await expect(page.getByTestId('cocina-kanban')).toBeVisible({ timeout: 15_000 });
 
+  // Scope to this run's table: stale tickets from other runs share the column.
+  // Tables are seeded as "Mesa E2E <number>", so match the number only.
   const lleganTicket = page
     .locator('[data-testid^="cocina-ticket-"][data-testid$="-llegan"]')
+    .filter({ hasText: String(TABLE) })
     .first();
   await expect(lleganTicket).toBeVisible({ timeout: 15_000 });
   await shot(page, `e4-${TABLE}-04-cocina-llegan`);
@@ -117,6 +120,8 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   // CobrarDialog: efectivo exacto → verify → registrar.
   await expect(page.getByTestId('caja-cobrar-dialog')).toBeVisible({ timeout: 15_000 });
   await shot(page, `e4-${TABLE}-08-cobrar-dialog`);
+  // An empty cash field means "exact": the primary action must work without typing.
+  await expect(page.getByTestId('caja-cobrar-submit-button')).toBeEnabled();
   await page.getByRole('button', { name: 'Exacto' }).click();
   const registrar = page.getByTestId('caja-cobrar-submit-button');
   await expect(registrar).toBeEnabled();

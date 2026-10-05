@@ -47,7 +47,7 @@ const AREA_BADGE = {
 const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }) => {
     const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
-        ? order.table_number.replace(/^Mesa\s*/i, '')
+        ? String(order.table_number).replace(/^Mesa\s*/i, '')
         : (order.table_id ? '' : null);
     const place = mesa
         ? `Mesa ${mesa}`
