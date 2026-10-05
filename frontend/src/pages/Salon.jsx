@@ -259,6 +259,17 @@ export default function Salon() {
         }
     };
 
+    const requestBill = async (order) => {
+        try {
+            await api.post(`/orders/${order.id}/status`, { status: 'pendiente_pago' });
+            toast.success('Cuenta solicitada');
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo solicitar la cuenta');
+        }
+    };
+
     const takeTable = async (t) => {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
         if (t.status === 'ocupada') {
@@ -560,6 +571,7 @@ export default function Salon() {
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
                         const closeable = canClose && canCloseAttention(t, order);
+                        const billRequested = Boolean(order?.payment_requested) || order?.status === 'pendiente_pago';
                         return (
                             <>
                                 <div className="p-5 border-b" style={{ background: s.bg }}>
@@ -628,6 +640,17 @@ export default function Salon() {
                                                 <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(order)} disabled={closing === order.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
                                                     {closing === order.id ? 'Cerrando…' : 'Finalizar mesa'}
                                                 </Button>
+                                            )}
+                                            {billRequested ? (
+                                                <Button disabled variant="outline" className="w-full h-12" data-testid="mesa-sheet-cuenta-solicitada">
+                                                    Cuenta solicitada
+                                                </Button>
+                                            ) : (
+                                                ['listo', 'entregado'].includes(order?.status) && canTake && (
+                                                    <Button variant="outline" className="w-full h-12" onClick={() => requestBill(order)} data-testid="mesa-sheet-solicitar-cuenta">
+                                                        Solicitar cuenta
+                                                    </Button>
+                                                )
                                             )}
                                             <Button
                                                 variant={floor.key === 'listo' ? 'outline' : 'default'}

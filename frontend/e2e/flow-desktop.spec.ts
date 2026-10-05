@@ -83,6 +83,15 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   await expect(tableCard).toHaveAttribute('data-floor-state', 'cuenta');
   await shot(page, `e4-${TABLE}-06-cuenta-solicitada`);
 
+  // Reopening the table must show the requested state, never offer the request again.
+  await tableCard.click();
+  await expect(page.getByTestId('mesa-sheet')).toBeVisible();
+  await expect(page.getByTestId('mesa-sheet-cuenta-solicitada')).toBeVisible();
+  await expect(page.getByTestId('mesa-sheet-cuenta-solicitada')).toBeDisabled();
+  await expect(page.getByTestId('mesa-sheet-solicitar-cuenta')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('mesa-sheet')).toBeHidden();
+
   // ── 4. Cajero: open the register and collect efectivo ───────────────────
   await logout(page);
   await login(page, TEST_USERS.cajero.email, TEST_USERS.cajero.password);

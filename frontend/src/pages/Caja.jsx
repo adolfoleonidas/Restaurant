@@ -617,16 +617,16 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
     const cobrables = useMemo(() => {
         const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
-        const requested = list.filter((o) => o.status === 'pendiente_pago');
-        const rest = list.filter((o) => o.status !== 'pendiente_pago');
+        const requested = list.filter((o) => o.payment_requested || o.status === 'pendiente_pago');
+        const rest = list.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago'));
         return [...requested, ...rest].map((o) => ({
             ...o,
             table_number: (tables || []).find((t) => t.id === o.table_id)?.number,
         }));
     }, [pending, tables]);
 
-    const requestedBills = useMemo(() => cobrables.filter((o) => o.status === 'pendiente_pago'), [cobrables]);
-    const otherBills = useMemo(() => cobrables.filter((o) => o.status !== 'pendiente_pago'), [cobrables]);
+    const requestedBills = useMemo(() => cobrables.filter((o) => o.payment_requested || o.status === 'pendiente_pago'), [cobrables]);
+    const otherBills = useMemo(() => cobrables.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago')), [cobrables]);
 
     const matchQ = (o) => {
         const q = query.trim().toLowerCase();
@@ -673,7 +673,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 <div key={o.id} className="py-2 flex items-center justify-between gap-3 text-sm">
                                     <div className="flex items-center gap-2 min-w-0">
                                         <span className="font-display font-bold truncate">{accountLabel(o)}</span>
-                                        {o.status === 'pendiente_pago' && <span className="text-xs text-primary shrink-0">Cuenta solicitada</span>}
+                                        {(o.payment_requested || o.status === 'pendiente_pago') && <span className="text-xs text-primary shrink-0">Cuenta solicitada</span>}
                                     </div>
                                     <span className="font-mono font-semibold tabular-nums shrink-0">{fmtMoney(o.total)}</span>
                                 </div>

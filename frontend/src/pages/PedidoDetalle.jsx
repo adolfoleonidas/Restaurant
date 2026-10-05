@@ -56,6 +56,9 @@ export default function PedidoDetalle() {
     const canCollect = hasFn(user, 'cobro', 'administracion');
     const canCharge = Boolean(order && !locked && canCollect
         && Number(order.amount_paid || 0) < Number(order.total || 0));
+    // The backend keeps `status` on the kitchen fulfillment and flags the bill
+    // request separately (`payment_requested`), so both must be checked.
+    const billRequested = Boolean(order?.payment_requested) || order?.status === 'pendiente_pago';
     const collectionContextRef = React.useRef(null);
     collectionContextRef.current = { routeId: id, orderId: order?.id, canCollect, canCharge };
 
@@ -346,14 +349,20 @@ export default function PedidoDetalle() {
                     </Button>
                 )}
                 {['entregado', 'listo'].includes(order.status) && canEdit && (
-                    <Button
-                        onClick={requestBill}
-                        variant={order.status === 'listo' ? 'outline' : 'default'}
-                        className={`w-full ${order.status === 'listo' ? 'h-12' : 'h-14 rounded-full text-base'}`}
-                        data-testid="pedido-solicitar-cuenta-button"
-                    >
-                        Solicitar cuenta
-                    </Button>
+                    billRequested ? (
+                        <Button disabled variant="outline" className="w-full h-12" data-testid="pedido-cuenta-solicitada-button">
+                            Cuenta solicitada
+                        </Button>
+                    ) : (
+                        <Button
+                            onClick={requestBill}
+                            variant={order.status === 'listo' ? 'outline' : 'default'}
+                            className={`w-full ${order.status === 'listo' ? 'h-12' : 'h-14 rounded-full text-base'}`}
+                            data-testid="pedido-solicitar-cuenta-button"
+                        >
+                            Solicitar cuenta
+                        </Button>
+                    )
                 )}
                 {['listo', 'entregado', 'pendiente_pago'].includes(order.status) && canCharge && (
                     <Button
@@ -365,8 +374,8 @@ export default function PedidoDetalle() {
                         <CreditCard className="h-4 w-4 mr-2" /> Cobrar
                     </Button>
                 )}
-                {order.status === 'pendiente_pago' && !canCharge && (
-                    <div className="text-center text-sm text-muted-foreground py-2">Cuenta solicitada · se paga en caja</div>
+                {billRequested && !canCharge && (
+                    <div className="text-center text-sm text-muted-foreground py-2" data-testid="pedido-cuenta-solicitada">Se paga en caja</div>
                 )}
                 {order.status === 'pagado' && (
                     <Button variant="outline" className="w-full h-12" onClick={() => navigate('/caja')} data-testid="pedido-ver-caja">
