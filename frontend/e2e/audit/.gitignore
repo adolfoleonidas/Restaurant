@@ -1,0 +1,4 @@
+# Artefactos del arnés de auditoría: capturas, JSON crudo y perfil de Chromium.
+# Se regeneran con `run-audit.ps1`; no se versionan.
+out/
+.chrome-profile/

@@ -40,7 +40,7 @@ export function ProductCard({ product, children }) {
                     {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                     <h3 className="font-display text-lg font-semibold leading-tight">{product.name}</h3>
                     {agotado && (
-                        <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                        <span className="shrink-0 self-start text-xs font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                     )}
                     {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
                     {children}
@@ -48,7 +48,7 @@ export function ProductCard({ product, children }) {
                         <div className="flex flex-wrap gap-1">
                             {Object.entries(STATUS_CHIP).map(([k, chip]) => (
                                 counts[k] > 0 ? (
-                                    <span key={k} className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 ${chip.cls}`} data-testid={`landing-chip-${product.id}-${k}`}>
+                                    <span key={k} className={`text-xs font-medium rounded-full px-1.5 py-0.5 ${chip.cls}`} data-testid={`landing-chip-${product.id}-${k}`}>
                                         {counts[k]} {chip.label}
                                     </span>
                                 ) : null
@@ -56,7 +56,7 @@ export function ProductCard({ product, children }) {
                         </div>
                     )}
                     {billPending && qty > 0 && (
-                        <div className="text-[10px] text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
+                        <div className="text-xs text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
                     )}
                     <div className="mt-auto pt-2 flex items-center justify-between gap-3">
                         <div className="font-mono text-primary font-bold tabular-nums text-lg">{fmtMoney(product.price)}</div>
@@ -115,7 +115,7 @@ export function ProductCard({ product, children }) {
                 {product.code && <div className="page-kicker text-primary">{product.code}</div>}
                 <h3 className="font-display text-lg font-semibold leading-tight">{product.name}</h3>
                 {agotado && (
-                    <span className="shrink-0 self-start text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                    <span className="shrink-0 self-start text-xs font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                 )}
                 {product.description && <p className="text-xs text-muted-foreground line-clamp-2">{product.description}</p>}
                 {children}

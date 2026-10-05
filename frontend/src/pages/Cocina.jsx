@@ -32,8 +32,10 @@ function waveTime(order, items) {
 
 function timerClass(iso) {
     const m = elapsedMinutes(iso);
-    if (m >= 15) return 'text-accent font-bold';
-    if (m >= 10) return 'text-primary font-semibold';
+    // En modo oscuro (--accent y --primary son demasiado oscuros sobre la tarjeta,
+    // 2,52:1 y 3,91:1) se usan variantes claras que llegan a 11,15:1 y 7,3:1.
+    if (m >= 15) return 'text-accent font-bold dark:text-amber-300';
+    if (m >= 10) return 'text-primary font-semibold dark:text-blue-300';
     return 'text-muted-foreground';
 }
 
@@ -62,7 +64,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                 <div className="flex items-start justify-between gap-2">
                     <div>
                         <div className="font-display text-3xl font-bold leading-none">{place}</div>
-                        <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                             #{order.order_number}
                             {order.source === 'public' ? ' · carta web' : ''}
                             {order.order_type && order.order_type !== 'mesa' && (
@@ -74,7 +76,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                         </div>
                         <AttentionReference order={order} branchNames={branchNames} />
                         {(order.customer_name || order.customer_address) && (
-                            <div className="text-[11px] mt-0.5 text-muted-foreground" data-testid={`cocina-cliente-${order.order_number}`}>
+                            <div className="text-xs mt-0.5 text-muted-foreground" data-testid={`cocina-cliente-${order.order_number}`}>
                                 {[order.customer_name, order.customer_phone, order.customer_address].filter(Boolean).join(' · ')}
                             </div>
                         )}
@@ -91,7 +93,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                                 {it.is_combo && (it.combo_components || []).map((c) => (
                                     <div key={c.product_id} className="text-xs text-muted-foreground">{c.quantity}× {c.product_name}</div>
                                 ))}
-                                {it.notes && <div className="text-sm italic text-primary">{it.notes}</div>}
+                                {it.notes && <div className="text-sm italic text-primary dark:text-sky-300">{it.notes}</div>}
                             </div>
                             {stage === 'fuego' && (
                                 <button
@@ -107,7 +109,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                     ))}
                 </div>
                 {order.notes && ['llegan', 'fuego'].includes(stage) && (
-                    <div className="mt-3 text-sm text-primary">{order.notes}</div>
+                    <div className="mt-3 text-sm text-primary dark:text-sky-300">{order.notes}</div>
                 )}
                 {['llegan', 'fuego'].includes(stage) && (
                     <button type="button" className="mt-4 min-h-11 w-full rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onBump(order, stage)}>
@@ -123,7 +125,7 @@ export default function Cocina() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
-    const { data: orders, refetch } = usePolling(
+    const { data: orders, error: ordersError, loading: ordersLoading, refetch } = usePolling(
         () => api.get('/orders/kitchen').then((r) => r.data),
         12000,
         [generation]
@@ -180,6 +182,13 @@ export default function Cocina() {
         ];
     }, [liveOrders]);
 
+    // Región viva para lectores de pantalla: el pase se actualiza por polling y
+    // un pase nuevo llega sin aviso (4.1.3). Solo se anuncia al cambiar.
+    const boardSummary = useMemo(() => {
+        const byKey = Object.fromEntries(columns.map((c) => [c.key, c.cards.length]));
+        return `${byKey.llegan} nuevos · ${byKey.fuego} en fuego · ${byKey.listo} listos para retiro · ${byKey.retirado} retirados`;
+    }, [columns]);
+
     const bump = async (order, stage) => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
         try {
@@ -227,6 +236,15 @@ export default function Cocina() {
                 </div>
             )}
 
+            {ordersError && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                    <span className="font-medium">Sin conexión con el pase: los pedidos no se están actualizando.</span>
+                    <Button variant="outline" className="h-11" onClick={() => refetch()}>Reintentar</Button>
+                </div>
+            )}
+
+            <div role="status" aria-live="polite" className="sr-only">{boardSummary}</div>
+
             <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
                 <div data-testid="cocina-kanban" className="flex w-full min-w-0 snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 lg:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
                 {columns.map((col) => (
@@ -235,9 +253,16 @@ export default function Cocina() {
                             <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
                             <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
                         </div>
-                        <div className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 md:max-h-[calc(100vh-230px)]">
+                        <div
+                            role="region"
+                            aria-label={`Pedidos en ${col.label}`}
+                            tabIndex={0}
+                            className="max-h-[calc(100dvh-300px)] space-y-3 overflow-y-auto pr-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring md:max-h-[calc(100dvh-230px)]"
+                        >
                             {col.cards.length === 0 ? (
-                                <div className="text-center text-sm text-muted-foreground py-10">Vacío</div>
+                                <div className="text-center text-sm text-muted-foreground py-10">
+                                    {ordersLoading && !orders ? 'Cargando…' : ordersError ? 'Sin datos' : 'Vacío'}
+                                </div>
                             ) : col.cards.map((c) => (
                                 <KitchenCard
                                     key={`${c.order.id}-${col.key}`}

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -96,12 +97,12 @@ export default function Salon() {
     const [transferSource, setTransferSource] = useState(null);
     const [movingVisit, setMovingVisit] = useState(false);
 
-    const { data: tables, refetch: refetchTables } = usePolling(
+    const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
         8000,
         [generation]
     );
-    const { data: liveOrders, refetch: refetchOrders } = usePolling(
+    const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
         () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
         8000,
         [generation]
@@ -154,6 +155,11 @@ export default function Salon() {
         }
         return { toPrep, toReady, toPay };
     }, [orders]);
+
+    // Región viva para lectores de pantalla: el salón se actualiza por polling y
+    // los cambios de estado llegan sin aviso (4.1.3). El texto solo cambia si
+    // cambian los conteos, así que no se repite en cada refresco.
+    const floorSummary = `En preparación ${summary.toPrep} · listos para entregar ${summary.toReady} · cuentas por cobrar ${summary.toPay}`;
 
     const pickupProjection = useMemo(() => {
         const { live, prior } = partitionPriorPickupOrders(orders);
@@ -509,7 +515,7 @@ export default function Salon() {
                         {areaLabel(a)}
                     </button>
                 ))}
-                <div className="hidden lg:flex gap-2 items-center ml-auto" data-testid="salon-legend">
+                <div className="flex flex-wrap gap-2 items-center lg:ml-auto" data-testid="salon-legend">
                     {LEGEND.map((k) => {
                         const s = FLOOR_STYLE[k];
                         return (
@@ -522,9 +528,28 @@ export default function Salon() {
                 </div>
             </div>
 
+            {(tablesError || ordersError) && (
+                <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+                    <span className="font-medium">No se pudo actualizar el salón: las mesas y los pedidos pueden estar desactualizados.</span>
+                    <Button variant="outline" className="h-11" onClick={() => { refetchTables(); refetchOrders(); }}>Reintentar</Button>
+                </div>
+            )}
+
+            <div role="status" aria-live="polite" className="sr-only">{floorSummary}</div>
+
             {/* Floor grid */}
-            {filtered.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground border rounded-xl">No hay mesas con esos filtros.</div>
+            {tablesLoading && !tables ? (
+                // Reserva la rejilla mientras llegan las mesas: sin esto la
+                // grilla aparece entera tras la respuesta (CLS 0,56).
+                <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" data-testid="salon-skeleton" aria-hidden="true">
+                    {Array.from({ length: 12 }).map((_, i) => (
+                        <Skeleton key={i} className="h-32 rounded-xl" />
+                    ))}
+                </div>
+            ) : filtered.length === 0 ? (
+                <div className="py-16 text-center text-muted-foreground border rounded-xl">
+                    {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
+                </div>
             ) : (
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
                     {/* The card shortcut for taking an order opens the same sales-area

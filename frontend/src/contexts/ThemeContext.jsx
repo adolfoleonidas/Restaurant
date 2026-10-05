@@ -14,6 +14,8 @@ const fallbackTheme = {
   clearThemeOverride: () => {},
   themes,
   darkMode: false,
+  kitchenDark: false,
+  setActivePath: () => {},
   toggle: () => {},
   loading: false,
 };
@@ -22,21 +24,28 @@ const ThemeContext = createContext(fallbackTheme);
 
 export function ThemeProvider({ children }) {
   const [theme, setThemeState] = useState('fresco');
+  // La guía de diseño limita el modo oscuro a la pantalla de cocina (y opcional
+  // a caja). Antes se derivaba de la preferencia del sistema, así que un tablet
+  // con el SO en oscuro arrancaba el POS entero oscuro, incluida Caja.
   const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('restaurant-dark-mode');
-      if (stored !== null) return stored === 'true';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return false;
+    if (typeof window === 'undefined') return false;
+    const stored = localStorage.getItem('restaurant-dark-mode');
+    return stored !== null && stored === 'true';
   });
+  // Ruta activa, reportada desde el router (ThemeProvider vive fuera de él).
+  const [activePath, setActivePath] = useState(() => (typeof window !== 'undefined' ? window.location.pathname : ''));
   const [loading, setLoading] = useState(true);
 
   // Cargar tema del restaurante desde la API
   useEffect(() => {
     const loadRestaurantTheme = async () => {
       try {
-        const { data } = await api.get('/restaurants/current');
+        // Sin sesión, /restaurants/current responde 401: la carta pública lee el
+        // endpoint público, que también devuelve theme_id.
+        const hasSession = typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
+        const { data } = hasSession
+          ? await api.get('/restaurants/current')
+          : await api.get('/public/restaurant');
         const restaurantTheme = data.theme_id || 'fresco';
         const localOverride = localStorage.getItem('restaurant-theme');
         
@@ -55,6 +64,11 @@ export function ThemeProvider({ children }) {
     loadRestaurantTheme();
   }, []);
 
+  // La cocina queda siempre en oscuro (pantalla de pase, tablet); el resto de
+  // la app respeta la elección del usuario. La ruta llega por setActivePath.
+  const kitchenDark = (activePath || '').startsWith('/cocina');
+  const effectiveDark = darkMode || kitchenDark;
+
   // Aplicar tema y dark mode
   useEffect(() => {
     if (loading) return;
@@ -64,19 +78,18 @@ export function ThemeProvider({ children }) {
     // Agregar clase del tema actual
     document.body.classList.add(`theme-${theme}`);
     
-    // Aplicar dark mode
-    if (darkMode) {
+    // Aplicar dark mode (solo la elección del usuario se persiste: el modo de
+    // la cocina no debe quedar grabado al salir de la pantalla).
+    if (effectiveDark) {
       document.body.classList.add('dark');
     } else {
       document.body.classList.remove('dark');
     }
-    
-    // Persistir dark mode
     localStorage.setItem('restaurant-dark-mode', darkMode.toString());
     
     // Cargar CSS del tema
     loadThemeCSS(theme);
-  }, [theme, darkMode, loading]);
+  }, [theme, effectiveDark, darkMode, loading]);
 
   const loadThemeCSS = (themeId) => {
     const existingLink = document.getElementById('theme-css');
@@ -118,7 +131,9 @@ export function ThemeProvider({ children }) {
       setTheme, 
       clearThemeOverride,
       themes, 
-      darkMode,
+      darkMode: effectiveDark,
+      kitchenDark,
+      setActivePath,
       toggle,
       loading 
     }}>

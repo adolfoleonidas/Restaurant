@@ -253,7 +253,7 @@ test('does not apply a late response after the audit dialog closes while loading
     api.get.mockImplementation((path) => new Promise((resolve) => requests.push({ path, resolve })));
     const { host } = mount(<AccountPaymentAudit order={order()} />);
     await click(host.querySelector('[data-testid="caja-audit-order-17"]'));
-    const close = Array.from(document.body.querySelectorAll('button')).find((button) => button.textContent.trim() === 'Close');
+    const close = Array.from(document.body.querySelectorAll('button')).find((button) => button.getAttribute('aria-label') === 'Cerrar');
     await click(close);
     requests.forEach((request) => request.resolve({ data: request.path === '/orders/order-1' ? order() : [] }));
     await settle();

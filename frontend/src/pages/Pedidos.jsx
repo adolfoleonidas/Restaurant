@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtElapsed, fmtTime, elapsedMinutes, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Plus, Receipt, DollarSign, ShieldCheck, Clock } from 'lucide-react';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import AttentionReference from '@/components/AttentionReference';
@@ -68,11 +68,21 @@ export default function Pedidos() {
                 )}
             </div>
 
-            <Tabs value={filter} onValueChange={setFilter}>
-                <TabsList className="flex flex-wrap h-auto">
-                    {FILTERS.map((f) => <TabsTrigger key={f.value} value={f.value} data-testid={`pedidos-filter-${f.value}`}>{f.label}</TabsTrigger>)}
-                </TabsList>
-            </Tabs>
+            {/* No son pestañas sino un filtro: se usa un grupo de toggles para
+                que cada opción exponga aria-pressed y no un aria-controls fantasma */}
+            <ToggleGroup
+                type="single"
+                value={filter}
+                onValueChange={(v) => v && setFilter(v)}
+                aria-label="Filtrar pedidos"
+                className="inline-flex h-10 flex-wrap items-center justify-center gap-1 rounded-md bg-muted p-1 text-muted-foreground"
+            >
+                {FILTERS.map((f) => (
+                    <ToggleGroupItem key={f.value} value={f.value} data-testid={`pedidos-filter-${f.value}`} className="min-h-9">
+                        {f.label}
+                    </ToggleGroupItem>
+                ))}
+            </ToggleGroup>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {(data || []).map((o) => {

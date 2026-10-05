@@ -122,7 +122,7 @@ export default function Checkout() {
         return (
             <div className="max-w-2xl mx-auto px-4 py-16 text-center">
                 <ShoppingBag className="h-12 w-12 mx-auto opacity-40 mb-4" />
-                <h2 className="font-display text-2xl font-semibold mb-2">Tu carrito está vacío</h2>
+                <h1 className="font-display text-2xl font-semibold mb-2">Tu carrito está vacío</h1>
                 <p className="text-muted-foreground mb-6">Agrega algunos platos para continuar.</p>
                 <Button asChild><Link to="/">Ver menú</Link></Button>
             </div>
@@ -438,12 +438,12 @@ export default function Checkout() {
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-muted-foreground">Cuenta</span>
                                         <div className="flex items-center gap-2"><span className="font-mono">{paymentCfg.bank_account || '—'}</span>
-                                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyText(paymentCfg.bank_account || '', 'acc')}><Copy className="h-3.5 w-3.5" /></Button></div>
+                                            <Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Copiar número de cuenta" onClick={() => copyText(paymentCfg.bank_account || '', 'acc')}><Copy className="h-4 w-4" /></Button></div>
                                     </div>
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-muted-foreground">CCI</span>
                                         <div className="flex items-center gap-2"><span className="font-mono">{paymentCfg.bank_cci || '—'}</span>
-                                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => copyText(paymentCfg.bank_cci || '', 'cci')}><Copy className="h-3.5 w-3.5" /></Button></div>
+                                            <Button size="icon" variant="ghost" className="h-11 w-11" aria-label="Copiar CCI" onClick={() => copyText(paymentCfg.bank_cci || '', 'cci')}><Copy className="h-4 w-4" /></Button></div>
                                     </div>
                                     <div className="flex items-center justify-between"><span className="text-muted-foreground">Titular</span><span>{paymentCfg.bank_holder || '—'}</span></div>
                                     {paymentCfg.transfer_instructions && <div className="text-xs text-muted-foreground pt-2">{paymentCfg.transfer_instructions}</div>}

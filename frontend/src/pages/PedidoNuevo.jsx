@@ -118,7 +118,7 @@ export default function PedidoNuevo() {
         <div className="space-y-4 pb-6" data-testid="pedido-nuevo-root">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" className="h-11 w-11" onClick={discard} data-testid="pedido-descartar-back">
+                    <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Descartar y volver" onClick={discard} data-testid="pedido-descartar-back">
                         <ChevronLeft className="h-5 w-5" />
                     </Button>
                     <div>
@@ -214,9 +214,9 @@ export default function PedidoNuevo() {
                                         </Button>
                                     ) : (
                                         <div className="flex items-center h-11 rounded-full border border-primary/40">
-                                            <button type="button" className="h-11 w-11 flex items-center justify-center" onClick={() => setQty(p, q - 1)}><Minus className="h-4 w-4" /></button>
+                                            <button type="button" className="h-11 w-11 flex items-center justify-center" aria-label={`Quitar una unidad de ${p.name}`} onClick={() => setQty(p, q - 1)}><Minus className="h-4 w-4" /></button>
                                             <span className="w-8 text-center font-mono font-semibold">{q}</span>
-                                            <button type="button" className="h-11 w-11 flex items-center justify-center" onClick={() => setQty(p, q + 1)}><Plus className="h-4 w-4" /></button>
+                                            <button type="button" className="h-11 w-11 flex items-center justify-center" aria-label={`Agregar una unidad de ${p.name}`} onClick={() => setQty(p, q + 1)}><Plus className="h-4 w-4" /></button>
                                         </div>
                                     )}
                                 </div>

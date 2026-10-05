@@ -62,8 +62,8 @@ function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
             </div>
             <div className="text-right shrink-0 space-y-1">
                 <div className="font-mono font-bold tabular-nums">{fmtMoney(order.total)}</div>
-                <Button size="sm" variant="outline" className="h-8 w-full" onClick={openProof} disabled={loading}>Ver comprobante</Button>
-                <Button size="sm" className="h-8 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
+                <Button size="sm" variant="outline" className="h-11 w-full" onClick={openProof} disabled={loading}>Ver comprobante</Button>
+                <Button size="sm" className="h-11 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
             </div>
         </div>
     );
@@ -448,7 +448,7 @@ function OpenCajaCard({ onOpened, branchId, canOpen = true, runMutation }) {
             }));
             toast.success('Caja abierta');
             onOpened && onOpened();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
         finally { setLoading(false); }
     };
     return (
@@ -484,7 +484,7 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
             onOpenChange(false);
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
     };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -539,7 +539,7 @@ function MovementCard({ register, onAdded, runMutation }) {
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
     };
     return (
         <Card><CardContent className="p-5">
@@ -617,6 +617,9 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     }, [params, pending, selectOrder]);
 
     const cobrables = useMemo(() => {
+        // Un pedido web con comprobante ya subido se resuelve en su propio bloque
+        // (Ver comprobante / Confirmar). Se excluye de las listas de cobro para que
+        // una misma cuenta no ofrezca dos acciones de dinero a la vez.
         const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
         const requested = list.filter((o) => o.payment_requested || o.status === 'pendiente_pago');
         const rest = list.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago'));
@@ -655,7 +658,15 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     };
 
     if (loading && register == null) {
-        return <div className="text-muted-foreground">Cargando…</div>;
+        return (
+            <div className="space-y-5" data-testid="caja-root">
+                <div>
+                    <p className="page-kicker mb-1">Caja</p>
+                    <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+                </div>
+                <p className="text-sm text-muted-foreground">Cargando caja…</p>
+            </div>
+        );
     }
 
     if (!register) return (
@@ -825,7 +836,7 @@ function ConsolidatedCashView({ branches, userKey }) {
         <Card data-testid="caja-consolidated">
             <CardContent className="space-y-4 p-5">
                 <div>
-                    <h2 className="font-display text-xl font-semibold">Caja consolidada</h2>
+                    <h1 className="font-display text-xl font-semibold">Caja consolidada</h1>
                     <p className="mt-1 text-sm text-muted-foreground">Vista de solo lectura de las cajas del negocio. Seleccione una sucursal para operar.</p>
                 </div>
                 {error && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las cajas consolidadas.</p>}

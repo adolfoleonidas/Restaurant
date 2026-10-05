@@ -31,11 +31,11 @@ export default function Categorias() {
             if (editing) { await api.patch(`/categories/${editing.id}`, payload); toast.success('Actualizado'); }
             else { await api.post('/categories', payload); toast.success('Creado'); }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
     const doDelete = async (c) => {
         try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
 
     return (
@@ -57,8 +57,8 @@ export default function Categorias() {
                                 <div className="text-xs text-muted-foreground">{c.description || 'Sin descripción'} · Orden: {c.sort_order}</div>
                             </div>
                             <div className="flex items-center gap-1">
-                                <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                                <Button size="icon" variant="ghost" onClick={() => setConfirmDel(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                                <Button size="icon" variant="ghost" aria-label={`Editar ${c.name}`} onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                                <Button size="icon" variant="ghost" aria-label={`Eliminar ${c.name}`} onClick={() => setConfirmDel(c)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                             </div>
                         </div>
                     ))}

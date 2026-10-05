@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
+import { Skeleton } from '@/components/ui/skeleton';
 import usePublicStream from '@/hooks/usePublicStream';
 
 const PREVIEW = 8;
@@ -26,6 +27,7 @@ export default function Landing() {
     const [restaurant, setRestaurant] = useState(null);
     const [categories, setCategories] = useState([]);
     const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('');
     const sectionRefs = useRef({});
@@ -38,7 +40,7 @@ export default function Landing() {
             api.get('/public/products').then((r) => r.data),
         ]).then(([r, c, p]) => {
             setRestaurant(r); setCategories(c); setProducts(p);
-        });
+        }).finally(() => setLoading(false));
     }, []);
 
     useEffect(() => {
@@ -121,7 +123,11 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
-            {restaurant?.cover_url && (
+            {loading ? (
+                // Reserva el espacio de la portada para que la imagen no salte
+                // al cargar (CLS de la carta pública: 0,89 sin esto).
+                <div className="h-40 sm:h-52 md:h-64 w-full bg-secondary/50 animate-pulse" data-testid="public-cover-skeleton" aria-hidden="true" />
+            ) : restaurant?.cover_url && (
                 <section className="relative" data-testid="public-cover">
                     <img src={restaurant.cover_url} alt="" className="w-full h-40 sm:h-52 md:h-64 object-cover" />
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
@@ -181,7 +187,24 @@ export default function Landing() {
                     </>
                 ) : (
                     <>
-                        {grouped.length === 0 && combos.length === 0 && (
+                        {loading && (
+                            <div className="space-y-10" data-testid="landing-skeleton" aria-hidden="true">
+                                {[0, 1].map((s) => (
+                                    <div key={s}>
+                                        <div className="flex items-end justify-between mb-5 border-b border-border pb-3">
+                                            <Skeleton className="h-8 w-48" />
+                                            <Skeleton className="h-4 w-8" />
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4">
+                                            {Array.from({ length: 6 }).map((_, i) => (
+                                                <Skeleton key={i} className="h-36 rounded-xl" />
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        {!loading && grouped.length === 0 && combos.length === 0 && (
                             <div className="py-20 text-center text-muted-foreground font-display text-xl">No hay platos con esos filtros.</div>
                         )}
                         {grouped.map((g, i) => (

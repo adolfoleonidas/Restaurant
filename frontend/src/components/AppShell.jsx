@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
 import { hasFn } from '@/lib/functions';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
@@ -13,7 +13,7 @@ import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import {
     LayoutDashboard, Grid2X2, Receipt, ChefHat, Wallet, BarChart3,
-    Package, Tags, Users, Settings, LogOut, Menu, Layers, CreditCard, Store, Globe,
+    Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
 import { api } from '@/lib/api';
@@ -26,16 +26,18 @@ const ALL_NAV = [
     { to: '/comprobantes', label: 'Comprobantes', icon: Receipt, roles: ['admin', 'cajero'], group: 'main' },
     { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'], group: 'main' },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['cocina'], group: 'main' },
-    { to: '/disponibilidad', label: 'Agotar', icon: Package, roles: ['cocina'], group: 'main' },
+    { to: '/disponibilidad', label: 'Disponibilidad', icon: Package, roles: ['cocina'], group: 'main' },
     { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['mozo', 'cajero'], group: 'main' },
     { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['admin'], group: 'more' },
     { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['admin'], group: 'more' },
-    { to: '/combos', label: 'Combos', icon: Layers, roles: ['admin'], group: 'more' },
-    { to: '/categorias', label: 'Categorías', icon: Tags, roles: ['admin'], group: 'more' },
+    // Combos y Categorías dejan de ser ítems propios del menú: los dos son
+    // accesos al mismo formulario de "Carta" (Combos es un tab de Productos y
+    // Categorías se abre desde su botón). Antes el menú ofrecía tres accesos a
+    // lo mismo y no decía dónde gestionar la carta.
     { to: '/pagos', label: 'Datos de cobro', icon: CreditCard, roles: ['admin'], group: 'more' },
     { to: '/local', label: 'Local', icon: Store, roles: ['admin'], group: 'more' },
     { to: '/usuarios', label: 'Equipo', icon: Users, roles: ['admin'], group: 'more' },
-    { to: '/configuracion', label: 'Casa', icon: Settings, roles: ['admin'], group: 'more' },
+    { to: '/configuracion', label: 'Configuración', icon: Settings, roles: ['admin'], group: 'more' },
 ];
 
 const NavItems = ({ items, onNav }) => items.map((it) => (
@@ -59,28 +61,25 @@ const NavItems = ({ items, onNav }) => items.map((it) => (
 
 const SidebarContent = ({ user, onNav, restaurant }) => {
     const isOwner = user.role === 'admin' || hasFn(user, 'administracion');
-    const combo = hasFn(user, 'atencion') && (hasFn(user, 'preparacion') || hasFn(user, 'cobro'));
-    let items = ALL_NAV.filter((n) => n.roles.includes(user.role) || (n.roles.includes('admin') && hasFn(user, 'administracion')) || (n.roles.includes('cajero') && hasFn(user, 'cobro')) || (n.roles.includes('mozo') && hasFn(user, 'atencion')) || (n.roles.includes('cocina') && hasFn(user, 'preparacion')));
-    if (combo) {
-        items = [
-            { to: '/salon', label: 'Salón', icon: Grid2X2, group: 'main' },
-            ...(hasFn(user, 'cobro') ? [{ to: '/caja', label: 'Caja', icon: Wallet, group: 'main' }] : []),
-            ...(hasFn(user, 'cobro') ? [{ to: '/comprobantes', label: 'Comprobantes', icon: Receipt, group: 'main' }] : []),
-            ...(hasFn(user, 'administracion') ? [{ to: '/dashboard', label: 'Gestión', icon: LayoutDashboard, group: 'main' }] : []),
-            ...(hasFn(user, 'preparacion') ? [{ to: '/cocina', label: 'Cocina', icon: ChefHat, group: 'more' }] : []),
-            ...(hasFn(user, 'administracion') ? [
-                { to: '/productos', label: 'Carta', icon: Package, group: 'more' },
-                { to: '/reportes', label: 'Reportes', icon: BarChart3, group: 'more' },
-                { to: '/categorias', label: 'Categorías', icon: Tags, group: 'more' },
-                { to: '/local', label: 'Local', icon: Store, group: 'more' },
-                { to: '/usuarios', label: 'Equipo', icon: Users, group: 'more' },
-                { to: '/configuracion', label: 'Casa', icon: Settings, group: 'more' },
-            ] : []),
-        ];
-    }
-    // Staff accounts and passwords belong to the owner: the `administracion`
-    // function opens every other panel, but not this one.
-    items = items.filter((n) => n.to !== '/usuarios' || user.role === 'admin');
+    // Un solo origen de verdad para el menú: se filtra ALL_NAV por rol y por
+    // funciones y se deduplica por destino. Antes había dos problemas: el menú
+    // se reemplazaba entero para los perfiles multifunción (un admin que también
+    // atiende y cobra perdía "Pedidos") y dos entradas del mismo destino podían
+    // coexistir (mozo/cajero con administracion).
+    const seen = new Set();
+    const items = ALL_NAV.filter((n) => {
+        // Staff accounts and passwords belong to the owner: the `administracion`
+        // function opens every other panel, but not this one.
+        if (n.to === '/usuarios' && user.role !== 'admin') return false;
+        const allowed = n.roles.includes(user.role)
+            || (n.roles.includes('admin') && hasFn(user, 'administracion'))
+            || (n.roles.includes('cajero') && hasFn(user, 'cobro'))
+            || (n.roles.includes('mozo') && hasFn(user, 'atencion'))
+            || (n.roles.includes('cocina') && hasFn(user, 'preparacion'));
+        if (!allowed || seen.has(n.to)) return false;
+        seen.add(n.to);
+        return true;
+    });
     const main = items.filter((n) => n.group !== 'more');
     const more = items.filter((n) => n.group === 'more');
     return (
@@ -147,11 +146,12 @@ export const AppShell = () => {
                 <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/90 backdrop-blur px-4 md:px-6">
                     <Sheet open={open} onOpenChange={setOpen}>
                         <SheetTrigger asChild>
-                            <Button variant="ghost" size="icon" className="md:hidden" data-testid="open-sidebar-button">
+                            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Abrir menú de navegación" data-testid="open-sidebar-button">
                                 <Menu className="h-5 w-5" />
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" className="p-0 w-72 border-border">
+                            <SheetTitle className="sr-only">Navegación</SheetTitle>
                             <SidebarContent user={user} restaurant={restaurant} onNav={() => setOpen(false)} />
                         </SheetContent>
                     </Sheet>
