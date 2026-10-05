@@ -524,6 +524,36 @@ El único ítem que quedaba del objetivo original es **"CobrarDialog migrado al 
 | Migrar CobrarDialog al Dialog de Radix | Es el último ítem del objetivo y **no se intenta a ciegas**: es el diálogo de dinero (1109 líneas + cobro.css de 817 líneas) y hoy el arnés no puede abrirlo en vivo, así que cualquier regresión quedaría sin red. Primero se completa la verificación en vivo (R9-1), después la migración |
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
 
+---
+
+## 🔄 Ronda 10 del objetivo — el P0 del cobro queda verificado en vivo
+
+### Qué se hizo
+
+Se completó el paso que faltaba para poder tocar el diálogo de dinero con red de seguridad: **verificar en vivo que el cobro se comporta como modal**. El P0-3 del informe ("el diálogo de cobro no se comporta como modal") quedó probado por código en las rondas 0 y 3; ahora queda probado **en ejecución**.
+
+Para eso se avanzó el pedido #17 (creado en la ronda 9) por su ruta real: send-to-kitchen (mozo) → dos ump (cocina) → status: pendiente_pago (mozo), lo que lo deja como **cuenta solicitada** en /caja.
+
+### Verificación en vivo (e2e/audit/checks7.mjs, cajero, build de :3001)
+
+| Comprobación | Resultado |
+|---|---|
+| El botón *Cobrar* abre el diálogo ("Mesa 20 · #17") | ✅ |
+| ole="dialog" + ria-modal="true" + ria-labelledby con título | ✅ |
+| El foco entra al diálogo al abrirlo | ✅ |
+| **25 tabulaciones sin salir del diálogo** (trampa de foco) | ✅ 0 escapes |
+| **Escape cierra** el diálogo (sin cobro en curso) | ✅ |
+| El foco **vuelve al botón "Cobrar"** que lo abrió | ✅ |
+| Fondo con inert | ❌ **0 elementos** — confirmado en vivo, no por lectura |
+
+problems: [] — el resumen del verificador es **PASS**.
+
+### Conclusión sobre la migración a Radix (último ítem del objetivo)
+
+Con esta medición el estado real del diálogo es: **aria-modal ✅, foco inicial ✅, trampa de foco ✅, Escape ✅, retorno de foco ✅, inert ❌**. Es decir, el comportamiento de modal ya está completo salvo el inert del fondo, que es exactamente lo que Radix aportaría.
+
+La migración completa a Dialog de Radix sigue **pendiente y deliberadamente no intentada**: es el diálogo de dinero (1109 líneas + cobro.css de 817 líneas, con posicionamiento propio que competiría con las clases de DialogContent), y ahora que sí hay verificación en vivo (R9 + R10) queda preparada para hacerse en una ronda dedicada, midiendo antes y después con el mismo arnés.
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)
