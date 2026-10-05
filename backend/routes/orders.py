@@ -260,7 +260,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
             {"restaurant_id": user["restaurant_id"], "id": {"$in": table_ids}},
             {"_id": 0, "id": 1, "number": 1},
         ).to_list(len(table_ids))
-        numbers = {table["id"]: table["number"] for table in tables}
+        numbers = {table["id"]: table.get("number") for table in tables}
         for order in items:
             if order.get("table_id"):
                 order["table_number"] = numbers.get(order["table_id"])
