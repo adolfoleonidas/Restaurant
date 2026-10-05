@@ -4,7 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin, Palette } from 'lucide-react';
+import { Settings, Save, Grid2X2, Plus, Pencil, Trash2, MapPin, Palette, Database } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -588,6 +588,86 @@ function Mesas() {
     );
 }
 
+function Datos() {
+    const [open, setOpen] = useState(false);
+    const [confirm, setConfirm] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const reset = async () => {
+        if (confirm.trim() !== 'ELIMINAR') { toast.error('Escribe ELIMINAR para confirmar'); return; }
+        if (!password) { toast.error('Ingresa tu contraseña de administrador'); return; }
+        setLoading(true);
+        try {
+            await api.post('/data/reset', { confirm: confirm.trim(), password });
+            toast.success('Datos operativos restablecidos');
+            setOpen(false);
+            setConfirm('');
+            setPassword('');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo restablecer los datos');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const cancel = () => {
+        setOpen(false);
+        setConfirm('');
+        setPassword('');
+    };
+
+    return (
+        <Card><CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+                <Database className="h-5 w-5 text-destructive" />
+                <h2 className="font-display text-lg font-semibold">Datos del sistema</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+                Restablece los datos operativos (pedidos, pagos, caja, movimientos, historial y visitas de mesa).
+                Se conservan el menú, las mesas, las sucursales y los usuarios.
+            </p>
+            <Button variant="destructive" onClick={() => setOpen(true)} data-testid="data-reset-button">
+                <Trash2 className="h-4 w-4 mr-2" /> Restablecer datos operativos
+            </Button>
+
+            <AlertDialog open={open} onOpenChange={(o) => { if (!o) cancel(); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Restablecer los datos operativos?</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <div className="space-y-3 text-sm">
+                        <p>
+                            Se borrarán permanentemente los pedidos, pagos, caja abierta, movimientos,
+                            auditoría y visitas de mesa. El menú, las mesas, las sucursales y los usuarios
+                            <strong> se conservan</strong>. Esta acción no se puede deshacer.
+                        </p>
+                        <div>
+                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="data-reset-confirm" />
+                        </div>
+                        <div>
+                            <Label>Contraseña de administrador</Label>
+                            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="data-reset-password" />
+                        </div>
+                    </div>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={cancel}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={loading || confirm.trim() !== 'ELIMINAR' || !password}
+                            onClick={reset}
+                            data-testid="data-reset-confirm-button"
+                        >
+                            {loading ? 'Restableciendo…' : 'Restablecer'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </CardContent></Card>
+    );
+}
+
 export default function Configuracion() {
     return (
         <div className="space-y-5" data-testid="config-root">
@@ -599,6 +679,7 @@ export default function Configuracion() {
             <Sucursales />
             <Zonas />
             <Mesas />
+            <Datos />
         </div>
     );
 }

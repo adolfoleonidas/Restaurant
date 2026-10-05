@@ -14,6 +14,7 @@ from .notifications import router as notifications_router
 from .approvals import router as approvals_router
 from .zones import router as zones_router
 from .branches import router as branches_router
+from .data import router as data_router
 
 __all__ = [
     "auth_router",
@@ -32,4 +33,5 @@ __all__ = [
     "approvals_router",
     "zones_router",
     "branches_router",
+    "data_router",
 ]
