@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
-from routes.orders import add_items, change_status, kitchen_orders, merge_order, remove_item, serve_order, update_item
+from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
 from order_flow import ticket_fields
 from routes.reports import sales_report
@@ -511,6 +511,65 @@ def test_merge_rejects_a_source_with_collected_money():
         assert exc.value.status_code == 400
 
     asyncio.run(run())
+
+
+def _table_row(table_id, status, attention=None):
+    row = {"id": table_id, "restaurant_id": RID, "branch_id": "branch-1", "status": status}
+    if attention:
+        row["active_attention_id"] = attention
+    return row
+
+
+def test_move_account_to_free_table_detaches_from_source_visit():
+    async def run():
+        from models import OrderMove
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.tables.docs.append(_table_row("table-2", "disponible"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1", "order-2"], "status": "open",
+        })
+        db.orders.docs.append(_order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        db.orders.docs.append(_order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        _bind(db)
+        result = await move_order("order-2", OrderMove(target_table_id="table-2"), _mozo())
+        return db, result
+
+    db, result = asyncio.run(run())
+    assert result["table_id"] == "table-2"
+    assert result["attention_id"] != "att-1"
+    source_att = next(a for a in db.attentions.docs if a["id"] == "att-1")
+    assert source_att["order_ids"] == ["order-1"]
+    assert source_att["order_id"] == "order-1"
+    target_table = next(t for t in db.tables.docs if t["id"] == "table-2")
+    assert target_table["active_attention_id"] == result["attention_id"]
+    assert target_table["status"] == "ocupada"
+    source_table = next(t for t in db.tables.docs if t["id"] == "table-1")
+    assert source_table["active_attention_id"] == "att-1"  # la otra cuenta sigue
+
+
+def test_move_sole_account_releases_source_table():
+    async def run():
+        from models import OrderMove
+
+        db = _DB()
+        db.tables.docs.append(_table_row("table-1", "ocupada", "att-1"))
+        db.tables.docs.append(_table_row("table-2", "disponible"))
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion", table_id="table-1", attention_id="att-1"))
+        _bind(db)
+        await move_order("order-1", OrderMove(target_table_id="table-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    source_table = next(t for t in db.tables.docs if t["id"] == "table-1")
+    assert "active_attention_id" not in source_table
+    assert source_table["status"] == "disponible"
 
 
 def test_shift_totals_ignore_other_registers():

@@ -414,6 +414,12 @@ class OrderMerge(BaseModel):
     source_order_id: str
 
 
+class OrderMove(BaseModel):
+    """Mueve una cuenta (orden) a otra mesa libre de la misma sucursal."""
+
+    target_table_id: str
+
+
 class PublicOrderCreate(BaseModel):
     request_id: Optional[constr(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$", min_length=36, max_length=36)] = None
     order_type: Literal["local", "recojo", "delivery"]

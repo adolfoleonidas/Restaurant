@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     FlowError,
@@ -490,6 +490,87 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
         "updated_at": _now(),
     })
     emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/move")
+async def move_order(order_id: str, data: OrderMove, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Mueve una cuenta a una mesa libre; la desprende de la visita de origen."""
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if not order.get("table_id"):
+        raise HTTPException(status_code=400, detail="La cuenta no está en una mesa")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=409, detail="La cuenta ya está cerrada; no se puede mover")
+    source_table_id = order["table_id"]
+    target = await db.tables.find_one(
+        {"id": data.target_table_id, "restaurant_id": user["restaurant_id"], **record_branch_filter(user)},
+        {"_id": 0},
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Mesa destino no encontrada")
+    if target["id"] == source_table_id:
+        raise HTTPException(status_code=400, detail="Elegí una mesa distinta")
+    if target.get("branch_id") != order.get("branch_id"):
+        raise HTTPException(status_code=400, detail="Las mesas pertenecen a sucursales distintas")
+    if target.get("group_id"):
+        raise HTTPException(status_code=409, detail="La mesa destino está unida a un grupo")
+    if target.get("active_attention_id") or target.get("opening_order_id"):
+        raise HTTPException(status_code=409, detail="La mesa destino tiene una visita en curso")
+    target_active = await db.orders.find_one({
+        "restaurant_id": user["restaurant_id"], "table_id": target["id"],
+        "status": {"$nin": ["pagado", "cancelado"]}, **record_branch_filter(user),
+    })
+    if target_active:
+        raise HTTPException(status_code=409, detail="La mesa destino ya tiene un pedido activo")
+    if target.get("status") not in ("disponible", "ocupada"):
+        raise HTTPException(status_code=409, detail="La mesa destino no está disponible")
+
+    old_attention_id = order.get("attention_id")
+    now = _now()
+    new_attention_id = str(uuid.uuid4())
+
+    # 1. Nueva visita para la cuenta en la mesa destino.
+    attention_doc = {
+        "id": new_attention_id, "restaurant_id": order["restaurant_id"],
+        "table_id": target["id"], "order_id": order["id"], "order_ids": [order["id"]],
+        "status": "open", "opened_by": user.get("id"), "opened_at": now,
+    }
+    if "branch_id" in order:
+        attention_doc["branch_id"] = order["branch_id"]
+    await db.attentions.insert_one(attention_doc)
+
+    # 2. Mueve la orden a la mesa destino con su nueva visita.
+    await db.orders.update_one(
+        {"id": order["id"], "restaurant_id": order["restaurant_id"]},
+        {"$set": {"table_id": target["id"], "attention_id": new_attention_id, "updated_at": now}},
+    )
+
+    # 3. Reclama la mesa destino.
+    await db.tables.update_one(
+        {"id": target["id"], "restaurant_id": user["restaurant_id"], "status": {"$in": ("disponible", "ocupada")}, "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
+        {"$set": {"status": "ocupada", "active_attention_id": new_attention_id, "updated_at": now}},
+    )
+
+    # 4. Desprende la cuenta de la visita de origen (y libera la mesa si quedó vacía).
+    if old_attention_id:
+        old_att = await db.attentions.find_one({"id": old_attention_id, "restaurant_id": order["restaurant_id"]}, {"_id": 0})
+        if old_att:
+            remaining = [i for i in (old_att.get("order_ids") or []) if i != order["id"]]
+            patch = {"$set": {"order_ids": remaining}}
+            if old_att.get("order_id") == order["id"] and remaining:
+                patch["$set"]["order_id"] = remaining[0]
+            await db.attentions.update_one({"id": old_attention_id, "restaurant_id": order["restaurant_id"]}, patch)
+            if not remaining:
+                await db.tables.update_one(
+                    {"id": source_table_id, "restaurant_id": user["restaurant_id"], "active_attention_id": old_attention_id},
+                    {"$set": {"status": "disponible", "updated_at": now}, "$unset": {"active_attention_id": ""}},
+                )
+                emit_notice(user["restaurant_id"], "table", table_id=source_table_id, status="disponible", branch_id=order.get("branch_id"))
+
+    emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="moved", branch_id=order.get("branch_id"))
+    emit_notice(user["restaurant_id"], "table", table_id=target["id"], status="ocupada", branch_id=order.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 

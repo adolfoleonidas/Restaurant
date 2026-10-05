@@ -110,4 +110,30 @@ describe('multi-cuenta en el salón', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/merge', { source_order_id: 'order-2' });
     });
+
+    it('mueve una cuenta a una mesa libre', async () => {
+        const o1 = order('order-1', 11, 'Ceviche', 30);
+        const o2 = order('order-2', 12, 'Lomo', 20);
+        mockTables.splice(0, mockTables.length,
+            baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }),
+            baseTable(3, { status: 'disponible', active_attention_id: null, active_order: null }),
+        );
+        mockOrders.splice(0, mockOrders.length, o1, o2);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: o1 });
+            if (url === '/orders/order-2') return Promise.resolve({ data: o2 });
+            return Promise.resolve({ data: [o1, o2] });
+        });
+        api.post.mockResolvedValue({ data: o1 });
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mover-cuenta"]'));
+        const dialog = document.body.querySelector('[data-testid="mover-cuenta"]');
+        expect(dialog).not.toBeNull();
+        await click(dialog.querySelector('[data-testid="mover-cuenta-mesa-3"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/move', { target_table_id: 'table-3' });
+    });
 });

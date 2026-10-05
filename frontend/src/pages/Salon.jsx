@@ -126,6 +126,7 @@ export default function Salon() {
     const [joining, setJoining] = useState(false);
     const [transferSource, setTransferSource] = useState(null);
     const [movingVisit, setMovingVisit] = useState(false);
+    const [moveAccountId, setMoveAccountId] = useState(null);
     const searchRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
@@ -386,6 +387,20 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudieron fusionar las cuentas');
+        }
+    };
+
+    // Multi-cuenta: mueve la cuenta seleccionada a una mesa libre.
+    const moveAccount = async (targetTableId) => {
+        if (!moveAccountId) return;
+        try {
+            await api.post(`/orders/${moveAccountId}/move`, { target_table_id: targetTableId });
+            toast.success('Cuenta movida');
+            setMoveAccountId(null);
+            closeSheet();
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo mover la cuenta');
         }
     };
 
@@ -1027,6 +1042,16 @@ export default function Salon() {
                                                     <MoveRight className="h-4 w-4 mr-1" /> Mover pedido a otra mesa
                                                 </Button>
                                             )}
+                                            {accounts.length > 1 && canTake && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="w-full h-12"
+                                                    onClick={() => setMoveAccountId(currentAccountId)}
+                                                    data-testid="mesa-sheet-mover-cuenta"
+                                                >
+                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover esta cuenta a otra mesa
+                                                </Button>
+                                            )}
                                         </>
                                     ) : accountTable && order ? (
                                         <>
@@ -1115,6 +1140,47 @@ export default function Salon() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setTransferSource(null)} data-testid="mover-pedido-cancelar">
                             {movingVisit ? 'Moviendo…' : 'Cancelar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Move one account to another free table */}
+            <Dialog open={Boolean(moveAccountId)} onOpenChange={(open) => { if (!open) setMoveAccountId(null); }}>
+                <DialogContent className="sm:max-w-lg" data-testid="mover-cuenta">
+                    <DialogHeader>
+                        <DialogTitle className="font-display text-2xl">Mover cuenta</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-2">
+                        {(() => {
+                            const targets = (tables || []).filter((t) => (
+                                t.status === 'disponible' && !t.active_order && !t.active_attention_id && t.id !== openTable?.table?.id
+                            ));
+                            return targets.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4" data-testid="mover-cuenta-sin-mesas">
+                                    No hay mesas libres para mover la cuenta.
+                                </p>
+                            ) : (
+                                <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-cuenta-mesas">
+                                    {targets.map((target) => (
+                                        <button
+                                            key={target.id}
+                                            type="button"
+                                            onClick={() => moveAccount(target.id)}
+                                            data-testid={`mover-cuenta-mesa-${target.number}`}
+                                            className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                                        >
+                                            <span className="font-display text-2xl font-bold">{target.number}</span>
+                                            <span className="text-xs text-muted-foreground mt-1">{target.area}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setMoveAccountId(null)} data-testid="mover-cuenta-cancelar">
+                            Cancelar
                         </Button>
                     </DialogFooter>
                 </DialogContent>
