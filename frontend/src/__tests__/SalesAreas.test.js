@@ -80,7 +80,7 @@ describe('sales areas', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/pedidos/nuevo?tipo=llevar');
     });
 
-    it('asks for the table only when the area is dine-in', async () => {
+    it('asks for the table when the area is dine-in, then composes inline', async () => {
         await act(async () => root.render(<Salon />));
         await act(async () => host.querySelector('[data-testid="salon-nuevo-pedido"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
@@ -89,37 +89,35 @@ describe('sales areas', () => {
         expect(mockNavigate).not.toHaveBeenCalled();
         expect(document.body.querySelector('[data-testid="areas-venta-mesas"]')).not.toBeNull();
 
+        // Picking a table opens the inline composer (sheet + carta): no page change.
         await act(async () => document.body.querySelector('[data-testid="mesa-disponible-7"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-        expect(mockNavigate).toHaveBeenCalledWith('/pedidos/nuevo?mesa=table-1');
+        expect(mockNavigate).not.toHaveBeenCalled();
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        expect(sheet).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
     });
 
-    it('routes the free table card shortcut through the areas instead of the composer', async () => {
+    it('opens the inline composer from the table card shortcut without seating or navigating', async () => {
         await act(async () => root.render(<Salon />));
         await act(async () => host.querySelector('[data-testid="mesa-card-pedir-7"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
-        // The shortcut no longer skips the decision nor seats the table by itself.
+        // No area dialog and no page change: the sheet composes the order, and the
+        // account is created lazily on the first product (nothing is posted yet).
         expect(mockNavigate).not.toHaveBeenCalled();
         expect(api.post).not.toHaveBeenCalled();
-        expect(document.body.querySelector('[data-testid="areas-venta-mesa"]').textContent).toContain('Mesa 7');
-        for (const area of ORDER_AREAS) {
-            expect(document.body.querySelector(`[data-testid="area-${area.key}"]`)).not.toBeNull();
-        }
-
-        // Dine-in is still the only choice that occupies the table.
-        await act(async () => document.body.querySelector('[data-testid="area-mesa"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-        expect(api.post).toHaveBeenCalledWith('/tables/table-1/seat');
-        expect(mockNavigate).toHaveBeenCalledWith('/pedidos/nuevo?mesa=table-1');
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        expect(sheet).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
     });
 
-    it('offers the same areas from a seated table and leaves it untouched for a takeaway', async () => {
+    it('offers the inline composer for a seated table too', async () => {
         await act(async () => root.render(<Salon />));
         await act(async () => host.querySelector('[data-testid="mesa-card-pedir-5"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
 
         expect(mockNavigate).not.toHaveBeenCalled();
-        expect(document.body.querySelector('[data-testid="areas-venta-mesa"]').textContent).toContain('Mesa 5');
-
-        await act(async () => document.body.querySelector('[data-testid="area-llevar"]').dispatchEvent(new MouseEvent('click', { bubbles: true })));
-        expect(mockNavigate).toHaveBeenCalledWith('/pedidos/nuevo?tipo=llevar');
         expect(api.post).not.toHaveBeenCalled();
+        const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        expect(sheet).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
     });
 });

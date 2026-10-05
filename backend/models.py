@@ -426,6 +426,12 @@ class OrderSplit(BaseModel):
     parts: int = Field(ge=2, le=4)
 
 
+class OrderAlias(BaseModel):
+    """Alias opcional de una cuenta, para identificar quién pidió."""
+
+    alias: Optional[str] = Field(default=None, max_length=40)
+
+
 class PublicOrderCreate(BaseModel):
     request_id: Optional[constr(pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$", min_length=36, max_length=36)] = None
     order_type: Literal["local", "recojo", "delivery"]

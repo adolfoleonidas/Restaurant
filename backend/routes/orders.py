@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     FlowError,
@@ -644,6 +644,19 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
             )
 
     emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.patch("/{order_id}/alias")
+async def set_order_alias(order_id: str, data: OrderAlias, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Alias opcional de la cuenta, para identificar quién pidió (viaja a cocina)."""
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    alias = (data.alias or "").strip()
+    await _save_order(order, {"customer_name": alias or None, "updated_at": _now()})
     return await _current_order_response(order_id, user)
 
 
