@@ -1,6 +1,11 @@
 import os
 import sys
 
+# The suite signs tokens; make sure it never depends on the ambient env (and that
+# it runs the same locally and in CI).
+os.environ.setdefault("APP_ENV", "development")
+os.environ.setdefault("JWT_SECRET", "test-only-jwt-secret-for-the-hermetic-suite")
+
 import pytest
 import requests
 
