@@ -73,7 +73,7 @@ export default function Pagos() {
             </CardContent></Card>
 
             <Tabs value={tab} onValueChange={setTab}>
-                <TabsList>
+                <TabsList className="overflow-x-auto">
                     <TabsTrigger value="yape">Yape</TabsTrigger>
                     <TabsTrigger value="plin">Plin</TabsTrigger>
                     <TabsTrigger value="transferencia">Transferencia</TabsTrigger>
@@ -91,7 +91,7 @@ export default function Pagos() {
                                     <div className="border rounded-xl p-3 flex items-center gap-3">
                                         <img src={cfg[`${m}_qr`]} alt="QR" className="h-32 w-32 object-contain bg-white rounded" />
                                         <div className="flex flex-col gap-2">
-                                            <label className="text-xs underline cursor-pointer"><input type="file" accept="image/*" className="hidden" onChange={onQrFile(`${m}_qr`)} />Reemplazar</label>
+                                            <label className="inline-flex min-h-touch items-center rounded-md border px-3 text-xs underline cursor-pointer"><input type="file" accept="image/*" className="hidden" onChange={onQrFile(`${m}_qr`)} />Reemplazar</label>
                                             <Button size="sm" variant="ghost" onClick={() => set({ [`${m}_qr`]: '' })} className="text-destructive"><Trash2 className="h-4 w-4 mr-1" />Quitar</Button>
                                         </div>
                                     </div>

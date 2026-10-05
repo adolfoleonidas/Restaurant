@@ -86,9 +86,10 @@ export default function Usuarios() {
     return (
         <div className="space-y-5" data-testid="usuarios-root">
             <p className="page-kicker mb-1">Administración</p>
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><Users className="h-6 w-6 text-primary" /> Equipo</h1>
+            {/* flex-wrap + min-w-0: a 360 px el botón "Nuevo usuario" empujaba el h1 fuera de la pantalla */}
+            <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="min-w-0">
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2 min-w-0"><Users className="h-6 w-6 text-primary shrink-0" /> <span className="truncate">Equipo</span></h1>
                     <p className="text-muted-foreground text-sm">Usuarios del sistema, roles y permisos.</p>
                 </div>
                 <Button onClick={openNew} data-testid="usuario-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nuevo usuario</Button>
@@ -97,17 +98,18 @@ export default function Usuarios() {
                 <div className="divide-y">
                     {users.map((u) => (
                         <div key={u.id} className="p-4 flex flex-wrap items-center gap-3 justify-between">
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
                                 <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${ROLE_AVATAR_BG[u.role] || 'bg-gray-100 text-gray-600'}`}>
                                     {(u.full_name || '?').charAt(0).toUpperCase()}
                                 </div>
-                                <div>
-                                    <div className="font-medium">{u.full_name} {u.id === me.id && <span className="text-xs text-muted-foreground">(tú)</span>}</div>
+                                <div className="min-w-0">
+                                    <div className="font-medium truncate">{u.full_name} {u.id === me.id && <span className="text-xs text-muted-foreground">(tú)</span>}</div>
                                     <div className="text-xs text-muted-foreground">{u.email} · {(u.functions?.length ? u.functions : ROLE_FUNCTIONS[u.role] || []).map((f) => FN_LABELS[f] || f).join(', ')}{u.branch_id && <span> · {branches.find((branch) => branch.id === u.branch_id)?.name || u.branch_id}</span>}</div>
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                <label className="flex items-center gap-1 text-xs"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
+                                {/* min-h-11: el Switch mide 24 px de alto; la fila da el área táctil, sin encoger en escritorio */}
+                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={`Editar ${u.full_name}`}><Pencil className="h-4 w-4" /></Button>
                                 {u.id !== me.id && (<Button size="icon" variant="ghost" aria-label={`Eliminar ${u.full_name}`} onClick={() => setConfirmDel(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
                             </div>
@@ -147,7 +149,7 @@ export default function Usuarios() {
                         <div className="sm:col-span-2"><Label htmlFor="usuario-form-branch">Sucursal</Label>
                             <select
                                 id="usuario-form-branch"
-                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={form.branch_id}
                                 onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
                                 disabled={branchesLoading || branchesError || saving}
@@ -165,7 +167,7 @@ export default function Usuarios() {
                         <div className="sm:col-span-2 space-y-2 text-sm">
                             <div className="text-xs text-muted-foreground">Funciones (se pueden combinar)</div>
                             {Object.entries(FN_LABELS).map(([k, lab]) => (
-                                <label key={k} className="flex items-center gap-2">
+                                <label key={k} className="flex items-center gap-2 min-h-11 sm:min-h-0">
                                     <Switch
                                         checked={(form.functions || []).includes(k)}
                                         onCheckedChange={(on) => {
@@ -179,8 +181,8 @@ export default function Usuarios() {
                         </div>
                         {form.role !== 'admin' && (
                             <div className="sm:col-span-2 space-y-2 text-sm">
-                                <label className="flex items-center gap-2"><Switch checked={form.can_discount} onCheckedChange={(v) => setForm({ ...form, can_discount: v })} /> Puede aplicar descuentos</label>
-                                <label className="flex items-center gap-2"><Switch checked={form.can_void} onCheckedChange={(v) => setForm({ ...form, can_void: v })} /> Puede anular cobros o devolver dinero</label>
+                                <label className="flex items-center gap-2 min-h-11 sm:min-h-0"><Switch checked={form.can_discount} onCheckedChange={(v) => setForm({ ...form, can_discount: v })} /> Puede aplicar descuentos</label>
+                                <label className="flex items-center gap-2 min-h-11 sm:min-h-0"><Switch checked={form.can_void} onCheckedChange={(v) => setForm({ ...form, can_void: v })} /> Puede anular cobros o devolver dinero</label>
                             </div>
                         )}
                     </div>

@@ -61,8 +61,9 @@ export default function Pedidos() {
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Receipt className="h-6 w-6 text-primary" /> Pedidos</h1>
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
+                {/* El primitivo ya da 44 px en móvil: basta con no anularlo. */}
                 {['admin', 'mozo'].includes(user.role) && (
-                    <Button className="h-11" onClick={() => setShowAreas(true)} data-testid="pedidos-nuevo-button">
+                    <Button onClick={() => setShowAreas(true)} data-testid="pedidos-nuevo-button">
                         <Plus className="h-4 w-4 mr-2" /> Nuevo pedido
                     </Button>
                 )}
@@ -75,10 +76,10 @@ export default function Pedidos() {
                 value={filter}
                 onValueChange={(v) => v && setFilter(v)}
                 aria-label="Filtrar pedidos"
-                className="inline-flex h-10 flex-wrap items-center justify-center gap-1 rounded-md bg-muted p-1 text-muted-foreground"
+                className="inline-flex min-h-10 flex-wrap items-center justify-center gap-1 rounded-md bg-muted p-1 text-muted-foreground"
             >
                 {FILTERS.map((f) => (
-                    <ToggleGroupItem key={f.value} value={f.value} data-testid={`pedidos-filter-${f.value}`} className="min-h-9">
+                    <ToggleGroupItem key={f.value} value={f.value} data-testid={`pedidos-filter-${f.value}`} className="min-h-11 sm:min-h-9">
                         {f.label}
                     </ToggleGroupItem>
                 ))}
@@ -137,15 +138,17 @@ export default function Pedidos() {
                                     <div className="text-muted-foreground">Mozo: <span className="text-foreground">{o.created_by_name || (o.source === 'public' ? 'Cliente web' : '—')}</span></div>
                                     <div className="text-muted-foreground">Items: <span className="text-foreground">{(o.items || []).length}</span></div>
                                 </div>
-                                <div className="mt-3 flex items-center justify-between gap-2">
+                                {/* w-full en móvil: el total y los tres botones no caben en una fila a 360 px
+                                    (los textos no se pueden acortar). Desde sm: recuperan la fila original. */}
+                                <div className="mt-3 flex items-center justify-between gap-2 flex-wrap">
                                     <span className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</span>
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto">
                                         {needsVerify && (
                                             <Button
                                                 asChild
                                                 size="sm"
                                                 variant="outline"
-                                                className="border-blue-400 text-blue-700 dark:text-blue-300"
+                                                className="flex-1 sm:flex-none border-blue-400 text-blue-700 dark:text-blue-300"
                                                 data-testid={`pedidos-verificar-${o.order_number}`}
                                             >
                                                 <Link to={`/pedidos/${o.id}`}>
@@ -158,7 +161,7 @@ export default function Pedidos() {
                                             <Button
                                                 asChild
                                                 size="sm"
-                                                className="bg-primary"
+                                                className="flex-1 sm:flex-none bg-primary"
                                                 data-testid={`pedidos-cobrar-${o.order_number}`}
                                             >
                                                 <Link to={`/pedidos/${o.id}`}>
@@ -167,7 +170,7 @@ export default function Pedidos() {
                                                 </Link>
                                             </Button>
                                         )}
-                                        <Button asChild size="sm" variant="outline" data-testid={`pedidos-ver-${o.order_number}`}>
+                                        <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none" data-testid={`pedidos-ver-${o.order_number}`}>
                                             <Link to={`/pedidos/${o.id}`}>Ver</Link>
                                         </Button>
                                     </div>

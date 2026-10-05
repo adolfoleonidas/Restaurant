@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fmtMoney, fmtDateTime, PAYMENT_LABELS } from '@/lib/format';
-import { Search, Receipt, Image as ImageIcon, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Search, Receipt, Image as ImageIcon, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import useBranchNames from '@/hooks/useBranchNames';
@@ -106,8 +106,8 @@ export default function Comprobantes() {
                     </p>
                 </div>
                 <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                    <Input className="pl-9 h-10 w-52" placeholder="Buscar pedido o mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="comprobantes-search" />
+                    <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input className="pl-9 w-52" placeholder="Buscar pedido o mesa" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="comprobantes-search" />
                 </div>
             </div>
 
@@ -116,14 +116,14 @@ export default function Comprobantes() {
                     <Button
                         key={f.key}
                         variant={filter === f.key ? 'default' : 'outline'}
-                        className="h-10"
+                        className="h-11 sm:h-10"
                         onClick={() => setFilter(f.key)}
                         data-testid={`comprobantes-filtro-${f.key}`}
                     >
                         {f.label}
                     </Button>
                 ))}
-                <Button variant="outline" className="h-10" onClick={() => refetch?.()} data-testid="comprobantes-refresh">Actualizar</Button>
+                <Button variant="outline" className="h-11 sm:h-10" onClick={() => refetch?.()} data-testid="comprobantes-refresh">Actualizar</Button>
             </div>
 
             {visible.length === 0 ? (
@@ -165,11 +165,11 @@ export default function Comprobantes() {
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button size="sm" variant="outline" className="h-9" onClick={() => openDetail(row)} data-testid={`comprobantes-ver-${row.order_number}`}>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <Button size="sm" variant="outline" onClick={() => openDetail(row)} data-testid={`comprobantes-ver-${row.order_number}`}>
                                             <ImageIcon className="h-4 w-4 mr-1.5" /> Ver comprobante
                                         </Button>
-                                        <Button size="sm" variant="ghost" className="h-9" onClick={() => navigate(`/pedidos/${row.id}`)} data-testid={`comprobantes-pedido-${row.order_number}`}>
+                                        <Button size="sm" variant="ghost" onClick={() => navigate(`/pedidos/${row.id}`)} data-testid={`comprobantes-pedido-${row.order_number}`}>
                                             Abrir pedido
                                         </Button>
                                     </div>
@@ -191,14 +191,21 @@ export default function Comprobantes() {
                         <p className="text-sm text-muted-foreground">Cargando comprobante…</p>
                     ) : detail?.image ? (
                         <div className="space-y-3">
-                            <img src={detail.image} alt="Comprobante" className="max-h-[60vh] w-auto mx-auto rounded-lg border border-border" data-testid="comprobantes-imagen" />
+                            {/* 60dvh: en apaisado (390 px de alto) la captura no queda legible; el tope en px
+                                evita que en vertical se coma el diálogo, y el enlace abre el original a tamaño real */}
+                            <img src={detail.image} alt="Comprobante" className="max-h-[min(60dvh,420px)] w-auto mx-auto rounded-lg border border-border" data-testid="comprobantes-imagen" />
                             <div className="text-xs text-muted-foreground text-center">
                                 {PAYMENT_LABELS[detail.row.payment_proof_method] || detail.row.payment_proof_method || 'Comprobante'}
                                 {' · '}
                                 {fmtMoney(detail.row.total)}
                                 {detail.row.payment_proof_uploaded_at ? ` · ${fmtDateTime(detail.row.payment_proof_uploaded_at)}` : ''}
                             </div>
-                            <div className="flex justify-center gap-2">
+                            <div className="flex justify-center gap-2 flex-wrap">
+                                <Button variant="outline" asChild>
+                                    <a href={detail.image} target="_blank" rel="noreferrer" data-testid="comprobantes-imagen-abrir">
+                                        <ExternalLink className="h-4 w-4 mr-1.5" /> Ver a tamaño completo
+                                    </a>
+                                </Button>
                                 <Button variant="outline" onClick={() => { const id = detail.row.id; setDetail(null); navigate(`/pedidos/${id}`); }}>
                                     Ir al pedido
                                 </Button>
