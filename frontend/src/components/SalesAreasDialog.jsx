@@ -83,7 +83,7 @@ export default function SalesAreasDialog({ open, onOpenChange, pendingTable = nu
                         availableTables.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No hay mesas disponibles en este momento.</p>
                         ) : (
-                            <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="areas-venta-mesas">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 max-h-[50dvh] overflow-y-auto" data-testid="areas-venta-mesas">
                                 {availableTables.map((t) => (
                                     <button
                                         key={t.id}

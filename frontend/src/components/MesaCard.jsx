@@ -26,8 +26,13 @@ import { canCloseAttention } from '@/lib/attentionClose';
  * `data-floor-state` and `aria-label="Requiere atencion"`.
  */
 
-const ACTION_BASE = 'h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
+const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
 
+// El fondo de los botones sólidos es el tono oscuro del estado (`fg`), no el
+// punto de color (`dot`): blanco sobre `dot` da 3,67:1 (Listo) y 2,95:1
+// (Cuenta) y no llega a AA. Es el mismo arreglo P1-7 de docs/ui-ux-audit.md,
+// que los componentes nuevos de tarjeta habían reintroducido. Cada estado
+// conserva su identidad porque cada `fg` es un tono distinto.
 const ACTION_VARIANT = {
     solid: { className: 'text-white', style: ({ color }) => ({ background: color }) },
     soft: { className: '', style: ({ s }) => ({ background: s.border }) },
@@ -103,13 +108,13 @@ export default function MesaCard({
     const actions = [];
     if (showDeliver) {
         actions.push({
-            key: 'entregar', label: 'Entregar', icon: UtensilsCrossed, variant: 'solid', color: FLOOR_STYLE.listo.dot,
+            key: 'entregar', label: 'Entregar', icon: UtensilsCrossed, variant: 'solid', color: FLOOR_STYLE.listo.fg,
             testId: `mesa-card-deliver-${t.number}`, onClick: () => onDeliver(serviceOrder.id),
         });
     }
     if (showCobrar) {
         actions.push({
-            key: 'cobrar', label: 'Cobrar', icon: Receipt, variant: 'solid', color: FLOOR_STYLE.cuenta.dot,
+            key: 'cobrar', label: 'Cobrar', icon: Receipt, variant: 'solid', color: FLOOR_STYLE.cuenta.fg,
             testId: `mesa-card-cobrar-${t.number}`, onClick: () => onCharge(serviceOrder),
         });
     }
@@ -168,7 +173,7 @@ export default function MesaCard({
                         </span>
                     )}
                     {!selectMode && needsAttention && (
-                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
+                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} role="img" aria-label="Requiere atencion">
                             <Bell className="h-3.5 w-3.5 text-white" />
                         </span>
                     )}
@@ -178,7 +183,7 @@ export default function MesaCard({
                     <span className="text-sm font-semibold">{s.label}</span>
                     {showBillBadge && (
                         <span
-                            className="text-[10px] font-medium rounded-full px-2 py-0.5 border"
+                            className="text-xs font-medium rounded-full px-2 py-0.5 border"
                             style={{ background: FLOOR_STYLE.cuenta.bg, color: FLOOR_STYLE.cuenta.fg, borderColor: FLOOR_STYLE.cuenta.border }}
                         >
                             Cuenta solicitada
@@ -206,13 +211,16 @@ export default function MesaCard({
                         </span>
                     </div>
                 )}
-                {showVisitaActiva && <div className="text-xs opacity-80">Visita activa</div>}
+                {/* Sin opacity: sobre los fondos suaves de estado el texto
+                    quedaba en 4,08:1 (por debajo de AA). El token de color
+                    apagado ya da la jerarquía sin perder contraste. */}
+                {showVisitaActiva && <div className="text-xs text-muted-foreground">Visita activa</div>}
                 {displayOrder && <AttentionReference order={displayOrder} branchNames={branchNames} />}
                 {amount && (
-                    <div className="mt-auto text-xs font-mono font-semibold tabular-nums opacity-80">
+                    <div className="mt-auto text-xs font-mono font-semibold tabular-nums">
                         <div>{amount.primary}</div>
                         {amount.secondary != null && (
-                            <div className="opacity-80">Total {fmtMoney(amount.secondary)}</div>
+                            <div className="text-muted-foreground">Total {fmtMoney(amount.secondary)}</div>
                         )}
                     </div>
                 )}

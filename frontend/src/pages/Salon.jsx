@@ -220,7 +220,10 @@ export default function Salon() {
 
     // ── Filters ────────────────────────────────────────────────────────────
     const areas = useMemo(() => {
-        const s = new Set((tables || []).map((t) => t.area));
+        // `t.area` puede venir vacío (mesas antiguas sin zona). Sin filtrar, la
+        // fila de zonas pintaba un chip "undefined" y React avisaba de una clave
+        // ausente en la lista (`key={undefined}` no cuenta como clave).
+        const s = new Set((tables || []).map((t) => t.area).filter(Boolean));
         return ['todas', ...Array.from(s)];
     }, [tables]);
 
@@ -734,22 +737,22 @@ export default function Salon() {
                         En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
                     </p>
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                     <div className="relative">
-                        <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
-                        <Input ref={searchRef} className="pl-9 h-10 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
+                        <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
+                        <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
                     </div>
                     {summary.toPrep > 0 && (
-                        <Button variant="outline" className="h-10" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
+                        <Button variant="outline" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
                             Cocina ({summary.toPrep})
                         </Button>
                     )}
                     {canTake && !selectMode && (
                         <>
-                            <Button variant="outline" onClick={startSelection} className="h-10" data-testid="salon-unir-mesas">
+                            <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
                                 <Link2 className="h-4 w-4 mr-1" /> Unir mesas
                             </Button>
-                            <Button onClick={() => openAreas()} className="h-10" data-testid="salon-nuevo-pedido">
+                            <Button onClick={() => openAreas()} data-testid="salon-nuevo-pedido">
                                 <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
                             </Button>
                         </>
@@ -757,9 +760,10 @@ export default function Salon() {
                 </div>
             </div>
 
-            {/* Join mode: bottom action bar (thumb-friendly, like the reference prototype) */}
+            {/* Join mode: bottom action bar (thumb-friendly). En móvil sube por
+                encima de la barra de navegación inferior: las dos están en z-40. */}
             {selectMode && (
-                <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-card px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)]" data-testid="salon-seleccion">
+                <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-40 border-t bg-card px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.10)] md:bottom-0" data-testid="salon-seleccion">
                     <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
                         <div className="min-w-[200px] flex-1">
                             <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
@@ -772,10 +776,10 @@ export default function Salon() {
                             )}
                         </div>
                         <div className="flex gap-2">
-                            <Button variant="outline" className="h-10" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
+                            <Button variant="outline" onClick={cancelSelection} data-testid="salon-seleccion-cancelar">
                                 Cancelar
                             </Button>
-                            <Button className="h-10" disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
+                            <Button disabled={!canConfirmJoin || joining} onClick={joinTables} data-testid="salon-unir-confirmar">
                                 <Link2 className="h-4 w-4 mr-1" /> {joining ? 'Uniendo…' : 'Unir mesas'}
                             </Button>
                         </div>
@@ -784,7 +788,7 @@ export default function Salon() {
             )}
 
             {/* State filter */}
-            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
+            <div className="scroll-x flex gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
                 {STATE_FILTERS.map((f) => (
                     <button
                         key={f.key}
@@ -793,13 +797,13 @@ export default function Salon() {
                         data-testid={`salon-filtro-${f.key}`}
                         className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                     >
-                        {f.label} <span className="ml-1.5 text-xs opacity-70 tabular-nums">{stateCounts[f.key]}</span>
+                        {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
                     </button>
                 ))}
             </div>
 
             {/* Zones + legend */}
-            <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+            <div className="scroll-x flex gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
                 {areas.map((a) => (
                     <button
                         key={a}
@@ -811,17 +815,20 @@ export default function Salon() {
                         {areaLabel(a)}
                     </button>
                 ))}
-                <div className="flex flex-wrap gap-2 items-center lg:ml-auto" data-testid="salon-legend">
-                    {LEGEND.map((k) => {
-                        const s = FLOOR_STYLE[k];
-                        return (
-                            <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5 shrink-0" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
-                                <span className="h-2 w-2 rounded-full" style={{ background: s.dot }} />
-                                {s.label}
-                            </span>
-                        );
-                    })}
-                </div>
+            </div>
+
+            {/* La leyenda va en su propia fila: dentro del carril con scroll
+                quedaba a la derecha, fuera de la vista en móvil. */}
+            <div className="flex w-full flex-wrap gap-2 items-center lg:justify-end" data-testid="salon-legend">
+                {LEGEND.map((k) => {
+                    const s = FLOOR_STYLE[k];
+                    return (
+                        <span key={k} className="text-xs px-2 py-1 rounded-full border flex items-center gap-1.5 shrink-0" style={{ background: s.bg, borderColor: s.border, color: s.fg }}>
+                            <span className="h-2 w-2 rounded-full" style={{ background: s.dot }} />
+                            {s.label}
+                        </span>
+                    );
+                })}
             </div>
 
             {(tablesError || ordersError) && (
@@ -989,7 +996,7 @@ export default function Salon() {
                                                     type="button"
                                                     onClick={() => selectAccount(o.id)}
                                                     data-testid={`mesa-sheet-cuenta-${o.order_number}`}
-                                                    className={`rounded-lg border px-2 py-1 text-xs font-medium ${currentAccountId === o.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                                                    className={`min-h-9 rounded-lg border px-3 py-1 text-xs font-medium ${currentAccountId === o.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                                                 >
                                                     {o.customer_name ? o.customer_name : `#${o.order_number}`} · {fmtMoney(o.total)}
                                                 </button>
@@ -999,7 +1006,7 @@ export default function Salon() {
                                                     type="button"
                                                     onClick={addAccount}
                                                     data-testid="mesa-sheet-nueva-cuenta"
-                                                    className="rounded-lg border border-dashed border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                                    className="min-h-9 rounded-lg border border-dashed border-border px-3 py-1 text-xs font-medium hover:bg-secondary"
                                                 >
                                                     <Plus className="h-3 w-3 inline mr-1" />Cuenta
                                                 </button>
@@ -1009,7 +1016,7 @@ export default function Salon() {
                                                     type="button"
                                                     onClick={mergeAccounts}
                                                     data-testid="mesa-sheet-fusionar-cuentas"
-                                                    className="rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-secondary"
+                                                    className="min-h-9 rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-secondary"
                                                 >
                                                     <Link2 className="h-3 w-3 inline mr-1" />Fusionar
                                                 </button>
@@ -1020,7 +1027,6 @@ export default function Salon() {
                                         <div className="space-y-1" data-testid="mesa-sheet-alias-row">
                                             <div className="flex items-center gap-2">
                                                 <Input
-                                                    className="h-9"
                                                     placeholder={accounts.length > 1 ? 'Alias (ej. Juan)' : 'Alias de la cuenta (opcional)'}
                                                     value={aliasDraft}
                                                     onChange={(e) => setAliasDraft(e.target.value)}
@@ -1029,7 +1035,7 @@ export default function Salon() {
                                                 />
                                                 <Button
                                                     size="sm"
-                                                    className="h-9 shrink-0"
+                                                    className="h-11 shrink-0"
                                                     onClick={saveAlias}
                                                     disabled={aliasDraft.trim() === (order.customer_name || '')}
                                                     data-testid="mesa-sheet-alias-guardar"
@@ -1065,7 +1071,7 @@ export default function Salon() {
                                                         : 'Agregar productos'}
                                                 </span>
                                                 {draft && orderItems.length > 0 && (
-                                                    <Button size="sm" className="h-8" onClick={sendCurrentToKitchen} data-testid="mesa-sheet-enviar-cocina">
+                                                    <Button size="sm" className="h-11" onClick={sendCurrentToKitchen} data-testid="mesa-sheet-enviar-cocina">
                                                         Enviar a cocina
                                                     </Button>
                                                 )}
@@ -1079,18 +1085,18 @@ export default function Salon() {
                                                 </div>
                                             )}
                                             <div className="relative">
-                                                <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
-                                                <Input className="pl-9 h-9" placeholder="Buscar plato" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} data-testid="mesa-sheet-buscar-producto" />
+                                                <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
+                                                <Input className="pl-9" placeholder="Buscar plato" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} data-testid="mesa-sheet-buscar-producto" />
                                             </div>
                                             {categories.length > 0 && (
-                                                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                                                <div className="scroll-x flex gap-1.5 pb-1">
                                                     <button type="button" onClick={() => setProductCategory('all')} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>Todas</button>
                                                     {categories.map((c) => (
                                                         <button key={c.id} type="button" onClick={() => setProductCategory(c.id)} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{c.name}</button>
                                                     ))}
                                                 </div>
                                             )}
-                                            <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto" data-testid="mesa-sheet-productos">
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-[38dvh] overflow-y-auto" data-testid="mesa-sheet-productos">
                                                 {pickerProducts.map((p) => {
                                                     const out = !p.is_available || (p.is_combo && p.components_available === false);
                                                     const qty = orderItems
@@ -1146,8 +1152,8 @@ export default function Salon() {
                                                         <span className="font-mono tabular-nums shrink-0">{fmtMoney(it.subtotal)}</span>
                                                         {canCompose && (
                                                             <span className="flex items-center gap-1 shrink-0">
-                                                                <button type="button" onClick={() => changeItemQty(it, -1)} aria-label={`Quitar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-menos-${it.id}`} className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"><Minus className="h-3.5 w-3.5" /></button>
-                                                                <button type="button" onClick={() => changeItemQty(it, 1)} aria-label={`Agregar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-mas-${it.id}`} className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"><Plus className="h-3.5 w-3.5" /></button>
+                                                                <button type="button" onClick={() => changeItemQty(it, -1)} aria-label={`Quitar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-menos-${it.id}`} className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"><Minus className="h-3.5 w-3.5" /></button>
+                                                                <button type="button" onClick={() => changeItemQty(it, 1)} aria-label={`Agregar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-mas-${it.id}`} className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"><Plus className="h-3.5 w-3.5" /></button>
                                                             </span>
                                                         )}
                                                     </div>
@@ -1180,14 +1186,14 @@ export default function Salon() {
                                                         style={{ background: '#F3F0FF', borderColor: '#D9D2F0', color: '#3B2A66' }}
                                                     >
                                                         Mesa {member.number}
-                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-[10px] opacity-80">· cuenta</span>}
+                                                        {groupAccounts.some((owner) => owner.id === member.id) && <span className="text-xs text-muted-foreground">· cuenta</span>}
                                                         {member.id !== t.id && canTake && (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => removeGroupMember(group, member)}
                                                                 aria-label={`Separar Mesa ${member.number}`}
                                                                 data-testid={`mesa-sheet-quitar-grupo-${member.number}`}
-                                                                className="ml-0.5 rounded-full hover:bg-black/10 p-0.5"
+                                                                className="ml-0.5 grid min-h-touch min-w-touch place-items-center rounded-full hover:bg-black/10"
                                                             >
                                                                 <Unlink className="h-3 w-3" />
                                                             </button>
@@ -1379,7 +1385,7 @@ export default function Salon() {
                                 No hay mesas libres de la misma sucursal para mover el pedido.
                             </p>
                         ) : (
-                            <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-pedido-mesas">
+                            <div className="grid grid-cols-3 gap-2 max-h-[50dvh] overflow-y-auto" data-testid="mover-pedido-mesas">
                                 {transferTargets.map((target) => (
                                     <button
                                         key={target.id}
@@ -1420,7 +1426,7 @@ export default function Salon() {
                                     No hay mesas libres para mover la cuenta.
                                 </p>
                             ) : (
-                                <div className="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto" data-testid="mover-cuenta-mesas">
+                                <div className="grid grid-cols-3 gap-2 max-h-[50dvh] overflow-y-auto" data-testid="mover-cuenta-mesas">
                                     {targets.map((target) => (
                                         <button
                                             key={target.id}
