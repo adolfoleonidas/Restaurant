@@ -463,12 +463,15 @@ export default function Salon() {
                                                 <Receipt className="h-3.5 w-3.5 inline mr-1" /> Cobrar
                                             </button>
                                         )}
+                                        {/* Card shortcut for taking an order: it opens the same sales-area
+                                            decision as the sheet button, so no table is seated before the
+                                            waiter picks mesa / llevar / recojo / delivery. */}
                                         {floor.key === 'libre' && canTake && (
                                             <button
                                                 type="button"
                                                 className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
                                                 style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); takeTable(t); }}
+                                                onClick={(e) => { e.stopPropagation(); openAreas(t); }}
                                                 data-testid={`mesa-card-pedir-${t.number}`}
                                             >
                                                 <Plus className="h-3.5 w-3.5 inline mr-1" /> Tomar pedido
@@ -479,7 +482,7 @@ export default function Salon() {
                                                 type="button"
                                                 className="h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]"
                                                 style={{ background: s.border, color: s.fg }}
-                                                onClick={(e) => { e.stopPropagation(); takeTable(t); }}
+                                                onClick={(e) => { e.stopPropagation(); openAreas(t); }}
                                                 data-testid={`mesa-card-pedir-${t.number}`}
                                             >
                                                 Tomar pedido
