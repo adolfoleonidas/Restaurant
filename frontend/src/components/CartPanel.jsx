@@ -71,7 +71,7 @@ export const CartPanel = ({ onClose }) => {
                                         <div className="font-display truncate">{it.product_name}</div>
                                         <div className="text-xs text-muted-foreground font-mono tabular-nums">{fmtMoney(it.unit_price)} c/u</div>
                                     </div>
-                                    <span className={`text-[10px] font-medium rounded-full px-1.5 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
+                                    <span className={`text-xs font-medium rounded-full px-1.5 py-0.5 shrink-0 ${st.cls}`}>{st.label}</span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">

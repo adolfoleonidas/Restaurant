@@ -323,7 +323,7 @@ export default function PedidoDetalle() {
                             ) : (
                                 <div key={p.id} className="text-left border rounded-xl p-4 h-16 flex items-center justify-between opacity-50" data-testid={`agregar-producto-${p.id}`}>
                                     <span className="font-medium truncate pr-2">{p.name}</span>
-                                    <span className="shrink-0 text-[10px] font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
+                                    <span className="shrink-0 text-xs font-medium rounded-full bg-[#F2F2F2] text-[#3F3F46] border border-[#D4D4D8] px-2 py-0.5">Agotado</span>
                                 </div>
                             )
                         ))}

@@ -434,6 +434,29 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ---
 
+## 🔄 Ronda 6 del objetivo — texto por debajo de 12 px en los componentes operativos
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R6-1 | Texto <12 px en salón y cocina | Se eliminan las 9 instancias de `text-[10px]`/`text-[11px]` de los componentes operativos y de la carta pública (chips de estado, metadatos de ticket, "Cuenta solicitada", línea de carrito y "Agotado") y pasan a `text-xs` (12 px), que es el mínimo declarado en `design_guidelines.md` (`small: text-xs md:text-sm`) | `Salon.jsx`, `Cocina.jsx`, `ProductCard.jsx`, `CartPanel.jsx`, `PedidoDetalle.jsx` |
+
+### Verificación
+
+- **Código:** las 5 archivos pasan de 9 instancias de `text-[10px]`/`text-[11px]` a **0**, sin mojibake ni pérdida de acentos en la escritura (se reescribieron como UTF-8 sin BOM y se releyeron para comprobarlo).
+- **Matriz de regresión** (90 visitas: 4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe en las 90 visitas** y **0 desbordamientos horizontales** — el aumento de 2 px no rompió ningún layout, ni siquiera el chip "Cuenta solicitada" de las tarjetas de mesa.
+- **La métrica de texto <12 px sigue subiendo** (215 → 246 sobre las 90 visitas comparables): el crecimiento no viene del código que se tocó sino de los **datos reales** (16 pedidos y 31 mesas frente a 2 y 15 de la baseline) y, sobre todo, de la clase global `.page-kicker` (`text-[0.7rem]` = **11,2 px** en `src/index.css`), que aparece en casi todas las pantallas. Ese es el resto exacto de este hallazgo: un solo cambio de CSS que sube el kicker a 12 px.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| `.page-kicker` a 12 px | Es la fuente principal del residuo del hallazgo anterior; un solo cambio en `src/index.css`, pero mueve visualmente todos los antetítulos de la app |
+| Migrar `CobrarDialog` al `Dialog` de Radix | Ya tiene trampa de foco, `aria-modal` y retorno de foco a mano; Radix añadiría `inert` nativo y un manejo más limpio de los subdiálogos |
+
+---
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)

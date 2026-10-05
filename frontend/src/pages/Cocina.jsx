@@ -64,7 +64,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                 <div className="flex items-start justify-between gap-2">
                     <div>
                         <div className="font-display text-3xl font-bold leading-none">{place}</div>
-                        <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                             #{order.order_number}
                             {order.source === 'public' ? ' · carta web' : ''}
                             {order.order_type && order.order_type !== 'mesa' && (
@@ -76,7 +76,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                         </div>
                         <AttentionReference order={order} branchNames={branchNames} />
                         {(order.customer_name || order.customer_address) && (
-                            <div className="text-[11px] mt-0.5 text-muted-foreground" data-testid={`cocina-cliente-${order.order_number}`}>
+                            <div className="text-xs mt-0.5 text-muted-foreground" data-testid={`cocina-cliente-${order.order_number}`}>
                                 {[order.customer_name, order.customer_phone, order.customer_address].filter(Boolean).join(' · ')}
                             </div>
                         )}

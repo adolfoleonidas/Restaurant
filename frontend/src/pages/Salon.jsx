@@ -453,7 +453,7 @@ export default function Salon() {
                                     <div className="flex items-center gap-1.5 flex-wrap">
                                         <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
                                         <span className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</span>
-                                        {billRequested && <span className="text-[10px] font-medium rounded-full bg-[#FFE0CC] text-[#8C3A12] border border-[#F5B488] px-2 py-0.5">Cuenta solicitada</span>}
+                                        {billRequested && <span className="text-xs font-medium rounded-full bg-[#FFE0CC] text-[#8C3A12] border border-[#F5B488] px-2 py-0.5">Cuenta solicitada</span>}
                                     </div>
                                     {elapsed && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
                                         <div className="flex items-center gap-1 text-xs" style={{ color: s.fg }}>
