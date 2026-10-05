@@ -25,8 +25,19 @@ const FILTERS = [
 
 const PENDING = 'comprobante_subido';
 
-function statusLabel(status) {
-    if (status === PENDING) return 'Pendiente de revisión';
+/**
+ * A proof waiting for review. Newer orders track it in `payment_proof_status`
+ * so a partial payment cannot hide it; legacy ones only had `payment_status`.
+ */
+function proofPending(row) {
+    return row?.payment_proof_status
+        ? row.payment_proof_status === 'pendiente'
+        : row?.payment_status === PENDING;
+}
+
+function statusLabel(row) {
+    if (proofPending(row)) return 'Pendiente de revisión';
+    const status = row?.payment_status;
     if (status === 'pagado') return 'Pagado';
     if (status === 'parcial') return 'Pago parcial';
     if (status === 'confirmado') return 'Confirmado';
@@ -49,7 +60,7 @@ export default function Comprobantes() {
     );
 
     const items = useMemo(() => (Array.isArray(data?.items) ? data.items : []), [data]);
-    const pendingCount = data?.pending ?? items.filter((it) => it.payment_status === PENDING).length;
+    const pendingCount = data?.pending ?? items.filter((it) => proofPending(it)).length;
 
     const visible = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -122,7 +133,7 @@ export default function Comprobantes() {
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                     {visible.map((row) => {
-                        const isPending = row.payment_status === PENDING;
+                        const isPending = proofPending(row);
                         const missing = Number(row.total || 0) - Number(row.amount_paid || 0);
                         return (
                             <Card key={row.id} data-testid={`comprobantes-row-${row.order_number}`}>
@@ -147,7 +158,7 @@ export default function Comprobantes() {
                                             <div className="font-mono font-bold tabular-nums">{fmtMoney(row.total)}</div>
                                             <div className={`text-xs font-medium flex items-center gap-1 justify-end ${isPending ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                 {isPending ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                                                {statusLabel(row.payment_status)}
+                                                {statusLabel(row)}
                                             </div>
                                             {missing > 0.009 && isPending && (
                                                 <div className="text-xs text-muted-foreground">Resta {fmtMoney(missing)}</div>

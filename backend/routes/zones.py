@@ -42,9 +42,11 @@ async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["adm
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="El nombre de la zona es obligatorio")
-    exists = await db.zones.find_one({"restaurant_id": user["restaurant_id"], "name": name})
+    exists = await db.zones.find_one({
+        "restaurant_id": user["restaurant_id"], "branch_id": data.branch_id, "name": name,
+    })
     if exists:
-        raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre")
+        raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre en esta sucursal")
     
     # Validate branch if provided
     await _validate_branch(user["restaurant_id"], data.branch_id)

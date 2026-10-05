@@ -132,7 +132,33 @@ reales (número, titular, banco, CCI) y **deshabilitá** lo que no uses.
 3. Mirá la carta pública (**"Mi página web"**) desde el celular.
 4. Al terminar la prueba: **Casa → Datos → Restablecer datos operativos** para no dejar el pedido de prueba.
 
-## 11. Backup
+## 11. HTTPS (muy recomendado antes de abrir)
+
+Sin TLS, **las credenciales y los tokens viajan en claro** por la red. El HTTPS es **opt-in**:
+el deploy normal sigue funcionando por HTTP hasta que pongas los certificados.
+
+1. Necesitás un **dominio** que apunte a la IP del servidor (por ejemplo `micentro.com`).
+2. Sacá el certificado (Let's Encrypt, gratis):
+   ```bash
+   mkdir -p certs
+   docker run --rm -p 80:80 -v "$PWD/certs:/etc/letsencrypt" certbot/certbot \
+     certonly --standalone -d micentro.com --agree-tos -m tu@correo.com --non-interactive
+   cp certs/live/micentro.com/fullchain.pem certs/fullchain.pem
+   cp certs/live/micentro.com/privkey.pem   certs/privkey.pem
+   ```
+3. En `.env`, sumá el origen HTTPS:
+   `CORS_ORIGINS=https://micentro.com`
+4. Levantá con el override:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d
+   ```
+5. Abrí el puerto **443** en el firewall del servidor y entrá por `https://micentro.com`.
+
+> Los certificados quedan en `certs/`, que está **ignorado por git**: una clave privada no se sube nunca.
+> Si preferís probar sin dominio, podés generar un certificado **autofirmado**, pero el navegador
+> va a mostrar una advertencia (no sirve para un local real).
+
+## 12. Backup
 
 El volumen `mongo-data` **no viene respaldado**. Programá un backup (por ejemplo
 `docker run --rm -v restaurant_mongo-data:/data -v $(pwd):/backup mongo:7 mongodump ...`).

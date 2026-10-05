@@ -19,7 +19,8 @@ from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCr
 from billing import method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
-from routes.payments import apply_void_payment, create_payment
+from routes.payments import apply_void_payment, create_payment, proof_is_pending
+from order_flow import ticket_fields
 from routes.reports import sales_report
 import routes.cash as cash_routes
 import routes.orders as order_routes
@@ -163,6 +164,7 @@ class _DB:
         self.attentions = _Collection()
         self.products = _Collection()
         self.branches = _Collection()
+        self.payment_configs = _Collection()
         self.branches.docs.append({"id": "branch-1", "restaurant_id": RID})
 
 
@@ -1003,3 +1005,81 @@ def test_cash_movement_needs_a_description_and_is_audited():
     assert created["amount"] == 10
     assert len(movements) == 1
     assert any(row.get("action") == "cash_movement" for row in audit)
+
+
+def test_partial_payment_does_not_hide_a_pending_proof():
+    """The proof has its own status, so a partial payment keeps it in review."""
+    order = {
+        "payment_status": "comprobante_subido",
+        "payment_proof_status": "pendiente",
+        "items": [],
+    }
+    fields = ticket_fields(order, "entregado", 10.0, 100.0)
+    assert fields["payment_status"] == "parcial"
+    assert order["payment_proof_status"] == "pendiente"
+    assert proof_is_pending({**order, **fields}) is True
+
+
+def test_proof_status_falls_back_to_payment_status_for_legacy_orders():
+    assert proof_is_pending({"payment_status": "comprobante_subido"}) is True
+    assert proof_is_pending({"payment_status": "parcial"}) is False
+    assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "pendiente"}) is True
+    assert proof_is_pending({"payment_status": "parcial", "payment_proof_status": "verificado"}) is False
+
+
+def test_replaying_a_payment_returns_the_settled_shape():
+    """A retry after a network cut must report the bill as covered."""
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = _payment_body(idempotency_key="retry-key")
+        first = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        replay = await create_payment(body, _cashier())
+        return first, stored, replay
+
+    first, stored, replay = asyncio.run(run())
+    assert replay["id"] == first["id"]
+    assert stored["amount_paid"] == 20
+    assert replay["fully_paid"] is True
+    assert replay["remaining"] == 0.0
+
+
+def test_a_disabled_payment_method_is_rejected():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        db.payment_configs.docs.append({"restaurant_id": RID, "enable_efectivo": True, "enable_tarjeta": False})
+        _bind(db)
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(_payment_body(method="tarjeta", idempotency_key="card-key"), _cashier())
+        return caught.value, db.payments.docs
+
+    error, payments = asyncio.run(run())
+    assert error.status_code == 400
+    assert "tarjeta" in error.detail
+    assert payments == []
+
+
+def test_a_mixed_payment_with_a_disabled_method_is_rejected():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=100.0, total=100.0))
+        db.cash_registers.docs.append(_open_register())
+        db.payment_configs.docs.append({"restaurant_id": RID, "enable_efectivo": True, "enable_plin": False})
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1", method="mixto", amount=100, idempotency_key="mix-key",
+            splits=[PaymentSplit(method="efectivo", amount=50), PaymentSplit(method="plin", amount=50)],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db.payments.docs
+
+    error, payments = asyncio.run(run())
+    assert error.status_code == 400
+    assert "plin" in error.detail
+    assert payments == []

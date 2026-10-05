@@ -93,3 +93,6 @@ frontend/node_modules/.cache/default-development/2.pack
 
 # Agent tooling cache
 .atl/
+
+# TLS certificates (a private key must never be committed)
+certs/

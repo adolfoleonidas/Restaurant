@@ -102,6 +102,7 @@ class _DB:
         self.products = _Collection()
         self.categories = _Collection()
         self.branches = _Collection()
+        self.attention_number_assignments = _Collection()
 
     def __getitem__(self, name):
         return getattr(self, name)
@@ -127,6 +128,7 @@ def _seed(db):
                                  "table_ids": ["t1"], "anchor_table_id": "t1"})
     db.audit_logs.docs.append({"id": "al1", "restaurant_id": RID})
     db.counters.docs.append({"restaurant_id": RID, "key": "order_x", "value": 5})
+    db.attention_number_assignments.docs.append({"id": "ana1", "restaurant_id": RID})
     # Configuration rows for the tenant that must survive.
     db.products.docs.append({"id": "prod1", "restaurant_id": RID})
     db.categories.docs.append({"id": "cat1", "restaurant_id": RID})
@@ -162,6 +164,7 @@ def test_reset_clears_operational_and_keeps_catalog(monkeypatch):
         assert db.approvals.docs == []
         assert [g["id"] for g in db.table_groups.docs] == ["g2"]
         assert db.counters.docs == []
+        assert db.attention_number_assignments.docs == []
         # Catalog preserved.
         assert len(db.products.docs) == 1
         assert len(db.categories.docs) == 1

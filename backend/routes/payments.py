@@ -23,6 +23,18 @@ _STAFF_PROOF_DATA_URL = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z
 _STAFF_PROOF_MAX_BYTES = 1_800_000
 
 
+def proof_is_pending(order: dict) -> bool:
+    """Whether the order carries a proof still waiting for review.
+
+    Newer orders track it in `payment_proof_status`; legacy ones only carried
+    `payment_status == 'comprobante_subido'`.
+    """
+    status = order.get("payment_proof_status")
+    if status:
+        return status == "pendiente"
+    return order.get("payment_status") == "comprobante_subido"
+
+
 async def _authorized_order(order_id: str, user: dict) -> dict:
     order = await db.orders.find_one(
         {"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
@@ -53,7 +65,16 @@ async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
 def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     if payment.get("order_id") != order_id or payment.get("branch_id") != order.get("branch_id"):
         raise HTTPException(status_code=409, detail="El pago existente no coincide con el pedido y sucursal originales")
-    return payment
+    # Same shape as a fresh charge. The dialog and the printed receipt read these
+    # to decide whether the bill is settled, and a retry after a network cut used
+    # to come back without them (the cashier saw a blank remainder).
+    total = round(float(order.get("total") or 0), 2)
+    paid = round(float(order.get("amount_paid") or 0), 2)
+    replay = {key: value for key, value in payment.items() if key != "_id"}
+    replay["remaining"] = round(max(0.0, total - paid), 2)
+    replay["fully_paid"] = paid + 0.009 >= total
+    replay["table_released"] = False
+    return replay
 
 
 def _validated_staff_proof(value: str) -> tuple[str, str]:
@@ -133,6 +154,9 @@ async def upload_staff_proof(
         raise HTTPException(status_code=409, detail="La visita está cambiando; vuelva a cargar el pedido")
     result = await db.orders.update_one(order_filter, {"$set": {
         "payment_status": "comprobante_subido",
+        # Its own field: `payment_status` moves to parcial/pagado on the first
+        # payment and used to take the pending proof out of review with it.
+        "payment_proof_status": "pendiente",
         "payment_proof_url": proof,
         "payment_proof_method": method,
         "payment_proof_sha256": digest,
@@ -215,10 +239,16 @@ async def list_payment_proofs(
         **await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only),
     }
     if pending:
-        filt["payment_status"] = "comprobante_subido"
+        # Legacy orders only carried payment_status; new ones track the proof in
+        # its own field so a partial payment cannot hide it from review.
+        filt["$or"] = [
+            {"payment_proof_status": "pendiente"},
+            {"payment_proof_status": {"$exists": False}, "payment_status": "comprobante_subido"},
+        ]
 
     rows = await db.orders.find(filt, {
         "_id": 0, "id": 1, "order_number": 1, "status": 1, "payment_status": 1,
+        "payment_proof_status": 1,
         "payment_proof_method": 1, "payment_proof_uploaded_at": 1, "payment_proof_uploaded_by": 1,
         "total": 1, "amount_paid": 1, "table_id": 1, "customer_name": 1, "source": 1,
         "order_type": 1, "created_at": 1, "branch_id": 1,
@@ -243,8 +273,8 @@ async def list_payment_proofs(
         for row in rows:
             row["payment_proof_uploaded_by_name"] = name_map.get(row.get("payment_proof_uploaded_by"))
 
-    pending_rows = [row for row in rows if row.get("payment_status") == "comprobante_subido"]
-    other_rows = [row for row in rows if row.get("payment_status") != "comprobante_subido"]
+    pending_rows = [row for row in rows if proof_is_pending(row)]
+    other_rows = [row for row in rows if not proof_is_pending(row)]
     return {"pending": len(pending_rows), "items": pending_rows + other_rows}
 
 
@@ -279,6 +309,20 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
         raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+
+    # The venue may switch a method off in Datos de cobro; the UI hides it, but a
+    # cached screen or a direct call still got through. Only an explicit `false`
+    # blocks, so venues without a config (or legacy rows) keep working.
+    config = await db.payment_configs.find_one({"restaurant_id": user["restaurant_id"]}, {"_id": 0}) or {}
+    requested_methods = (
+        [split.method for split in (data.splits or [])] if data.method == "mixto" else [data.method]
+    )
+    disabled = sorted({m for m in requested_methods if config.get(f"enable_{m}") is False})
+    if disabled:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El método de pago no está disponible: {', '.join(disabled)}",
+        )
 
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={

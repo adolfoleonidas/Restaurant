@@ -86,25 +86,26 @@ Pedido de mesa, pedido sin mesa y apertura de caja exigen sucursal:
 
 | # | Hallazgo | Evidencia | Impacto |
 |---|---|---|---|
-| 1 | **HTTP sin TLS** en `:8081` con token en `localStorage` | `frontend/nginx.conf:2`, `api.js:9` | Credenciales y tokens en claro en la red del local |
+| 1 | **HTTP sin TLS** en `:8081` con token en `localStorage` | `frontend/nginx.conf:2`, `api.js:9` | Credenciales y tokens en claro en la red. 🟠 **Herramienta lista**: `docker-compose.tls.yml` + `frontend/nginx.tls.conf` (redirect a HTTPS, HSTS, TLS 1.2/1.3) + sección HTTPS del runbook. **Falta un dominio** y el certificado en el servidor (`certs/` está ignorado por git) |
 | 2 | **Contraseñas demo activas** hasta que se cambien | `seed.py:204-232`, `security_config.py:13-19` | Acceso al panel con credenciales públicas del repo |
 | 3 | **Fuga cross-sucursal**: `POST /products/{id}/availability` devuelve pedidos activos de **todas** las sucursales | `products.py:236-243,256` | Un cocinero ve mesas/pedidos de otra sucursal en la respuesta |
-| 4 | **No se pueden operar 2 sucursales**: `tables.number` y `zones.name` son únicos por **restaurante** | `database.py:11,83`, `tables.py:107`, `zones.py:45` | "Mesa 1" en la sucursal B responde `400 ya existe` |
+| 4 | ~~**No se podían operar 2 sucursales**: `tables.number` y `zones.name` eran únicos por **restaurante**~~ **RESUELTO**: los índices y las validaciones son **por sucursal** (`uniq_table_number_per_branch`, `uniq_zone_name_per_branch`) y los viejos se eliminan al arrancar. **Verificado en vivo**: "Salón" y "Mesa 1" se crean en la sucursal B, y repetirlas en la **misma** sucursal sigue dando 400 | `database.py`, `tables.py`, `zones.py`, `tests/test_table_number_per_branch.py` | Nota: una sucursal todavía **no se puede borrar** (no hay endpoint); se renombra |
 | 5 | ~~**La suite backend es roja**: 52 fallos (15 módulos de integración HTTP viejos, previos al aislamiento por sucursal)~~ **RESUELTO**: los 15 módulos HTTP quedaron marcados `integration` (necesitan API viva) y la suite hermética da **342 ✅ / 0 ❌** | `tests/conftest.py` (marcado automático + aislación de módulos), `pytest.ini` | — |
 | 6 | ~~**El comando documentado ejecuta 0 tests**~~ **RESUELTO**: el `sys.path.insert` iba después del import de `models`; ahora un `pytest.ini` aporta `pythonpath = backend` | `tests/test_attention_lifecycle.py`, `pytest.ini` | — |
-| 7 | **Rate limit de login por IP de socket**: detrás de nginx todos comparten IP | `routes/auth.py:28`, `nginx.conf:8-14` | 10 intentos fallidos de uno bloquean el login de **todo** el local 5 min |
+| 7 | ~~**Rate limit de login por IP de socket**~~ **NO ERA UN BUG (verificado)**: la clave es `IP + email`, así que un usuario bloqueado no bloquea a los demás. Solo comparten IP, no cubeta | `routes/auth.py:28,15-19` | — (queda un test que lo fija: `tests/test_login_rate_limit.py`) |
 | 8 | **Tracking público sin rate limit** con código de 8 chars, y devuelve teléfono y dirección del cliente | `public.py:33,601-609,102-103` | Enumeración de datos de clientes |
 | 9 | **`administracion` da admin total**: `require_roles` lo trata como pase universal, incluido resetear la contraseña de otro usuario | `auth.py:130-139`, `branch_access.py:8`, `users.py:64-73` | Un mozo con esa función puede tomar la cuenta del admin. Confirmar si es intencional |
-| 10 | `GET /api/health` devuelve `str(e)` sin auth | `server.py:47-53` | Fuga de errores internos de la base |
-| 11 | `/api/system/info` expone nombre de base y versiones | `routes/system.py:59-70` | Reconocimiento (es admin-only) |
-| 12 | `data/reset` no limpia `attention_number_assignments` | `data.py:18-27` | Contadores de atención arrastrados |
+| 10 | ~~`GET /api/health` devuelve `str(e)` sin auth~~ **RESUELTO**: el detalle va al log del servidor | `server.py:47-56` | — |
+| 11 | `/api/system/info` expone nombre de base y versiones — **se mantiene a propósito**: es admin-only y alimenta la tarjeta "Datos del sistema" del panel | `routes/system.py:59-70` | Riesgo aceptado (diagnóstico del dueño) |
+| 12 | ~~`data/reset` no limpia `attention_number_assignments`~~ **RESUELTO**: la colección entró en el reset (verificado en vivo) | `data.py:18-28` | — |
 
 ---
 
 ## 💰 Bugs de dinero (reproducidos con el arnés del repo)
 
 Ejecutados contra las rutas reales sobre el fake in-memory de `tests/test_money_integrity.py`.
-Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite hermética da **346 ✅ / 0 ❌**.
+**El bloque de dinero queda cerrado**: los 4 P1 y los 5 P2/P3 están resueltos, con test de regresión
+(excepto las mutaciones públicas, verificadas en vivo). La suite hermética da **355 ✅ / 0 ❌**.
 
 | Sev | Bug | Estado |
 |---|---|---|
@@ -112,11 +113,11 @@ Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite herméti
 | **P1** | **Anular un cobro de pedido web de recojo era imposible** (409 permanente) | ✅ **resuelto**: un recojo lleva `attention_id` para numerar pero **no** es una visita; el helper `_has_open_visit()` decide, en los 3 caminos que lo confundían (`payments.py`) |
 | **P1** | **Se perdía el descuento al recobrar tras anular**: la cuenta volvía al total sin descuento y quedaba parcial | ✅ **resuelto**: el descuento (y la propina) de la cuenta se conservan cuando no se manda uno nuevo, y solo un descuento **nuevo o cambiado** exige permiso y motivo. La UI ahora manda el descuento efectivo (`payments.py`, `CobrarDialog.jsx`) |
 | **P1** | **Un fallo entre el claim y el insert dejaba la orden "pagada" sin ningún pago** | ✅ **resuelto**: el rollback restaura también `payment_status` y `fulfillment_status` (`payments.py`) |
-| P2 | Un comprobante pendiente desaparece de la cola si entra un pago parcial | ⏳ pendiente |
-| P2 | El reintento idempotente devuelve un payload sin `fully_paid`/`remaining` | ⏳ pendiente |
+| P2 | **Un comprobante pendiente desaparecía de la cola** en cuanto entraba un pago parcial | ✅ **resuelto**: el comprobante tiene **estado propio** (`payment_proof_status`: `pendiente` → `verificado`), ya no derivado de `payment_status`. La cola de revisión, el badge y el bloqueo de cierre lo usan, con compatibilidad para órdenes viejas. *Cobrar el total sigue siendo la forma de resolverlo* (era el diseño existente), así que no se bloquea el cobro |
+| P2 | **El reintento idempotente devolvía un payload sin `fully_paid`/`remaining`** (el diálogo decía "Restante: —" con la cuenta ya cubierta) | ✅ **resuelto**: el replay devuelve la misma forma que un cobro nuevo, calculada del pedido actual |
 | P2 | **Movimientos de caja sin control**: cualquier cajero creaba `ingreso`/`egreso` de cualquier monto, sin auditoría, y eso mueve el efectivo esperado | ✅ **resuelto**: descripción obligatoria (mínimo 5 caracteres), **entrada de auditoría** en cada movimiento y tope de **S/ 200 para cajeros** (arriba lo registra un administrador). La UI avisa antes de enviar |
-| P2 | Mutaciones públicas no recalculan `payment_status` | ⏳ pendiente |
-| P3 | Métodos de pago deshabilitados se pueden usar igual | ⏳ pendiente |
+| P2 | **Mutaciones públicas que no recalculaban `payment_status`**: el cliente agregaba un postre a una cuenta ya pagada, subía el total y la deuda **no se cobraba nunca** | ✅ **resuelto**: las tres mutaciones públicas (agregar, editar, quitar) recalculan el estado del pago. **Verificado en vivo**: tras cobrar S/ 10 y agregar un plato desde la web, el pedido pasó a `parcial` (total 15, pagado 10) |
+| P3 | **Métodos de pago deshabilitados que se podían usar igual** (el local apaga "tarjeta" y una llamada directa igual cobraba) | ✅ **resuelto**: `POST /payments` valida contra `payment_configs`, incluidos los métodos de un pago **mixto**. Solo bloquea un `false` explícito, así un local sin configuración sigue funcionando |
 
 ---
 

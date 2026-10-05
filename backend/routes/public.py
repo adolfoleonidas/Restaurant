@@ -13,7 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import BillError, guarded_totals
-from order_flow import VersionError, claim_order, version_conflict
+from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
@@ -620,7 +620,13 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd):
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
-    await _save_public_order(o, {"items": combined, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": combined, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        # Adding a dish to an already paid order raises the bill: without this the
+        # order stayed 'pagado' with a bigger total and nobody collected the debt.
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="items_added", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -651,7 +657,11 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     target["subtotal"] = target["unit_price"] * data.quantity
     subtotal, total = _money_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
-    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": items, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_updated", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
@@ -681,7 +691,11 @@ async def public_remove_item(tracking_code: str, item_id: str):
     items = [i for i in items if i["id"] != item_id]
     subtotal, total = _money_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
-    await _save_public_order(o, {"items": items, "subtotal": subtotal, "total": total, "status": new_status, "fulfillment_status": new_status, "updated_at": _now()})
+    await _save_public_order(o, {
+        "items": items, "subtotal": subtotal, "total": total, "status": new_status,
+        "fulfillment_status": new_status, "updated_at": _now(),
+        **ticket_fields(o, new_status, o.get("amount_paid") or 0, total),
+    })
     emit_order(r["id"], o["id"], new_status, source=o.get("source"), extra="item_removed", order_number=o.get("order_number"), branch_id=o.get("branch_id"))
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),

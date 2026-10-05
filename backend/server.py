@@ -50,8 +50,11 @@ async def health():
     try:
         await db.command("ping")
         return {"status": "ok", "database": "connected"}
-    except Exception as e:
-        return {"status": "degraded", "database": "disconnected", "detail": str(e)}
+    except Exception:
+        # Unauthenticated endpoint: never leak driver errors (hosts, collection
+        # names). The detail goes to the server log instead.
+        logger.exception("Health check failed")
+        return {"status": "degraded", "database": "disconnected"}
 
 
 # Mount all module routers
