@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import '@/App.css';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
 import { AssistantProvider } from '@/contexts/AssistantContext';
@@ -79,6 +80,18 @@ function RouteTitle() {
     return null;
 }
 
+// ThemeProvider vive fuera del router, así que la ruta activa se le reporta
+// desde aquí: así la cocina puede quedar en modo oscuro (y salir de él al
+// navegar al resto de la app).
+function ThemeRouteSync() {
+    const { pathname } = useLocation();
+    const { setActivePath } = useTheme();
+    useEffect(() => {
+        setActivePath(pathname);
+    }, [pathname, setActivePath]);
+    return null;
+}
+
 function App() {
     return (
         <div className="App">
@@ -89,6 +102,7 @@ function App() {
                             <BrowserRouter>
                                 <ScrollToTop />
                                 <RouteTitle />
+                                <ThemeRouteSync />
                                 <Routes>
                                 {/* PUBLIC ROUTES */}
                                 <Route element={<PublicLayout />}>

@@ -32,8 +32,10 @@ function waveTime(order, items) {
 
 function timerClass(iso) {
     const m = elapsedMinutes(iso);
-    if (m >= 15) return 'text-accent font-bold';
-    if (m >= 10) return 'text-primary font-semibold';
+    // En modo oscuro (--accent y --primary son demasiado oscuros sobre la tarjeta,
+    // 2,52:1 y 3,91:1) se usan variantes claras que llegan a 11,15:1 y 7,3:1.
+    if (m >= 15) return 'text-accent font-bold dark:text-amber-300';
+    if (m >= 10) return 'text-primary font-semibold dark:text-blue-300';
     return 'text-muted-foreground';
 }
 
@@ -91,7 +93,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                                 {it.is_combo && (it.combo_components || []).map((c) => (
                                     <div key={c.product_id} className="text-xs text-muted-foreground">{c.quantity}× {c.product_name}</div>
                                 ))}
-                                {it.notes && <div className="text-sm italic text-primary">{it.notes}</div>}
+                                {it.notes && <div className="text-sm italic text-primary dark:text-sky-300">{it.notes}</div>}
                             </div>
                             {stage === 'fuego' && (
                                 <button
@@ -107,7 +109,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                     ))}
                 </div>
                 {order.notes && ['llegan', 'fuego'].includes(stage) && (
-                    <div className="mt-3 text-sm text-primary">{order.notes}</div>
+                    <div className="mt-3 text-sm text-primary dark:text-sky-300">{order.notes}</div>
                 )}
                 {['llegan', 'fuego'].includes(stage) && (
                     <button type="button" className="mt-4 min-h-11 w-full rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onBump(order, stage)}>

@@ -98,8 +98,11 @@ body {
         --card-foreground: 220 25% 92%;
         --popover: 220 20% 12%;
         --popover-foreground: 220 25% 92%;
-        --primary: 220 75% 58%;
-        --primary-foreground: 220 25% 10%;
+        --primary: 220 75% 51%;
+        /* Antes: 58% + texto casi negro = 4,35:1 sobre el ítem activo del menú
+           y los botones primarios en modo oscuro (por debajo de AA). Con 51% y
+            texto blanco el contraste llega a ~4,6:1. */
+        --primary-foreground: 0 0% 100%;
         --secondary: 220 18% 20%;
         --secondary-foreground: 220 25% 85%;
         --muted: 220 18% 20%;

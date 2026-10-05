@@ -330,6 +330,59 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ---
 
+## 🔄 Ronda 3 del objetivo — modo oscuro de cocina, trampa de foco del cobro y contraste del bloque oscuro
+
+### Arreglos aplicados
+
+| # | Ítem del backlog | Cambio | Archivo |
+|---|---|---|---|
+| R3-1 | Modo oscuro global por preferencia del SO | El modo oscuro deja de derivarse de `matchMedia`: ahora **la cocina queda siempre en oscuro** (es la pantalla de pase) y el resto de la app respeta la elección del usuario. El override de cocina **no se persiste** en `localStorage` (al salir de la cocina la app vuelve al tema elegido) y el toggle manual sigue funcionando fuera de ella. Para que el tema sepa en qué ruta está, el router le reporta la ruta con un `ThemeRouteSync` (ThemeProvider vive fuera del router) | `contexts/ThemeContext.jsx`, `App.js` |
+| R3-2 | `CobrarDialog` sin trampa de foco | El diálogo se comporta como modal de verdad: `Tab` queda dentro del diálogo (cicla entre los controles visibles, incluidos los campos, y desde el último vuelve al primero) y al cerrar el foco **vuelve al botón que lo abrió**. Se suma al `aria-modal` y al cierre con Escape de la ronda 0 | `components/CobrarDialog.jsx` |
+| R3-3 | Contraste del bloque oscuro (P1 de la auditoría) | El bloque `.dark` usaba `--primary: 220 75% 58%` con texto casi negro: **4,35:1** en el ítem activo del menú y en los botones primarios (por debajo de AA). Pasa a `220 75% 51%` con texto blanco (~4,6:1) | `src/index.css` |
+| R3-4 | Contraste del pase en oscuro | Los tiempos atrasados y las notas de cocina usaban `text-accent`/`text-primary` sobre la tarjeta oscura (2,52:1 y 3,91:1, medidos en la auditoría): ahora tienen variantes claras (`dark:text-amber-300`, `dark:text-blue-300`, `dark:text-sky-300`) | `pages/Cocina.jsx` |
+
+### Verificación
+
+- **Modo oscuro** (`checks5.mjs`, con el SO en `prefers-color-scheme: dark`): `/salon`, `/caja`, `/reportes` y `/pedidos` **en claro**; `/cocina` **en oscuro** (en dos visitas seguidas); `restaurant-dark-mode` sigue en `false` después de pasar por la cocina; el toggle manual cambia el tema y lo restaura. Sin errores de JS ni de consola en ninguna ruta.
+- **Salud de la app** (`checks6.mjs`): la app hidrata correctamente tras cada navegación (`#root` con un hijo, navegación y región viva presentes). Los primeros sondeos habían fallado por **recargas del propio dev server dentro de la prueba** (el watcher observa `frontend/e2e/audit/*.mjs`), no por un fallo de la app: el arnés ahora espera a que el body tenga la clase de tema antes de medir.
+- **Contraste del bloque oscuro**: medido en vivo con la app hidratada: fondo `rgb(68,121,228)` + texto `rgb(19,23,32)` = **4,35:1** (el valor que axe reportaba) → corregido a ~4,6:1.
+- **Remedienda de regresión** (`compare.mjs`, **131 visitas comparables = la matriz completa**: 4 roles × 3 viewports + público × 3 viewports, idéntica al tamaño de la baseline):
+
+| Métrica | Baseline | Ronda 3 | Δ |
+|---|---|---|---|
+| Nodos infractores de axe | 428 | **46** | −382 |
+| `meta-viewport` (zoom) | 131 | 0 | −131 |
+| `button-name` | 96 | 0 | −96 |
+| **`color-contrast`** | **61** | **0** | **−61** |
+| `aria-prohibited-attr` | 24 | 0 | −24 |
+| `page-has-heading-one` | 22 | 1 | −21 |
+| `aria-valid-attr-value` | 12 | 0 | −12 |
+| `label` / `select-name` | 8+1 | 0 | −9 |
+| `scrollable-region-focusable` | 8 | 0 | −8 |
+| `region` (contenido fuera de landmarks) | 53 | 36 | −17 |
+| `landmark-one-main` | 12 | 9 | −3 |
+| Visitas con errores de consola | 27 | 3 | −24 |
+| Visitas con respuesta ≥400 | 24 | 3 | −21 |
+| Visitas con desbordamiento horizontal | 4 | 0 | −4 |
+| Controles <24 px | 85 | 57 | −28 |
+| CLS máximo | 0,846 | 0,56 | −0,286 |
+| Nodos de texto <12 px | 336 | 682 | +346 ¹ |
+
+¹ La misma derivación de datos de la ronda 1: la baseline se midió con la base en blanco (2 pedidos, mesas de prueba) y esta corrida corre sobre datos reales (16 pedidos, mesas ocupadas con notas). No es un cambio de código.
+
+**Lo que queda**: 46 nodos, concentrados en las 6 visitas a `/unauthorized` (sin landmarks ni `main`, 36 nodos) y en `landmark-one-main` (9). `color-contrast` queda en **0** en toda la matriz.
+
+### Pendiente (siguientes rondas)
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Unificar "Carta" / "Combos" / "Categorías" en un ítem del menú | Los tres son accesos al mismo formulario de `Productos` (Combos es un tab); unificar requiere tocar el flujo de Productos, no solo el menú |
+| Texto <12 px en salón y cocina | `text-[10px]`/`text-[11px]` en tickets, notas y chips de estado; crece con los datos reales |
+| Migrar `CobrarDialog` al `Dialog` de Radix | Ya tiene trampa de foco y retorno de foco a mano; Radix añadiría `inert` nativo y un manejo más limpio de los subdiálogos |
+| Datos de prueba (mesas `9xxxx`, "Carta E2E…", combos "Test") | Es limpieza de datos operativos, no de interfaz: `Ajustes → Restablecer datos operativos` |
+
+---
+
 ## Datos duros de la corrida
 
 ### Accesibilidad (axe-core, 131 visitas)
