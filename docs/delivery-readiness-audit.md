@@ -114,7 +114,7 @@ Los cuatro P1 quedaron **resueltos y con test de regresión**; la suite herméti
 | **P1** | **Un fallo entre el claim y el insert dejaba la orden "pagada" sin ningún pago** | ✅ **resuelto**: el rollback restaura también `payment_status` y `fulfillment_status` (`payments.py`) |
 | P2 | Un comprobante pendiente desaparece de la cola si entra un pago parcial | ⏳ pendiente |
 | P2 | El reintento idempotente devuelve un payload sin `fully_paid`/`remaining` | ⏳ pendiente |
-| P2 | Movimientos de caja sin control (cualquier cajero crea ingreso/egreso) | ⏳ pendiente |
+| P2 | **Movimientos de caja sin control**: cualquier cajero creaba `ingreso`/`egreso` de cualquier monto, sin auditoría, y eso mueve el efectivo esperado | ✅ **resuelto**: descripción obligatoria (mínimo 5 caracteres), **entrada de auditoría** en cada movimiento y tope de **S/ 200 para cajeros** (arriba lo registra un administrador). La UI avisa antes de enviar |
 | P2 | Mutaciones públicas no recalculan `payment_status` | ⏳ pendiente |
 | P3 | Métodos de pago deshabilitados se pueden usar igual | ⏳ pendiente |
 

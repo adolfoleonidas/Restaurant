@@ -532,9 +532,10 @@ function MovementCard({ register, onAdded, runMutation }) {
     const [amount, setAmount] = useState('');
     const [desc, setDesc] = useState('');
     const submit = async () => {
-        if (!amount || !desc) { toast.error('Completa los campos'); return; }
+        if (!amount || Number(amount) <= 0) { toast.error('Ingresá un monto mayor a 0'); return; }
+        if (desc.trim().length < 5) { toast.error('Escribe una descripción (mínimo 5 caracteres)'); return; }
         try {
-            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc }));
+            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc.trim() }));
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();

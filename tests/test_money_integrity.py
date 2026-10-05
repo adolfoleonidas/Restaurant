@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
 from billing import method_amounts
-from routes.cash import _shift_totals, close_register
+from routes.cash import _shift_totals, add_movement, close_register
 from routes.orders import add_items, change_status, kitchen_orders, remove_item, serve_order, update_item
 from routes.payments import apply_void_payment, create_payment
 from routes.reports import sales_report
@@ -967,3 +967,39 @@ def test_public_pickup_payment_can_be_voided_without_an_open_visit():
     voided, stored = asyncio.run(run())
     assert voided["status"] in ("voided", "refunded")
     assert stored["amount_paid"] == 0.0
+
+
+def test_cashier_cannot_move_more_than_the_limit():
+    """A big movement shifts the expected cash, so it needs an admin."""
+    async def run():
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        cajero = {**_cashier(), "role": "cajero", "branch_id": "branch-1"}
+        with pytest.raises(HTTPException) as caught:
+            await add_movement(CashMovement(type="egreso", amount=500, description="pago a proveedor"), cajero)
+        return caught.value, db.cash_movements.docs
+
+    error, movements = asyncio.run(run())
+    assert error.status_code == 403
+    assert movements == []
+
+
+def test_cash_movement_needs_a_description_and_is_audited():
+    async def run():
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        cajero = {**_cashier(), "role": "cajero", "branch_id": "branch-1"}
+        with pytest.raises(HTTPException) as short:
+            await add_movement(CashMovement(type="ingreso", amount=10, description="x"), cajero)
+        created = await add_movement(
+            CashMovement(type="ingreso", amount=10, description="sencillo para el vuelto"), cajero
+        )
+        return short.value, created, db.cash_movements.docs, db.audit_logs.docs
+
+    short, created, movements, audit = asyncio.run(run())
+    assert short.status_code == 400
+    assert created["amount"] == 10
+    assert len(movements) == 1
+    assert any(row.get("action") == "cash_movement" for row in audit)
