@@ -177,7 +177,9 @@ describe('salón table groups', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-ver-pedido-grupo"]')).not.toBeNull();
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-pedir-grupo"]'));
-        expect(document.body.querySelector('[data-testid="areas-venta"]')).not.toBeNull();
+        // El pedido se compone inline: aparece la carta dentro del sheet, sin
+        // navegar a la página de pedidos.
+        expect(document.body.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
         expect(toast.error).not.toHaveBeenCalled();
     });
 

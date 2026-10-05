@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import { Search, Grid2X2, Plus, Minus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
@@ -127,6 +127,9 @@ export default function Salon() {
     const [transferSource, setTransferSource] = useState(null);
     const [movingVisit, setMovingVisit] = useState(false);
     const [moveAccountId, setMoveAccountId] = useState(null);
+    const [productCategory, setProductCategory] = useState('all');
+    const [productSearch, setProductSearch] = useState('');
+    const [savingItem, setSavingItem] = useState(false);
     const searchRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
@@ -140,6 +143,17 @@ export default function Salon() {
         [generation]
     );
     const orders = useMemo(() => (Array.isArray(liveOrders) ? liveOrders : []), [liveOrders]);
+
+    // Carta para componer el pedido sin salir del salón.
+    const { data: liveProducts } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
+    const { data: liveCategories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
+    const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
+    const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);
+    const pickerProducts = useMemo(() => (products || []).filter((p) => {
+        if (productCategory !== 'all' && p.category_id !== productCategory) return false;
+        if (productSearch && !String(p.name || '').toLowerCase().includes(productSearch.toLowerCase())) return false;
+        return true;
+    }), [products, productCategory, productSearch]);
 
     const canServe = ['admin', 'mozo', 'cocina'].includes(user?.role);
     const canTake = ['admin', 'mozo'].includes(user?.role);
@@ -316,13 +330,13 @@ export default function Salon() {
     }, [units, areaFilter, stateFilter, search]);
 
     // ── Actions ────────────────────────────────────────────────────────────
-    const openSheet = async (t) => {
+    const openSheet = async (t, preferredOrderId = null) => {
         // A joined table with no account of its own reads the group's account,
         // but only when the group holds exactly one: with two separate bills
         // there is nothing unambiguous to follow, so the sheet lists them.
         const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
         const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
-        const targetOrderId = t.active_order?.id || followed?.active_order?.id || null;
+        const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
@@ -338,6 +352,8 @@ export default function Salon() {
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
+            // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
+            if (!targetOrderId && active.length) await selectAccount(active[0].id);
         } catch { /* historial opcional */ }
     };
 
@@ -417,6 +433,81 @@ export default function Salon() {
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo dividir la cuenta');
         }
+    };
+
+    // ── Pedido inline (sin salir del salón) ────────────────────────────────
+    const reloadCurrentOrder = async (orderId) => {
+        try {
+            const { data } = await api.get(`/orders/${orderId}`);
+            setOpenTable((s) => (s && (s.order?.id === orderId || s.accountId === orderId)
+                ? { ...s, order: data, accountId: orderId }
+                : s));
+        } catch { /* la recarga es best-effort */ }
+    };
+
+    // La cuenta de la mesa se crea recién al agregar el primer producto, así
+    // abrir el sheet y arrepentirse no deja una orden vacía.
+    const ensureAccount = async () => {
+        const s = openTable;
+        if (!s) return null;
+        const existing = s.order?.id || s.accountId || s.table?.active_order?.id || null;
+        if (existing) return existing;
+        const { data } = await api.post('/orders', { table_id: s.table.id, order_type: 'mesa' });
+        setOpenTable((prev) => (prev && prev.table.id === s.table.id
+            ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
+            : prev));
+        return data.id;
+    };
+
+    const addProductToAccount = async (product) => {
+        if (!canTake || savingItem) return;
+        setSavingItem(true);
+        try {
+            const orderId = await ensureAccount();
+            if (!orderId) return;
+            await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
+        } finally {
+            setSavingItem(false);
+        }
+    };
+
+    const changeItemQty = async (item, delta) => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake) return;
+        const next = Number(item.quantity || 1) + delta;
+        try {
+            if (next <= 0) await api.delete(`/orders/${orderId}/items/${item.id}`);
+            else await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: next });
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+        }
+    };
+
+    const sendCurrentToKitchen = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake) return;
+        try {
+            await api.post(`/orders/${orderId}/send-to-kitchen`);
+            toast.success('Enviado a cocina');
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+        }
+    };
+
+    // "Tomar pedido" abre el sheet; la cuenta se crea al agregar el primer
+    // producto. No navega a /pedidos.
+    const takeOrderInline = async (t) => {
+        if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
+        if (t.status === 'pagada') { toast.info('Liberá la mesa pagada antes de tomar pedido'); return; }
+        await openSheet(t);
     };
 
     const toggleSelected = (t) => {
@@ -542,26 +633,6 @@ export default function Salon() {
         }
     };
 
-    const takeTable = async (t) => {
-        if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
-        if (t.status === 'ocupada') {
-            closeSheet();
-            navigate(newOrderPath('mesa', t));
-            return;
-        }
-        if (t.status !== 'disponible') {
-            toast.info('Esta mesa no está disponible');
-            return;
-        }
-        try {
-            await api.post(`/tables/${t.id}/seat`);
-            closeSheet();
-            navigate(newOrderPath('mesa', t));
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo tomar la mesa');
-        }
-    };
-
     const releaseTable = async (t) => {
         if (!canTake) return;
         try {
@@ -590,7 +661,13 @@ export default function Salon() {
     const handleAreaSelect = (type, table) => {
         const tableInHand = pendingTable;
         closeAreas();
-        if (type === 'mesa' && tableInHand) { void takeTable(tableInHand); return; }
+        // Dine-in composes inline (sheet + carta); the other areas keep their page.
+        if (type === 'mesa') {
+            const target = tableInHand || table;
+            if (!target) { toast.error('Seleccioná una mesa'); return; }
+            void takeOrderInline(target);
+            return;
+        }
         const path = newOrderPath(type, table);
         if (!path) { toast.error('Seleccioná una mesa'); return; }
         navigate(path);
@@ -782,7 +859,7 @@ export default function Salon() {
                                 onDeliver={deliver}
                                 onCharge={openCharge}
                                 onCloseAttention={closeAttention}
-                                onTake={openAreas}
+                                onTake={takeOrderInline}
                             />
                         )
                     ))}
@@ -853,6 +930,10 @@ export default function Salon() {
                         const s = FLOOR_STYLE[floor.key];
                         const closeable = canClose && canCloseAttention(t, order);
                         const billRequested = Boolean(order?.payment_requested) || order?.status === 'pendiente_pago';
+                        // Composición inline: se puede pedir mientras la mesa no esté cerrada.
+                        const canCompose = canTake && ['disponible', 'ocupada'].includes(t.status);
+                        const draft = Boolean(order) && order.status === 'nuevo';
+                        const orderItems = (order?.items || []).filter((i) => i.status !== 'cancelado');
                         return (
                             <>
                                 <div className="p-5 border-b" style={{ background: s.bg }}>
@@ -902,6 +983,53 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
+                                    {canCompose && (
+                                        <div className="space-y-2 rounded-xl border p-3" data-testid="mesa-sheet-pedido">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="page-kicker">
+                                                    {order ? `Agregar a la cuenta #${order.order_number}` : 'Agregar productos'}
+                                                </span>
+                                                {draft && orderItems.length > 0 && (
+                                                    <Button size="sm" className="h-8" onClick={sendCurrentToKitchen} data-testid="mesa-sheet-enviar-cocina">
+                                                        Enviar a cocina
+                                                    </Button>
+                                                )}
+                                            </div>
+                                            <div className="relative">
+                                                <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
+                                                <Input className="pl-9 h-9" placeholder="Buscar plato" value={productSearch} onChange={(e) => setProductSearch(e.target.value)} data-testid="mesa-sheet-buscar-producto" />
+                                            </div>
+                                            {categories.length > 0 && (
+                                                <div className="flex gap-1.5 overflow-x-auto pb-1">
+                                                    <button type="button" onClick={() => setProductCategory('all')} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>Todas</button>
+                                                    {categories.map((c) => (
+                                                        <button key={c.id} type="button" onClick={() => setProductCategory(c.id)} className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${productCategory === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{c.name}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="grid grid-cols-2 gap-1.5 max-h-44 overflow-y-auto" data-testid="mesa-sheet-productos">
+                                                {pickerProducts.map((p) => {
+                                                    const out = !p.is_available || (p.is_combo && p.components_available === false);
+                                                    return (
+                                                        <button
+                                                            key={p.id}
+                                                            type="button"
+                                                            disabled={out || savingItem}
+                                                            onClick={() => addProductToAccount(p)}
+                                                            data-testid={`mesa-sheet-producto-${p.id}`}
+                                                            className={`flex flex-col items-start rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'}`}
+                                                        >
+                                                            <span className="w-full truncate font-medium">{p.name}</span>
+                                                            <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                                {pickerProducts.length === 0 && (
+                                                    <p className="col-span-2 text-xs text-muted-foreground py-2 text-center">Sin productos.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                     {order && (
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">
@@ -910,11 +1038,17 @@ export default function Salon() {
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
-                                            <div className="border rounded-xl divide-y">
-                                                {(order.items || []).filter((i) => i.status !== 'cancelado').map((it) => (
-                                                    <div key={it.id} className="flex justify-between gap-2 py-2 px-3 text-sm">
-                                                        <span>{it.quantity}× {it.product_name}</span>
+                                            <div className="border rounded-xl divide-y" data-testid="mesa-sheet-items">
+                                                {orderItems.map((it) => (
+                                                    <div key={it.id} className="flex items-center justify-between gap-2 py-2 px-3 text-sm">
+                                                        <span className="min-w-0 truncate">{it.quantity}× {it.product_name}</span>
                                                         <span className="font-mono tabular-nums shrink-0">{fmtMoney(it.subtotal)}</span>
+                                                        {canCompose && (
+                                                            <span className="flex items-center gap-1 shrink-0">
+                                                                <button type="button" onClick={() => changeItemQty(it, -1)} aria-label={`Quitar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-menos-${it.id}`} className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"><Minus className="h-3.5 w-3.5" /></button>
+                                                                <button type="button" onClick={() => changeItemQty(it, 1)} aria-label={`Agregar uno de ${it.product_name}`} data-testid={`mesa-sheet-item-mas-${it.id}`} className="h-7 w-7 rounded-md border border-border grid place-items-center hover:bg-secondary"><Plus className="h-3.5 w-3.5" /></button>
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -924,7 +1058,7 @@ export default function Salon() {
                                             </div>
                                         </>
                                     )}
-                                    {!t.active_order && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
+                                    {!t.active_order && !canCompose && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
                                     {accountTable && order && (
                                         <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
                                             Cuenta de Mesa {accountTable.number}
@@ -1090,7 +1224,7 @@ export default function Salon() {
                                                 <Button
                                                     variant="outline"
                                                     className="w-full h-12"
-                                                    onClick={() => openAreas(t)}
+                                                    onClick={() => takeOrderInline(t)}
                                                     data-testid="mesa-sheet-pedir-grupo"
                                                 >
                                                     <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
@@ -1102,11 +1236,11 @@ export default function Salon() {
                                             Liberar mesa
                                         </Button>
                                     ) : t.status === 'disponible' ? (
-                                        <Button className="w-full h-12" onClick={() => openAreas(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
+                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
                                             <Plus className="h-4 w-4 mr-1" /> Tomar mesa y pedir
                                         </Button>
                                     ) : t.status === 'ocupada' ? (
-                                        <Button className="w-full h-12" onClick={() => openAreas(t)} disabled={!canTake} data-testid="mesa-sheet-tomar-pedido">
+                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar-pedido">
                                             Tomar pedido
                                         </Button>
                                     ) : null}
