@@ -1320,6 +1320,11 @@ export default function Salon() {
                         // cuando algo salió a cocina: mientras todo es borrador, es el
                         // "nuevo pedido" que el mozo todavía está armando.
                         const allAccounts = accounts || [];
+                        // La visita la crea el primer pedido, no un botón: por eso la
+                        // barra depende de que exista una cuenta —incluida la que se
+                        // acaba de crear— y no del pedido que el listado del piso
+                        // todavía no refrescó.
+                        const hasAccount = Boolean(t.active_order || order || allAccounts.length > 0);
                         const personAccounts = allAccounts.filter((o) => !isComposingDraft(activeOrders[o.id] || o));
                         const persons = personAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
@@ -1591,7 +1596,32 @@ export default function Salon() {
                                     )}
                                 </div>
                                 <div className="border-t p-4 space-y-2">
-                                    {t.active_order ? (
+                                    {/* La mesa no se "toma": la atención nace con el primer
+                                        pedido, así que la carta es la acción y no hay botón
+                                        que la reemplace. Los botones de tomar mesa que había
+                                        acá sólo repetían esa acción y parecían recargar. */}
+                                    {accountTable && order ? (
+                                        <>
+                                            {canTake && (
+                                                <Button
+                                                    className="w-full h-12"
+                                                    onClick={() => takeOrderInline(t)}
+                                                    data-testid="mesa-sheet-pedir-grupo"
+                                                >
+                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
+                                                </Button>
+                                            )}
+                                            <MoreActions
+                                                testId="mesa-sheet-mas-grupo"
+                                                actions={[{
+                                                    key: 'ver-pedido-grupo',
+                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
+                                                    testId: 'mesa-sheet-ver-pedido-grupo',
+                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
+                                                }]}
+                                            />
+                                        </>
+                                    ) : hasAccount ? (
                                         <>
                                             {/* La barra tiene un lugar por tipo de acción:
                                                 operar (Entregar), cerrar (Cuenta) y el resto
@@ -1662,38 +1692,9 @@ export default function Salon() {
                                                 ]}
                                             />
                                         </>
-                                    ) : accountTable && order ? (
-                                        <>
-                                            {canTake && (
-                                                <Button
-                                                    className="w-full h-12"
-                                                    onClick={() => takeOrderInline(t)}
-                                                    data-testid="mesa-sheet-pedir-grupo"
-                                                >
-                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
-                                                </Button>
-                                            )}
-                                            <MoreActions
-                                                testId="mesa-sheet-mas-grupo"
-                                                actions={[{
-                                                    key: 'ver-pedido-grupo',
-                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
-                                                    testId: 'mesa-sheet-ver-pedido-grupo',
-                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
-                                                }]}
-                                            />
-                                        </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
                                             Liberar mesa
-                                        </Button>
-                                    ) : t.status === 'disponible' ? (
-                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
-                                            <Plus className="h-4 w-4 mr-1" /> Tomar mesa y pedir
-                                        </Button>
-                                    ) : t.status === 'ocupada' ? (
-                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar-pedido">
-                                            Tomar pedido
                                         </Button>
                                     ) : null}
                                 </div>
