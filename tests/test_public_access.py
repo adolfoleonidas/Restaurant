@@ -251,7 +251,14 @@ def test_public_table_order_retry_recovers_only_its_own_opening():
     assert len(audits) == 1
 
 
-def test_public_order_nonce_rejects_changed_payload_and_other_table_owner():
+def test_public_order_nonce_rejects_changed_payload_and_allows_another_device():
+    """Un pedido ya abierto admite una segunda cuenta desde otro celular.
+
+    La misma mesa puede pedir dos veces durante la visita (otra persona, otro
+    teléfono), así que el segundo pedido se acepta como cuenta adicional y la
+    protección sigue siendo la del request_id: reintentar el mismo payload con
+    el mismo identificador no crea un pedido nuevo.
+    """
     async def run():
         db = _world()
         _bind(db)
@@ -265,18 +272,17 @@ def test_public_order_nonce_rejects_changed_payload_and_other_table_owner():
         except HTTPException as exc:
             changed = exc
         public_order_limiter.reset()
-        try:
-            await public_create_order(_body(request_id="b3f3dd04-c3a2-4a34-ae32-0b3c7e8f8aba"), _Request("10.0.0.20"))
-            stranger = None
-        except HTTPException as exc:
-            stranger = exc
-        return own, changed, stranger, db
+        other = await public_create_order(_body(request_id="b3f3dd04-c3a2-4a34-ae32-0b3c7e8f8aba"), _Request("10.0.0.20"))
+        retry = await public_create_order(_body(request_id=nonce), _Request("10.0.0.19"))
+        return own, changed, other, retry, db
 
-    own, changed, stranger, db = asyncio.run(run())
+    own, changed, other, retry, db = asyncio.run(run())
     assert changed is not None and changed.status_code == 409
-    assert stranger is not None and stranger.status_code in (400, 409)
-    assert own["tracking_code"] not in str(stranger.detail)
-    assert len(db.orders.docs) == 1
+    assert own["tracking_code"] not in str(changed.detail)
+    assert other["id"] != own["id"]
+    assert retry["id"] == own["id"]
+    assert len(db.orders.docs) == 2
+    assert {row["table_id"] for row in db.orders.docs} == {"mesa-1"}
 
 
 def test_public_order_request_nonce_is_restaurant_scoped():

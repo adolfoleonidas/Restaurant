@@ -23,6 +23,7 @@ from routes import (
     cash_router,
     reports_router,
     public_router,
+    prepay_router,
     payment_config_router,
     notifications_router,
     approvals_router,
@@ -70,6 +71,7 @@ api_router.include_router(payments_router, prefix="/payments", tags=["payments"]
 api_router.include_router(cash_router, prefix="/cash", tags=["cash"])
 api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 api_router.include_router(public_router, prefix="/public", tags=["public"])
+api_router.include_router(prepay_router, prefix="/public-prepay", tags=["prepay"])
 api_router.include_router(payment_config_router, prefix="/payment-config", tags=["payment-config"])
 api_router.include_router(notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(approvals_router, prefix="/approvals", tags=["approvals"])

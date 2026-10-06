@@ -17,7 +17,8 @@ from order_flow import VersionError, claim_order, ticket_fields, version_conflic
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
-from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token
+from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token, sign_table
+from payment_policy import collection_policy, needs_counter_verification, order_acceptance
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
@@ -103,12 +104,21 @@ def _public_order_view(o: dict) -> dict:
         "customer_address": o.get("customer_address"),
         "payment_method_choice": o.get("payment_method_choice"),
         "payment_status": o.get("payment_status"),
+        "payment_state": o.get("payment_state") or ("no_requerido" if not o.get("prepay_required") else "pendiente"),
+        "prepay_required": bool(o.get("prepay_required")),
+        "pay_at_counter": bool(o.get("pay_at_counter")),
+        "sent_to_kitchen": o.get("acceptance_status") != "pendiente",
+        "table_id": o.get("table_id"),
         "notes": o.get("notes"),
         "created_at": o.get("created_at"),
         "updated_at": o.get("updated_at"),
         "has_proof": bool(o.get("payment_proof_url")),
     }
     result.update(public_attention_reference(o))
+    # El estado de aceptación solo se publica cuando el pedido tiene una
+    # referencia de visita válida; si no, es un detalle interno de cocina.
+    if "attention_number" in result:
+        result["acceptance_status"] = o.get("acceptance_status")
     return result
 
 
@@ -133,18 +143,33 @@ def _public_order_response(order: dict) -> dict:
         "status": order["status"],
         "total": order["total"],
         "payment_method": order["payment_method_choice"],
+        "payment_state": order.get("payment_state") or ("no_requerido" if not order.get("prepay_required") else "pendiente"),
+        "prepay_required": bool(order.get("prepay_required")),
+        "pay_at_counter": bool(order.get("pay_at_counter")),
+        # Lo que el cliente necesita saber al confirmar: si su pedido ya viajó a
+        # cocina o si todavía tiene que pagar.
+        "sent_to_kitchen": order.get("acceptance_status") != "pendiente",
     }
     result.update(public_attention_reference(order))
+    # Igual que en la vista completa: sin referencia de visita válida no se
+    # publica el estado de aceptación.
+    if "attention_number" in result:
+        result["acceptance_status"] = order.get("acceptance_status")
     return result
 
 
 async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
-    if order.get("attention_id") and order.get("attention_state") in ("opening", "open"):
+    # Un pedido que espera pago todavía no abre la visita: la mesa queda
+    # reservada para esta apertura, pero no se cocina nada hasta que el pago se
+    # confirme. La apertura y el envío a cocina ocurren juntos en
+    # `routes/prepay.confirm_public_prepayment`. Una cuenta que se suma a una
+    # visita ya abierta no necesita apertura.
+    if order.get("attention_state") == "opening" and order.get("acceptance_status") != "pendiente":
         try:
             await open_table_attention(db, order=order, user={"id": None}, now=_now())
         except AttentionBlocked as exc:
             raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá el mismo pedido. {exc.detail}")
-    if order.get("attention_number_pending"):
+    if order.get("attention_number_pending") and order.get("acceptance_status") != "pendiente":
         try:
             await number_accepted_order(db, order=order)
         except AttentionAcceptanceError as exc:
@@ -202,11 +227,23 @@ def _public_mutate_guard(o: dict, request: Request):
         _public_order_missing(request)
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    if o.get("payment_state") == "rechazado":
+        raise HTTPException(status_code=400, detail="El pago no se pudo verificar. Consultá al personal antes de seguir.")
+    # Un pedido ya enviado a cocina no se toca; una intención que todavía espera
+    # pago sí, porque nada se está preparando.
+    if o.get("acceptance_status") == "pendiente":
+        return
     if o["status"] == "pendiente_pago":
         raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
 
 
 async def _save_public_order(order: dict, fields: dict):
+    # Una intención de apertura normal está congelada hasta que la visita abre,
+    # pero el pedido que espera pago sí debe poder corregirse: el cliente sigue
+    # armando su carrito mientras paga.
+    if (order.get("attention_state") == "opening"
+            and order.get("acceptance_status") != "pendiente"):
+        raise HTTPException(status_code=409, detail=version_conflict(order))
     try:
         await claim_order(db.orders, order, fields)
     except VersionError:
@@ -243,6 +280,7 @@ async def _next_order_number(restaurant_id: str) -> int:
 @router.get("/restaurant")
 async def public_restaurant():
     r = await _get_restaurant()
+    policy = collection_policy(r, "local")
     return {
         "id": r["id"],
         "name": r.get("name"),
@@ -260,6 +298,7 @@ async def public_restaurant():
         "social_instagram": r.get("social_instagram"),
         "social_whatsapp": r.get("social_whatsapp"),
         "theme_id": r.get("theme_id", "fresco"),
+        "prepay": policy,
     }
 
 
@@ -320,6 +359,13 @@ async def public_tables():
         {"_id": 0, "id": 1, "table_id": 1, "order_number": 1, "status": 1, "items": 1},
     ).to_list(300)
     by_table = {order["table_id"]: order for order in active_orders if order.get("table_id")}
+    # Un pedido por QR que todavía espera pago bloquea su apertura, pero no está
+    # en curso: no debe figurar en la lista pública.
+    opening = await db.tables.find(
+        {"restaurant_id": restaurant["id"], "opening_order_id": {"$exists": True}},
+        {"_id": 0, "id": 1},
+    ).to_list(300)
+    opening_ids = {table["id"] for table in opening}
     active_ids = list(by_table.keys())
     query = {"restaurant_id": restaurant["id"]}
     if active_ids:
@@ -333,34 +379,150 @@ async def public_tables():
         query,
         {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "capacity": 1, "status": 1},
     ).sort("number", 1).to_list(200)
+    result = []
     for table in items:
         order = by_table.get(table["id"])
+        if not order and table["id"] in opening_ids:
+            continue
         table["active_order"] = {
             "order_number": order["order_number"],
             "status": order["status"],
             "item_count": sum(int(item.get("quantity") or 0) for item in (order.get("items") or [])),
         } if order else None
-    return items
+        result.append(table)
+    return result
+
+
+@router.get("/tables/session")
+async def public_table_session(token: str):
+    """Contexto de la mesa escaneada: qué es, y qué pedidos abiertos tiene.
+
+    El QR es solo una puerta de entrada: devuelve la mesa y su visita en curso
+    para que el menú y el checkout sepan dónde está el cliente. No crea nada.
+    """
+    table = await _resolve_table_token(token)
+    restaurant = await _get_restaurant()
+    renewed_token = table.pop("renewed_token", None)
+    return {
+        **_table_session_view(await _table_orders(restaurant["id"], table["id"]), table, restaurant),
+        # Presente solo cuando el enlace venía caducado y se renovó.
+        **({"renewed_token": renewed_token} if renewed_token else {}),
+    }
+
+
+async def _table_orders(restaurant_id: str, table_id: str) -> list:
+    """Pedidos vivos de la visita en curso de una mesa.
+
+    Un pedido cancelado ya no es consumo de nadie: mostrarlo en el resumen solo
+    confunde al cliente.
+    """
+    return await db.orders.find(
+        {
+            "restaurant_id": restaurant_id,
+            "table_id": table_id,
+            "attention_state": {"$in": ["opening", "open", "mutating", "closing"]},
+            "status": {"$nin": ["cancelado"]},
+        },
+        {"_id": 0, "id": 1, "order_number": 1, "tracking_code": 1, "status": 1, "total": 1,
+         "payment_status": 1, "payment_state": 1, "acceptance_status": 1, "items": 1, "created_at": 1},
+    ).sort("created_at", 1).to_list(200)
+
+
+def _table_session_view(orders: list, table: dict, restaurant: dict) -> dict:
+    """Resumen de la mesa: cada pedido con su pago, y los totales del grupo."""
+    paid = 0.0
+    pending = 0.0
+    visible = []
+    for order in orders:
+        amount = float(order.get("total") or 0)
+        settled = order.get("payment_status") == "pagado" or order.get("payment_state") == "confirmado"
+        if settled:
+            paid += amount
+        elif order.get("acceptance_status") != "pendiente":
+            pending += amount
+        items = order.get("items") or []
+        visible.append({
+            "id": order["id"],
+            "order_number": order.get("order_number"),
+            "tracking_code": order.get("tracking_code"),
+            "status": order.get("status"),
+            "total": amount,
+            "payment_status": order.get("payment_status"),
+            "payment_state": order.get("payment_state"),
+            "acceptance_status": order.get("acceptance_status"),
+            "paid": settled,
+            "item_count": sum(int(item.get("quantity") or 0) for item in items),
+            "items": [
+                {"name": item.get("product_name"), "quantity": int(item.get("quantity") or 0),
+                 "notes": item.get("notes")}
+                for item in items if (item.get("status") or "") != "cancelado"
+            ],
+            "created_at": order.get("created_at"),
+        })
+    return {
+        "table": table,
+        "session": {
+            "open": bool(table.get("active_attention_id")),
+            "attention_id": table.get("active_attention_id"),
+            "orders": visible,
+            "total_paid": round(paid, 2),
+            "total_pending": round(pending, 2),
+        },
+        "policy": collection_policy(restaurant, "local"),
+    }
+
+
+@router.get("/orders/{tracking_code}/table")
+async def public_order_table_session(tracking_code: str, request: Request):
+    """Resumen de la mesa de un pedido, para su pantalla de seguimiento.
+
+    El enlace de seguimiento se comparte y se abre sin el `?mesa=` del QR, así
+    que el grupo se resuelve por la mesa del propio pedido y no por el contexto
+    guardado en el teléfono. Se exige el código de seguimiento, que funciona como
+    capacidad: sin él no se expone el consumo de una mesa.
+    """
+    order = await db.orders.find_one(
+        {"tracking_code": tracking_code.upper()},
+        {"_id": 0, "id": 1, "table_id": 1, "restaurant_id": 1},
+    )
+    if not order:
+        _public_order_missing(request)
+    if not order.get("table_id"):
+        raise HTTPException(status_code=404, detail="Este pedido no es de una mesa")
+    restaurant = await _get_restaurant()
+    table = await db.tables.find_one(
+        {"id": order["table_id"], "restaurant_id": restaurant["id"]},
+        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "active_attention_id": 1},
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Esa mesa no existe")
+    orders = await _table_orders(restaurant["id"], table["id"])
+    if not any(row["id"] == order["id"] for row in orders):
+        # El pedido ya no pertenece a una visita abierta (o fue cancelado): se
+        # muestra solo él, salvo que esté cancelado, que no es consumo de nadie.
+        orders = await db.orders.find(
+            {"id": order["id"], "restaurant_id": restaurant["id"], "status": {"$nin": ["cancelado"]}},
+            {"_id": 0, "id": 1, "order_number": 1, "tracking_code": 1, "status": 1, "total": 1,
+             "payment_status": 1, "payment_state": 1, "acceptance_status": 1, "items": 1, "created_at": 1},
+        ).to_list(1)
+    return _table_session_view(orders, table, restaurant)
+
+
+def _public_payment_settings(cfg: dict) -> dict:
+    return {
+        "enable_efectivo": cfg.get("enable_efectivo", _PAYMENT_METHOD_DEFAULTS["efectivo"]),
+        "enable_yape": cfg.get("enable_yape", _PAYMENT_METHOD_DEFAULTS["yape"]),
+        "enable_plin": cfg.get("enable_plin", _PAYMENT_METHOD_DEFAULTS["plin"]),
+        "enable_transferencia": cfg.get("enable_transferencia", _PAYMENT_METHOD_DEFAULTS["transferencia"]),
+        "enable_tarjeta": cfg.get("enable_tarjeta", _PAYMENT_METHOD_DEFAULTS["tarjeta"]),
+    }
 
 
 @router.get("/tables/resolve")
 async def resolve_public_table(token: str):
-    try:
-        table_id, nonce = read_table_token(token)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
-    restaurant = await _get_restaurant()
-    table = await db.tables.find_one(
-        {"id": table_id, "restaurant_id": restaurant["id"]},
-        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "qr_nonce": 1, "qr_revoked": 1},
-    )
-    if not table:
-        raise HTTPException(status_code=404, detail="Esa mesa no existe")
-    if table.get("qr_revoked") or table.get("qr_nonce") != nonce:
-        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
-    table.pop("qr_nonce", None)
-    table.pop("qr_revoked", None)
-    return table
+    # Si el enlace venía caducado, la respuesta trae `renewed_token` con uno
+    # nuevo para que el cliente no lo vuelva a pedir en cada pantalla.
+    return await _resolve_table_token(token)
 
 
 _PAYMENT_METHOD_DEFAULTS = {
@@ -372,14 +534,71 @@ _PAYMENT_METHOD_DEFAULTS = {
 }
 
 
-def _public_payment_settings(cfg: dict) -> dict:
-    return {
-        "enable_efectivo": cfg.get("enable_efectivo", _PAYMENT_METHOD_DEFAULTS["efectivo"]),
-        "enable_yape": cfg.get("enable_yape", _PAYMENT_METHOD_DEFAULTS["yape"]),
-        "enable_plin": cfg.get("enable_plin", _PAYMENT_METHOD_DEFAULTS["plin"]),
-        "enable_transferencia": cfg.get("enable_transferencia", _PAYMENT_METHOD_DEFAULTS["transferencia"]),
-        "enable_tarjeta": cfg.get("enable_tarjeta", _PAYMENT_METHOD_DEFAULTS["tarjeta"]),
-    }
+async def _resolve_table_token(token: str) -> dict:
+    """Valida el QR firmado y devuelve la mesa, sin nonce ni marca de revocado.
+
+    Un QR impreso y pegado en la mesa no vence solo: si la firma es válida pero
+    el enlace caducó, se renueva en el momento. Solo deja de servir cuando el
+    restaurante lo revoca o lo regenera a mano desde el panel.
+    """
+    try:
+        table_id, nonce = read_table_token(token)
+    except ValueError:
+        try:
+            table_id, nonce = read_table_token(token, allow_expired=True)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+        return await _renew_table_qr(table_id, nonce)
+    restaurant = await _get_restaurant()
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": restaurant["id"]},
+        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "active_attention_id": 1,
+         "qr_nonce": 1, "qr_revoked": 1},
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Esa mesa no existe")
+    if table.get("qr_revoked") or table.get("qr_nonce") != nonce:
+        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+    table.pop("qr_nonce", None)
+    table.pop("qr_revoked", None)
+    return table
+
+
+async def _renew_table_qr(table_id: str, nonce: str) -> dict:
+    """Renueva un QR vencido conservando la mesa; el cartel impreso sigue sirviendo.
+
+    Se exige que el nonce coincida con el de la mesa para que un enlace viejo
+    (rotado o revocado) no pueda resucitar una capacidad que el restaurante ya
+    dio de baja.
+    """
+    restaurant = await _get_restaurant()
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": restaurant["id"]},
+        {"_id": 0, "id": 1, "number": 1, "name": 1, "area": 1, "active_attention_id": 1,
+         "qr_nonce": 1, "qr_revoked": 1},
+    )
+    if not table:
+        raise HTTPException(status_code=404, detail="Esa mesa no existe")
+    if table.get("qr_revoked"):
+        raise HTTPException(status_code=400, detail="El QR de la mesa fue revocado. Pedí el QR otra vez o avisá al personal.")
+    if table.get("qr_nonce") != nonce:
+        raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+    renewed = sign_table(table_id, nonce)
+    await db.audit_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "restaurant_id": restaurant["id"],
+        "user_id": None,
+        "action": "table_qr_renewed",
+        "entity": "table",
+        "entity_id": table_id,
+        "details": {"reason": "expired_token_reissued", "number": table.get("number")},
+        "created_at": _now(),
+    })
+    emit_notice(restaurant["id"], "table", table_id=table_id, status="qr_renewed", branch_id=table.get("branch_id"))
+    table.pop("qr_nonce", None)
+    table.pop("qr_revoked", None)
+    table["renewed_token"] = renewed
+    return table
 
 
 def _ensure_public_payment_method_enabled(method: str, cfg: dict):
@@ -428,12 +647,19 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         raise HTTPException(status_code=400, detail="La dirección es requerida para delivery")
     table = None
     table_id = None
+    joining_open_session = False
     if data.order_type == "local":
         if data.table_token:
             try:
                 table_id, table_nonce = read_table_token(data.table_token)
             except ValueError:
-                raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
+                try:
+                    # Un enlace vencido no debe tumbar el pedido: se valida la
+                    # firma y se comprueba el nonce contra la mesa, igual que al
+                    # abrir la carta.
+                    table_id, table_nonce = read_table_token(data.table_token, allow_expired=True)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         elif r.get("require_table_qr"):
             raise HTTPException(status_code=400, detail="Escaneá el QR de tu mesa")
         elif data.table_id:
@@ -470,15 +696,20 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
                 return await _finish_public_order(recovered, data)
         if data.table_token and (table.get("qr_revoked") or table.get("qr_nonce") != table_nonce):
             raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
-        if table.get("active_attention_id") or table.get("status") != "disponible":
-            raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
-        existing = await db.orders.find_one({
-            "restaurant_id": r["id"],
-            "table_id": table_id,
-            "status": {"$in": _ACTIVE_ORDER_STATUSES},
-        })
-        if existing:
-            raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
+        if table.get("active_attention_id"):
+            # La mesa ya está en uso: este es un pedido adicional de la misma
+            # visita, así que no se reclama la apertura ni se agrega una cuenta.
+            joining_open_session = True
+        else:
+            if table.get("status") != "disponible":
+                raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
+            existing = await db.orders.find_one({
+                "restaurant_id": r["id"],
+                "table_id": table_id,
+                "status": {"$in": _ACTIVE_ORDER_STATUSES},
+            })
+            if existing:
+                raise HTTPException(status_code=400, detail="Esa mesa ya está ocupada")
     request_fingerprint = _public_order_fingerprint(data, r["id"], table_id) if request_id else None
     if request_id and data.order_type != "local":
         previous = await db.orders.find_one({
@@ -515,7 +746,12 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     delivery_fee = r.get("delivery_fee", 0.0) if data.order_type == "delivery" else 0.0
     total = subtotal + delivery_fee
     order_id = str(uuid.uuid4())
-    attention_id = str(uuid.uuid4()) if table_id or data.order_type == "recojo" else None
+    # Una mesa con visita abierta ya tiene su `attention_id`: el pedido nuevo se
+    # suma a esa visita (otra cuenta) en lugar de abrir una nueva.
+    if joining_open_session:
+        attention_id = table.get("active_attention_id")
+    else:
+        attention_id = str(uuid.uuid4()) if table_id or data.order_type == "recojo" else None
     branch_context = None
     accepted_at = _now()
     if attention_id:
@@ -531,6 +767,11 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     while await db.orders.find_one({"tracking_code": tracking_code}):
         tracking_code = _gen_tracking()
     order_no = await _next_order_number(r["id"])
+    # Cobro: el restaurante decide si este pedido se cocina antes o después de
+    # cobrar. `acceptance_status = "pendiente"` es la única puerta que mantiene
+    # un pedido fuera de cocina.
+    policy = collection_policy(r, data.order_type)
+    money = order_acceptance(policy, data.payment_method)
     order = {
         "id": order_id,
         "order_number": order_no,
@@ -544,7 +785,10 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "source": "public",
         "status": "enviado_cocina",
         "fulfillment_status": "enviado_cocina",
-        "acceptance_status": "aceptado",
+        "acceptance_status": money["acceptance_status"],
+        "prepay_required": money["prepay_required"],
+        "pay_at_counter": money["pay_at_counter"],
+        "payment_state": money["payment_state"],
         "order_type": data.order_type,
         "items": enriched,
         "subtotal": round(subtotal, 2),
@@ -561,7 +805,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "payment_status": "pendiente",
         "payment_proof_url": None,
         "cancellation_reason": None,
-        "sent_to_kitchen_at": accepted_at,
+        "sent_to_kitchen_at": None if money["acceptance_status"] == "pendiente" else accepted_at,
         "ready_at": None,
         "paid_at": None,
         "created_at": accepted_at,
@@ -578,21 +822,26 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             "attention_number_pending": True,
         })
     if table_id:
-        order.update({"attention_id": attention_id, "attention_state": "opening", "attention_open": False})
         order["_id"] = order_id
         if table.get("branch_id") is not None:
             order["branch_id"] = table["branch_id"]
-        try:
-            await reserve_table_opening(
-                db, table=table, order_id=order_id, restaurant_id=r["id"],
-                allowed_statuses=("disponible",), intent=order,
-            )
-        except AttentionBlocked as exc:
-            if request_id:
-                prior = await db.orders.find_one({"restaurant_id": r["id"], "request_id": request_id}, {"_id": 0})
-                if prior and prior.get("request_fingerprint") == request_fingerprint and prior.get("table_id") == table_id:
-                    return await _finish_public_order(prior, data)
-            raise HTTPException(status_code=409, detail=exc.detail)
+        if joining_open_session:
+            # La visita ya está abierta: la cuenta nueva se suma a ella y no se
+            # reclama la mesa ni se pide una apertura nueva.
+            order.update({"attention_state": "open", "attention_open": True})
+        else:
+            order.update({"attention_state": "opening", "attention_open": False})
+            try:
+                await reserve_table_opening(
+                    db, table=table, order_id=order_id, restaurant_id=r["id"],
+                    allowed_statuses=("disponible",), intent=order,
+                )
+            except AttentionBlocked as exc:
+                if request_id:
+                    prior = await db.orders.find_one({"restaurant_id": r["id"], "request_id": request_id}, {"_id": 0})
+                    if prior and prior.get("request_fingerprint") == request_fingerprint and prior.get("table_id") == table_id:
+                        return await _finish_public_order(prior, data)
+                raise HTTPException(status_code=409, detail=exc.detail)
     try:
         await db.orders.insert_one(order)
     except DuplicateKeyError:
@@ -608,6 +857,11 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     except Exception:
         # Keep the durable intent because an insert may have committed before raising.
         raise
+    if joining_open_session:
+        await db.attentions.update_one(
+            {"id": attention_id, "restaurant_id": r["id"]},
+            {"$addToSet": {"order_ids": order_id}},
+        )
     return await _finish_public_order(order, data)
 
 
@@ -803,10 +1057,16 @@ async def upload_proof(tracking_code: str, data: PublicProofUpload, request: Req
     if o.get("status") in ("pagado", "cancelado") or o.get("payment_status") in ("pagado", "confirmado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     proof = _validated_public_proof(data.payment_proof or "")
-    await _save_public_order(o, {
+    fields = {
         "payment_proof_url": proof,
         "payment_status": "comprobante_subido",
         "updated_at": _now(),
-    })
+    }
+    # Con prepago el comprobante es solo un reporte: el cliente dice que pagó y
+    # caja lo verifica. El pedido sigue fuera de cocina hasta esa confirmación.
+    if o.get("acceptance_status") == "pendiente" and o.get("payment_state") in ("pendiente", "reportado"):
+        fields["payment_state"] = "reportado"
+        fields["payment_reported_at"] = _now()
+    await _save_public_order(o, fields)
     emit_order(o["restaurant_id"], o["id"], o.get("status"), source="public", payment_status="comprobante_subido", branch_id=o.get("branch_id"))
     return {"ok": True}

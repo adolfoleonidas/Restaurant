@@ -145,6 +145,20 @@ async def release_table_opening(db, *, table_id: str, restaurant_id: str, order_
     }, {"$unset": {"opening_order_id": "", "opening_branch_id": ""}})
     return getattr(released, "modified_count", 0) == 1
 
+
+async def discard_table_opening(db, *, table_id: str, restaurant_id: str, order_id: str) -> bool:
+    """Suelta una apertura abandonada, incluida su intención durable.
+
+    `release_table_opening` se niega a tocar una reserva que todavía conserva la
+    intención, porque esa intención es la prueba de que hay un pedido en vuelo.
+    Cuando ese pedido ya fue cancelado no queda nada que proteger, y sin esto la
+    mesa quedaría reservada para siempre sin visita abierta.
+    """
+    released = await db.tables.update_one({
+        "id": table_id, "restaurant_id": restaurant_id, "opening_order_id": order_id,
+    }, {"$unset": {"opening_order_id": "", "opening_branch_id": "", "opening_intent": ""}})
+    return getattr(released, "modified_count", 0) == 1
+
 async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict:
     """Recover an explicit opening intent; never joins an existing visit."""
     if not order.get("attention_id") or not order.get("table_id"):

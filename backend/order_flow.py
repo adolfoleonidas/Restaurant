@@ -22,12 +22,17 @@ def version_conflict(order: dict) -> dict:
 
 
 async def claim_order(orders, order: dict, fields: dict):
-    """Write the order only if nobody else changed it since it was read."""
+    """Write the order only if nobody else changed it since it was read.
+
+    Las visitas en curso (`mutating`, `closing`, `closed`) están congeladas. El
+    estado `opening` no lo está: mientras la visita no abre, el pedido todavía
+    puede corregirse, y quien deba impedirlo lo decide su propio llamador.
+    """
     stamp = order.get("updated_at")
     filt = {
         "id": order["id"],
         "restaurant_id": order.get("restaurant_id"),
-        "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
+        "attention_state": {"$nin": ["mutating", "closing", "closed"]},
     }
     if order.get("branch_id") is not None:
         filt["branch_id"] = order["branch_id"]
