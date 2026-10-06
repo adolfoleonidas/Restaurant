@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b8a5f">
+<title>RestoFlow — Mesas destacadas · Restaurant</title>
+<meta name="description" content="Restaurant RestoFlow: mesas por zonas, pedidos, cocina y caja en un solo archivo.">
+<meta property="og:title" content="RestoFlow — Mesas destacadas">
+<meta property="og:description" content="Salón por zonas con estados claros, pedidos y cobros.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@400;500;600;700&display=swap">
+<style>
+/* ============ Tokens ============ */
+:root{
+  --bg:#f3f5f4;--sf:#fff;--sf2:#eef2f0;--tx:#10201a;--mut:#5f7068;--bd:#dfe6e3;
+  --pri:#0b8a5f;--prit:#fff;--priw:#e2f5ec;
+  --libre:#16a34a;--ocupada:#2563eb;--listo:#f59e0b;--cobrar:#d97706;--reservada:#7c3aed;--bad:#dc2626;
+  --r:8px;--sh:0 1px 2px rgba(16,32,26,.06),0 6px 18px rgba(16,32,26,.06);
+}
+@media(prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1411;--sf:#17201c;--sf2:#1f2a25;--tx:#e9f1ed;--mut:#93a69c;--bd:#2b3832;
+    --pri:#2fb98a;--prit:#06281c;--priw:#10362a;
+    --libre:#4ade80;--ocupada:#60a5fa;--listo:#fbbf24;--cobrar:#fbbf24;--reservada:#a78bfa;--bad:#f87171;
+    --sh:none;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1411;--sf:#17201c;--sf2:#1f2a25;--tx:#e9f1ed;--mut:#93a69c;--bd:#2b3832;
+  --pri:#2fb98a;--prit:#06281c;--priw:#10362a;
+  --libre:#4ade80;--ocupada:#60a5fa;--listo:#fbbf24;--cobrar:#fbbf24;--reservada:#a78bfa;--bad:#f87171;
+  --sh:none;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.4 Manrope,Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--ocupada);outline-offset:2px}
+h1,h2,h3{margin:0}
+.mut{color:var(--mut);font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ============ Top bar ============ */
+header{position:sticky;top:0;z-index:20;background:#10201a;color:#e6efea;display:flex;align-items:center;gap:14px;padding:10px 16px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#0b8a5f,#3ecf9a);display:grid;place-items:center;font-weight:800;color:#fff;flex:none}
+nav{display:flex;gap:4px;overflow-x:auto;flex:1}
+nav button{border:0;background:transparent;color:#b9cbc2;padding:10px 14px;border-radius:10px;font-weight:600;white-space:nowrap;display:flex;gap:8px;align-items:center}
+nav button.on{background:#1f3a2f;color:#fff}
+.bdg{background:var(--listo);color:#1a1206;border-radius:99px;font-size:12px;font-weight:800;padding:1px 8px}
+.bdg:empty{display:none}
+.sync{font-size:12px;color:#8fb3a2;white-space:nowrap}
+main{padding:18px;max-width:1400px;margin:0 auto;padding-bottom:100px}
+
+/* ============ Botones / chips ============ */
+.btn{border:1px solid var(--bd);background:var(--sf);border-radius:12px;min-height:46px;padding:0 16px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .06s,background .12s}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:var(--pri);border-color:var(--pri);color:var(--prit)}
+.btn.warn{background:var(--listo);border-color:var(--listo);color:#1a1206}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+.btn.big{min-height:56px;font-size:17px;width:100%}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{border:1px solid var(--bd);background:var(--sf);border-radius:99px;padding:8px 14px;font-weight:600;font-size:14px}
+.chip.on{background:var(--tx);color:var(--sf);border-color:var(--tx)}
+.seg{display:inline-flex;gap:4px;background:var(--sf2);border:1px solid var(--bd);border-radius:12px;padding:4px}
+.seg .chip{border:0;background:transparent}
+.seg .chip.on{background:var(--sf);color:var(--tx);box-shadow:0 2px 8px rgba(20,30,45,.12)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
+.toolbar .grow{flex:1}
+.search{min-width:200px;max-width:280px;flex:1;border:1px solid var(--bd);background:var(--sf);border-radius:12px;min-height:46px;padding:0 14px}
+
+/* ============ Mesas destacadas: tokens y componentes ============ */
+:root,:root[data-theme="light"]{
+ --bg:#f3f5f4;--sf:#ffffff;--sf2:#eef2f0;--tx:#10201a;--mut:#5c6f66;--bd:#e2e7e4;
+ --faint:#9aa8a1;--nav:#10201a;--nav-text:#ffffff;--nav-muted:#b9cbc2;
+ --libre:#4f9d7d;--listo:#2f7d5f;--cobrar:#b98a2e;--reservada:#3a6ea5;
+ --font-heading:Sora,system-ui,sans-serif;--font-body:Manrope,system-ui,sans-serif;
+ --table-shadow:0 1px 0 color-mix(in srgb,var(--tx) 4%,transparent);
+ --table-highlight:0 12px 32px -16px color-mix(in srgb,var(--c) 55%,transparent);
+}
+:root[data-theme="dark"]{--faint:#93a69c;--nav:#10201a;--nav-text:#ffffff;--nav-muted:#b9cbc2;--font-heading:Sora,system-ui,sans-serif;--font-body:Manrope,system-ui,sans-serif;--table-shadow:none;--table-highlight:none}
+body{font-family:var(--font-body);letter-spacing:0}
+h1,h2,h3,.brand,.t b{font-family:var(--font-heading);letter-spacing:0}
+header{background:var(--nav);color:var(--nav-text);padding:14px 24px}
+.logo{border-radius:6px;background:var(--libre);color:var(--nav-text);width:28px;height:28px}
+nav button{color:var(--nav-muted);font-size:13px;border-radius:999px;padding:9px 12px}
+nav button.on{background:color-mix(in srgb,var(--nav-text) 10%,transparent);color:var(--nav-text)}
+main{max-width:1200px;padding:38px 32px 100px}
+.salon-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:26px;flex-wrap:wrap}
+.salon-heading h1{font-size:30px;line-height:1.25}
+.salon-heading p{margin:6px 0 0;font-size:13px;color:var(--mut)}
+.consumption{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--nav-muted);white-space:nowrap}
+.consumption strong{color:var(--nav-text);font-variant-numeric:tabular-nums}
+.consumption i{width:6px;height:6px;border-radius:50%;background:var(--libre)}
+.legend{display:flex;gap:12px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+.legend i{width:9px;height:9px;border-radius:99px;background:var(--c)}
+.salon-tools{display:grid;gap:12px;margin-bottom:28px}
+.status-filters{display:flex;gap:4px;flex-wrap:wrap;background:var(--sf2);padding:4px;border:1px solid var(--bd);border-radius:8px}
+.status-filters .chip{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:7px 12px;border-radius:6px;border:0;background:transparent;color:var(--mut);font-size:12px;white-space:nowrap}
+.status-filters .chip.on{background:var(--sf);color:var(--tx);box-shadow:var(--table-shadow)}
+.filter-count{font-size:11px;font-variant-numeric:tabular-nums;color:var(--mut)}
+.toolbar{margin:0}.toolbar .search{min-width:150px;max-width:240px;font-size:13px;min-height:42px;border-radius:8px}
+.zone-select{min-height:42px;border:1px solid var(--bd);background:var(--sf);border-radius:8px;padding:0 30px 0 12px;font-size:13px;max-width:100%}
+.toolbar .btn{min-height:42px;font-size:13px;border-radius:8px}
+.zone-section{margin-bottom:32px}
+.zone-heading{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.zone-heading h2{font-size:18px;font-weight:600}
+.zone-heading small{font-size:12px;color:var(--mut)}
+.zone-heading .zone-count{margin-left:auto;color:var(--mut);font-size:12px}
+.tables{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.t{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--table-shadow);min-height:144px;display:flex;position:relative;overflow:hidden}
+.t:not(.free){border-color:color-mix(in srgb,var(--c) 40%,var(--bd));box-shadow:var(--table-highlight),0 0 0 1px color-mix(in srgb,var(--c) 15%,transparent)}
+.table-open{border:0;background:transparent;color:inherit;padding:16px;text-align:left;display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+.table-open::after{content:"";position:absolute;top:16px;right:16px;width:8px;height:8px;border-radius:50%;background:var(--c)}
+.t:hover{border-color:var(--c)}
+.table-open:focus-visible{outline-offset:-4px;outline:3px solid var(--ocupada);border-radius:var(--r)}
+.t b{font-size:16px;font-weight:600;padding-right:18px;line-height:1.4}
+.t .st{font-size:13px;font-weight:700;color:var(--c);margin-top:auto;line-height:1.4}
+.t .amt{font-size:12px;color:var(--mut);font-weight:500;margin-top:3px}
+.t .table-capacity{font-size:12px;color:var(--mut)}
+.t.ready .table-open::after{animation:status-pulse 1.8s ease-in-out infinite}
+@keyframes status-pulse{50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 18%,transparent)}}
+.t.joined{grid-column:span 2}
+.t.sel{outline:3px solid var(--pri);outline-offset:3px}
+.t .subs{display:flex;gap:5px;flex-wrap:wrap}
+.t .subs span{min-width:28px;height:28px;border-radius:6px;display:grid;place-items:center;font-weight:700;background:var(--sf2);border:1px solid var(--bd)}
+.t .subs span.m{background:var(--c);border-color:var(--c);color:var(--sf)}
+.t .elapsed.warn{color:var(--cobrar);font-weight:700}.t .elapsed.late{color:var(--bad);font-weight:700}
+.table-content{min-width:0}
+.table-summary{position:sticky;top:86px}
+.table-order{box-shadow:none}
+.table-order .nt{font-size:13px;color:var(--cobrar)}
+.table-detail-head h2{font-size:24px}
+.table-state-line{color:var(--c);font-weight:700;font-size:13px;margin-top:4px}
+.table-order-person{flex-wrap:wrap;word-break:break-word}
+.table-orders .empty{padding:32px 12px;background:var(--sf);border:1px solid var(--bd);border-radius:8px}
+@media(max-width:1100px){header .consumption{display:none}}
+@media(max-width:900px){main{padding:26px 20px 100px}.tables{grid-template-columns:repeat(3,minmax(0,1fr))}.table-summary{position:static;transform:none;max-height:none;border-radius:8px;z-index:auto}.salon-heading{gap:14px;margin-bottom:20px}}
+@media(max-width:600px){header{padding:12px 16px}main{padding:24px 16px 100px}.tables{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.table-open{padding:14px}.table-open::after{right:12px;top:15px}.t{min-height:146px}.salon-heading h1{font-size:26px}.legend{gap:8px 12px}.toolbar{gap:8px}.toolbar .search{max-width:none;flex-basis:100%}.toolbar .grow{display:none}.zone-select{flex:1;min-width:0}.toolbar .btn{padding:0 10px}.status-filters{gap:2px}.status-filters .chip{padding:7px 9px}.zone-heading{gap:8px}.zone-heading small{display:none}.table-detail-head .row{align-items:flex-start}.table-detail-head .btn{font-size:13px}.table-summary{width:100%}.table-order-head{flex-wrap:wrap}.table-order-item span{min-width:0;overflow-wrap:anywhere}.table-order-item strong{white-space:nowrap}.line{grid-template-columns:1fr auto;gap:8px}.person-draft{align-items:flex-start;flex-wrap:wrap}.order-footer .btn{white-space:normal}}
+.banner{display:none;margin:0 0 12px;padding:12px 16px;border-radius:12px;background:var(--priw);color:var(--pri);font-weight:700}
+.banner.on{display:flex;align-items:center;gap:10px}
+.bar{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:var(--sf);border-top:1px solid var(--bd);box-shadow:0 -8px 24px rgba(0,0,0,.12);transform:translateY(110%);transition:transform .2s;z-index:15;display:flex;gap:12px;align-items:center;justify-content:center;max-width:1400px;margin:0 auto}
+.bar.on{transform:none}
+.bar .txt{flex:1;min-width:200px}
+.bar .txt b{font-size:16px;display:block}
+.bar .txt small{color:var(--mut)}
+
+/* ============ POS: catálogo + ticket ============ */
+.pos{display:grid;grid-template-columns:1fr 400px;gap:16px;align-items:start}
+.poshead{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:6px}
+.poshead h2{font-size:22px}
+.poshead .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cats{display:flex;gap:6px;overflow-x:auto;margin:10px 0 12px;padding-bottom:4px}
+.prods{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.p{border:1px solid var(--bd);background:var(--sf);border-radius:var(--r);padding:12px;text-align:left;min-height:86px;display:flex;flex-direction:column;justify-content:space-between;position:relative;transition:border-color .12s}
+.p:active{transform:scale(.98)}
+.p strong{font-size:14.5px}
+.p .q{position:absolute;top:8px;right:8px;background:var(--pri);color:var(--prit);border-radius:99px;min-width:24px;height:24px;display:grid;place-items:center;font-size:13px;font-weight:800}
+.ticket{background:var(--sf);border-radius:var(--r);box-shadow:var(--sh);padding:16px;position:sticky;top:74px;max-height:calc(100vh - 92px);display:flex;flex-direction:column;gap:12px;border:1px solid var(--bd)}
+.ticket .head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.lines{overflow:auto;display:flex;flex-direction:column;gap:6px;flex:1;min-height:60px}
+.line{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center}
+.line .nm{font-size:13.5px}
+.line .nm small{display:block;color:var(--cobrar);font-size:12px;font-weight:700}
+.stepper{display:flex;align-items:center;gap:4px}
+.stepper button{width:34px;height:34px;border-radius:9px;border:1px solid var(--bd);background:var(--sf2);font-weight:800}
+.sent{background:var(--sf2);border-radius:10px;padding:10px;font-size:13px}
+.sent .row{display:flex;justify-content:space-between;gap:8px}
+.tag{font-size:11px;font-weight:800;border-radius:6px;padding:2px 6px;background:var(--c);color:#fff}
+.total{display:flex;justify-content:space-between;font-size:20px;font-weight:800;border-top:1px dashed var(--bd);padding-top:10px}
+.note{width:100%;border:1px solid var(--bd);border-radius:10px;padding:8px 10px;resize:none;background:var(--sf)}
+.acts{display:grid;gap:8px}
+.acts.two{grid-template-columns:1fr 1fr}
+details.more{border:1px solid var(--bd);border-radius:12px;background:var(--sf2)}
+details.more summary{cursor:pointer;padding:12px 14px;font-weight:700;display:flex;align-items:center;gap:8px;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"⋯"}
+details.more[open] summary{border-bottom:1px solid var(--bd)}
+details.more .moreb{padding:12px 14px;display:grid;gap:10px}
+.aliaslist{display:flex;gap:6px;flex-wrap:wrap}
+.aliastag{display:inline-flex;align-items:center;gap:6px;background:var(--sf);border:1px solid var(--bd);border-radius:99px;padding:5px 11px;font-size:13px;font-weight:600}
+.addrow{display:flex;gap:8px}
+.addrow input{flex:1;min-height:40px;border:1px solid var(--bd);border-radius:10px;background:var(--sf);padding:0 12px}
+.table-detail-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.table-detail-head .row{min-width:0}
+.table-orders{display:grid;gap:10px}
+.table-order{border:1px solid var(--bd);background:var(--sf);border-radius:var(--r);padding:14px;display:grid;gap:10px}
+.table-order-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.table-order-person{display:flex;align-items:center;gap:6px;font-weight:800}
+.table-order-items{display:grid;gap:5px}
+.table-order-item{display:flex;justify-content:space-between;gap:12px;font-size:14px}
+.table-order-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px dashed var(--bd)}
+.person-draft{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--priw);color:var(--pri);border:1px solid color-mix(in srgb,var(--pri) 30%,transparent);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.person-draft .btn{background:var(--sf)}
+.resban{background:color-mix(in srgb,var(--reservada) 12%,transparent);border:1px solid color-mix(in srgb,var(--reservada) 40%,transparent);color:var(--reservada);border-radius:12px;padding:12px 14px;font-weight:700;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.empty{padding:40px;text-align:center;color:var(--mut)}
+
+/* ============ Cocina ============ */
+.kds{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.kt{background:var(--sf);border-radius:var(--r);box-shadow:var(--sh);padding:14px;border:1px solid var(--bd);border-top:6px solid var(--c);display:flex;flex-direction:column;gap:8px}
+.kt .h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.kt .h b{font-size:20px}
+.kt ul{margin:0;padding-left:0;list-style:none;font-size:16px;font-weight:600}
+.kt li{padding:4px 0;border-bottom:1px solid var(--sf2);line-height:1.35}
+.kt li em{color:var(--cobrar);font-style:normal;font-weight:700;font-size:14px}
+.kt .nt{background:color-mix(in srgb,var(--cobrar) 14%,transparent);color:var(--cobrar);border-radius:8px;padding:6px 8px;font-size:13px;font-weight:700}
+.late{--c:var(--bad)!important}
+
+/* ============ Caja / Admin ============ */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.kpi{background:var(--sf);border-radius:var(--r);box-shadow:var(--sh);padding:16px;border:1px solid var(--bd)}
+.kpi b{display:block;font-size:26px;margin-top:4px}
+.card{background:var(--sf);border-radius:var(--r);box-shadow:var(--sh);padding:16px;border:1px solid var(--bd)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:8px 6px;border-bottom:1px solid var(--sf2);text-align:left}
+td input,td select{border:1px solid var(--bd);border-radius:8px;padding:6px 8px;width:100%;background:var(--sf)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.paylist{display:grid;gap:10px}
+.paycard{display:grid;grid-template-columns:1.2fr .7fr auto;align-items:center;gap:14px;background:var(--sf);border:1px solid var(--bd);padding:14px 16px;border-radius:var(--r);box-shadow:var(--sh)}
+.settings{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.setting{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px;display:flex;justify-content:space-between;gap:16px;align-items:center;box-shadow:var(--sh)}
+.switch{width:48px;height:28px;border-radius:999px;background:color-mix(in srgb,var(--mut) 40%,transparent);position:relative;border:0;padding:0;flex:none;transition:background .15s}
+.switch::after{content:"";width:22px;height:22px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:.2s;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.switch.on{background:var(--pri)}
+.switch.on::after{left:23px}
+
+/* ============ Modal de cobro ============ */
+.back{position:fixed;inset:0;background:rgba(10,20,15,.5);display:none;place-items:center;z-index:40;padding:16px;backdrop-filter:blur(3px)}
+.back.on{display:grid}
+.modal{background:var(--sf);border-radius:18px;width:min(440px,100%);padding:20px;display:flex;flex-direction:column;gap:14px;max-height:92vh;overflow:auto;border:1px solid var(--bd)}
+.modal h2{font-size:20px}
+.methods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.methods button{min-height:52px;border-radius:12px;border:2px solid var(--bd);background:var(--sf);font-weight:700}
+.methods button.on{border-color:var(--pri);background:var(--priw)}
+.cash{display:flex;gap:6px;flex-wrap:wrap}
+.field input{width:100%;min-height:48px;border:1px solid var(--bd);border-radius:12px;padding:0 12px;font-size:18px;background:var(--sf)}
+.big-total{font-size:34px;font-weight:800;text-align:center}
+.partial{font-size:13px;color:var(--mut);text-align:center}
+.splitrows{display:grid;gap:8px}
+.splitrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--bd);border-radius:10px}
+
+/* ============ QR ============ */
+.qrwrap{display:flex;justify-content:center;gap:22px;align-items:flex-start;flex-wrap:wrap}
+.mobile-shell{width:374px;max-width:100%;background:var(--sf);border:10px solid #10201a;border-radius:34px;min-height:640px;overflow:hidden;box-shadow:var(--sh);display:flex;flex-direction:column}
+:root[data-theme="dark"] .mobile-shell{border-color:#000}
+.mobile-top{padding:18px 18px 10px}
+.mobile-top h2{margin:4px 0 0;font-size:21px}
+.qr-products{padding:8px 14px 14px;display:grid;gap:10px;flex:1;overflow:auto}
+.qr-product{border:1px solid var(--bd);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.qr-bottom{padding:12px 14px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--bd);background:var(--sf)}
+.qr-side{max-width:320px;display:grid;gap:12px}
+
+/* ============ Toast ============ */
+.toast{position:fixed;left:50%;bottom:20px;transform:translate(-50%,160%);background:#10201a;color:#fff;border-radius:12px;padding:12px 16px;display:flex;gap:14px;align-items:center;z-index:60;transition:transform .22s;max-width:min(560px,92vw)}
+.toast.on{transform:translate(-50%,0)}
+.toast button{background:none;border:0;color:#6ee7b7;font-weight:800}
+
+/* ============ Mobile: ticket como hoja inferior ============ */
+.fab{display:none}
+@media(max-width:900px){
+  .pos{grid-template-columns:1fr}
+  .ticket{position:fixed;left:0;right:0;bottom:0;top:auto;border-radius:18px 18px 0 0;max-height:80vh;z-index:30;transform:translateY(100%);transition:transform .25s}
+  .ticket.open{transform:none}
+  .fab{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:25}
+  main{padding-bottom:96px}
+  .kpis{grid-template-columns:1fr 1fr}
+  .grid2,.settings{grid-template-columns:1fr}
+  .sync{display:none}
+  .paycard{grid-template-columns:1fr;gap:8px}
+  .tables{grid-template-columns:repeat(2,1fr)}
+  .t.joined{grid-column:span 2}
+  .bar{width:auto;border-radius:18px 18px 0 0}
+}
+/* Nuevo pedido: conserva los controles y tokens de RestoFlow. */
+:root{--order-overlay:oklch(0.2 0.02 155 / .55);--order-shadow:0 16px 48px oklch(0.2 0.02 155 / .18)}
+.brand{display:flex;align-items:center;gap:10px;flex:none;font-size:17px;font-weight:800}
+.new-order{white-space:nowrap;flex:none}.new-order .plus{font-size:24px;line-height:1}
+.order-dialog{background:var(--sf);color:var(--tx);border:1px solid var(--bd);border-radius:var(--r);padding:24px;width:min(560px,calc(100% - 32px));max-height:85dvh;box-shadow:var(--order-shadow)}
+.order-dialog::backdrop{background:var(--order-overlay)}
+.order-dialog .heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.order-types{display:flex;width:100%;margin-bottom:18px}.order-types button{flex:1}
+.order-tables{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:42vh;overflow:auto;padding:4px}
+.order-table{min-height:86px;flex-direction:column;gap:4px;border-left:4px solid var(--c)}
+.order-table.selected{border-color:var(--pri);background:var(--priw);outline:2px solid var(--pri)}
+.order-table .mut{font-size:11px;text-align:center}.order-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+.order-summary{margin-top:14px;color:var(--mut);min-height:20px;font-size:13px}
+.takeaway-option{padding:24px 0;text-align:center}.takeaway-option strong{display:block;font-size:20px;margin-bottom:8px}
+@media(max-width:1100px){header{flex-wrap:wrap;gap:8px}.brand{flex:1}header nav{order:3;flex-basis:100%;min-width:0}header .sync{display:none}}
+@media(max-width:480px){.order-dialog{padding:18px}.order-tables{grid-template-columns:repeat(2,minmax(0,1fr))}.order-footer .btn{flex:1;padding:0 10px}.order-dialog h2{font-size:20px}.new-order{min-height:42px;padding:0 12px}}
+/* Resumen accesible también en pantallas pequeñas, sin hoja oculta. */
+@media(max-width:900px){.ticket.table-summary{position:static;inset:auto;transform:none;max-height:none;border-radius:8px;z-index:auto;width:100%}}
+@media(max-width:600px){.toolbar .zone-select{flex-basis:100%;width:100%}.toolbar .btn{flex:1}.table-detail-head .row{gap:8px}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><div class="logo" aria-hidden="true">R</div><span>RestoFlow</span></div>
+  <nav id="nav" aria-label="Secciones">
+    <button data-v="salon">Salón <span class="bdg" id="bReady"></span></button>
+    <button data-v="mostrador">Mostrador</button>
+    <button data-v="cocina">Cocina <span class="bdg" id="bKitchen"></span></button>
+    <button data-v="caja">Caja <span class="bdg" id="bCash"></span></button>
+    <button data-v="qr">QR cliente</button>
+    <button data-v="admin">Admin</button>
+    <button data-v="settings">Ajustes</button>
+  </nav>
+  <button class="btn pri new-order" data-a="new-order"><span class="plus" aria-hidden="true">+</span> Nuevo pedido</button>
+  <span class="consumption" aria-label="Consumo en mesas"><i aria-hidden="true"></i><strong id="salonConsumption">S/ 0.00</strong><span>en mesas</span></span>
+  <span class="sync" id="sync">● Local</span>
+</header>
+<main id="view"></main>
+
+<dialog class="order-dialog" id="orderDialog" aria-labelledby="orderTitle">
+  <div class="heading"><h2 id="orderTitle">Nuevo pedido</h2><button class="btn ghost" data-a="order-close" aria-label="Cerrar nuevo pedido">✕</button></div>
+  <div class="seg order-types" role="group" aria-label="Tipo de pedido">
+    <button class="chip on" data-order-kind="mesa" aria-pressed="true">En mesa</button>
+    <button class="chip" data-order-kind="llevar" aria-pressed="false">Para llevar</button>
+  </div>
+  <div id="orderOptions"></div>
+  <div class="order-summary" id="orderSummary" aria-live="polite"></div>
+  <div class="order-footer"><button class="btn" data-a="order-close">Cancelar</button><button class="btn pri" data-a="order-start" id="orderStart" disabled>Crear pedido</button></div>
+</dialog>
+
+<!-- Modal: cobro -->
+<div class="back" id="payBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="payT">
+    <div class="row" style="justify-content:space-between"><h2 id="payT">Cobrar</h2><button class="btn ghost" data-a="pay-close" aria-label="Cerrar">✕</button></div>
+    <div class="big-total num" id="payTotal"></div>
+    <div class="partial" id="payPartial"></div>
+    <div class="methods" id="payMethods"></div>
+    <div id="cashBox">
+      <div class="field"><label class="mut" for="cashIn">Recibido</label><input id="cashIn" type="number" inputmode="decimal" min="0" step="0.1"></div>
+      <div class="cash" id="cashQuick" style="margin-top:8px"></div>
+      <div class="mut num" id="change" style="margin-top:8px;font-size:16px"></div>
+    </div>
+    <button class="btn pri big" data-a="pay-ok" id="payOk">Confirmar pago</button>
+  </div>
+</div>
+
+<!-- Modal: dividir por comensal -->
+<div class="back" id="splitBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="splitT">
+    <div class="row" style="justify-content:space-between"><h2 id="splitT">Dividir cuenta</h2><button class="btn ghost" data-a="split-close" aria-label="Cerrar">✕</button></div>
+    <div id="splitBody"></div>
+  </div>
+</div>
+
+<!-- Modal: unir mesa -->
+<div class="back" id="joinBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="joinT">
+    <div class="row" style="justify-content:space-between"><h2 id="joinT">Unir otra mesa</h2><button class="btn ghost" data-a="join-close" aria-label="Cerrar">✕</button></div>
+    <div id="joinList"></div>
+  </div>
+</div>
+
+<!-- Barra inferior: modo unir (salón) -->
+<div class="bar" id="bar"><div class="txt" id="barTxt"></div><button class="btn" data-a="join-cancel">Cancelar</button><button class="btn pri" data-a="join-ok" id="joinOk" disabled>Unir mesas</button></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"><span id="toastTxt"></span><button id="undo">Deshacer</button></div>
+
+<script>
+'use strict';
+/* ================================================================
+   RestoFlow Pro v3 — flujo optimizado para el mozo.
+   Integra: POS de dos paneles + cobro con vuelto + mostrador + admin
+   (restoflow v2) con salón filtrable, zonas, unión de mesas, reservas,
+   comensales, división de cuenta, QR, tema y accesibilidad (v1/Salón).
+   ================================================================ */
+const $=s=>document.querySelector(s);
+const money=n=>'S/ '+(Math.round(Number(n||0)*100)/100).toFixed(2);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,8);
+const now=()=>Date.now();
+const mins=t=>Math.floor((now()-t)/60000);
+const hhmm=t=>new Date(t).toLocaleTimeString('es-PE',{hour:'2-digit',minute:'2-digit'});
+const KEY='restoflow.pro.v3';
+const METHODS=['Efectivo','Yape','Plin','Tarjeta','Transferencia'];
+
+/* ---------- Estado ---------- */
+function seed(){
+  const menu=[
+    ['Entradas','Causa limeña',18],['Entradas','Papa a la huancaína',15],['Entradas','Tequeños',16],
+    ['Fondos','Lomo saltado',38],['Fondos','Ají de gallina',30],['Fondos','Arroz con pollo',28],['Fondos','Ceviche clásico',35],
+    ['Bebidas','Chicha morada (jarra)',15],['Bebidas','Inca Kola 500ml',6],['Bebidas','Agua mineral',4],['Bebidas','Limonada',10],
+    ['Postres','Suspiro limeño',12],['Postres','Picarones',14]
+  ].map(([cat,name,price])=>({id:uid(),cat,name,price,on:true}));
+  const tables=Array.from({length:12},(_,i)=>({id:i+1,zone:i<8?'Salón':'Terraza',seats:i<8?4:6,reserved:null}));
+  // Demo viva: mesa 2 con pedidos en cocina+listo, mesa 4 lista para cobrar, mesa 6 reservada.
+  const t2={id:uid(),kind:'mesa',refs:[2],label:'Mesa 2',items:[
+    {pid:menu[3].id,name:'Lomo saltado',price:38,qty:1,note:'Sin cebolla'},
+    {pid:menu[7].id,name:'Chicha morada (jarra)',price:15,qty:1,note:''}
+  ],openedAt:now()-12*60000,paid:0,aliases:[]};
+  const t4={id:uid(),kind:'mesa',refs:[4],label:'Mesa 4',items:[
+    {pid:menu[6].id,name:'Ceviche clásico',price:35,qty:1,note:''},
+    {pid:menu[10].id,name:'Limonada',price:10,qty:2,note:'Sin azúcar'}
+  ],openedAt:now()-40*60000,paid:0,aliases:[]};
+  const orders=[
+    {id:1,ticketId:t2.id,label:'Mesa 2',items:[{pid:menu[3].id,name:'Lomo saltado',price:38,qty:1,note:'Sin cebolla'}],note:'Sin cebolla',status:'cocina',source:'Mozo',alias:'Mesa',at:now()-12*60000},
+    {id:2,ticketId:t2.id,label:'Mesa 2',items:[{pid:menu[7].id,name:'Chicha morada (jarra)',price:15,qty:1,note:''}],note:'',status:'listo',source:'Mozo',alias:'Mesa',at:now()-9*60000},
+    {id:3,ticketId:t4.id,label:'Mesa 4',items:[{pid:menu[6].id,name:'Ceviche clásico',price:35,qty:1,note:''},{pid:menu[10].id,name:'Limonada',price:10,qty:2,note:'Sin azúcar'}],note:'',status:'servido',source:'Mozo',alias:'Mesa',at:now()-38*60000}
+  ];
+  tables[5].reserved={pax:4,at:'20:30'};
+  return {menu,tables,tickets:{[t2.id]:t2,[t4.id]:t4},orders,sales:[],seq:4,settings:{qrPrepay:true,optionalAlias:true,theme:'light'}};
+}
+let S=load();
+function load(){
+  try{
+    const s=JSON.parse(localStorage.getItem(KEY));
+    if(s&&s.menu&&s.tables&&s.tickets)return s;
+    return seed();
+  }catch(e){return seed()}
+}
+const ch='BroadcastChannel' in window?new BroadcastChannel(KEY):null;
+let undoSnap=null,toastT;
+function persist(){localStorage.setItem(KEY,JSON.stringify(S));ch?.postMessage('sync')}
+function save(msg,undoable=true){
+  const prev=localStorage.getItem(KEY);
+  persist();render();
+  if(msg)toast(msg,undoable?prev:null);
+}
+ch&&(ch.onmessage=()=>{S=load();render();flash()});
+addEventListener('storage',e=>{if(e.key===KEY){S=load();render();flash()}});
+function flash(){const s=$('#sync');s.textContent='● Actualizado';setTimeout(()=>s.textContent='● Local',1200)}
+function toast(msg,prev){
+  $('#toastTxt').textContent=msg;undoSnap=prev;
+  $('#undo').style.display=prev?'':'none';
+  $('#toast').classList.add('on');clearTimeout(toastT);
+  toastT=setTimeout(()=>$('#toast').classList.remove('on'),5000);
+}
+$('#undo').onclick=()=>{if(!undoSnap)return;localStorage.setItem(KEY,undoSnap);S=load();undoSnap=null;$('#toast').classList.remove('on');ch?.postMessage('sync');render()};
+
+/* ---------- UI local ---------- */
+let view=localStorage.getItem(KEY+'.view')||'salon';
+let cur=null;      // {kind:'mesa',ref}|{kind:'llevar',tid?}|null (POS abierto)
+let cart={};       // pid -> qty (borrador sin enviar)
+let note='',itemNotes={},cat='Todo',q='',sheet=false;
+let joinMode=false,joinSel=new Set();
+let pay={method:'Efectivo',tid:null,cap:null,label:null};
+let qrRef=null,qrCart={};
+let orderMode=false,draftAlias='';
+
+/* ---------- Helpers de dominio ---------- */
+const ticketFor=(kind,ref)=>Object.values(S.tickets).find(t=>t.kind===kind&&(t.refs||[]).includes(ref));
+const sum=items=>items.reduce((a,i)=>a+i.qty*i.price,0);
+const prod=id=>S.menu.find(p=>p.id===id);
+const cartItems=()=>Object.entries(cart).filter(([,q])=>q>0).map(([pid,qty])=>{const p=prod(pid);return{pid,name:p.name,price:p.price,qty,note:itemNotes[pid]||''}});
+const curTicket=()=>!cur?null:cur.kind==='mesa'?ticketFor('mesa',cur.ref):(cur.tid?S.tickets[cur.tid]:null);
+const readyOrders=tid=>S.orders.filter(o=>o.ticketId===tid&&o.status==='listo');
+const activeOrders=tid=>S.orders.filter(o=>o.ticketId===tid&&o.status!=='servido');
+const balance=tk=>Math.max(0,sum(tk.items)-(tk.paid||0));
+const label=tk=>tk.kind==='llevar'?tk.label:tk.refs.length>1?`Mesas ${tk.refs.slice().sort((a,b)=>a-b).join('+')}`:`Mesa ${tk.refs[0]}`;
+const tableState=t=>{
+  if(t.reserved&&!ticketFor('mesa',t.id))return 'reservada';
+  const tk=ticketFor('mesa',t.id);
+  if(!tk)return 'libre';
+  if(readyOrders(tk.id).length)return 'listo';
+  if(balance(tk)>0&&!activeOrders(tk.id).length)return 'cobrar';
+  return 'ocupada';
+};
+
+
+/* ---------- Render ---------- */
+function render(){
+  applyTheme();
+  $('#salonConsumption').textContent=money(Object.values(S.tickets).filter(t=>t.kind==='mesa').reduce((n,t)=>n+sum(t.items),0));
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+  const k=S.orders.filter(o=>o.status==='cocina').length,r=S.orders.filter(o=>o.status==='listo').length;
+  const cobrables=Object.values(S.tickets).filter(t=>balance(t)>0&&!activeOrders(t.id).length).length;
+  $('#bKitchen').textContent=k||'';$('#bReady').textContent=r||'';$('#bCash').textContent=cobrables||'';
+  const v=$('#view');
+  if(view==='salon')v.innerHTML=cur?(orderMode?posView():tableDetailView()):salonView();
+  else if(view==='mostrador'){if(!cur)cur={kind:'llevar',ref:null};v.innerHTML=posView()}
+  else if(view==='cocina')v.innerHTML=kitchenView();
+  else if(view==='caja')v.innerHTML=cashView();
+  else if(view==='qr')v.innerHTML=qrView();
+  else if(view==='admin')v.innerHTML=adminView();
+  else v.innerHTML=settingsView();
+  if(view==='salon'&&!cur){
+    $('#bar').classList.toggle('on',joinMode);
+    const ids=[...joinSel].sort((a,b)=>a-b);
+    const ok=ids.length>=2&&ids.some(id=>ticketFor('mesa',id));
+    $('#joinOk').disabled=!ok;
+    $('#barTxt').innerHTML=ids.length<2
+      ?'<b>Selecciona 2 o más mesas</b><small>Al menos una con cuenta abierta.</small>'
+      :`<b>Unir ${ids.join(' + ')}</b><small>Se fusionarán las cuentas. Se puede deshacer.</small>`;
+  }
+}
+function applyTheme(){
+  const th=S.settings.theme||'auto';
+  if(th==='auto')document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.dataset.theme=th;
+}
+
+/* ---------- Salón ---------- */
+function salonView(){
+  const F=localStorage.getItem(KEY+'.sf')||'Todas',Z=localStorage.getItem(KEY+'.sz')||'Todas',fq=localStorage.getItem(KEY+'.sq')||'';
+  const sort=localStorage.getItem(KEY+'.sort')||'num';
+  const states=[['Todas','Todas'],['libre','Libres'],['ocupada','Ocupadas'],['listo','Listos'],['cobrar','Por cobrar'],['reservada','Reservadas']];
+  const unique=S.tables.filter(t=>{const tk=ticketFor('mesa',t.id);return !tk||tk.refs[0]===t.id});
+  const count=k=>unique.filter(t=>k==='Todas'||tableState(t)===k).length;
+  const priority=t=>{const st=tableState(t),tk=ticketFor('mesa',t.id);return (st==='listo'?5000:st==='cobrar'?4000:st==='ocupada'?3000:st==='reservada'?1000:0)+(tk?mins(tk.openedAt):0)};
+  const list=unique.filter(t=>(F==='Todas'||tableState(t)===F)&&(Z==='Todas'||t.zone===Z)&&(!fq||(ticketFor('mesa',t.id)?.refs||[t.id]).some(id=>String(id).includes(fq)))).sort(sort==='prio'?(a,b)=>priority(b)-priority(a)||a.id-b.id:(a,b)=>a.id-b.id);
+  const zones=[...new Set(S.tables.map(t=>t.zone))];
+  const card=t=>{
+    const tk=ticketFor('mesa',t.id),st=tableState(t),joined=tk&&tk.refs.length>1;
+    const stLabel={libre:'Libre',ocupada:'Ocupada',listo:'Listo para servir',cobrar:'Por cobrar',reservada:'Reservada'}[st];
+    const duration=tk?mins(tk.openedAt):0;
+    const capacity=joined?tk.refs.reduce((n,id)=>n+(S.tables.find(x=>x.id===id)?.seats||0),0):t.seats;
+    return `<article class="t ${st==='libre'?'free':''} ${st==='listo'?'ready':''} ${joined?'joined':''} ${joinSel.has(t.id)?'sel':''}" style="--c:var(--${st})">
+      <button class="table-open" data-table="${t.id}" aria-label="${esc(tk?label(tk):'Mesa '+t.id)}, ${stLabel}" ${joinMode?`aria-pressed="${joinSel.has(t.id)}"`:''}>
+        ${joined?`<span class="subs">${tk.refs.map((r,k)=>`<span class="${k?'':'m'}">${r}</span>`).join('')}</span>`:`<b>Mesa ${t.id}</b>`}
+        <span class="table-capacity">${capacity} asientos</span>
+        <span class="st">${joinSel.has(t.id)?'✓ Seleccionada':stLabel}</span>
+        ${tk?`<span class="amt num">${money(st==='cobrar'?balance(tk):sum(tk.items))} · <span class="elapsed ${duration>=45?'late':duration>=30?'warn':''}">${duration} min</span></span>`:st==='reservada'?`<span class="amt">${esc(t.reserved.at)} · ${t.reserved.pax} personas</span>`:''}
+      </button>
+    </article>`;
+  };
+  return `<div class="salon-heading"><div><h1>Mesas</h1><p>${S.tables.length} mesas · ${count('ocupada')+count('listo')+count('cobrar')} atenciones activas · ${count('reservada')} reservada${count('reservada')===1?'':'s'}</p></div>
+    <div class="legend" aria-label="Estados de mesa">${[['libre','Libre'],['ocupada','Ocupada'],['listo','Listo'],['cobrar','Por cobrar'],['reservada','Reservada']].map(([k,l])=>`<span style="--c:var(--${k})"><i></i>${l}</span>`).join('')}</div></div>
+    <div class="salon-tools"><div class="status-filters" role="group" aria-label="Filtrar estado">${states.map(([k,l])=>`<button class="chip ${F===k?'on':''}" data-sf="${k}" aria-pressed="${F===k}">${l}<span class="filter-count">${count(k)}</span></button>`).join('')}</div>
+    <div class="toolbar"><input class="search" id="sq" type="search" inputmode="numeric" placeholder="Buscar mesa…" value="${esc(fq)}" aria-label="Buscar mesa">
+    <select class="zone-select" id="salonZone" aria-label="Filtrar zona">${['Todas',...zones].map(z=>`<option value="${esc(z)}" ${Z===z?'selected':''}>${z==='Todas'?'Todas las zonas':esc(z)}</option>`).join('')}</select>
+    <span class="grow"></span><button class="btn" data-a="sort-tables" aria-label="${sort==='num'?'Ordenar por prioridad':'Ordenar por número'}">↕ ${sort==='num'?'Por número':'Por prioridad'}</button>
+    <button class="btn ${joinMode?'danger':''}" data-a="join-toggle">${joinMode?'✕ Cancelar unión':'⇄ Unir mesas'}</button></div></div>
+    <div class="banner ${joinMode?'on':''}" role="status">Seleccionar mesas para unir</div>
+    ${list.length?zones.filter(z=>list.some(t=>t.zone===z)).map(z=>{const zoneList=list.filter(t=>t.zone===z),capacities=[...new Set(zoneList.map(t=>t.seats))];return `<section class="zone-section" aria-label="${esc(z)}"><div class="zone-heading"><h2>${esc(z)}</h2>${capacities.length===1?`<small>${capacities[0]} asientos</small>`:''}<span class="zone-count">${zoneList.length} mesa${zoneList.length===1?'':'s'}</span></div><div class="tables">${zoneList.map(card).join('')}</div></section>`}).join(''):'<div class="empty">No hay mesas con estos filtros.</div>'}`;
+}
+
+function tableDetailView(){
+  const tk=curTicket(),t=S.tables.find(x=>x.id===cur.ref);
+  const orders=tk?S.orders.filter(o=>o.ticketId===tk.id):[];
+  const statusText={cocina:'Pendiente',listo:'Listo',servido:'Entregado'};
+  const statusColor={cocina:'ocupada',listo:'listo',servido:'libre'};
+  return `<div class="table-detail-head">
+    <div class="row"><button class="btn ghost" data-a="back" aria-label="Volver al salón">← Salón</button><div><h2>${tk?esc(label(tk)):`Mesa ${t.id}`}</h2><div class="table-state-line" style="--c:var(--${tableState(t)})">${{libre:'Libre',ocupada:'Ocupada',listo:'Listo para servir',cobrar:'Por cobrar',reservada:'Reservada'}[tableState(t)]}${t.reserved?` · ${esc(t.reserved.at)} · ${t.reserved.pax} personas`:''}</div></div></div>
+    <div class="row">${!tk&&t.reserved?'<button class="btn danger" data-a="unreserve">Cancelar reserva</button>':''}${!tk&&!t.reserved?'<button class="btn" data-a="reserve">Reservar</button>':''}<button class="btn pri" data-a="person-order">Nuevo pedido</button></div>
+  </div>
+  <div class="pos">
+    <section class="table-content">
+      <div class="table-orders">${orders.length?orders.map(o=>`<article class="table-order">
+        <div class="table-order-head">
+          <div><div class="table-order-person"><span>${esc(o.alias&&o.alias!=='Mesa'?o.alias:'Sin nombre')}</span><button class="btn ghost sm" data-rename="${o.id}" aria-label="Editar nombre" title="Editar nombre">✎</button></div><div class="mut">Pedido #${o.id} · ${hhmm(o.at)}</div></div>
+          <span class="tag" style="--c:var(--${statusColor[o.status]||'ocupada'})">${statusText[o.status]||o.status}</span>
+        </div>
+        <div class="table-order-items">${o.items.map(i=>`<div class="table-order-item"><span>${i.qty} × ${esc(i.name)}</span><strong class="num">${money(i.qty*i.price)}</strong></div>`).join('')}</div>
+        ${o.note?`<div class="nt">📝 ${esc(o.note)}</div>`:''}
+        <div class="table-order-foot"><strong class="num">${money(sum(o.items))}</strong>${o.status==='listo'?`<button class="btn sm" data-served="${o.id}">Marcar entregado</button>`:''}</div>
+      </article>`).join(''):`<div class="empty"><strong>${t.reserved?'Mesa reservada':'Mesa libre'}</strong></div>`}</div>
+    </section>
+    <aside class="ticket table-summary">
+      <div class="head"><h3>Resumen de mesa</h3></div>
+      <div class="row"><span class="mut">Pedidos</span><strong>${orders.length}</strong></div>
+      <div class="row"><span class="mut">Total consumido</span><strong class="num">${money(tk?sum(tk.items):0)}</strong></div>
+      <div class="total"><span>Pendiente</span><span class="num">${money(tk?balance(tk):0)}</span></div>
+      ${tk&&balance(tk)>0?`<button class="btn warn big" data-a="charge">Cobrar ${money(balance(tk))}</button><button class="btn" data-a="split">Dividir por comensal</button>`:''}
+      ${tk?`<details class="more"><summary>Más opciones</summary><div class="moreb"><button class="btn sm" data-a="join-other">⇄ Unir con otra mesa</button>${tk.refs.length>1?tk.refs.slice(1).map(r=>`<button class="btn sm" data-sep="${r}">Separar mesa ${r}</button>`).join(''):''}<button class="btn sm danger" data-a="void">Anular cuenta</button></div></details>`:''}
+    </aside>
+  </div>`;
+}
+
+/* ---------- POS (mesa o mostrador) ---------- */
+function posView(){
+  const tk=curTicket();
+  const isMesa=cur.kind==='mesa';
+  const t=isMesa?S.tables.find(x=>x.id===cur.ref):null;
+  const st=t?tableState(t):null;
+  const cats=['Todo',...new Set(S.menu.filter(p=>p.on).map(p=>p.cat))];
+  const list=S.menu.filter(p=>p.on&&(cat==='Todo'||p.cat===cat)&&p.name.toLowerCase().includes(q.toLowerCase()));
+  const draft=cartItems(),dTotal=sum(draft),sentTotal=tk?sum(tk.items):0;
+  const tOrders=tk?S.orders.filter(o=>o.ticketId===tk.id):[];
+  const ready=tk?readyOrders(tk.id):[];
+  const bal=tk?balance(tk):0;
+  const title=isMesa?(tk?label(tk):`Mesa ${cur.ref}`):(tk?`Llevar ${tk.label.replace('Llevar ','')}`:'Para llevar');
+  const primary=draft.length
+    ?`<button class="btn pri big" data-a="send">Enviar a cocina · ${money(dTotal)}</button>`
+    :isMesa&&tk&&bal>0
+      ?`<button class="btn warn big" data-a="charge">Cobrar ${money(bal)}</button>`
+      :isMesa&&tk&&bal<=0
+        ?`<button class="btn big" disabled>Cuenta saldada ✓</button>`
+        :!isMesa&&(tk||draft.length)
+          ?`<button class="btn pri big" data-a="charge">Cobrar ${money(sentTotal+dTotal)}</button>`
+          :'';
+  return `<div class="poshead">
+      <div class="row">${isMesa?`<button class="btn ghost" data-a="back" aria-label="Volver al salón">← Salón</button>`:''}<h2>${title}</h2>
+        ${tk&&st?`<span class="tag" style="--c:var(--${st==='listo'?'listo':st==='cobrar'?'cobrar':'ocupada'})">${st==='listo'?'Listo para servir':st==='cobrar'?'Por cobrar':'Ocupada'}</span>`:''}</div>
+      <div class="row">
+        ${isMesa&&st==='libre'?`<button class="btn sm" data-a="reserve">🔒 Reservar</button>`:''}
+        ${isMesa&&st==='reservada'?`<button class="btn sm pri" data-a="seat">🪑 Sentar clientes</button><button class="btn sm danger" data-a="unreserve">Cancelar reserva</button>`:''}
+      </div>
+    </div>
+    ${isMesa?`<div class="person-draft"><span>Nuevo pedido de <strong>${esc(draftAlias||'Sin nombre')}</strong> <small>· nombre opcional</small></span><button class="btn sm" data-a="edit-person" aria-label="Editar nombre de la persona">✎ Editar nombre</button></div>`:''}
+    ${isMesa&&st==='reservada'?`<div class="resban">🔒 Reservada para ${t.reserved.pax} personas · ${esc(t.reserved.at)}</div>`:''}
+    <div class="pos">
+    <section>
+      <input class="search" id="q" type="search" placeholder="Buscar plato o bebida…" value="${esc(q)}" aria-label="Buscar producto">
+      <div class="cats">${cats.map(c=>`<button class="chip ${c===cat?'on':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div class="prods">${list.map(p=>`<button class="p" data-add="${p.id}"><strong>${esc(p.name)}</strong><span class="mut num">${money(p.price)}</span>${cart[p.id]?`<span class="q">${cart[p.id]}</span>`:''}</button>`).join('')||'<div class="empty">Sin resultados</div>'}</div>
+    </section>
+    <aside class="ticket ${sheet?'open':''}">
+      <div class="head"><h3>${title}</h3>${sheet?'<button class="btn ghost" data-a="sheet">✕</button>':''}</div>
+      ${ready.length?`<button class="btn warn" data-a="served">✓ Servir ${ready.length} pedido${ready.length>1?'s':''} listo${ready.length>1?'s':''}</button>`:''}
+      <div class="lines">
+        ${tOrders.map(o=>`<div class="sent"><div class="row"><span class="mut">#${o.id} · ${hhmm(o.at)}${o.alias&&o.alias!=='Mesa'?` · ${esc(o.alias)}`:''}</span><span class="tag" style="--c:var(--${o.status==='cocina'?'ocupada':o.status==='listo'?'listo':'libre'})">${o.status==='cocina'?'En cocina':o.status==='listo'?'Listo':'Servido'}</span></div>
+          ${o.items.map(i=>`<div class="row"><span>${i.qty} × ${esc(i.name)}${i.note?` <em style="color:var(--cobrar);font-style:normal;font-size:12px">— ${esc(i.note)}</em>`:''}</span><span class="num">${money(i.qty*i.price)}</span></div>`).join('')}</div>`).join('')}
+        ${draft.map(i=>`<div class="line"><span class="nm">${esc(i.name)}${i.note?`<small>📝 ${esc(i.note)}</small>`:''}</span>
+          <div class="stepper"><button data-dec="${i.pid}" aria-label="Quitar uno">−</button><b class="num">${i.qty}</b><button data-add="${i.pid}" aria-label="Agregar uno">+</button></div>
+          <span class="num">${money(i.qty*i.price)}</span><button class="btn ghost sm" data-note="${i.pid}" title="Nota del producto" aria-label="Nota de ${esc(i.name)}">📝</button></div>`).join('')}
+        ${!draft.length&&!tOrders.length?'<div class="empty">Toca productos para agregarlos.</div>':''}
+      </div>
+      ${draft.length?`<textarea class="note" id="note" rows="2" placeholder="Nota para cocina (opcional)">${esc(note)}</textarea>`:''}
+      <div class="total"><span>Total</span><span class="num">${money(sentTotal+dTotal)}</span></div>
+      <div class="acts">${primary}
+        ${isMesa&&draft.length&&tk?`<button class="btn" data-a="charge">Cobrar sin enviar lo nuevo</button>`:''}
+        ${draft.length?`<button class="btn ghost danger" data-a="clear">Vaciar lo nuevo</button>`:''}
+        ${tk&&!draft.length?`<button class="btn" data-a="split">Dividir por comensal</button>`:''}
+        ${tk&&!draft.length?`<details class="more"><summary>Más</summary><div class="moreb">
+          ${S.settings.optionalAlias?`<div><div class="mut" style="margin-bottom:6px"><strong>Comensales (alias)</strong> · opcional, para saber quién pidió qué</div>
+            <div class="aliaslist">${tk.aliases.length?tk.aliases.map(a=>`<span class="aliastag">👤 ${esc(a)}</span>`).join(''):'<span class="mut">Sin alias todavía.</span>'}</div>
+            <div class="addrow" style="margin-top:8px"><input id="drAlias" placeholder="Nuevo alias…" aria-label="Nuevo alias"><button class="btn sm" data-a="alias-add">Agregar</button></div></div>`:''}
+          ${isMesa?`<button class="btn sm" data-a="join-other">⇄ Unir con otra mesa</button>`:''}
+          ${tk.refs.length>1?`<div><div class="mut" style="margin-bottom:6px"><strong>Mesas del grupo</strong> · separar deja el consumo en la principal</div>
+            <div class="row">${tk.refs.map(r=>`<button class="chip ${r===tk.refs[0]?'on':''}" ${r===tk.refs[0]?'disabled':''} data-sep="${r}">${r} ${r===tk.refs[0]?'· principal':''}</button>`).join('')}</div></div>`:''}
+          <button class="btn sm danger" data-a="void">✕ Anular cuenta</button>
+        </div></details>`:''}
+      </div>
+    </aside>
+    </div>
+    <button class="btn pri big fab" data-a="sheet">Ver pedido · ${money(sentTotal+dTotal)}</button>`;
+}
+
+/* ---------- Cocina ---------- */
+function kitchenView(){
+  const list=S.orders.filter(o=>o.status!=='servido').sort((a,b)=>a.at-b.at);
+  if(!list.length)return '<div class="empty"><h2>Sin pedidos pendientes</h2><p>Los pedidos nuevos aparecen aquí al instante.</p></div>';
+  return `<div class="kds">${list.map(o=>{
+    const m=mins(o.at),c=o.status==='listo'?'listo':'ocupada';
+    return `<div class="kt ${o.status==='cocina'&&m>=15?'late':''}" style="--c:var(--${c})">
+      <div class="h"><b>${esc(o.label)}</b><span class="mut num">#${o.id} · ${m} min</span></div>
+      <ul>${o.items.map(i=>`<li>${i.qty} × ${esc(i.name)}${i.note?` <em>— ${esc(i.note)}</em>`:''}</li>`).join('')}</ul>
+      ${o.note?`<div class="nt">📝 ${esc(o.note)}</div>`:''}
+      ${o.alias&&o.alias!=='Mesa'?`<div class="mut">👤 ${esc(o.alias)} · ${o.source==='QR'?'📱 QR':'👤 Mozo'}</div>`:''}
+      ${o.status==='cocina'?`<button class="btn pri big" data-ready="${o.id}">✓ Listo</button>`:`<button class="btn big" data-served="${o.id}">Entregado</button>`}
+    </div>`}).join('')}</div>`;
+}
+
+/* ---------- Caja ---------- */
+function cashView(){
+  const open=Object.values(S.tickets).filter(t=>balance(t)>0);
+  const day=new Date();day.setHours(0,0,0,0);
+  const today=S.sales.filter(s=>s.at>=day.getTime());
+  const total=sum(today.map(s=>({qty:1,price:s.total})));
+  return `<div class="kpis">
+    <div class="kpi"><span class="mut">Ventas de hoy</span><b class="num">${money(total)}</b></div>
+    <div class="kpi"><span class="mut">Cuentas cobradas</span><b class="num">${today.length}</b></div>
+    <div class="kpi"><span class="mut">Ticket promedio</span><b class="num">${money(today.length?total/today.length:0)}</b></div>
+    <div class="kpi"><span class="mut">Cuentas abiertas</span><b class="num">${open.length} · ${money(open.reduce((a,t)=>a+balance(t),0))}</b></div>
+  </div>
+  <h2 style="margin-bottom:10px">Cuentas abiertas</h2>
+  <div class="paylist">${open.sort((a,b)=>a.openedAt-b.openedAt).map(tk=>{
+    const pend=activeOrders(tk.id).length, ready=readyOrders(tk.id).length;
+    return `<div class="paycard">
+      <div><strong>${esc(label(tk))}</strong>
+        <div class="mut">${pend?`${pend} pedido${pend>1?'s':''} activo${ready?` · ${ready} listo`:''}`:'Todo servido · lista para cobrar'} · ${mins(tk.openedAt)} min</div></div>
+      <div><div class="mut">Por cobrar</div><strong class="num" style="font-size:18px">${money(balance(tk))}</strong></div>
+      <div class="row"><button class="btn sm" data-a="cash-ver" data-tid="${tk.id}">Ver</button><button class="btn warn" data-a="cash-pay" data-tid="${tk.id}">Cobrar</button></div>
+    </div>`}).join('')||'<div class="empty">No hay cuentas abiertas.</div>'}</div>
+  <h2 style="margin:18px 0 10px">Últimos cobros de hoy</h2>
+  <div class="card"><table>${today.slice(-10).reverse().map(s=>`<tr><td>${esc(s.label)}</td><td class="mut">${s.method}${s.partial?' · parcial':''}</td><td class="num" style="text-align:right">${money(s.total)}</td></tr>`).join('')||'<tr><td class="mut">Aún sin cobros hoy</td></tr>'}</table></div>`;
+}
+
+/* ---------- QR ---------- */
+function qrView(){
+  if(qrRef==null)qrRef=S.tables.find(t=>tableState(t)==='libre')?.id||1;
+  const t=S.tables.find(x=>x.id===qrRef);
+  const total=Object.entries(qrCart).reduce((a,[id,q])=>a+(prod(id)?.price||0)*q,0);
+  const n=Object.values(qrCart).reduce((a,q)=>a+q,0);
+  return `<div class="qrwrap">
+    <div class="mobile-shell">
+      <div class="mobile-top"><div class="mut">Mesa ${t.id} · ${t.zone} · Comer en local</div><h2>¿Qué te provoca?</h2><div class="mut">Elige, revisa y confirma.</div></div>
+      <div class="qr-products">${S.menu.filter(p=>p.on).map(p=>{
+        const qq=qrCart[p.id]||0;
+        return `<div class="qr-product"><div><strong>${esc(p.name)}</strong><div class="mut num">${money(p.price)}</div></div>
+          <div class="stepper"><button data-qdec="${p.id}" aria-label="Quitar">−</button><b class="num">${qq}</b><button data-qadd="${p.id}" aria-label="Agregar">+</button></div></div>`;
+      }).join('')}</div>
+      <div class="qr-bottom">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px"><span class="mut">${n} producto${n===1?'':'s'}</span><strong class="num" style="font-size:18px">${money(total)}</strong></div>
+        <button class="btn pri big" data-a="qr-send" ${n?'':'disabled'}>${S.settings.qrPrepay?`Pagar ${money(total)} y enviar`:'Enviar pedido a cocina'}</button>
+      </div>
+    </div>
+    <div class="qr-side">
+      <div class="card"><div class="mut" style="margin-bottom:6px"><strong>Mesa que escanea</strong></div>
+        <select id="qrSel" aria-label="Mesa que escanea">${S.tables.map(x=>`<option value="${x.id}" ${x.id===qrRef?'selected':''}>Mesa ${x.id} · ${x.zone}${ticketFor('mesa',x.id)?' (con cuenta)':''}</option>`).join('')}</select></div>
+      <div class="card"><div class="mut">${S.settings.qrPrepay
+        ?'💳 <strong>Pago obligatorio</strong>: el pedido entra pagado y cierra la cuenta al instante.'
+        :'🧾 <strong>Sin prepago</strong>: el pedido entra a cocina y se suma a la cuenta de la mesa.'}</div></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Admin ---------- */
+function adminView(){
+  const day=new Date();day.setHours(0,0,0,0);
+  const today=S.sales.filter(s=>s.at>=day.getTime());
+  const total=sum(today.map(s=>({qty:1,price:s.total})));
+  const byM=METHODS.map(m=>[m,today.filter(s=>s.method===m).reduce((a,s)=>a+s.total,0)]).filter(x=>x[1]);
+  const top={};today.forEach(s=>s.items.forEach(i=>top[i.name]=(top[i.name]||0)+i.qty));
+  const topL=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const open=Object.values(S.tickets);
+  return `<div class="kpis">
+    <div class="kpi"><span class="mut">Ventas de hoy</span><b class="num">${money(total)}</b></div>
+    <div class="kpi"><span class="mut">Cuentas cobradas</span><b class="num">${today.length}</b></div>
+    <div class="kpi"><span class="mut">Ticket promedio</span><b class="num">${money(today.length?total/today.length:0)}</b></div>
+    <div class="kpi"><span class="mut">Cuentas abiertas</span><b class="num">${open.length} · ${money(open.reduce((a,t)=>a+balance(t),0))}</b></div>
+  </div>
+  <div class="grid2">
+    <div class="card"><h3>Carta</h3><p class="mut">Los cambios se guardan al salir del campo. Apaga un producto si se agotó.</p>
+      <table><thead><tr><th>Categoría</th><th>Producto</th><th>Precio</th><th>Activo</th><th></th></tr></thead><tbody>
+      ${S.menu.map(p=>`<tr><td><input data-edit="${p.id}" data-f="cat" value="${esc(p.cat)}"></td><td><input data-edit="${p.id}" data-f="name" value="${esc(p.name)}"></td><td><input data-edit="${p.id}" data-f="price" type="number" step="0.5" value="${p.price}" style="width:80px"></td><td><input type="checkbox" data-toggle="${p.id}" ${p.on?'checked':''} style="width:22px;height:22px"></td><td><button class="btn ghost danger" data-del="${p.id}" aria-label="Eliminar">✕</button></td></tr>`).join('')}
+      </tbody></table>
+      <button class="btn" data-a="add-prod" style="margin-top:10px">+ Agregar producto</button>
+    </div>
+    <div style="display:grid;gap:16px;align-content:start">
+      <div class="card"><h3>Por método de pago</h3><table>${byM.map(([m,v])=>`<tr><td>${m}</td><td class="num" style="text-align:right">${money(v)}</td></tr>`).join('')||'<tr><td class="mut">Aún sin ventas hoy</td></tr>'}</table></div>
+      <div class="card"><h3>Más vendidos hoy</h3><table>${topL.map(([n,v])=>`<tr><td>${esc(n)}</td><td class="num" style="text-align:right">${v}</td></tr>`).join('')||'<tr><td class="mut">Aún sin ventas hoy</td></tr>'}</table></div>
+      <div class="card"><h3>Salón</h3><div class="row" style="margin-top:8px"><span>Número de mesas</span><button class="btn" data-a="tbl-">−</button><b class="num">${S.tables.length}</b><button class="btn" data-a="tbl+">+</button></div></div>
+      <div class="card"><h3>Últimas ventas</h3><table>${today.slice(-8).reverse().map(s=>`<tr><td>${esc(s.label)}</td><td class="mut">${s.method}</td><td class="num" style="text-align:right">${money(s.total)}</td></tr>`).join('')||'<tr><td class="mut">Aún sin ventas hoy</td></tr>'}</table>
+        <button class="btn ghost danger" data-a="reset" style="margin-top:8px">Borrar todos los datos</button></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- Ajustes ---------- */
+function settingsView(){
+  const st=S.settings;
+  return `<h2 style="margin-bottom:14px">Ajustes</h2>
+  <div class="settings">
+    <div class="setting"><div><strong>Pago obligatorio en pedidos QR</strong><div class="mut">El QR no envía a cocina hasta confirmar el pago.</div></div><button class="switch ${st.qrPrepay?'on':''}" data-tog="qrPrepay" role="switch" aria-checked="${!!st.qrPrepay}" aria-label="Prepago QR"></button></div>
+    <div class="setting"><div><strong>Comensales (alias) opcionales</strong><div class="mut">Permite saber quién pidió qué, plegado en ⋯ Más.</div></div><button class="switch ${st.optionalAlias?'on':''}" data-tog="optionalAlias" role="switch" aria-checked="${!!st.optionalAlias}" aria-label="Alias opcionales"></button></div>
+    <div class="setting"><div><strong>Tema</strong><div class="mut">Auto sigue el tema del sistema.</div></div>
+      <div class="seg" role="group" aria-label="Tema">${[['auto','Auto'],['light','Claro'],['dark','Oscuro']].map(([k,l])=>`<button class="chip ${st.theme===k?'on':''}" data-theme="${k}">${l}</button>`).join('')}</div></div>
+    <div class="setting"><div><strong>Multi-pestaña</strong><div class="mut">Abrí Salón, Cocina y Caja en pestañas separadas: se sincronizan solas.</div></div><span class="sync" style="color:var(--mut)">● Activo</span></div>
+  </div>`;
+}
+
+
+/* ---------- Acciones de dominio ---------- */
+function ensureTicket(){
+  let tk=cur.kind==='mesa'?ticketFor('mesa',cur.ref):(cur.tid&&S.tickets[cur.tid]);
+  if(!tk){
+    const id=uid();
+    tk=S.tickets[id]={id,kind:cur.kind,refs:cur.kind==='mesa'?[cur.ref]:[],label:cur.kind==='mesa'?`Mesa ${cur.ref}`:`Llevar #${S.seq}`,items:[],openedAt:now(),paid:0,aliases:[]};
+    if(cur.kind==='llevar')cur.tid=id;
+    else{const t=S.tables.find(x=>x.id===cur.ref);if(t)t.reserved=null}
+  }
+  return tk;
+}
+function sendDraft(){
+  const items=cartItems();if(!items.length)return null;
+  const tk=ensureTicket();
+  items.forEach(i=>{const ex=tk.items.find(x=>x.pid===i.pid&&x.price===i.price);ex?ex.qty+=i.qty:tk.items.push({...i})});
+  const alias=cur.kind==='mesa'?(draftAlias.trim()||'Mesa'):($('#orderAlias')?.value||'Mesa');
+  if(alias!=='Mesa'&&!tk.aliases.includes(alias))tk.aliases.push(alias);
+  S.orders.push({id:S.seq++,ticketId:tk.id,label:label(tk),items,note:note.trim(),status:'cocina',source:'Mozo',alias,at:now()});
+  cart={};note='';itemNotes={};
+  return tk;
+}
+function serveReady(tid){readyOrders(tid).forEach(o=>o.status='servido')}
+function anularTicket(tid){
+  const tk=S.tickets[tid];if(!tk)return null;
+  S.orders=S.orders.filter(o=>o.ticketId!==tid);
+  delete S.tickets[tid];
+  return tk;
+}
+
+/* ---------- Cobro ---------- */
+function openPay(tid,opts={}){
+  let tk=tid?S.tickets[tid]:null;
+  if(!tk){
+    if(cur&&cur.kind==='llevar')tk=sendDraft();
+    if(!tk){toast('No hay nada que cobrar');return}
+  }
+  pay={method:'Efectivo',tid:tk.id,cap:opts.cap??balance(tk),label:opts.label??label(tk)};
+  sheet=false;render();
+  $('#payT').textContent=`Cobrar · ${pay.label}`;
+  $('#payTotal').textContent=money(pay.cap);
+  $('#payPartial').textContent=pay.cap<balance(tk)-0.009?`Pago parcial de una cuenta de ${money(balance(tk))}`:'';
+  $('#cashIn').value='';
+  const t=pay.cap;
+  $('#cashQuick').innerHTML=[...new Set([t,Math.ceil(t/10)*10,Math.ceil(t/50)*50,100,200].filter(v=>v>=t))].slice(0,4).map(v=>`<button class="chip" data-cash="${v}">${money(v)}</button>`).join('');
+  payUI();$('#payBack').classList.add('on');
+}
+function payUI(){
+  const tk=S.tickets[pay.tid];if(!tk)return;
+  $('#payMethods').innerHTML=METHODS.map(m=>`<button class="${m===pay.method?'on':''}" data-m="${m}">${m}</button>`).join('');
+  $('#cashBox').style.display=pay.method==='Efectivo'?'':'none';
+  const r=parseFloat($('#cashIn').value),t=pay.cap;
+  $('#change').innerHTML=pay.method==='Efectivo'&&r?(r>=t?`Vuelto: <b class="num">${money(r-t)}</b>`:`<span style="color:var(--bad)">Faltan ${money(t-r)}</span>`):'';
+  $('#payOk').disabled=pay.method==='Efectivo'&&r>0&&r<t;
+}
+function confirmPay(){
+  const tk=S.tickets[pay.tid];if(!tk)return;
+  const t=pay.cap;
+  if(pay.method==='Efectivo'){
+    const r=parseFloat($('#cashIn').value)||0;
+    if(r<t){toast(`Faltan ${money(t-r)} en efectivo`);return}
+  }
+  const partial=t<balance(tk)-0.009;
+  const saleLabel=partial?`${label(tk)} · ${pay.label}`:label(tk);
+  S.sales.push({id:uid(),label:saleLabel,total:t,method:pay.method,at:now(),items:tk.items.map(i=>({name:i.name,price:i.price,qty:partial?0:i.qty})),partial});
+  tk.paid=(tk.paid||0)+t;
+  const closed=balance(tk)<=0.009;
+  if(closed){
+    S.orders.forEach(o=>{if(o.ticketId===tk.id&&o.status==='listo')o.status='servido'});
+    delete S.tickets[tk.id];
+  }
+  $('#payBack').classList.remove('on');
+  if(cur&&cur.kind==='mesa'&&closed)cur=null;
+  if(view==='mostrador'&&closed)cur={kind:'llevar',ref:null};
+  save(`${saleLabel} cobrada · ${money(t)} (${pay.method})${closed?'':` · queda ${money(balance(tk))}`}`);
+}
+
+/* ---------- Dividir por comensal ---------- */
+function openSplit(tid){
+  const tk=S.tickets[tid];if(!tk)return;
+  const groups={};
+  S.orders.filter(o=>o.ticketId===tid).forEach(o=>{const a=o.alias||'Mesa';groups[a]=(groups[a]||0)+sum(o.items)});
+  const covered=Object.values(groups).reduce((a,b)=>a+b,0);
+  const rest=balance(tk)-covered;
+  if(rest>0.009)groups['Mesa']=(groups['Mesa']||0)+rest;
+  $('#splitT').textContent=label(tk);
+  $('#splitBody').innerHTML=`<div class="mut" style="margin-bottom:4px">Pendiente: <strong class="num">${money(balance(tk))}</strong></div>
+    <div class="splitrows">
+      <button class="btn pri" data-splitpay="${tk.id}|full">Toda la mesa · ${money(balance(tk))}</button>
+      ${Object.entries(groups).filter(([,v])=>v>0.009).map(([a,v])=>`<button class="btn" data-splitpay="${tk.id}|${esc(a)}|${v}">${esc(a)} · ${money(v)}</button>`).join('')}
+    </div>`;
+  $('#splitBack').classList.add('on');
+}
+
+/* ---------- Unión / separación ---------- */
+function mergeTickets(mainId,otherId){
+  const m=S.tickets[mainId],o=S.tickets[otherId];
+  if(!m||!o||mainId===otherId)return;
+  o.items.forEach(i=>{const ex=m.items.find(x=>x.pid===i.pid&&x.price===i.price);ex?ex.qty+=i.qty:m.items.push({...i})});
+  m.refs.push(...o.refs.filter(r=>!m.refs.includes(r)));
+  m.paid=(m.paid||0)+(o.paid||0);
+  m.aliases.push(...o.aliases.filter(a=>!m.aliases.includes(a)));
+  S.orders.forEach(ord=>{if(ord.ticketId===otherId){ord.ticketId=mainId;ord.label=label(m)}});
+  delete S.tickets[otherId];
+  m.label=label(m);
+}
+function separateRef(tid,ref){
+  const tk=S.tickets[tid];if(!tk||tk.refs.length<2)return;
+  tk.refs=tk.refs.filter(r=>r!==ref);
+  tk.label=label(tk);
+}
+
+/* ---------- QR: enviar / pagar ---------- */
+function sendQR(){
+  const items=Object.entries(qrCart).filter(([,q])=>q>0).map(([pid,qty])=>{const p=prod(pid);return{pid,name:p.name,price:p.price,qty,note:''}});
+  if(!items.length)return;
+  const t=S.tables.find(x=>x.id===qrRef);
+  let tk=ticketFor('mesa',qrRef);
+  if(!tk){const id=uid();tk=S.tickets[id]={id,kind:'mesa',refs:[qrRef],label:`Mesa ${qrRef}`,items:[],openedAt:now(),paid:0,aliases:[]}}
+  items.forEach(i=>{const ex=tk.items.find(x=>x.pid===i.pid&&x.price===i.price);ex?ex.qty+=i.qty:tk.items.push({...i})});
+  S.orders.push({id:S.seq++,ticketId:tk.id,label:label(tk),items,note:'',status:'cocina',source:'QR',alias:'Mesa',at:now()});
+  qrCart={};
+  if(S.settings.qrPrepay){
+    S.sales.push({id:uid(),label:label(tk),total:sum(items),method:'QR prepago',at:now(),items,partial:false});
+    delete S.tickets[tk.id];
+    return save(`QR Mesa ${qrRef}: pagado y enviado · ${money(sum(items))}`);
+  }
+  return save(`QR Mesa ${qrRef}: pedido enviado a cocina`);
+}
+
+/* ---------- Entrada única para nuevos pedidos ---------- */
+let newKind='mesa',newRef=null;
+function canLeaveDraft(){
+  return !Object.values(cart).some(q=>q>0)||confirm('Tienes productos sin enviar. ¿Descartarlos y continuar?');
+}
+function resetDraft(){cart={};note='';itemNotes={};q='';cat='Todo';sheet=false}
+function beginPersonOrder(ref){
+  if(!canLeaveDraft())return;
+  resetDraft();cur={kind:'mesa',ref};orderMode=true;
+  const tk=ticketFor('mesa',ref),count=tk?S.orders.filter(o=>o.ticketId===tk.id).length:0;
+  draftAlias=`Persona ${count+1}`;
+  render();$('#q')?.focus();
+}
+function orderOptions(){
+  const dialog=$('#orderDialog');
+  dialog.querySelectorAll('[data-order-kind]').forEach(b=>{
+    const selected=b.dataset.orderKind===newKind;b.classList.toggle('on',selected);b.setAttribute('aria-pressed',String(selected));
+  });
+  $('#orderOptions').innerHTML=newKind==='llevar'
+    ?'<div class="takeaway-option"><strong>Pedido para llevar</strong><span class="mut">Mostrador</span></div>'
+    :'<div class="order-tables">'+S.tables.map(t=>{
+      const st=tableState(t),tk=ticketFor('mesa',t.id);
+      const state=st==='libre'?'Libre':st==='reservada'?`Reservada · ${esc(t.reserved.at)}`:st==='listo'?'Listo para servir':st==='cobrar'?'Por cobrar':'Ocupada';
+      return `<button class="btn order-table ${newRef===t.id?'selected':''}" style="--c:var(--${st})" data-order-ref="${t.id}" aria-pressed="${newRef===t.id}"><strong>Mesa ${t.id}</strong><span class="mut">${esc(t.zone)} · ${state}</span>${tk?`<span class="mut num">${money(balance(tk))}</span>`:''}</button>`;
+    }).join('')+'</div>';
+  const tk=newKind==='mesa'&&newRef?ticketFor('mesa',newRef):null;
+  $('#orderSummary').textContent=newKind==='llevar'?'Para llevar':newRef?(tk?`El nuevo pedido se sumará a la cuenta de ${label(tk)}.`:`Mesa ${newRef}`):'Seleccionar mesa';
+  $('#orderStart').disabled=newKind==='mesa'&&!newRef;
+  $('#orderStart').textContent=tk?'Agregar pedido':'Crear pedido';
+}
+function openNewOrder(){newKind='mesa';newRef=null;orderOptions();$('#orderDialog').showModal()}
+function startNewOrder(){
+  if(newKind==='mesa'&&!S.tables.some(t=>t.id===newRef))return;
+  if(!canLeaveDraft())return;
+  const t=newKind==='mesa'?S.tables.find(t=>t.id===newRef):null;
+  if(t?.reserved&&!ticketFor('mesa',t.id)&&!confirm(`Mesa ${t.id} reservada para ${t.reserved.pax} personas a las ${t.reserved.at}. ¿Iniciar pedido en esta mesa?`))return;
+  resetDraft();joinMode=false;joinSel.clear();$('#bar').classList.remove('on');
+  view=newKind==='mesa'?'salon':'mostrador';localStorage.setItem(KEY+'.view',view);
+  cur=newKind==='mesa'?{kind:'mesa',ref:newRef}:{kind:'llevar',ref:null};
+  orderMode=newKind==='mesa';
+  draftAlias=newKind==='mesa'?`Persona ${(ticketFor('mesa',newRef)?S.orders.filter(o=>o.ticketId===ticketFor('mesa',newRef).id).length:0)+1}`:'';
+  $('#orderDialog').close();render();$('#q')?.focus();
+}
+
+/* ---------- Eventos ---------- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const d=b.dataset;
+  if(d.rename){
+    const o=S.orders.find(x=>x.id==d.rename);if(!o)return;
+    const n=prompt('Nombre de la persona (opcional):',o.alias==='Mesa'?'':o.alias);if(n===null)return;
+    o.alias=n.trim()||'Mesa';const tk=S.tickets[o.ticketId];if(tk&&o.alias!=='Mesa'&&!tk.aliases.includes(o.alias))tk.aliases.push(o.alias);
+    return save('Nombre actualizado');
+  }
+  if(d.orderKind){newKind=d.orderKind;newRef=null;return orderOptions()}
+  if(d.orderRef){newRef=Number(d.orderRef);return orderOptions()}
+  const jr=e.target.closest('[data-joinref]');
+  if(jr){
+    const tk=curTicket();const ref=+jr.dataset.joinref;
+    const other=ticketFor('mesa',ref);
+    if(other)mergeTickets(tk.id,other.id);
+    else{tk.refs.push(ref);const tt=S.tables.find(x=>x.id===ref);if(tt)tt.reserved=null}
+    tk.label=label(tk);tk.refs.sort((a,b)=>a-b);
+    $('#joinBack').classList.remove('on');
+    return save(`Mesa ${ref} unida a ${label(tk)}`);
+  }
+  const sp=e.target.closest('[data-splitpay]');
+  if(sp){
+    const parts=sp.dataset.splitpay.split('|');
+    const tid=parts[0],al=parts[1],am=Number(parts[2]||0);
+    $('#splitBack').classList.remove('on');
+    if(al==='full')return openPay(tid);
+    return openPay(tid,{cap:Math.min(am,balance(S.tickets[tid])),label:al});
+  }
+  if(d.v){if(!canLeaveDraft())return;view=d.v;localStorage.setItem(KEY+'.view',view);cur=null;orderMode=false;cart={};note='';itemNotes={};q='';cat='Todo';sheet=false;joinMode=false;joinSel.clear();return render()}
+  if(d.sf){localStorage.setItem(KEY+'.sf',d.sf);return render()}
+  if(d.table){
+    const id=+d.table;
+    if(joinMode){joinSel.has(id)?joinSel.delete(id):joinSel.add(id);return render()}
+    cur={kind:'mesa',ref:id};orderMode=false;cart={};note='';itemNotes={};sheet=false;return render();
+  }
+  if(d.add){cart[d.add]=(cart[d.add]||0)+1;return render()}
+  if(d.dec){cart[d.dec]=Math.max(0,(cart[d.dec]||0)-1);if(!cart[d.dec])delete itemNotes[d.dec];return render()}
+  if(d.note){
+    const p=prod(d.note);
+    const n=prompt(`Observación para ${p.name} (vacío = quitar):`,itemNotes[d.note]||'');
+    if(n===null)return;
+    if(n.trim())itemNotes[d.note]=n.trim();else delete itemNotes[d.note];
+    return render();
+  }
+  if(d.cat){cat=d.cat;return render()}
+  if(d.ready){const o=S.orders.find(x=>x.id==d.ready);if(o){o.status='listo';return save(`Pedido #${o.id} listo · ${o.label}`)}return}
+  if(d.served){const o=S.orders.find(x=>x.id==d.served);if(o){o.status='servido';return save(`Pedido #${o.id} entregado`)}return}
+  if(d.m){pay.method=d.m;return payUI()}
+  if(d.cash){$('#cashIn').value=d.cash;return payUI()}
+  if(d.toggle)return;
+  if(d.del){const p=prod(d.del);S.menu=S.menu.filter(x=>x.id!==d.del);return save(`${p.name} eliminado`)}
+  if(d.sep){
+    const tk=curTicket();
+    if(!tk)return;
+    if(!confirm(`¿Separar Mesa ${d.sep} del grupo? El consumo queda en la principal.`))return;
+    separateRef(tk.id,+d.sep);
+    return save(`Mesa ${d.sep} separada`);
+  }
+  if(d.theme){S.settings.theme=d.theme;return save(null)}
+  if(d.tog){S.settings[d.tog]=!S.settings[d.tog];return save(`${d.tog==='qrPrepay'?'Prepago QR':'Alias opcionales'}: ${S.settings[d.tog]?'activado':'desactivado'}`)}
+  if(d.a==='cash-pay'||d.a==='cash-ver'){
+    const tid=d.tid;
+    if(d.a==='cash-pay')return openPay(tid);
+    if(!canLeaveDraft())return;
+    const tk=S.tickets[tid];
+    if(!tk)return;
+    if(tk.kind==='llevar'){view='mostrador';cur={kind:'llevar',ref:null,tid:tk.id}}
+    else{view='salon';cur={kind:'mesa',ref:tk.refs[0]}}
+    cart={};note='';sheet=false;return render();
+  }
+  if(d.qdec){qrCart[d.qdec]=Math.max(0,(qrCart[d.qdec]||0)-1);return render()}
+  if(d.qadd){qrCart[d.qadd]=(qrCart[d.qadd]||0)+1;return render()}
+  switch(d.a){
+    case'new-order':return openNewOrder();
+    case'order-close':$('#orderDialog').close();return;
+    case'order-start':return startNewOrder();
+    case'back':if(!canLeaveDraft())return;if(view==='salon'&&orderMode){orderMode=false;resetDraft();return render()}cur=null;orderMode=false;cart={};note='';itemNotes={};sheet=false;return render();
+    case'person-order':{const t=S.tables.find(x=>x.id===cur.ref);if(t?.reserved&&!ticketFor('mesa',t.id)&&!confirm(`Mesa ${t.id} reservada a las ${t.reserved.at}. ¿Iniciar pedido?`))return;return beginPersonOrder(cur.ref);}
+    case'edit-person':{
+      const n=prompt('Nombre de la persona (opcional):',draftAlias.startsWith('Persona ')?'':draftAlias);if(n===null)return;
+      draftAlias=n.trim()||draftAlias;return render();
+    }
+    case'sheet':sheet=!sheet;return render();
+    case'send':{
+      if(!Object.values(cart).some(q=>q>0)){toast('Toca productos para armar el pedido');return}
+      const tk=sendDraft();sheet=false;if(cur.kind==='mesa')orderMode=false;
+      return save(`Enviado a cocina · ${tk.label}`);
+    }
+    case'charge':return openPay(curTicket()?.id||null);
+    case'clear':if(!canLeaveDraft())return;cart={};note='';itemNotes={};return render();
+    case'served':{const tk=curTicket();if(!tk)return;const n=readyOrders(tk.id).length;serveReady(tk.id);return save(`${n} pedido${n>1?'s':''} servido${n>1?'s':''}`)}
+    case'split':{const tk=curTicket();if(tk)openSplit(tk.id);return}
+    case'void':{
+      const tk=curTicket();
+      if(!tk)return;
+      if(!confirm(`¿Anular la cuenta de ${label(tk)}? No se registrará venta.`))return;
+      const l=label(tk);
+      anularTicket(tk.id);
+      cur=view==='mostrador'?{kind:'llevar',ref:null}:null;
+      return save(`${l} anulada`);
+    }
+    case'reserve':{
+      const t=S.tables.find(x=>x.id===cur.ref);
+      const n=prompt('¿Cuántas personas?','4');if(n===null)return;
+      t.reserved={pax:Math.max(1,parseInt(n)||1),at:hhmm(now())};
+      return save(`Mesa ${t.id} reservada para ${t.reserved.pax}`);
+    }
+    case'seat':{
+      const t=S.tables.find(x=>x.id===cur.ref);
+      t.reserved=null;
+      return save(`Clientes sentados en Mesa ${t.id}`);
+    }
+    case'unreserve':{
+      const t=S.tables.find(x=>x.id===cur.ref);
+      if(!confirm('¿Cancelar la reserva?'))return;
+      t.reserved=null;
+      return save(`Reserva de Mesa ${t.id} cancelada`);
+    }
+    case'alias-add':{
+      const tk=curTicket(),inp=$('#drAlias'),n=inp?.value.trim().replace(/\|/g,'');
+      if(!n||!tk)return;
+      if(!tk.aliases.includes(n))tk.aliases.push(n);
+      if(inp)inp.value='';
+      return save(`Comensal "${n}" agregado`);
+    }
+    case'join-other':{
+      const tk=curTicket();if(!tk)return;
+      const otros=S.tables.filter(t=>!tk.refs.includes(t.id));
+      $('#joinList').innerHTML=otros.map(t=>{
+        const o=ticketFor('mesa',t.id);
+        return `<button class="btn" style="width:100%;justify-content:space-between;margin-bottom:8px" data-joinref="${t.id}"><span>Mesa ${t.id} · ${t.zone}</span><span class="mut">${o?`cuenta de ${money(balance(o))}`:'libre'}</span></button>`;
+      }).join('');
+      $('#joinBack').classList.add('on');
+      return;
+    }
+    case'join-close':$('#joinBack').classList.remove('on');return;
+    case'split-close':$('#splitBack').classList.remove('on');return;
+    case'pay-close':$('#payBack').classList.remove('on');return;
+    case'pay-ok':return confirmPay();
+    case'sort-tables':localStorage.setItem(KEY+'.sort',(localStorage.getItem(KEY+'.sort')||'num')==='num'?'prio':'num');return render();
+    case'join-toggle':joinMode=!joinMode;joinSel.clear();return render();
+    case'join-cancel':joinMode=false;joinSel.clear();return render();
+    case'join-ok':{
+      const ids=[...joinSel];
+      const withTk=ids.filter(id=>ticketFor('mesa',id));
+      if(ids.length<2||!withTk.length){toast('Selecciona 2+ mesas, al menos una con cuenta');return}
+      const mainId=withTk.sort((a,b)=>balance(ticketFor('mesa',b))-balance(ticketFor('mesa',a)))[0];
+      const main=ticketFor('mesa',mainId);
+      ids.forEach(id=>{
+        const o=ticketFor('mesa',id);
+        if(o&&o.id!==main.id)mergeTickets(main.id,o.id);
+        else if(!o){main.refs.push(id);const tt=S.tables.find(x=>x.id===id);if(tt)tt.reserved=null}
+      });
+      main.label=label(main);main.refs.sort((a,b)=>a-b);
+      joinMode=false;joinSel.clear();
+      return save(`Mesas unidas: ${label(main)}`);
+    }
+    case'add-prod':S.menu.push({id:uid(),cat:'Nuevos',name:'Nuevo producto',price:10,on:true});return save('Producto agregado',false);
+    case'tbl+':S.tables.push({id:S.tables.length+1,zone:'Salón',seats:4,reserved:null});return save(null);
+    case'tbl-':{
+      const last=S.tables.at(-1);
+      if(ticketFor('mesa',last.id))return toast(`La mesa ${last.id} tiene una cuenta abierta`);
+      S.tables.pop();return save(null);
+    }
+    case'reset':if(confirm('¿Borrar carta, ventas y cuentas? Esto no se puede deshacer.')){S=seed();cur=null;cart={};qrCart={};save('Datos reiniciados',false)}return;
+    case'qr-send':return sendQR();
+  }
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='q'){q=e.target.value;const pos=e.target.selectionStart;render();const el=$('#q');if(el){el.focus();try{el.setSelectionRange(pos,pos)}catch(err){}}}
+  if(e.target.id==='sq'){localStorage.setItem(KEY+'.sq',e.target.value);const pos=e.target.selectionStart;render();const el=$('#sq');if(el){el.focus();try{el.setSelectionRange(pos,pos)}catch(err){}}}
+  if(e.target.id==='note')note=e.target.value;
+  if(e.target.id==='cashIn')payUI();
+});
+document.addEventListener('change',e=>{
+  const d=e.target.dataset||{};
+  if(e.target.id==='salonZone'){localStorage.setItem(KEY+'.sz',e.target.value);return render()}
+  if(e.target.id==='qrSel'){qrRef=+e.target.value;qrCart={};return render()}
+  if(d.edit){const p=prod(d.edit);if(!p)return;p[d.f]=d.f==='price'?Math.max(0,parseFloat(e.target.value)||0):(e.target.value||'').trim()||p[d.f];return save(null)}
+  if(d.toggle){const p=prod(d.toggle);if(!p)return;p.on=e.target.checked;return save(`${p.name} ${p.on?'disponible':'agotado'}`)}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName)&&!$('#orderDialog').open){
+    e.preventDefault();
+    const el=view==='salon'&&!cur?$('#sq'):$('#q');
+    if(el)el.focus();
+    return;
+  }
+  if(e.key!=='Escape')return;
+  if($('#orderDialog').open)return;
+  if($('#payBack').classList.contains('on')){$('#payBack').classList.remove('on');return}
+  if($('#splitBack').classList.contains('on')){$('#splitBack').classList.remove('on');return}
+  if($('#joinBack').classList.contains('on')){$('#joinBack').classList.remove('on');return}
+  if(joinMode){joinMode=false;joinSel.clear();return render()}
+  if(sheet){sheet=false;return render()}
+   if(cur){if(!canLeaveDraft())return;if(view==='salon'&&orderMode){orderMode=false;resetDraft();return render()}cur=null;orderMode=false;resetDraft();return render()}
+});
+setInterval(()=>{if(view!=='admin'&&view!=='settings'&&!document.activeElement?.matches('input,textarea,select'))render()},30000);
+render();
+</script>
+</body>
+</html>
