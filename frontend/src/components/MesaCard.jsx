@@ -139,15 +139,20 @@ export default function MesaCard({
             data-selected={picked ? 'true' : undefined}
             data-grouped={group ? 'true' : undefined}
             onClick={() => (selectMode ? onSelect(t) : onOpen(t))}
-            className={`relative rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${isLate ? 'floor-late' : ''} ${needsAttention ? 'ring-2 ring-offset-1' : ''} ${picked ? 'ring-4 ring-primary' : ''}`}
+            className={`relative rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${isLate ? 'floor-late' : ''}`}
             style={{
                 background: s.bg,
                 // Inherited by every child: no child repeats `color: s.fg`.
                 color: s.fg,
-                borderColor: needsAttention ? s.dot : s.border,
-                // A joined table keeps a shared accent so the party reads as one.
+                // Un solo contorno por tarjeta. Antes, el aviso de atención y la
+                // selección sumaban un `ring`, que dibujaba una segunda línea
+                // separada del borde (y con el `ring-offset` dejaba un hueco): en
+                // pantalla se veían dos bordes. El énfasis ahora es el mismo
+                // borde, más grueso y del color del estado.
+                borderWidth: needsAttention ? 3 : 2,
+                borderColor: needsAttention ? s.dot : (picked ? 'hsl(var(--primary))' : s.border),
+                // Una mesa unida conserva un acento compartido para leerse como grupo.
                 ...(group ? { borderLeftWidth: 6, borderLeftColor: '#7C6BC4' } : {}),
-                ...(needsAttention ? { ['--tw-ring-color']: s.dot } : {}),
             }}
         >
             <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform">

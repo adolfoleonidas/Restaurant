@@ -5,9 +5,9 @@ import { api } from '@/lib/api';
 
 /**
  * Cobertura de las dos piezas que el salón toma del concepto "Salón Mozo":
- * el mini-reproductor del pedido activo y la banda "Ahora". Los contratos de
+ * el mini-reproductor del pedido activo. Los contratos de
  * las suites existentes (`mesa-card-*`, `mesa-sheet-*`) no se tocan: esta suite
- * solo añade los testids nuevos (`salon-mini`, `salon-ahora`).
+ * solo añade los testids nuevos (`salon-mini`).
  */
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
@@ -62,7 +62,7 @@ async function renderPage() {
 
 async function click(el) { await act(async () => el.dispatchEvent(new MouseEvent('click', { bubbles: true }))); }
 
-describe('mini-reproductor y banda "Ahora"', () => {
+describe('mini-reproductor del pedido activo', () => {
     let container; let root;
 
     beforeEach(() => {
@@ -128,7 +128,7 @@ describe('mini-reproductor y banda "Ahora"', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/serve');
     });
 
-    it('pinta la banda "Ahora" con lo que se puede servir o cobrar', async () => {
+    it('ya no pinta la banda "Ahora": el estado se lee en las tarjetas', async () => {
         const ready = order({
             id: 'order-ready', order_number: 21, table_id: 'table-1', status: 'listo',
             items: [item('i1', 'Ceviche', 1, 30, 'listo')],
@@ -145,37 +145,16 @@ describe('mini-reproductor y banda "Ahora"', () => {
         mockOrders.splice(0, mockOrders.length, ready, bill);
         api.get.mockImplementation((url) => {
             if (url === '/branches') return Promise.resolve({ data: [] });
-            if (url === '/orders/order-ready') return Promise.resolve({ data: ready });
-            if (url === '/orders/order-bill') return Promise.resolve({ data: bill });
             return Promise.resolve({ data: [ready, bill] });
-        });
-        api.post.mockResolvedValue({ data: {} });
-
-        ({ container, root } = await renderPage());
-        const band = container.querySelector('[data-testid="salon-ahora"]');
-        expect(band).not.toBeNull();
-        expect(band.getAttribute('aria-label')).toBe('Ahora');
-
-        const servir = band.querySelector('[data-testid="salon-ahora-servir-21"]');
-        const cobrar = band.querySelector('[data-testid="salon-ahora-cobrar-22"]');
-        expect(servir).not.toBeNull();
-        expect(cobrar).not.toBeNull();
-        expect(cobrar.textContent).toContain('S/ 45.00');
-
-        await click(servir);
-        expect(api.post).toHaveBeenCalledWith('/orders/order-ready/serve');
-    });
-
-    it('no pinta la banda cuando no hay nada que reclamar', async () => {
-        const calm = order({ status: 'en_preparacion', items: [item('i1', 'Ceviche', 1, 30, 'pendiente')] });
-        mockTables.splice(0, mockTables.length, table({ active_order: { id: 'order-1', status: 'en_preparacion' } }));
-        mockOrders.splice(0, mockOrders.length, calm);
-        api.get.mockImplementation((url) => {
-            if (url === '/branches') return Promise.resolve({ data: [] });
-            return Promise.resolve({ data: [calm] });
         });
 
         ({ container, root } = await renderPage());
         expect(container.querySelector('[data-testid="salon-ahora"]')).toBeNull();
+        // Lo que la banda repetía ya está en las tarjetas: estado, monto y acción.
+        expect(container.textContent).toContain('Listo');
+        expect(container.textContent).toContain('Debe S/ 30.00');
+        expect(container.textContent).toContain('Debe S/ 45.00');
+        expect(container.querySelector('[data-testid="mesa-card-1"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-card-2"]')).not.toBeNull();
     });
 });

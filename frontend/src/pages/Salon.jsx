@@ -942,30 +942,6 @@ export default function Salon() {
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
-    /**
-     * "Ahora" — lo que reclama acción inmediata en el piso.
-     *
-     * Se construye sobre las tarjetas ya decoradas y filtradas (respeta buscador
-     * y zona), y solo ofrece las dos acciones que no necesitan más contexto:
-     * servir una cuenta con platos listos y cobrar una cuenta pedida. El cobro
-     * es el mismo camino que la tarjeta: sale a la pantalla de pedidos.
-     */
-    const nowActions = useMemo(() => {
-        const out = [];
-        for (const unit of filteredUnits) {
-            const entries = unit.type === 'group' ? unit.members : [unit.entry];
-            for (const entry of entries) {
-                const order = entry.serviceOrder;
-                if (!order || ['pagado', 'cancelado'].includes(order.status)) continue;
-                const sellable = entry.floor.key === 'listo' && entry.pendingPrep === 0 && entry.ready > 0;
-                if (sellable && canServe) { out.push({ kind: 'servir', order, entry }); continue; }
-                if (entry.floor.key === 'cuenta' && canCharge) out.push({ kind: 'cobrar', order, entry });
-            }
-        }
-        // Lo listo primero: es lo único que se enfría si nadie lo lleva a la mesa.
-        return out.sort((a, b) => (a.kind === b.kind ? 0 : (a.kind === 'servir' ? -1 : 1)));
-    }, [filteredUnits, canServe, canCharge]);
-
     return (
         <div
             className={`space-y-5 ${selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
@@ -1030,47 +1006,6 @@ export default function Salon() {
                         </div>
                     </div>
                 </div>
-            )}
-
-            {/* Banda "Ahora": lo que reclama acción inmediata, a un toque y sin
-                abrir ninguna mesa. Es un carril con scroll horizontal para no
-                empujar la rejilla hacia abajo cuando hay varias cuentas. */}
-            {nowActions.length > 0 && (
-                <section role="region" aria-label="Ahora" data-testid="salon-ahora">
-                    <h2 className="page-kicker mb-1.5">Ahora</h2>
-                    <div className="scroll-x flex gap-2 pb-1">
-                        {nowActions.map(({ kind, order, entry }) => {
-                            const serving = kind === 'servir';
-                            const s = FLOOR_STYLE[serving ? 'listo' : 'cuenta'];
-                            const quantity = serving ? entry.ready : entry.pendingPrep;
-                            return (
-                                <button
-                                    key={`${kind}-${order.id}`}
-                                    type="button"
-                                    onClick={() => (serving ? deliver(order.id) : openCharge(order))}
-                                    data-testid={`salon-ahora-${kind === 'servir' ? 'servir' : 'cobrar'}-${order.order_number}`}
-                                    aria-label={`${serving ? `Servir ${quantity} plato${quantity === 1 ? '' : 's'} de` : 'Cobrar'} Mesa ${entry.table.number}${order.customer_name ? `, ${order.customer_name}` : ''}`}
-                                    className="shrink-0 w-[13rem] min-h-touch rounded-xl border-2 px-2.5 py-1.5 text-left flex flex-col justify-center gap-0.5 transition-transform active:scale-[0.99]"
-                                    style={{ background: s.bg, borderColor: s.border, color: s.fg }}
-                                >
-                                    <span className="flex items-center gap-1.5 min-w-0">
-                                        <span className="font-display text-lg font-bold leading-none tabular-nums">{entry.table.number}</span>
-                                        <span className="min-w-0 truncate text-xs font-semibold">
-                                            {order.customer_name || `Cuenta #${order.order_number}`}
-                                        </span>
-                                    </span>
-                                    <span className="flex items-center gap-1.5 text-xs font-medium min-w-0">
-                                        <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white tabular-nums" style={{ background: s.dot }}>
-                                            {quantity}
-                                        </span>
-                                        <span className="truncate">{serving ? 'Listo para servir' : 'Pidió la cuenta'}</span>
-                                        <span className="ml-auto shrink-0 font-mono font-semibold tabular-nums">{fmtMoney(order.total)}</span>
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </section>
             )}
 
             {/* State filter */}
