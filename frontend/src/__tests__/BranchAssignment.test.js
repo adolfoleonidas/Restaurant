@@ -299,4 +299,60 @@ describe('table branch assignment controls', () => {
         await act(async () => pendingSave.resolve({ data: { id: 'table-new' } }));
         await cleanup(view);
     });
+
+    it('flags the tables no branch role can see and assigns them to a branch', async () => {
+        const unassigned = { id: 'table-b', name: 'Mesa B', number: 2, area: 'Terraza', capacity: 4, status: 'disponible' };
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/tables' ? [{ ...tables[0] }, { ...unassigned }]
+                : path === '/zones' ? [{ id: 'zone-a', name: 'Salón' }, { id: 'zone-b', name: 'Terraza' }]
+                    : path === '/branches' ? branches
+                        : path === '/restaurants/current' ? { name: 'Restaurant' } : null,
+        }));
+        api.patch.mockResolvedValue({ data: { id: 'table-b' } });
+        const view = await render(TablesManager);
+        // Sin `branch_id` la mesa no existe para el salón de ninguna sucursal.
+        expect(document.body.querySelector('[data-testid="mesa-sin-sucursal-titulo"]').textContent).toBe('1 mesa sin sucursal');
+        const missingRow = document.body.querySelector('[data-testid="mesa-config-row-table-b"]');
+        expect(missingRow.getAttribute('data-branch-missing')).toBe('true');
+        expect(missingRow.textContent).toContain('Sin sucursal');
+        expect(document.body.querySelector('[data-testid="mesa-config-row-table-a"]').hasAttribute('data-branch-missing')).toBe(false);
+
+        await act(async () => {
+            const select = document.body.querySelector('[data-testid="mesa-sin-sucursal-branch"]');
+            select.value = 'branch-b';
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        await click('mesa-sin-sucursal-asignar');
+        expect(api.patch).toHaveBeenCalledWith('/tables/table-b', { branch_id: 'branch-b' });
+        await cleanup(view);
+    });
+
+    it('does not present a zone branch as already assigned to its table', async () => {
+        const pending = { id: 'table-b', name: 'Mesa B', number: 2, area: 'Terraza', capacity: 4, status: 'disponible' };
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/tables' ? [{ ...pending }]
+                : path === '/zones' ? [{ id: 'zone-b', name: 'Terraza', branch_id: 'branch-a' }]
+                    : path === '/branches' ? branches
+                        : path === '/restaurants/current' ? { name: 'Restaurant' } : null,
+        }));
+        const view = await render(TablesManager);
+        const row = document.body.querySelector('[data-testid="mesa-config-row-table-b"]');
+        expect(row.textContent).toContain('Sin sucursal · la zona es Centro');
+        expect(row.textContent).not.toContain('Hereda');
+        await cleanup(view);
+    });
+
+    it('asks for a branch before assigning when the venue has none', async () => {
+        const unassigned = { id: 'table-b', name: 'Mesa B', number: 2, area: 'Terraza', capacity: 4, status: 'disponible' };
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/tables' ? [{ ...unassigned }]
+                : path === '/zones' ? [{ id: 'zone-b', name: 'Terraza' }]
+                    : path === '/restaurants/current' ? { name: 'Restaurant' } : null,
+        }));
+        const view = await render(TablesManager);
+        expect(document.body.querySelector('[data-testid="mesa-sin-sucursal-aviso"]')).not.toBeNull();
+        expect(document.body.textContent).toContain('creá una en la pestaña Sucursales');
+        expect(document.body.querySelector('[data-testid="mesa-sin-sucursal-asignar"]')).toBeNull();
+        await cleanup(view);
+    });
 });
