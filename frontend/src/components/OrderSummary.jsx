@@ -313,7 +313,7 @@ export function TableSummary({
                                         </button>
                                         {expanded && (
                                             <ul className="mb-1 ml-2 border-l pl-2" data-testid={`${testIdPrefix}-resumen-detalle-${row.key}`}>
-                                                {row.items.map(({ item, person }) => (
+                                                {row.items.map(({ item, person, personId }) => (
                                                     <li key={item.id} className="flex flex-wrap items-center gap-2 py-0.5 text-xs">
                                                         <span className="text-muted-foreground">{item.quantity}×</span>
                                                         <span className="font-medium">{person || 'Compartido'}</span>
@@ -321,7 +321,7 @@ export function TableSummary({
                                                         {canEdit && people.length > 1 && onMoveItem && (
                                                             <select
                                                                 value=""
-                                                                onChange={(e) => { if (e.target.value) onMoveItem(item, e.target.value); }}
+                                                                onChange={(e) => { if (e.target.value) onMoveItem(item, e.target.value, personId); }}
                                                                 aria-label={`Mover ${item.product_name} a otra persona`}
                                                                 data-testid={`${testIdPrefix}-mover-item-${item.id}`}
                                                                 className="ml-auto h-7 rounded-md border border-border bg-card px-1 text-[11px]"

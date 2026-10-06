@@ -152,12 +152,14 @@ const MINI_OPEN_CLASS = 'pb-44 md:!pb-0';
 
 /**
  * Una cuenta sigue siendo el pedido a medio armar mientras nada haya salido a
- * cocina: sus productos están en borrador y nadie la reclamó. Recién al enviarla
- * se convierte en una persona de la mesa, sin que el mozo "abra" nada.
+ * cocina: sus productos están en borrador. Recién al enviarla se convierte en
+ * una persona de la mesa, sin que el mozo "abra" nada.
+ *
+ * El alias no cuenta: se puede escribir (y guardar) antes de enviar, y eso no
+ * convierte el borrador en una persona.
  */
 function isComposingDraft(order) {
     if (!order) return false;
-    if (order.customer_name || order.shared) return false;
     return !(order.items || []).some((item) => !isDraft(item, order.status));
 }
 
@@ -411,13 +413,8 @@ export default function Salon() {
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
-            // Volver a la mesa retoma el pedido a medio armar si quedó uno; si no,
-            // la pantalla arranca limpia para la siguiente persona.
-            if (!targetOrderId && active.length) {
-                const composing = active.find((o) => isComposingDraft(o));
-                if (composing) await selectAccount(composing.id);
-                else setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: null, accountId: null, loading: false } : s));
-            }
+            // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
+            if (!targetOrderId && active.length) await selectAccount(active[0].id);
         } catch { /* historial opcional */ }
     };
 
@@ -499,9 +496,19 @@ export default function Salon() {
     const ensureAccount = async () => {
         const s = openTable;
         if (!s) return null;
-        const existing = s.order?.id || s.accountId || s.table?.active_order?.id || null;
+        // Sólo la cuenta que el mozo tiene delante. El pedido activo de la mesa
+        // NO sirve de atajo: con la pantalla limpia, lo que se carga es de la
+        // siguiente persona, no un adicional de la anterior.
+        const existing = s.order?.id || s.accountId || null;
         if (existing) return existing;
-        const { data } = await api.post('/orders', { table_id: s.table.id, order_type: 'mesa' });
+        const payload = { table_id: s.table.id, order_type: 'mesa' };
+        // Si la mesa ya tiene su visita abierta, esta cuenta es OTRA persona de
+        // esa misma visita y hay que pedirla como tal: sin esto el backend la
+        // rechaza por pertenecer a una visita en curso.
+        if (s.table?.active_attention_id || (s.accounts || []).length > 0) {
+            payload.new_account = true;
+        }
+        const { data } = await api.post('/orders', payload);
         setOpenTable((prev) => (prev && prev.table.id === s.table.id
             ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
             : prev));
@@ -610,9 +617,11 @@ export default function Salon() {
         }
     };
 
-    // Corregir "quién pidió qué" sin borrar y volver a cargar el producto.
-    const moveItemToPerson = async (item, targetOrderId) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
+    // Corregir "quién pidió qué" sin borrar y volver a cargar el producto. El
+    // origen sale de la propia línea: con la pantalla limpia no hay cuenta
+    // seleccionada, pero el producto sí sabe de quién es.
+    const moveItemToPerson = async (item, targetOrderId, sourceOrderId = null) => {
+        const orderId = sourceOrderId || openTable?.order?.id || openTable?.accountId;
         if (!orderId || !targetOrderId || !canTake) return;
         try {
             await api.post(`/orders/${orderId}/items/${item.id}/move`, { target_order_id: targetOrderId });
@@ -682,6 +691,14 @@ export default function Salon() {
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
         }
+    };
+
+    // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
+    // abre una cuenta nueva de la misma visita. No es "abrir cuenta" — eso lo
+    // decide el sistema — sino pasar a la siguiente persona.
+    const startAnotherPerson = () => {
+        setFlash(null);
+        setOpenTable((s) => (s ? { ...s, order: null, accountId: null, loading: false } : s));
     };
 
     // "Tomar pedido" abre el sheet; la cuenta se crea al agregar el primer
@@ -1266,7 +1283,7 @@ export default function Salon() {
                         });
                         const summaryRows = tableSummary(allAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
-                            return { label: personLabel(detail, index), items: detail.items || [] };
+                            return { id: o.id, label: personLabel(detail, index), items: detail.items || [] };
                         }));
                         // Salen de las mismas filas que se despliegan, así el número
                         // de la barra nunca contradice el detalle.
@@ -1375,6 +1392,18 @@ export default function Salon() {
                                                     ? 'Nuevo pedido: escribí un alias o tocá una persona para sumarle lo suyo.'
                                                     : 'El alias es opcional: sin él queda como Persona 1.'}
                                             </p>
+                                            {/* Con una persona ya cargada a la vista, este es el
+                                                camino de vuelta al pedido de la siguiente. */}
+                                            {order && !isComposingDraft(order) && (
+                                                <button
+                                                    type="button"
+                                                    onClick={startAnotherPerson}
+                                                    data-testid="mesa-sheet-otra-persona"
+                                                    className="min-h-9 w-full rounded-lg border border-dashed border-border px-3 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                >
+                                                    ＋ Pedido de otra persona
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                     <OrderComposer

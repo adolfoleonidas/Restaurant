@@ -62,7 +62,7 @@ async function type(input, value) {
 }
 
 /** Abre la mesa 1 con las cuentas indicadas ya cargadas en la API. */
-async function openTableWith(accounts, tableExtra = {}) {
+async function openTableWith(accounts, tableExtra = {}, { select = null } = {}) {
     mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: accounts[0].id, status: accounts[0].status }, ...tableExtra }));
     mockOrders.splice(0, mockOrders.length, ...accounts);
     api.get.mockImplementation((url) => {
@@ -73,7 +73,11 @@ async function openTableWith(accounts, tableExtra = {}) {
     });
     const rendered = await renderPage();
     await click(rendered.container.querySelector('[data-testid="mesa-card-1"]'));
-    return { ...rendered, sheet: document.body.querySelector('[data-testid="mesa-sheet"]') };
+    const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+    // Abrir la mesa deja la pantalla lista para la siguiente persona: para entrar
+    // a una cuenta hay que tocar su píldora, como haría el mozo.
+    if (select) await click(sheet.querySelector(`[data-testid="mesa-sheet-cuenta-${select}"]`));
+    return { ...rendered, sheet };
 }
 
 describe('pedido por personas en el salón', () => {
@@ -117,7 +121,7 @@ describe('pedido por personas en el salón', () => {
         const draft = item('i2', 'Ceviche', 1, 38, 'borrador');
         const account = order('order-1', 11, 'en_preparacion', [sent, draft], { customer_name: 'Juan' });
         api.post.mockResolvedValue({ data: account });
-        ({ container, root, sheet } = await openTableWith([account]));
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
 
         const button = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(button).not.toBeNull();
@@ -158,7 +162,7 @@ describe('pedido por personas en el salón', () => {
     it('anula un producto ya enviado pidiendo el motivo', async () => {
         const account = order('order-1', 11, 'enviado_cocina', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
         api.post.mockResolvedValue({ data: account });
-        ({ container, root, sheet } = await openTableWith([account]));
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
 
         // Lo enviado no se borra: se anula.
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]'));
@@ -200,6 +204,50 @@ describe('pedido por personas en el salón', () => {
             // compareDocumentPosition: 4 = el segundo nodo va después del primero.
             expect(nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         }
+    });
+
+    it('la segunda persona se pide como cuenta de la misma visita, no como mesa libre', async () => {
+        // Juan ya envió su pedido: la mesa tiene su visita abierta. Cuando el mozo
+        // carga el primer plato de la siguiente persona, esa cuenta tiene que
+        // nacer DENTRO de esa visita o el backend la rechaza.
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        const nueva = { ...order('order-9', 13, 'nuevo', []), customer_name: null };
+        api.post.mockImplementation((url) => {
+            if (url === '/orders') return Promise.resolve({ data: nueva });
+            return Promise.resolve({ data: { ...nueva, items: [] } });
+        });
+        ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
+
+        // Se pasa a la siguiente persona desde la cuenta que se está viendo.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+
+        expect(api.post).toHaveBeenCalledWith('/orders', {
+            table_id: 'table-1', order_type: 'mesa', new_account: true,
+        });
+    });
+
+    it('en una mesa libre la primera cuenta no se pide como adicional', async () => {
+        const libre = baseTable(1, { status: 'disponible', active_attention_id: null, active_order: null });
+        mockTables.splice(0, mockTables.length, libre);
+        mockOrders.splice(0, mockOrders.length);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            return Promise.resolve({ data: [] });
+        });
+        const nueva = { ...order('order-9', 13, 'nuevo', []), customer_name: null };
+        api.post.mockImplementation((url) => {
+            if (url === '/orders') return Promise.resolve({ data: nueva });
+            return Promise.resolve({ data: nueva });
+        });
+        const rendered = await renderPage();
+        container = rendered.container;
+        root = rendered.root;
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
     });
 
     it('deja fusionar al final, fuera del camino de carga', async () => {
@@ -283,7 +331,9 @@ describe('pedido por personas en el salón', () => {
         const juan = order('order-1', 11, 'en_preparacion', [
             item('i1', 'Pollo', 1, 20, 'pendiente', { product_id: 'prod-p' }),
         ], { customer_name: 'Juan' });
-        const maria = order('order-2', 12, 'en_preparacion', [], { customer_name: 'María' });
+        const maria = order('order-2', 12, 'en_preparacion', [
+            item('i2', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-s' }),
+        ], { customer_name: 'María' });
         api.post.mockResolvedValue({ data: maria });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 

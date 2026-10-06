@@ -90,7 +90,7 @@ describe('pedido inline en el salón', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-new/items', [{ product_id: 'prod-1', quantity: 1 }]);
     });
 
-    it('agrega el producto a la cuenta existente sin crear otra', async () => {
+    it('agrega el producto a la cuenta que se está viendo sin crear otra', async () => {
         const existing = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 1, 38)], 38);
         mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
         mockOrders.splice(0, mockOrders.length, existing);
@@ -99,7 +99,7 @@ describe('pedido inline en el salón', () => {
             if (url === '/orders/order-1') return Promise.resolve({ data: existing });
             return Promise.resolve({ data: [existing] });
         });
-        api.post.mockResolvedValue({ data: {} });
+        api.post.mockResolvedValue({ data: existing });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
@@ -108,8 +108,33 @@ describe('pedido inline en el salón', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/items', [{ product_id: 'prod-1', quantity: 1 }]);
     });
 
+    it('el pedido de otra persona abre una cuenta nueva de la misma visita', async () => {
+        const existing = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 1, 38)], 38);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, existing);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: existing });
+            return Promise.resolve({ data: [existing] });
+        });
+        const nueva = { ...order('order-9', 13, 'nuevo', []), customer_name: null };
+        api.post.mockImplementation((url) => (
+            url === '/orders' ? Promise.resolve({ data: nueva }) : Promise.resolve({ data: nueva })
+        ));
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        // La mesa ya tiene visita: la cuenta siguiente se pide como tal.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
+
+        expect(api.post).toHaveBeenCalledWith('/orders', {
+            table_id: 'table-1', order_type: 'mesa', new_account: true,
+        });
+    });
+
     it('envía a cocina una cuenta en borrador', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 1, 38)], 38);
+        draft.items[0].status = 'borrador';
         mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'nuevo' } }));
         mockOrders.splice(0, mockOrders.length, draft);
         api.get.mockImplementation((url) => {
@@ -117,10 +142,11 @@ describe('pedido inline en el salón', () => {
             if (url === '/orders/order-1') return Promise.resolve({ data: draft });
             return Promise.resolve({ data: [draft] });
         });
-        api.post.mockResolvedValue({ data: {} });
+        api.post.mockResolvedValue({ data: draft });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
+        // El pedido a medio armar es el que la mesa retoma al abrirse.
         const button = document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(button).not.toBeNull();
         await click(button);
@@ -129,6 +155,7 @@ describe('pedido inline en el salón', () => {
 
     it('guarda el alias al enviar el pedido, sin botón de guardar', async () => {
         const existing = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 1, 38)], 38);
+        existing.items[0].status = 'borrador';
         mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'nuevo' } }));
         mockOrders.splice(0, mockOrders.length, existing);
         api.get.mockImplementation((url) => {
@@ -166,6 +193,8 @@ describe('pedido inline en el salón', () => {
         });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        // Abrir la mesa no elige persona: se entra a la cuenta tocándola.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-cuenta-11"]'));
 
         const badge = document.body.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-1"]');
         expect(badge).not.toBeNull();
