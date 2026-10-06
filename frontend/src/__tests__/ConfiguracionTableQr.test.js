@@ -13,6 +13,9 @@ const tables = [
 const mountedViews = [];
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
+// `Local` lee la pestaña pedida en la URL; sin router en este harness alcanza con
+// el parámetro vacío.
+jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams()] }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const flush = async () => act(async () => {

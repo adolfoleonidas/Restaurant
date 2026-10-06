@@ -1143,6 +1143,13 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
             if item.get("status") != "entregado":
                 item["status"] = "cancelado"
         update["items"] = items
+        if o.get("attention_state") == "opening":
+            # La apertura nunca llegó a ser visita. Sin cerrarla acá, el pedido
+            # cancelado sigue contando como la cuenta viva de la mesa y el salón
+            # abre su hoja en un pedido muerto —con todos los platos anulados—,
+            # escondiendo las cuentas que sí están en curso.
+            update["attention_state"] = "closed"
+            update["attention_open"] = False
     if new_status == "entregado":
         items = o.get("items") or []
         for it in items:

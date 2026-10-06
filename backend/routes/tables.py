@@ -38,27 +38,43 @@ async def _validate_branch(restaurant_id: str, branch_id: str | None):
     if not branch:
         raise HTTPException(status_code=404, detail="Sucursal no encontrada")
 
-async def _validate_area(restaurant_id: str, area: str, branch_id: str | None = None):
+async def _resolve_area(restaurant_id: str, area: str, branch_id: str | None = None) -> tuple[str, dict | None]:
+    """Validate an area and return the zone that gives it its branch.
+
+    Two branches may each run their own "Salón", so the zone of another branch is
+    never inherited: a table would silently land in somebody else's floor. With a
+    requested branch the venue's own zone wins and the still branchless one is the
+    legacy fallback; without a requested branch only an unambiguous answer is
+    accepted, so a shared zone name asks the operator to pick the branch.
+    """
     if not area or not area.strip():
         raise HTTPException(status_code=400, detail="La zona es obligatoria")
     area = area.strip()
-    zones = await db.zones.find({"restaurant_id": restaurant_id}).to_list(1000)
+    # A venue that never configured zones keeps accepting any area name.
+    if not await db.zones.find_one({"restaurant_id": restaurant_id}, {"_id": 0, "id": 1}):
+        return area, None
+    zones = await db.zones.find(
+        {"restaurant_id": restaurant_id, "name": area}, {"_id": 0}
+    ).to_list(1000)
     if not zones:
-        return area
-    # Accept this branch's zone and the legacy branchless ones, so a venue that
-    # never assigned branches keeps working.
-    if any(z.get("name") == area and z.get("branch_id") in (branch_id, None) for z in zones):
-        return area
-    raise HTTPException(status_code=400, detail="La zona no existe en esta sucursal")
-
-
-async def _get_zone_branch(restaurant_id: str, area: str, branch_id: str | None = None) -> str | None:
-    """Get the branch_id from a zone, if it has one."""
-    query = {"restaurant_id": restaurant_id, "name": area}
+        raise HTTPException(status_code=400, detail="La zona no existe en esta sucursal")
     if branch_id is not None:
-        query["branch_id"] = branch_id
-    zone = await db.zones.find_one(query, {"_id": 0, "branch_id": 1})
-    return zone.get("branch_id") if zone else None
+        own = next((z for z in zones if z.get("branch_id") == branch_id), None)
+        if own is not None:
+            return area, own
+        legacy = next((z for z in zones if z.get("branch_id") is None), None)
+        if legacy is not None:
+            return area, legacy
+        raise HTTPException(status_code=400, detail="La zona no existe en esta sucursal")
+    if len(zones) == 1:
+        return area, zones[0]
+    legacy = next((z for z in zones if z.get("branch_id") is None), None)
+    if legacy is not None:
+        return area, legacy
+    raise HTTPException(
+        status_code=400,
+        detail="Hay más de una zona con ese nombre; elegí la sucursal de la mesa",
+    )
 
 
 async def _table_lookup_scope(table_id: str, user: dict) -> dict:
@@ -122,12 +138,14 @@ async def list_tables(
 @router.post("")
 async def create_table(data: TableCreate, user: dict = Depends(require_roles(["admin"]))):
     await _validate_branch(user["restaurant_id"], data.branch_id)
-    area = await _validate_area(user["restaurant_id"], data.area, data.branch_id)
+    area, zone = await _resolve_area(user["restaurant_id"], data.area, data.branch_id)
 
     # Determine branch_id: explicit > zone's branch_id > None
     branch_id = data.branch_id
-    if branch_id is None:
-        branch_id = await _get_zone_branch(user["restaurant_id"], area)
+    if branch_id is None and zone is not None:
+        # The table follows its zone's branch: that stored branch is what makes it
+        # visible to the waiter, the cashier and the kitchen of that floor.
+        branch_id = zone.get("branch_id")
 
     # Numbers are unique per branch: two salons can each have their own "Mesa 1".
     exists = await db.tables.find_one({
@@ -298,10 +316,23 @@ async def resume_table_opening(table_id: str, user: dict = Depends(require_roles
 @router.patch("/{table_id}")
 async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(require_roles(["admin"]))):
     update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
-    if "area" in update:
-        update["area"] = await _validate_area(user["restaurant_id"], update["area"])
     scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
     table = None
+    if "area" in update:
+        table = await db.tables.find_one(scope, {"_id": 0})
+        if not table:
+            raise HTTPException(status_code=404, detail="Mesa no encontrada")
+        # The zone is read with the table's own branch, so moving a table to a
+        # zone of another branch is a branch change and not a silent relocation.
+        update["area"], zone = await _resolve_area(
+            user["restaurant_id"], update["area"], table.get("branch_id")
+        )
+        if "branch_id" not in update and table.get("branch_id") is None and zone is not None:
+            # A table without a branch of its own follows the branch of its new
+            # zone; that is what keeps it visible to the staff of that floor.
+            inherited = zone.get("branch_id")
+            if inherited is not None:
+                update["branch_id"] = inherited
     if "branch_id" in update:
         await _validate_branch(user["restaurant_id"], update["branch_id"])
         table = await db.tables.find_one(scope, {"_id": 0})
@@ -324,7 +355,9 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
             "active_attention_id": {"$exists": False},
             "opening_order_id": {"$exists": False},
             "status": "disponible",
-            "branch_id": table.get("branch_id") if "branch_id" in table else {"$exists": False},
+            # Fencing the stored branch: a branchless table may carry the field
+            # absent or null, and both must still match here.
+            "branch_id": table.get("branch_id"),
         })
     if "status" in update:
         table = table or await db.tables.find_one(scope, {"_id": 0})

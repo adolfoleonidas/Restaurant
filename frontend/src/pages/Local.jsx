@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -265,6 +266,8 @@ export function TablesManager() {
     const [dlg, setDlg] = useState(false);
     const [editing, setEditing] = useState(null);
     const [confirmDel, setConfirmDel] = useState(null);
+    const [assignBranch, setAssignBranch] = useState('');
+    const [assigning, setAssigning] = useState(false);
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
         try {
@@ -323,12 +326,40 @@ export function TablesManager() {
             const name = getBranchName(table.branch_id);
             return { type: 'explicit', name: name || table.branch_id };
         }
+        // Sin `branch_id` guardado la mesa no existe para el salón de esa
+        // sucursal: el filtro de todos los roles operativos lee ese campo. La
+        // zona puede tenerla definida, pero hasta que la mesa la herede sigue
+        // siendo invisible, así que no se muestra como si ya estuviera asignada.
         const zoneBranch = getZoneBranch(table.area);
         if (zoneBranch) {
-            const name = getBranchName(zoneBranch);
-            return { type: 'inherited', name: name || zoneBranch };
+            return { type: 'zone-pending', name: getBranchName(zoneBranch) || zoneBranch };
         }
         return { type: 'none', name: 'Sin sucursal' };
+    };
+
+    // Mesas que ningún rol de sucursal puede ver (mozo, caja, cocina).
+    const missingBranch = tables.filter((t) => !t.branch_id);
+
+    const assignMissingToBranch = async () => {
+        if (!assignBranch || assigning || missingBranch.length === 0) return;
+        setAssigning(true);
+        let done = 0;
+        try {
+            for (const t of missingBranch) {
+                await api.patch(`/tables/${t.id}`, { branch_id: assignBranch });
+                done += 1;
+            }
+            toast.success(done === 1 ? 'Mesa asignada' : `${done} mesas asignadas`);
+        } catch (e) {
+            const detail = e.response?.data?.detail;
+            toast.error(done > 0
+                ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintentá con el resto.'}`
+                : (detail || 'No se pudieron asignar las mesas'));
+        } finally {
+            setAssigning(false);
+            setAssignBranch('');
+            await load();
+        }
     };
 
     return (
@@ -340,11 +371,58 @@ export function TablesManager() {
             <p className="text-xs text-muted-foreground mb-4">
                 Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
             </p>
+            {missingBranch.length > 0 && (
+                <div
+                    role="alert"
+                    className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                    data-testid="mesa-sin-sucursal-aviso"
+                >
+                    <p className="font-medium" data-testid="mesa-sin-sucursal-titulo">
+                        {missingBranch.length === 1 ? '1 mesa sin sucursal' : `${missingBranch.length} mesas sin sucursal`}
+                    </p>
+                    <p className="mt-1 text-muted-foreground">
+                        El mozo, la caja y la cocina solo ven las mesas de su sucursal: estas mesas no
+                        aparecen en su salón. Asigná la sucursal de la zona (pestaña Zonas) o elegila acá.
+                    </p>
+                    {branches.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <select
+                                className="h-11 rounded-md border border-input bg-background px-3 py-2 text-sm sm:h-10"
+                                value={assignBranch}
+                                onChange={(e) => setAssignBranch(e.target.value)}
+                                disabled={assigning}
+                                aria-label="Sucursal para las mesas sin sucursal"
+                                data-testid="mesa-sin-sucursal-branch"
+                            >
+                                <option value="">Elegí una sucursal</option>
+                                {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                            </select>
+                            <Button
+                                className="h-11 sm:h-10"
+                                onClick={assignMissingToBranch}
+                                disabled={!assignBranch || assigning}
+                                data-testid="mesa-sin-sucursal-asignar"
+                            >
+                                {assigning ? 'Asignando…' : 'Asignar a la sucursal'}
+                            </Button>
+                        </div>
+                    ) : (
+                        <p className="mt-2 text-muted-foreground">
+                            Todavía no hay sucursales: creá una en la pestaña Sucursales para poder asignarlas.
+                        </p>
+                    )}
+                </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {tables.map((t) => {
                     const branchInfo = getTableBranchInfo(t);
                     return (
-                        <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
+                        <div
+                            key={t.id}
+                            className={`border rounded-xl p-3 ${branchInfo.type === 'explicit' ? '' : 'border-amber-300 dark:border-amber-900'}`}
+                            data-testid={`mesa-config-row-${t.id}`}
+                            data-branch-missing={t.branch_id ? undefined : 'true'}
+                        >
                             <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
                                     {/* El color solo no comunica en táctil (no hay tooltip): estado también en texto */}
@@ -358,13 +436,15 @@ export function TablesManager() {
                                                     {branchInfo.name}
                                                 </span>
                                             )}
-                                            {branchInfo.type === 'inherited' && (
-                                                <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                                    Hereda: {branchInfo.name}
+                                            {branchInfo.type === 'zone-pending' && (
+                                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                                                    Sin sucursal · la zona es {branchInfo.name}
                                                 </span>
                                             )}
                                             {branchInfo.type === 'none' && (
-                                                <span className="text-muted-foreground">{branchInfo.name}</span>
+                                                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">
+                                                    {branchInfo.name}
+                                                </span>
                                             )}
                                         </div>
                                     </div>
@@ -431,8 +511,10 @@ export function TablesManager() {
                                     );
                                 }
                                 return (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        La zona "{form.area}" no tiene sucursal asignada. Esta mesa quedará sin sucursal.
+                                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                                        {branches.length > 0
+                                            ? `La zona "${form.area}" no tiene sucursal asignada: la mesa quedará sin sucursal y el mozo, la caja y la cocina no la verán.`
+                                            : `La zona "${form.area}" no tiene sucursal asignada. Esta mesa quedará sin sucursal.`}
                                     </p>
                                 );
                             })()}
@@ -482,7 +564,11 @@ const TABS = [
 ];
 
 export default function Local({ defaultTab = 'sucursales' }) {
-    const [tab, setTab] = useState(defaultTab);
+    const [params] = useSearchParams();
+    // `?tab=mesas` deja entrar directo al arreglo que pide el salón cuando avisa
+    // que hay mesas sin sucursal.
+    const requested = params?.get('tab');
+    const [tab, setTab] = useState(TABS.some((t) => t.key === requested) ? requested : defaultTab);
 
     return (
         <div className="space-y-5" data-testid="local-root">

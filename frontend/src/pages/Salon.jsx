@@ -14,9 +14,16 @@ import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/Ord
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
+import {
+    branchScopeParams,
+    readRememberedScope,
+    rememberScope,
+    resolveBranchScope,
+} from '@/lib/branchScope';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
@@ -189,23 +196,90 @@ export default function Salon() {
     // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
     const [sharedDraft, setSharedDraft] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
+    // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
+    // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
+    // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
+    const [composerOpen, setComposerOpen] = useState(false);
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
     const [lastOpened, setLastOpened] = useState(null);
+    // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
+    // qué salón mira; el resto del personal queda fijado por el servidor.
+    const [branchCatalog, setBranchCatalog] = useState({ loading: false, error: false, branches: [], resolved: false });
+    const [scope, setScope] = useState(null);
     const searchRef = useRef(null);
 
+    const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
+
+    useEffect(() => {
+        if (!isOwner) {
+            setBranchCatalog({ loading: false, error: false, branches: [], resolved: true });
+            setScope(null);
+            return undefined;
+        }
+        let active = true;
+        setBranchCatalog((current) => ({ ...current, loading: true, error: false }));
+        api.get('/branches').then(({ data }) => {
+            if (!active) return;
+            const branches = Array.isArray(data) ? data : [];
+            setBranchCatalog({ loading: false, error: false, branches, resolved: true });
+            setScope(resolveBranchScope({
+                isOwner: true,
+                branches,
+                remembered: readRememberedScope(user?.id),
+            }));
+        }).catch(() => {
+            if (active) {
+                // Sin catálogo no se puede elegir: el salón queda como estaba.
+                setBranchCatalog({ loading: false, error: true, branches: [], resolved: true });
+                setScope(null);
+            }
+        });
+        return () => { active = false; };
+    }, [isOwner, user?.id]);
+
+    const scopeParams = useMemo(() => branchScopeParams(scope), [scope]);
+    const scopeKey = scope || 'sin-alcance';
+    // Quien elige piso espera a su catálogo: hasta entonces no se pide ninguno,
+    // para no mostrar todas las sucursales mezcladas ni un instante.
+    const scopePending = isOwner && !branchCatalog.resolved;
+    const chooseScope = (next) => {
+        setScope(next);
+        rememberScope(user?.id, next);
+    };
+
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
-        () => api.get('/tables').then((r) => r.data),
+        // Sin sucursal elegida el pedido va sin parámetros: el servidor ya acota
+        // a la sucursal del usuario.
+        () => (scopePending
+            ? Promise.resolve(null)
+            : (scopeParams ? api.get('/tables', { params: scopeParams }) : api.get('/tables'))).then((r) => (r ? r.data : null)),
         8000,
-        [generation]
+        [generation, scopeKey, scopePending]
     );
     const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
-        () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
+        () => (scopePending
+            ? Promise.resolve(null)
+            : (scopeParams
+                ? api.get('/orders', { params: { active_only: true, ...scopeParams } })
+                : api.get('/orders', { params: { active_only: true } }))).then((r) => (r ? r.data : null)),
         8000,
-        [generation]
+        [generation, scopeKey, scopePending]
     );
     const orders = useMemo(() => (Array.isArray(liveOrders) ? liveOrders : []), [liveOrders]);
+
+    // Mesas que ningún salón muestra porque no tienen sucursal guardada. Es una
+    // lectura de administración y a un ritmo más lento: sirve para avisar, no
+    // para operar el piso.
+    const { data: unassigned } = usePolling(
+        () => (isOwner && !scopePending && scope !== 'legacy'
+            ? api.get('/tables', { params: { legacy_only: true } }).then((r) => r.data)
+            : Promise.resolve(null)),
+        30000,
+        [generation, isOwner, scopeKey, scopePending]
+    );
+    const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
 
     // Carta para componer el pedido sin salir del salón.
     const { data: liveProducts } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
@@ -398,11 +472,15 @@ export default function Salon() {
         const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
         const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
+        setComposerOpen(false);
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
+                // abre sola, sin obligar a buscar el botón.
+                if (isComposingDraft(data)) setComposerOpen(true);
             } catch {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
@@ -657,8 +735,10 @@ export default function Salon() {
             await reloadCurrentOrder(targetId);
             if (targetId === openId) {
                 // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente, que es como el mozo trabaja de verdad.
+                // la siguiente, que es como el mozo trabaja de verdad. La carta se
+                // pliega y el "+ Pedido" del encabezado queda listo para el próximo.
                 setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
+                setComposerOpen(false);
                 setOpenTable((s) => (s ? {
                     ...s,
                     order: null,
@@ -959,6 +1039,21 @@ export default function Salon() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
+                    {isOwner && branchCatalog.branches.length > 0 && (
+                        <select
+                            aria-label="Sucursal del salón"
+                            data-testid="salon-sucursal"
+                            className="h-11 rounded-sm border border-input bg-background px-3 text-sm sm:h-10"
+                            value={scope || ''}
+                            onChange={(e) => chooseScope(e.target.value)}
+                            disabled={branchCatalog.loading}
+                        >
+                            {branchCatalog.branches.map((branch) => (
+                                <option key={branch.id} value={`branch:${branch.id}`}>{branch.name}</option>
+                            ))}
+                            <option value="legacy">Sin sucursal</option>
+                        </select>
+                    )}
                     <div className="relative">
                         <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                         <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
@@ -1073,10 +1168,40 @@ export default function Salon() {
                 </div>
             )}
 
+            {isOwner && branchCatalog.error && (
+                <p role="alert" className="text-sm text-destructive" data-testid="salon-sucursales-error">
+                    No se pudieron cargar las sucursales: el salón está mostrando todas las mesas del negocio.
+                </p>
+            )}
+
+            {/* Una mesa sin sucursal no pertenece a ningún salón: si el dueño no
+                se entera acá, parece que desapareció del piso. */}
+            {isOwner && scope && scope !== 'legacy' && unassignedCount > 0 && (
+                <div
+                    role="status"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                    data-testid="salon-mesas-sin-sucursal"
+                >
+                    <span className="font-medium">
+                        {unassignedCount === 1
+                            ? '1 mesa sin sucursal no aparece en ningún salón.'
+                            : `${unassignedCount} mesas sin sucursal no aparecen en ningún salón.`}
+                    </span>
+                    <Button
+                        variant="outline"
+                        className="h-11"
+                        onClick={() => navigate('/local?tab=mesas')}
+                        data-testid="salon-ir-mesas-sin-sucursal"
+                    >
+                        Asignar sucursal
+                    </Button>
+                </div>
+            )}
+
             <div role="status" aria-live="polite" className="sr-only">{floorSummary}</div>
 
             {/* Floor grid */}
-            {tablesLoading && !tables ? (
+            {!tables && (tablesLoading || scopePending) ? (
                 // Reserva la rejilla mientras llegan las mesas: sin esto la
                 // grilla aparece entera tras la respuesta (CLS 0,56).
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" data-testid="salon-skeleton" aria-hidden="true">
@@ -1205,6 +1330,11 @@ export default function Salon() {
                         // cuando algo salió a cocina: mientras todo es borrador, es el
                         // "nuevo pedido" que el mozo todavía está armando.
                         const allAccounts = accounts || [];
+                        // La visita la crea el primer pedido, no un botón: por eso la
+                        // barra depende de que exista una cuenta —incluida la que se
+                        // acaba de crear— y no del pedido que el listado del piso
+                        // todavía no refrescó.
+                        const hasAccount = Boolean(t.active_order || order || allAccounts.length > 0);
                         const personAccounts = allAccounts.filter((o) => !isComposingDraft(activeOrders[o.id] || o));
                         const persons = personAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
@@ -1250,10 +1380,31 @@ export default function Salon() {
                                         <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
                                     </div>
                                 </div>
+                                {/* "+ Pedido" arriba, donde el mozo ya está mirando: abre la
+                                    carta. La acción principal de cada momento (Enviar,
+                                    Entregar, Cuenta) vive abajo, en el pulgar. */}
+                                {canCompose && (
+                                    <div className="flex items-center justify-end gap-2 border-b px-5 py-2">
+                                        <Button
+                                            variant={composerOpen ? 'outline' : 'default'}
+                                            className="h-11"
+                                            onClick={() => setComposerOpen((open) => !open)}
+                                            aria-expanded={composerOpen}
+                                            data-testid="mesa-sheet-nuevo-pedido"
+                                        >
+                                            {composerOpen ? 'Ocultar carta' : '+ Pedido'}
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
                                     {/* El resumen va arriba y plegado: el mozo lo lee de
                                         reojo sin que le empuje la carta hacia abajo. */}
+                                    {/* El resumen sólo aparece cuando hay más de una cuenta:
+                                        ahí es donde sirve (organizar personas y ver el recibo).
+                                        Con una sola repetiría lo que ya dicen la lista y el pie,
+                                        y el modal tiene que ser simple. */}
+                                    {personAccounts.length > 1 && (
                                     <TableSummary
                                         rows={summaryRows}
                                         accounts={personAccounts.length}
@@ -1264,6 +1415,7 @@ export default function Salon() {
                                         onMoveItem={moveItemToPerson}
                                         onOpenReceipt={() => setReceiptOpen(true)}
                                     />
+                                    )}
                                     {receiptOpen && (
                                         <TableReceipt
                                             table={t}
@@ -1341,19 +1493,24 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
-                                    <OrderComposer
-                                        order={order}
-                                        items={orderItems}
-                                        products={products}
-                                        categories={categories}
-                                        savingItem={savingItem}
-                                        canCompose={canCompose}
-                                        showKitchen={showSend}
-                                        sendLabel={sendState?.label}
-                                        onAddProduct={addProductToAccount}
-                                        onRemoveProduct={removeProductFromAccount}
-                                        onSendToKitchen={sendCurrentToKitchen}
-                                    />
+                                    {/* La carta se queda montada al plegarse: así conserva
+                                        la búsqueda y la categoría elegidas cuando el mozo
+                                        la vuelve a abrir para el pedido siguiente. */}
+                                    <div hidden={!composerOpen}>
+                                        <OrderComposer
+                                            order={order}
+                                            items={orderItems}
+                                            products={products}
+                                            categories={categories}
+                                            savingItem={savingItem}
+                                            canCompose={canCompose}
+                                            showKitchen={showSend}
+                                            sendLabel={sendState?.label}
+                                            onAddProduct={addProductToAccount}
+                                            onRemoveProduct={removeProductFromAccount}
+                                            onSendToKitchen={sendCurrentToKitchen}
+                                        />
+                                    </div>
                                     {order && (
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">
@@ -1362,7 +1519,7 @@ export default function Salon() {
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
-                                            <p className="page-kicker" data-testid="mesa-sheet-items-titulo">
+                                            <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
                                                 {order.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
                                             </p>
                                             <PersonOrderSummary
@@ -1392,7 +1549,7 @@ export default function Salon() {
                                     )}
                                     {group && (
                                         <div className="rounded-xl border p-3 space-y-2" data-testid="mesa-sheet-grupo">
-                                            <div className="page-kicker">Mesas unidas</div>
+                                            <div className="text-xs font-medium text-muted-foreground">Mesas unidas</div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {members.map((member) => (
                                                     <span
@@ -1459,7 +1616,7 @@ export default function Salon() {
                                     )}
                                     {history && history.length > 0 && (
                                         <div className="space-y-2">
-                                            <div className="page-kicker">Turnos anteriores</div>
+                                            <div className="text-xs font-medium text-muted-foreground">Turnos anteriores</div>
                                             <div className="border rounded-xl divide-y">
                                                 {history.map((o) => (
                                                     <div key={o.id} className="py-2 px-3 flex items-center justify-between gap-2 text-sm">
@@ -1476,17 +1633,48 @@ export default function Salon() {
                                     )}
                                 </div>
                                 <div className="border-t p-4 space-y-2">
-                                    {t.active_order ? (
+                                    {/* La mesa no se "toma": la atención nace con el primer
+                                        pedido, así que la carta es la acción y no hay botón
+                                        que la reemplace. Los botones de tomar mesa que había
+                                        acá sólo repetían esa acción y parecían recargar. */}
+                                    {accountTable && order ? (
                                         <>
+                                            {canTake && (
+                                                <Button
+                                                    className="w-full h-12"
+                                                    onClick={() => takeOrderInline(t)}
+                                                    data-testid="mesa-sheet-pedir-grupo"
+                                                >
+                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
+                                                </Button>
+                                            )}
+                                            <MoreActions
+                                                testId="mesa-sheet-mas-grupo"
+                                                actions={[{
+                                                    key: 'ver-pedido-grupo',
+                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
+                                                    testId: 'mesa-sheet-ver-pedido-grupo',
+                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
+                                                }]}
+                                            />
+                                        </>
+                                    ) : hasAccount ? (
+                                        <>
+                                            {/* La barra tiene un lugar por tipo de acción:
+                                                operar (Entregar), cerrar (Cuenta) y el resto
+                                                en ⋯ Más. Así el cuerpo del modal queda para
+                                                tomar pedidos, que es lo que más se hace. */}
                                             {floor.key === 'listo' && canServe && (
                                                 <Button className="w-full h-12" onClick={() => deliver(actionAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
                                             )}
-                                            {closeable && (
+                                            {/* Un solo lugar para cerrar: la etiqueta cambia
+                                                con el momento de la visita en vez de sumar un
+                                                botón por cada paso del cobro. */}
+                                            {closeable ? (
                                                 <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(actionOrder)} disabled={closing === actionOrder?.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
                                                     {closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa'}
                                                 </Button>
-                                            )}
-                                            {billRequested ? (
+                                            ) : billRequested ? (
                                                 <Button disabled variant="outline" className="w-full h-12" data-testid="mesa-sheet-cuenta-solicitada">
                                                     Cuenta solicitada
                                                 </Button>
@@ -1497,89 +1685,53 @@ export default function Salon() {
                                                     </Button>
                                                 )
                                             )}
-                                            <Button
-                                                variant={floor.key === 'listo' ? 'outline' : 'default'}
-                                                className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); }}
-                                                disabled={!actionAccountId}
-                                                data-testid="mesa-sheet-ver-pedido"
-                                            >
-                                                {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
-                                            </Button>
-                                            {canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2 && (
-                                                <div className="flex gap-2">
-                                                    <span className="text-xs text-muted-foreground self-center">Dividir:</span>
-                                                    {[2, 3, 4].map((n) => (
-                                                        <Button key={n} variant="outline" className="flex-1 h-11" onClick={() => splitAccount(n)} data-testid={`mesa-sheet-dividir-${n}`}>÷{n}</Button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            {canTake && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="w-full h-12"
-                                                    onClick={() => openTransfer(t)}
-                                                    data-testid="mesa-sheet-mover-pedido"
-                                                >
-                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover pedido a otra mesa
-                                                </Button>
-                                            )}
-                                            {accounts.length > 1 && canTake && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="w-full h-12"
-                                                    onClick={() => setMoveAccountId(actionAccountId)}
-                                                    data-testid="mesa-sheet-mover-cuenta"
-                                                >
-                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover esta cuenta a otra mesa
-                                                </Button>
-                                            )}
-                                            {/* Acción poco frecuente: va al final, después de
-                                                lo que el mozo hace en cada ronda. */}
-                                            {accounts.length > 1 && canTake && (
-                                                <div className="flex flex-wrap gap-2 pt-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-10 flex-1 text-xs text-muted-foreground"
-                                                        onClick={mergeAccounts}
-                                                        data-testid="mesa-sheet-fusionar-cuentas"
-                                                    >
-                                                        <Link2 className="h-3.5 w-3.5 mr-1" /> Fusionar cuentas
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : accountTable && order ? (
-                                        <>
-                                            <Button
-                                                className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${order.id}`); }}
-                                                data-testid="mesa-sheet-ver-pedido-grupo"
-                                            >
-                                                Ver pedido de Mesa {accountTable.number}
-                                            </Button>
-                                            {canTake && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="w-full h-12"
-                                                    onClick={() => takeOrderInline(t)}
-                                                    data-testid="mesa-sheet-pedir-grupo"
-                                                >
-                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
-                                                </Button>
-                                            )}
+                                            <MoreActions
+                                                testId="mesa-sheet-mas"
+                                                actions={[
+                                                    {
+                                                        key: 'ver-pedido',
+                                                        label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
+                                                        testId: 'mesa-sheet-ver-pedido',
+                                                        disabled: !actionAccountId,
+                                                        onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
+                                                    },
+                                                    ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
+                                                        ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
+                                                            key: `dividir-${n}`,
+                                                            label: `En ${n} cuentas`,
+                                                            testId: `mesa-sheet-dividir-${n}`,
+                                                            onSelect: () => splitAccount(n),
+                                                        }))]
+                                                        : []),
+                                                    ...(canTake ? [{
+                                                        key: 'mover-pedido',
+                                                        label: 'Mover pedido a otra mesa',
+                                                        icon: MoveRight,
+                                                        testId: 'mesa-sheet-mover-pedido',
+                                                        onSelect: () => openTransfer(t),
+                                                    }] : []),
+                                                    ...(accounts.length > 1 && canTake ? [
+                                                        {
+                                                            key: 'mover-cuenta',
+                                                            label: 'Mover esta cuenta a otra mesa',
+                                                            icon: MoveRight,
+                                                            testId: 'mesa-sheet-mover-cuenta',
+                                                            onSelect: () => setMoveAccountId(actionAccountId),
+                                                        },
+                                                        {
+                                                            key: 'fusionar-cuentas',
+                                                            label: 'Fusionar cuentas',
+                                                            icon: Link2,
+                                                            testId: 'mesa-sheet-fusionar-cuentas',
+                                                            onSelect: mergeAccounts,
+                                                        },
+                                                    ] : []),
+                                                ]}
+                                            />
                                         </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
                                             Liberar mesa
-                                        </Button>
-                                    ) : t.status === 'disponible' ? (
-                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar">
-                                            <Plus className="h-4 w-4 mr-1" /> Tomar mesa y pedir
-                                        </Button>
-                                    ) : t.status === 'ocupada' ? (
-                                        <Button className="w-full h-12" onClick={() => takeOrderInline(t)} disabled={!canTake} data-testid="mesa-sheet-tomar-pedido">
-                                            Tomar pedido
                                         </Button>
                                     ) : null}
                                 </div>

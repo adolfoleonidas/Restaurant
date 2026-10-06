@@ -290,7 +290,7 @@ async def _restore_open(db, order: dict, attention: dict) -> bool:
     # The order remains fenced until the final state write succeeds.
     restored = await db.attentions.update_one({
         "id": attention["id"], "restaurant_id": order["restaurant_id"],
-        "order_id": order["id"], "status": "closing",
+        "status": "closing",
     }, {"$set": {"status": "open"}, "$unset": {
         "closed_by": "", "closed_by_name": "", "closed_at": ""}})
     if getattr(restored, "modified_count", 0) != 1:
@@ -364,7 +364,13 @@ async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str)
 
 
 async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dict:
-    """Claim the canonical order fence, verify ledger, close, then release by visit id."""
+    """Claim the canonical order fence, verify ledger, close, then release by visit id.
+
+    La visita se identifica por su propio id, nunca por `order["id"]`: `order_id`
+    del documento guarda sólo la cuenta canónica, así que anclar el cierre a esa
+    cuenta dejaba sin salida a cualquier otra cuenta de la misma visita —el mozo
+    veía "reintentá la misma visita" para siempre y la mesa quedaba tomada—.
+    """
     current = await db.orders.find_one({
         "id": order["id"], "restaurant_id": order["restaurant_id"],
     }, {"_id": 0})
@@ -397,7 +403,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
                       "full_name": order.get("attention_close_actor_name")}
         changed = await db.attentions.update_one({
             "id": attention["id"], "restaurant_id": order["restaurant_id"],
-            "order_id": order["id"], "status": "open",
+            "status": "open",
         }, {"$set": {"status": "closing", "closed_by": close_user["id"],
             "closed_by_name": close_user["full_name"], "closed_at": now}})
         if getattr(changed, "modified_count", 0) != 1:
@@ -417,7 +423,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
             raise AttentionBlocked("El cierre previo no conserva su operador; requiere conciliación")
         changed = await db.attentions.update_one({
             "id": attention["id"], "restaurant_id": order["restaurant_id"],
-            "order_id": order["id"], "status": "open",
+            "status": "open",
         }, {"$set": {"status": "closing", "closed_by": close_user["id"],
             "closed_by_name": close_user["full_name"], "closed_at": now}})
         if getattr(changed, "modified_count", 0) != 1:
@@ -447,7 +453,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
     await _write_close_audit(db, order, attention, user, now)
     changed = await db.attentions.update_one({
         "id": attention["id"], "restaurant_id": order["restaurant_id"],
-        "order_id": order["id"], "status": "closing",
+        "status": "closing",
     }, {"$set": {"status": "closed", "closed_by": attention.get("closed_by"),
         "closed_by_name": attention.get("closed_by_name"), "closed_at": attention.get("closed_at") or now}})
     if getattr(changed, "matched_count", 0) != 1:

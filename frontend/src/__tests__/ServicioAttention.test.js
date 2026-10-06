@@ -45,6 +45,8 @@ describe('Servicio attention closure', () => {
         mockRows.orders = [{ ...mockVisit, items: [...mockVisit.items] }];
         mockRefreshTables.mockClear();
         mockRefreshOrders.mockClear();
+        // El salón lee el catálogo de sucursales para saber qué piso muestra.
+        api.get.mockReset().mockImplementation((path) => Promise.resolve({ data: path === '/branches' ? [] : null }));
         api.post.mockReset().mockResolvedValue({ data: { status: 'closed' } });
         toast.error.mockClear();
         toast.success.mockClear();

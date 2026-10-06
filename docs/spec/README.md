@@ -12,12 +12,16 @@ a medida que el producto avanza.
 | [PRD-restaurante-saas-v1.0.md](PRD-restaurante-saas-v1.0.md) | Final aprobado para modelado | Visión, problema, objetivos, usuarios/permisos, alcance y reglas del MVP. |
 | [modelo-de-dominio-restaurante-saas-v0.1.md](modelo-de-dominio-restaurante-saas-v0.1.md) | Borrador | Conceptos del negocio, áreas del dominio, entidades, relaciones y reglas. |
 | [especificacion-funcional-y-estados-v0.1.md](especificacion-funcional-y-estados-v0.1.md) | Borrador | Flujos funcionales, máquinas de estados, permisos y criterios de aceptación. |
+| [especificacion-ui-ux-pantallas-v0.1.md](especificacion-ui-ux-pantallas-v0.1.md) | Borrador | Contrato de diseño por pantalla: objetivo, elementos, jerarquía de acciones e interacciones. |
+| [recorte-mesa-pedido-cocina-v0.1.md](recorte-mesa-pedido-cocina-v0.1.md) | Borrador | La rebanada más pequeña con valor (mesa → pedido → cocina) especificada de punta a punta, lista para programar. |
 
 ## Orden de lectura
 
 1. **PRD** → entender el problema, el alcance y las decisiones de producto.
 2. **Modelo de dominio** → entender los conceptos y sus ciclos de vida.
 3. **Especificación funcional** → traducir lo anterior a comportamientos comprobables.
+4. **Especificación UI/UX** → traducir el comportamiento a pantallas, sin improvisar botón por botón.
+5. **Recorte mesa → pedido → cocina** → ver el método aplicado a una sola rebanada, con criterios de aceptación.
 
 ## Cómo mantener esta documentación actualizada
 

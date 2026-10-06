@@ -467,6 +467,64 @@ def test_close_blocks_until_every_account_is_settled():
     assert db.orders.docs[1]["attention_state"] == "open"
 
 
+def test_close_from_a_secondary_account_reports_the_unsettled_canonical_one():
+    """Cerrar desde una cuenta que no es la canónica no puede ser un callejón.
+
+    La visita puede tener varias cuentas y `order_id` guarda sólo la canónica.
+    Anclar el cierre a esa cuenta hacía que cualquier otra de la misma visita
+    fallara con "reintentá la misma visita" para siempre, dejando la mesa tomada
+    sin salida y sin decir qué cuenta faltaba liquidar.
+    """
+    async def run():
+        db = _ready_db()  # order-1 es la canónica y sigue sin liquidar
+        db.attentions.docs[0]["order_ids"] = ["order-1", "order-2"]
+        db.orders.docs[0].update({
+            "status": "listo", "payment_status": None, "amount_paid": 0,
+            "items": [{"id": "item-1", "quantity": 1, "status": "listo"}],
+        })
+        db.orders.docs.append(_order(id="order-2", order_number=2))
+        db.payments.docs.append({
+            "id": "payment-2", "restaurant_id": "restaurant-1", "order_id": "order-2",
+            "status": "completed", "amount": 25.0,
+        })
+        with pytest.raises(AttentionBlocked, match="no está lista"):
+            await close_table_attention(
+                db, order=await db.orders.find_one({"id": "order-2"}),
+                user=_user(), now="2026-09-30T13:00:00+00:00",
+            )
+        return db
+
+    db = asyncio.run(run())
+    # El intento rechazado deja todo como estaba: nada queda a medio cerrar.
+    assert db.attentions.docs[0]["status"] == "open"
+    assert db.tables.docs[0]["active_attention_id"] == "attention-1"
+    assert {doc["attention_state"] for doc in db.orders.docs} == {"open"}
+
+
+def test_close_from_a_secondary_account_closes_the_whole_visit():
+    async def run():
+        db = _ready_db()
+        db.attentions.docs[0]["order_ids"] = ["order-1", "order-2"]
+        db.orders.docs.append(_order(id="order-2", order_number=2))
+        db.payments.docs.append({
+            "id": "payment-2", "restaurant_id": "restaurant-1", "order_id": "order-2",
+            "status": "completed", "amount": 25.0,
+        })
+        closed = await close_table_attention(
+            db, order=await db.orders.find_one({"id": "order-2"}),
+            user=_user(), now="2026-09-30T13:00:00+00:00",
+        )
+        return closed, db
+
+    closed, db = asyncio.run(run())
+    assert closed["status"] == "closed"
+    assert db.attentions.docs[0]["status"] == "closed"
+    # La mesa se libera y todas las cuentas de la visita quedan cerradas.
+    assert db.tables.docs[0]["status"] == "disponible"
+    assert "active_attention_id" not in db.tables.docs[0]
+    assert {doc["attention_state"] for doc in db.orders.docs} == {"closed"}
+
+
 def test_cash_close_rejects_paid_order_with_open_attention():
     async def run():
         from fastapi import HTTPException
