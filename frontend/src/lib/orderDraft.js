@@ -134,7 +134,7 @@ export function groupItems(entries = []) {
         const quantity = Number(item.quantity || 0);
         row.quantity += quantity;
         row.subtotal += Number(item.subtotal ?? quantity * (item.unit_price || 0));
-        row.items.push({ item, person: entry.person || null });
+        row.items.push({ item, person: entry.person || null, personId: entry.personId || null });
         if (entry.person) {
             const known = row.people.find((p) => p.label === entry.person);
             if (known) known.quantity += quantity;
@@ -153,7 +153,9 @@ export function tableSummary(accounts = []) {
     for (const account of accounts) {
         const label = account.label;
         for (const item of account.items || []) {
-            entries.push({ item, person: label });
+            // Se guarda también de qué cuenta sale cada producto: mover una línea
+            // necesita saber su origen, no sólo quién la pidió.
+            entries.push({ item, person: label, personId: account.id || null });
         }
     }
     return groupItems(entries);

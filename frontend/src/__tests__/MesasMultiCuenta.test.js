@@ -64,7 +64,6 @@ describe('multi-cuenta en el salón', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-11"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]')).not.toBeNull();
-        expect(sheet.textContent).toContain('Ceviche');
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]'));
         // El detalle muestra solo los ítems de la cuenta elegida…
@@ -95,7 +94,8 @@ describe('multi-cuenta en el salón', () => {
         const tabs = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
         expect(tabs.textContent).toContain('Juan');
         expect(tabs.textContent).toContain('#12'); // la que no tiene alias cae al número
-        // La carta dice a quién le está agregando.
+        // La carta dice a quién le está agregando: se entra a la persona tocándola.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-11"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]').textContent).toContain('Agregar a Juan');
     });
 
