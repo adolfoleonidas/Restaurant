@@ -121,17 +121,17 @@ function ReportesView({ userKey, isOwner }) {
         <div className="space-y-5" data-testid="reportes-root">
             <p className="page-kicker mb-1">Administración</p>
             <div className="flex items-center justify-between flex-wrap gap-3">
-                <div>
-                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Reportes</h1>
+                <div className="min-w-0">
+                    <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2 min-w-0"><BarChart3 className="h-6 w-6 text-primary shrink-0" /> <span className="truncate">Reportes</span></h1>
                     <p className="text-muted-foreground text-sm">Ventas, productos y métodos de pago.</p>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
                     {isOwner && (
-                        <label className="flex flex-col gap-1 text-sm">
+                        <label className="flex flex-col gap-1 text-sm min-w-0">
                             Contexto de sucursal
                             <select
                                 data-testid="reportes-branch-context"
-                                className="h-10 min-w-52 rounded-md border border-border bg-background px-3"
+                                className="h-11 w-full min-w-0 sm:min-w-52 rounded-md border border-border bg-background px-3"
                                 value={context}
                                 onChange={(event) => {
                                     const next = event.target.value;
@@ -153,7 +153,7 @@ function ReportesView({ userKey, isOwner }) {
                     <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Imprimir</Button>
                     <Button data-testid="reportes-export" variant="outline" onClick={() => exportCsv(data)} disabled={!data}><FileDown className="h-4 w-4 mr-2" />Exportar CSV</Button>
                     {/* Selector de período: grupo de toggles (no pestañas), con
-                        aria-pressed y un objetivo táctil de 36 px */}
+                        aria-pressed y un objetivo táctil de 44 px en móvil */}
                     <ToggleGroup
                         type="single"
                         value={period}
@@ -163,9 +163,9 @@ function ReportesView({ userKey, isOwner }) {
                         size="sm"
                         className="gap-1"
                     >
-                        <ToggleGroupItem value="day" data-testid="reportes-periodo-day" className="min-h-9">Hoy</ToggleGroupItem>
-                        <ToggleGroupItem value="week" data-testid="reportes-periodo-week" className="min-h-9">7 días</ToggleGroupItem>
-                        <ToggleGroupItem value="month" data-testid="reportes-periodo-month" className="min-h-9">30 días</ToggleGroupItem>
+                        <ToggleGroupItem value="day" data-testid="reportes-periodo-day" className="min-h-11 sm:min-h-9">Hoy</ToggleGroupItem>
+                        <ToggleGroupItem value="week" data-testid="reportes-periodo-week" className="min-h-11 sm:min-h-9">7 días</ToggleGroupItem>
+                        <ToggleGroupItem value="month" data-testid="reportes-periodo-month" className="min-h-11 sm:min-h-9">30 días</ToggleGroupItem>
                     </ToggleGroup>
                 </div>
             </div>
@@ -187,30 +187,30 @@ function ReportesView({ userKey, isOwner }) {
                 <>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <Card><CardContent className="p-5">
-                            <div className="flex items-center justify-between">
-                                <div><div className="text-xs uppercase text-muted-foreground tracking-wide">Total ventas</div>
-                                    <div className="font-display text-2xl font-semibold tabular-nums mt-1" data-testid="reportes-total-ventas">{fmtMoney(data.total_sales)}</div></div>
-                                <TrendingUp className="h-6 w-6 text-primary" />
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Total ventas</div>
+                                    <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1" data-testid="reportes-total-ventas">{fmtMoney(data.total_sales)}</div></div>
+                                <TrendingUp className="h-6 w-6 text-primary shrink-0" />
                             </div>
                         </CardContent></Card>
                         <Card><CardContent className="p-5">
-                            <div className="flex items-center justify-between">
-                                <div><div className="text-xs uppercase text-muted-foreground tracking-wide">Pedidos pagados</div>
-                                    <div className="font-display text-2xl font-semibold tabular-nums mt-1">{data.orders_count}</div></div>
-                                <ShoppingCart className="h-6 w-6 text-primary" />
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Pedidos pagados</div>
+                                    <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1">{data.orders_count}</div></div>
+                                <ShoppingCart className="h-6 w-6 text-primary shrink-0" />
                             </div>
                         </CardContent></Card>
                         <Card><CardContent className="p-5">
-                            <div className="flex items-center justify-between">
-                                <div><div className="text-xs uppercase text-muted-foreground tracking-wide">Ticket promedio</div>
-                                    <div className="font-display text-2xl font-semibold tabular-nums mt-1">{fmtMoney(data.avg_ticket)}</div></div>
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Ticket promedio</div>
+                                    <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1">{fmtMoney(data.avg_ticket)}</div></div>
                             </div>
                         </CardContent></Card>
                         <Card><CardContent className="p-5">
-                            <div className="flex items-center justify-between">
-                                <div><div className="text-xs uppercase text-muted-foreground tracking-wide">Cancelados</div>
-                                    <div className="font-display text-2xl font-semibold tabular-nums mt-1">{data.cancelled_orders}</div></div>
-                                <Ban className="h-6 w-6 text-destructive" />
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Cancelados</div>
+                                    <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1">{data.cancelled_orders}</div></div>
+                                <Ban className="h-6 w-6 text-destructive shrink-0" />
                             </div>
                         </CardContent></Card>
                     </div>

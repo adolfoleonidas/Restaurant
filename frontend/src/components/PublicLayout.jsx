@@ -38,8 +38,10 @@ export const PublicLayout = () => {
         </Sheet>
     );
 
+    // El hueco del dock (barra + área segura) sigue las variables del index.css
+    // en lugar del pb-24 fijo, que quedaba corto bajo la barra de gestos.
     return (
-        <div className={`min-h-screen flex flex-col bg-background ${showDock ? 'pb-24 md:pb-0' : ''}`}>
+        <div className={`min-h-dvh flex flex-col bg-background ${showDock ? 'pb-[calc(var(--bottom-nav-h)+var(--safe-bottom)+1rem)] md:pb-0' : ''}`}>
             <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur-md">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-3">
                     <Link to="/" className="min-w-0">
@@ -47,7 +49,9 @@ export const PublicLayout = () => {
                     </Link>
                     <div className="flex items-center gap-3">
                         <ThemeToggle />
-                        <Link to="/login" className="inline-flex page-kicker hover:text-primary transition-colors">
+                        {/* El enlace "Salón" medía ~16 px de alto (page-kicker):
+                            en táctil necesita los 44 px. */}
+                        <Link to="/login" className="inline-flex h-11 items-center px-2 -mx-2 page-kicker hover:text-primary transition-colors">
                             Salón
                         </Link>
                         {showCart && (
@@ -56,7 +60,7 @@ export const PublicLayout = () => {
                                 {displayCount > 0 ? (
                                     <span className="hidden md:flex flex-col items-start leading-tight text-left">
                                         <span className="font-mono text-sm tabular-nums" data-testid="public-cart-total">{fmtMoney(displayTotal)}</span>
-                                        <span className="text-[10px] font-medium opacity-90">{displayCount} {displayCount === 1 ? 'plato' : 'platos'}</span>
+                                        <span className="text-xs font-medium opacity-90">{displayCount} {displayCount === 1 ? 'plato' : 'platos'}</span>
                                     </span>
                                 ) : (
                                     <span className="hidden sm:inline">{cartMode ? 'Para llevar' : (isActive ? 'Tu pedido' : 'Pedido')}</span>
@@ -82,10 +86,10 @@ export const PublicLayout = () => {
                             <span className="font-mono tabular-nums text-primary font-semibold shrink-0">{fmtMoney(liveOrder.total)}</span>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                            <Button asChild variant="outline" size="sm" className="h-8">
+                            <Button asChild variant="outline" size="sm">
                                 <Link to={`/pedido/${liveOrder.tracking_code}`} data-testid="public-order-bar-track">Ver estado</Link>
                             </Button>
-                            <button onClick={clearMeta} aria-label="Ocultar mi pedido" className="text-muted-foreground hover:text-foreground transition-colors" data-testid="public-order-bar-dismiss">
+                            <button onClick={clearMeta} aria-label="Ocultar mi pedido" className="grid h-11 w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors" data-testid="public-order-bar-dismiss">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
@@ -112,14 +116,16 @@ export const PublicLayout = () => {
                     <div className="text-sm">
                         <div className="page-kicker mb-3">Redes</div>
                         <div className="flex flex-col gap-1 text-muted-foreground">
+                            {/* min-h-8: los enlaces de redes medían 20 px de
+                                alto y no llegaban al mínimo táctil de 24 px. */}
                             {restaurant?.social_instagram && (
-                                <a href={`https://instagram.com/${restaurant.social_instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">{restaurant.social_instagram}</a>
+                                <a href={`https://instagram.com/${restaurant.social_instagram.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center hover:underline">{restaurant.social_instagram}</a>
                             )}
                             {restaurant?.social_facebook && (
-                                <a href={restaurant.social_facebook.startsWith('http') ? restaurant.social_facebook : `https://facebook.com/${restaurant.social_facebook.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="hover:underline">Facebook</a>
+                                <a href={restaurant.social_facebook.startsWith('http') ? restaurant.social_facebook : `https://facebook.com/${restaurant.social_facebook.replace(/^@/, '')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center hover:underline">Facebook</a>
                             )}
                             {restaurant?.social_whatsapp && (
-                                <a href={`https://wa.me/${restaurant.social_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="hover:underline">WhatsApp</a>
+                                <a href={`https://wa.me/${restaurant.social_whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="inline-flex min-h-8 items-center hover:underline">WhatsApp</a>
                             )}
                         </div>
                         <div className="text-xs text-muted-foreground mt-6">© {new Date().getFullYear()} {restaurant?.name}</div>
@@ -141,7 +147,7 @@ export const PublicLayout = () => {
                 </div>
             )}
             {cartSheet}
-            <Toaster position="bottom-center" offset={showDock ? 88 : 24} />
+            <Toaster position="bottom-center" offset={showDock ? 120 : 24} />
         </div>
     );
 };

@@ -10,29 +10,34 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppShell } from '@/components/AppShell';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { PublicLayout } from '@/components/PublicLayout';
+// Las pantallas que ve el cliente al escanear el QR se cargan de entrada: son
+// la puerta de la app y pesan poco. Las del POS se cargan al entrar (ver
+// AppShell), para que quien solo quiere ver la carta no descargue el salón, la
+// caja ni las gráficas de reportes.
 import Login from '@/pages/Login';
-import Dashboard from '@/pages/Dashboard';
-import Salon from '@/pages/Salon';
-import Local from '@/pages/Local';
-import Pedidos from '@/pages/Pedidos';
-import PedidoNuevo from '@/pages/PedidoNuevo';
-import PedidoDetalle from '@/pages/PedidoDetalle';
-import Cocina from '@/pages/Cocina';
-import Caja from '@/pages/Caja';
-import Comprobantes from '@/pages/Comprobantes';
-import Productos from '@/pages/Productos';
-import Combos from '@/pages/Combos';
-import Categorias from '@/pages/Categorias';
-import Usuarios from '@/pages/Usuarios';
-import Reportes from '@/pages/Reportes';
-import Configuracion from '@/pages/Configuracion';
-import Pagos from '@/pages/Pagos';
-import Disponibilidad from '@/pages/Disponibilidad';
 import Unauthorized from '@/pages/Unauthorized';
 import Landing from '@/pages/Landing';
 import CategoriaPage from '@/pages/CategoriaPage';
 import Checkout from '@/pages/Checkout';
 import PedidoTracking from '@/pages/PedidoTracking';
+
+const Dashboard = React.lazy(() => import('@/pages/Dashboard'));
+const Salon = React.lazy(() => import('@/pages/Salon'));
+const Local = React.lazy(() => import('@/pages/Local'));
+const Pedidos = React.lazy(() => import('@/pages/Pedidos'));
+const PedidoNuevo = React.lazy(() => import('@/pages/PedidoNuevo'));
+const PedidoDetalle = React.lazy(() => import('@/pages/PedidoDetalle'));
+const Cocina = React.lazy(() => import('@/pages/Cocina'));
+const Caja = React.lazy(() => import('@/pages/Caja'));
+const Comprobantes = React.lazy(() => import('@/pages/Comprobantes'));
+const Productos = React.lazy(() => import('@/pages/Productos'));
+const Combos = React.lazy(() => import('@/pages/Combos'));
+const Categorias = React.lazy(() => import('@/pages/Categorias'));
+const Usuarios = React.lazy(() => import('@/pages/Usuarios'));
+const Reportes = React.lazy(() => import('@/pages/Reportes'));
+const Configuracion = React.lazy(() => import('@/pages/Configuracion'));
+const Pagos = React.lazy(() => import('@/pages/Pagos'));
+const Disponibilidad = React.lazy(() => import('@/pages/Disponibilidad'));
 
 function ScrollToTop() {
     const { pathname } = useLocation();

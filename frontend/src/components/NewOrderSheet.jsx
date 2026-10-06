@@ -129,7 +129,7 @@ export default function NewOrderSheet({
                 <SheetTitle className="sr-only">Nuevo pedido</SheetTitle>
                 <div className="p-5 border-b">
                     <p className="page-kicker">Nuevo pedido</p>
-                    <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1" data-testid="nuevo-pedido-tipos">
+                    <div className="scroll-x mt-2 flex gap-1.5 pb-1" data-testid="nuevo-pedido-tipos">
                         {ORDER_AREAS.map((area) => (
                             <button
                                 key={area.key}

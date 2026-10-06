@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+/* Las fuentes se cargan desde public/index.html en una sola petición con
+   display=swap. Antes había aquí un @import de Google Fonts que bloqueaba el
+   render y duplicaba familias con el <link>. */
 
 @tailwind base;
 @tailwind components;
@@ -10,11 +12,26 @@
    de toda la app sin tocar componentes.
    ============================================================ */
 
+html {
+    /* iOS agranda el texto al girar el dispositivo si no se fija esto. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
 body {
     margin: 0;
     font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* El rebote del scroll en iOS no debe arrastrar la interfaz fija. */
+    overscroll-behavior-y: none;
+}
+
+/* 100dvh sigue a la barra de direcciones del móvil; 100vh no. */
+html,
+body,
+#root {
+    min-height: 100dvh;
 }
 
 .font-display {
@@ -223,7 +240,7 @@ body {
 }
 
 .App {
-    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 ::-webkit-scrollbar {
@@ -240,3 +257,140 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--soft);
 }
+
+/* ============================================================
+   ADAPTACIÓN A DISPOSITIVOS (móvil primero)
+   Utilidades compartidas por todas las pantallas. Nada de esto
+   cambia el escritorio: todo vive detrás de max-width: 767px o
+   se apoya en dvh / env(safe-area-*), que en escritorio valen 0.
+   ============================================================ */
+
+/* Estas clases viven en la capa `components` a propósito: Tailwind emite sus
+   utilidades en la capa `utilities`, que va después, así que un
+   `sm:overflow-visible` sobre `.scroll-x` puede ganarle. Sueltas al final del
+   archivo ganarían por orden de aparición y anularían esa utilidad. */
+@layer components {
+
+:root {
+    /* Notch y barra de gestos. En escritorio y en navegadores sin
+       soporte, env() cae al valor por defecto: 0px. */
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    /* Alto de la barra superior y de la barra inferior de navegación. */
+    --header-h: 3.5rem;
+    --bottom-nav-h: 3.75rem;
+}
+@media (min-width: 768px) {
+    :root {
+        --header-h: 4rem;
+        --bottom-nav-h: 0rem;
+    }
+}
+
+/* Cabecera fija: reserva el alto y el área segura superior (notch). El
+   padding lateral lo ponen las utilidades del componente
+   (px-3 sm:px-4 md:px-6), para no pisar la densidad de escritorio. */
+.app-header {
+    height: calc(var(--header-h) + var(--safe-top));
+    padding-top: var(--safe-top);
+}
+
+/* Contenido de una pantalla con barra inferior: deja hueco para que el
+   último elemento no quede debajo de la barra ni de la barra de gestos.
+   En escritorio la barra no existe y el valor sigue la escala de padding
+   de la app (p-4 / md:p-6 / lg:p-8), así que no pelea con las utilidades
+   de Tailwind: esta clase es la única que fija el padding inferior. */
+.has-bottom-nav {
+    padding-bottom: calc(var(--bottom-nav-h) + var(--safe-bottom) + 1rem);
+}
+@media (min-width: 768px) {
+    .has-bottom-nav {
+        padding-bottom: 1.5rem;
+    }
+}
+@media (min-width: 1024px) {
+    .has-bottom-nav {
+        padding-bottom: 2rem;
+    }
+}
+
+/* Barra inferior de navegación en móvil. */
+.app-bottom-nav {
+    height: calc(var(--bottom-nav-h) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+}
+
+/* Scroll horizontal para tablas y filas anchas: en móvil se desliza en
+   lugar de desbordar la página. `overscroll-behavior-x` evita que el
+   gesto se propague al historial del navegador. */
+.scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+/* La barra de scroll no debe tapar la última fila en pantallas táctiles. */
+@media (hover: none) {
+    .scroll-x::-webkit-scrollbar {
+        height: 4px;
+    }
+    /* En Android la barra no es overlay: 10 px de alto se comen una fila
+       entera del pase de cocina o de una tabla de comprobantes. */
+    ::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+}
+
+/* Área táctil mínima de 44x44 px sin cambiar el tamaño visual del icono. */
+.touch-target {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+/* Feedback táctil: sin el destello gris de Android, que se ve sucio sobre
+   los botones de color. */
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="option"] {
+    -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 767px) {
+    /* iOS hace zoom automático al enfocar un campo con fuente < 16px y
+       después no lo revierte: la pantalla queda descolocada. El !important
+       es deliberado, para ganarle a las clases text-sm/text-xs de Tailwind. */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+
+    /* En móvil el texto de ayuda y las etiquetas no bajan de 12 px. */
+    .page-kicker {
+        font-size: 0.75rem;
+    }
+
+    /* Las filas de acciones se apilan si no caben, en lugar de desbordar. */
+    .action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+}
+
+/* Impresión de tickets y comprobantes desde el móvil. */
+@media print {
+    .app-header,
+    .app-bottom-nav,
+    .no-print {
+        display: none !important;
+    }
+}
+
+} /* cierra @layer components */

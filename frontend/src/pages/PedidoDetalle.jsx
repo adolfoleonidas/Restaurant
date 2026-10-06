@@ -218,7 +218,9 @@ export default function PedidoDetalle() {
     }[order.status] || order.status;
 
     return (
-        <div className="space-y-4 pb-32" data-testid="pedido-detalle-root">
+        <div className="space-y-4 pb-[calc(8rem+var(--bottom-nav-h)+var(--safe-bottom))] md:pb-32" data-testid="pedido-detalle-root">
+            {/* La reserva inferior suma el hueco de la barra de navegación móvil,
+                que ahora empuja la barra fija de acciones hacia arriba. */}
             <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Volver al salón" onClick={() => navigate('/salon')} data-testid="pedido-back-button">
                     <ChevronLeft className="h-5 w-5" />
@@ -236,7 +238,7 @@ export default function PedidoDetalle() {
                 <div className="flex items-center gap-2 text-sm">
                     <span>Reasignar mozo</span>
                     <select
-                        className="h-10 rounded-sm border border-border bg-background px-2"
+                        className="h-11 sm:h-10 rounded-sm border border-border bg-background px-2"
                         aria-label="Reasignar mozo"
                         value={order.created_by || ''}
                         onChange={(e) => e.target.value && reassign(e.target.value)}
@@ -262,7 +264,7 @@ export default function PedidoDetalle() {
                                         <button
                                             type="button"
                                             onClick={() => removeItem(it)}
-                                            className="text-muted-foreground hover:text-destructive"
+                                            className="flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-destructive md:h-4 md:w-4"
                                             aria-label={`Cancelar ${it.product_name}`}
                                             data-testid={`pedido-item-cancel-${it.id}`}
                                         >
@@ -307,10 +309,10 @@ export default function PedidoDetalle() {
                         <Search className="h-4 w-4 absolute left-3 top-3.5 text-muted-foreground" />
                         <Input className="pl-9 h-12 text-base" placeholder="Agregar otro plato" value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>
-                    <div className="flex gap-2 overflow-x-auto">
-                        <button type="button" onClick={() => setCategoryId('all')} className={`shrink-0 px-4 py-2 rounded-full text-sm border ${categoryId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>Todas</button>
+                    <div className="scroll-x flex gap-2">
+                        <button type="button" onClick={() => setCategoryId('all')} className={`min-h-11 md:min-h-0 shrink-0 px-4 py-2 rounded-full text-sm border ${categoryId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>Todas</button>
                         {(categories || []).map((c) => (
-                            <button key={c.id} type="button" onClick={() => setCategoryId(c.id)} className={`shrink-0 px-4 py-2 rounded-full text-sm border ${categoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{c.name}</button>
+                            <button key={c.id} type="button" onClick={() => setCategoryId(c.id)} className={`min-h-11 md:min-h-0 shrink-0 px-4 py-2 rounded-full text-sm border ${categoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}>{c.name}</button>
                         ))}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -333,7 +335,9 @@ export default function PedidoDetalle() {
 
             <div className="text-right font-mono text-lg font-bold tabular-nums" data-testid="pedido-total">{fmtMoney(order.total)}</div>
 
-            <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
+            {/* Barra fija de acciones: en móvil sube por encima de la barra inferior
+                de navegación (las dos están en z-40 y se tapaban). */}
+            <div className="fixed bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
                 {order.status === 'nuevo' && ['admin', 'mozo'].includes(user.role) && (
                     <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
                         {order.acceptance_status === 'pendiente' ? 'Aceptar y enviar a cocina' : 'Enviar a cocina'}

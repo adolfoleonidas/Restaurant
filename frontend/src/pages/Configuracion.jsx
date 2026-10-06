@@ -116,7 +116,9 @@ function Restaurante() {
             <div className="md:col-span-2">
                 <Label>Seguimiento de preparación</Label>
                 <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    {/* El botón de Radix toma su nombre del valor elegido; si el
+                        ajuste llega vacío, el disparador queda sin nombre. */}
+                    <SelectTrigger aria-label="Seguimiento de preparación"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="simple">Sencillo — Pendiente → Servido</SelectItem>
                         <SelectItem value="detailed">Detallado — Enviado → Preparando → Listo → Entregado</SelectItem>
@@ -125,8 +127,8 @@ function Restaurante() {
                 <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con servido. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
             </div>
             <div className="md:col-span-2">
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Switch checked={!!r.auto_release_table} onCheckedChange={(v) => setR({ ...r, auto_release_table: v })} data-testid="config-auto-release" />
+                <label className="flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:min-h-0">
+                    <Switch checked={!!r.auto_release_table} onCheckedChange={(v) => setR({ ...r, auto_release_table: v })} data-testid="config-auto-release" aria-label="Liberar mesa automáticamente al cobrar" />
                     Liberar mesa automáticamente al cobrar
                 </label>
                 <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
@@ -201,12 +203,12 @@ function Marca() {
                                 : <ImageIcon className="h-6 w-6 text-muted-foreground" />}
                         </div>
                         <div className="flex flex-col gap-1.5">
-                            <label className="text-sm underline cursor-pointer">
+                            <label className="inline-flex min-h-touch items-center rounded-md border px-3 text-sm underline cursor-pointer">
                                 <input type="file" accept="image/*" className="hidden" onChange={onFile('logo_url')} data-testid="marca-logo-input" />
                                 Subir logo
                             </label>
                             {r.logo_url && (
-                                <button type="button" className="text-xs text-destructive text-left" onClick={() => set({ logo_url: '' })} data-testid="marca-logo-clear">Quitar</button>
+                                <button type="button" className="inline-flex min-h-touch items-center text-xs text-destructive text-left" onClick={() => set({ logo_url: '' })} data-testid="marca-logo-clear">Quitar</button>
                             )}
                         </div>
                     </div>
@@ -221,12 +223,12 @@ function Marca() {
                             : <span className="text-xs text-muted-foreground">Sin portada</span>}
                     </div>
                     <div className="flex items-center gap-3">
-                        <label className="text-sm underline cursor-pointer">
+                        <label className="inline-flex min-h-touch items-center rounded-md border px-3 text-sm underline cursor-pointer">
                             <input type="file" accept="image/*" className="hidden" onChange={onFile('cover_url')} data-testid="marca-cover-input" />
                             Subir portada
                         </label>
                         {r.cover_url && (
-                            <button type="button" className="text-xs text-destructive" onClick={() => set({ cover_url: '' })} data-testid="marca-cover-clear">Quitar</button>
+                            <button type="button" className="inline-flex min-h-touch items-center text-xs text-destructive" onClick={() => set({ cover_url: '' })} data-testid="marca-cover-clear">Quitar</button>
                         )}
                     </div>
                     <p className="text-xs text-muted-foreground">Imagen ancha (ej. 1600×600) que encabeza la carta web.</p>
@@ -320,6 +322,10 @@ function Funciones() {
                             checked={Boolean(features[def.key])}
                             onCheckedChange={(value) => setFeatures((current) => ({ ...current, [def.key]: value }))}
                             data-testid={`funcion-${def.key}`}
+                            /* La fila no puede ser un <label>: el navegador
+                               reenviaría el clic al switch y lo apagaría otra
+                               vez. El nombre accesible se da aquí. */
+                            aria-label={def.label}
                         />
                     </div>
                 ))}
@@ -424,7 +430,7 @@ function Datos() {
 
     return (
         <Card><CardContent className="p-5">
-            <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2">
                     <Database className="h-5 w-5 text-primary" /> Datos del sistema
                 </h2>

@@ -163,7 +163,8 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
                 <div className="space-y-2">
                     <video ref={videoRef} autoPlay playsInline muted className="max-h-64 w-full rounded-xl bg-black object-contain" data-testid="comprobante-camara" />
                     <Button type="button" className="h-11 w-full" disabled={disabled} onClick={capture} data-testid="comprobante-capturar">Usar esta foto</Button>
-                    <Button type="button" variant="outline" className="h-10 w-full" onClick={closeCamera}>Cerrar cámara</Button>
+                    {/* Sin altura propia: el primitivo ya da 44 px en móvil. */}
+                    <Button type="button" variant="outline" className="w-full" onClick={closeCamera}>Cerrar cámara</Button>
                 </div>
             )}
             {message && <p role="status" className="text-sm text-destructive" data-testid="comprobante-captura-error">{message}</p>}

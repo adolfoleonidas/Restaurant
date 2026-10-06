@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Grid2X2, Plus, Pencil, Trash2, MapPin, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
+import { TABLE_STATUS_LABELS } from '@/lib/format';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -67,13 +68,13 @@ export function SucursalesPanel() {
             <div><h2 className="font-display text-lg font-semibold">Sucursales</h2><p className="text-sm text-muted-foreground">El recojo público solo aparece en sucursales habilitadas explícitamente.</p></div>
             <div className="rounded-xl border p-4 space-y-3">
                 {fields(draft, (key, value) => setDraft((current) => ({ ...current, [key]: value })), 'branch-new')}
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.pickup_enabled} onChange={(e) => setDraft((current) => ({ ...current, pickup_enabled: e.target.checked }))} data-testid="branch-pickup-enabled-new" />Habilitar recojo público</label>
+                <label className="flex min-h-touch items-center gap-2 text-sm"><input type="checkbox" className="h-6 w-6 shrink-0" checked={draft.pickup_enabled} onChange={(e) => setDraft((current) => ({ ...current, pickup_enabled: e.target.checked }))} data-testid="branch-pickup-enabled-new" />Habilitar recojo público</label>
                 <Button onClick={create} disabled={saving || !draft.name.trim() || !draft.timezone.trim() || !draft.business_day_cutoff} data-testid="branch-create">Crear sucursal</Button>
             </div>
             {loading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : branches.map((branch) => (
                 <div key={branch.id} className="rounded-xl border p-4 space-y-3" data-testid={`branch-row-${branch.id}`}>
                     {fields(branch, (key, value) => update(branch.id, key, value), `branch-${branch.id}`)}
-                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
+                    <label className="flex min-h-touch items-center gap-2 text-sm"><input type="checkbox" className="h-6 w-6 shrink-0" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
                     <Button onClick={() => save(branch)} disabled={saving || !branch.name?.trim() || !branch.timezone?.trim() || !branch.business_day_cutoff} data-testid={`branch-save-${branch.id}`}>Guardar sucursal</Button>
                 </div>
             ))}
@@ -332,9 +333,9 @@ export function TablesManager() {
 
     return (
         <Card><CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2"><Grid2X2 className="h-5 w-5" /> Mesas</h2>
-                <Button onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
+                <Button className="h-11 sm:h-10" onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
             </div>
             <p className="text-xs text-muted-foreground mb-4">
                 Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
@@ -344,12 +345,13 @@ export function TablesManager() {
                     const branchInfo = getTableBranchInfo(t);
                     return (
                         <div key={t.id} className="border rounded-xl p-3" data-testid={`mesa-config-row-${t.id}`}>
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} />
-                                    <div>
-                                        <div className="font-medium">{t.name}</div>
-                                        <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax</div>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    {/* El color solo no comunica en táctil (no hay tooltip): estado también en texto */}
+                                    <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${TABLE_STATUS_DOT[t.status] || 'bg-gray-400'}`} title={t.status} aria-hidden="true" />
+                                    <div className="min-w-0">
+                                        <div className="font-medium truncate">{t.name}</div>
+                                        <div className="text-xs text-muted-foreground">{t.area} · {t.capacity} pax · {TABLE_STATUS_LABELS[t.status] || t.status}</div>
                                         <div className="text-xs mt-1" data-testid={`mesa-config-branch-${t.id}`}>
                                             {branchInfo.type === 'explicit' && (
                                                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
@@ -381,7 +383,8 @@ export function TablesManager() {
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>{editing ? 'Editar mesa' : 'Nueva mesa'}</DialogTitle></DialogHeader>
-                    <div className="grid grid-cols-2 gap-3">
+                    {/* Una columna en móvil: a 360 px cada campo de la rejilla de 2 quedaba en ~136 px */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div><Label>Número</Label><Input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
                         <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
                         <div><Label>Capacidad</Label><Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
@@ -402,7 +405,7 @@ export function TablesManager() {
                             <Label htmlFor="mesa-form-branch">Sucursal</Label>
                             <select
                                 id="mesa-form-branch"
-                                className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                className="w-full h-11 rounded-md border border-input bg-background px-3 py-2 text-sm"
                                 value={form.branch_id}
                                 onChange={(e) => setForm({ ...form, branch_id: e.target.value })}
                                 disabled={branchesLoading || branchesError || saving}
@@ -492,7 +495,7 @@ export default function Local({ defaultTab = 'sucursales' }) {
                     <Button
                         key={t.key}
                         variant={tab === t.key ? 'default' : 'outline'}
-                        className="h-10"
+                        className="h-11 sm:h-10"
                         onClick={() => setTab(t.key)}
                         data-testid={`local-tab-${t.key}`}
                     >

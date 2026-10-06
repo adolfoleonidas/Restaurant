@@ -67,8 +67,13 @@ export default function Login() {
         setPassword(d.password);
     };
 
+    // min-h-dvh + overflow-y-auto: en móvil apaisado (844×390) el formulario
+    // (login + cuentas demo) no cabe y el recorte dejaba inalcanzable la parte
+    // de arriba. El scroll vive aquí y no en la página; `my-auto` mantiene el
+    // panel centrado mientras sobre alto y, cuando el contenido desborda, cae a
+    // margen 0 (no recorta por arriba como haría `items-center` solo).
     return (
-        <main className="min-h-screen w-full flex items-stretch bg-background">
+        <main className="min-h-dvh overflow-y-auto w-full flex items-stretch bg-background">
             {/* El panel hero está oculto en móvil (hidden lg:flex): el h1 de la
                 página se coloca aquí para que siempre exista un único encabezado
                 de nivel 1 visible o accesible. */}
@@ -87,7 +92,7 @@ export default function Login() {
                 </div>
             </div>
             <div className="flex-1 flex items-center justify-center p-6">
-                <div className="w-full max-w-md">
+                <div className="w-full max-w-md my-auto">
                     <div className="flex items-start justify-between mb-10">
                         <Link to="/" className="inline-block">
                             <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
@@ -121,7 +126,7 @@ export default function Login() {
                                     data-testid="login-password-input"
                                     className="h-11 pr-10 rounded-sm"
                                 />
-                                <button type="button" onClick={() => setShow(!show)} aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'} className="absolute right-1 top-1 grid h-9 w-9 place-items-center text-muted-foreground" data-testid="login-toggle-password">
+                                <button type="button" onClick={() => setShow(!show)} aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'} className="absolute right-1 top-1 grid h-11 w-11 sm:h-9 sm:w-9 place-items-center text-muted-foreground" data-testid="login-toggle-password">
                                     {show ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                 </button>
                             </div>
@@ -146,7 +151,7 @@ export default function Login() {
                                     className="flex flex-col items-start rounded-sm border border-border bg-secondary/40 hover:bg-secondary px-3 py-2.5 text-left transition-colors"
                                 >
                                     <span className="text-xs font-semibold">{ROLE_LABELS[d.role]}</span>
-                                    <span className="text-[11px] text-muted-foreground truncate w-full">{d.email}</span>
+                                    <span className="text-xs text-muted-foreground break-all w-full">{d.email}</span>
                                 </button>
                             ))}
                         </div>

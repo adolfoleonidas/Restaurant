@@ -168,7 +168,18 @@ export const COLLECT = () => {
     const name = (el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.value || '').trim();
     const labelledBy = el.getAttribute('aria-labelledby');
     const imgAlt = el.querySelector && el.querySelector('img[alt]:not([alt=""])');
-    if (!name && !labelledBy && !imgAlt) {
+    // Un control envuelto en un <label> toma su texto como nombre accesible, y
+    // otro puede tomarlo de un <label for="id"> remoto. Sin estas dos vías, las
+    // casillas de Local y los inputs de archivo de Configuración contaban como
+    // anónimos aunque axe (la regla `label`) los da por correctos.
+    const wrappingLabel = el.closest && el.closest('label');
+    const wrappingText = wrappingLabel ? (wrappingLabel.textContent || '').trim() : '';
+    let forText = '';
+    if (!wrappingText && el.id && typeof CSS !== 'undefined' && CSS.escape) {
+      const remote = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      forText = remote ? (remote.textContent || '').trim() : '';
+    }
+    if (!name && !wrappingText && !forText && !labelledBy && !imgAlt) {
       nameless.push({ selector: cssPath(el), tag: el.tagName.toLowerCase(), type: el.getAttribute('type') || '' });
     }
   }
@@ -244,6 +255,37 @@ export const COLLECT = () => {
 
   const audit = window.__audit || { cls: 0, longTasks: 0, longTaskMs: 0, rejections: [], shifts: [] };
 
+  // ¿Cuánta pantalla se lleva el chrome antes del contenido operativo? El Salón
+  // acumula cabecera, buscador, filtros, zonas, leyenda y la banda "Ahora": si
+  // la primera tarjeta cae por debajo del pliegue, el mozo abre la pantalla y no
+  // ve ninguna mesa. Se mide para poder recortar con datos, no a ojo.
+  const cardSelector = '[data-testid^="mesa-card-"], [data-testid^="mesa-grupo-"]';
+  const cards = Array.from(document.querySelectorAll(cardSelector));
+  const firstCardTop = cards.length
+    ? Math.round(cards[0].getBoundingClientRect().top + window.scrollY)
+    : null;
+  const fold = {
+    cardSelector,
+    cardCount: cards.length,
+    firstCardTop,
+    // Tarjetas que asoman en el primer pantallazo, sin desplazar.
+    cardsAboveFold: cards.filter((el) => el.getBoundingClientRect().top < vh).length,
+    // Bloques de chrome que empujan la rejilla hacia abajo, en orden.
+    chromeBlocks: [
+      ['header', 'header, [data-testid="salon-root"] > div:first-child'],
+      ['filtros', '[data-testid="salon-filtros"]'],
+      ['zonas', '[data-testid="salon-zonas"]'],
+      ['leyenda', '[data-testid="salon-legend"]'],
+      ['ahora', '[data-testid="salon-ahora"]'],
+    ].map(([name, selector]) => {
+      const el = document.querySelector(selector);
+      return el ? { name, height: Math.round(el.getBoundingClientRect().height) } : null;
+    }).filter(Boolean),
+    miniPlayer: document.querySelector('[data-testid="salon-mini"]')
+      ? Math.round(document.querySelector('[data-testid="salon-mini"]').getBoundingClientRect().height)
+      : 0,
+  };
+
   return {
     url: location.href,
     path: location.pathname,
@@ -252,6 +294,7 @@ export const COLLECT = () => {
     dark: document.documentElement.classList.contains('dark') || document.body.classList.contains('dark'),
     viewport: { w: vw, h: vh },
     docHeight: document.documentElement.scrollHeight,
+    fold,
     overflowX: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - vw,
     offenders: offenders.slice(0, 12),
     smallTargets: smallTargets.slice(0, 15),
@@ -313,6 +356,9 @@ export async function runAxe(page, axePath) {
       count: v.nodes.length,
       sample: v.nodes.slice(0, 3).map((n) => ({
         target: (n.target || []).join(' ').slice(0, 120),
+        // El HTML del nodo: sin esto, un fallo de contraste se queda en "un div
+        // con fondo #fff6db" y hay que adivinar cuál es.
+        html: String(n.html || '').slice(0, 200),
         summary: String(n.failureSummary || '').split('\n').slice(0, 3).join(' | ').slice(0, 260),
       })),
     }));
