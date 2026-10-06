@@ -327,13 +327,15 @@ td.r{text-align:right}
   .page-head h1{font-size:30px}
   .tables{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
   .t{min-height:144px}
-  .detail{grid-template-columns:minmax(0,1.4fr) minmax(280px,.65fr);gap:18px}
+  .detail{grid-template-columns:minmax(0,1.4fr) minmax(280px,.65fr);gap:18px;align-items:start}
   .pos{grid-template-columns:minmax(0,1fr) 380px}
   .summary,.ticket{position:sticky;top:calc(var(--hdr) + 12px)}
+  .summary{align-content:start}
   .detail-head h2{font-size:24px}
   .ticket{transform:none;left:auto;right:auto;bottom:auto;z-index:auto;border-radius:var(--r);max-height:calc(100vh - 110px);box-shadow:var(--sh);padding:16px}
   .ticket .close,.fab,.scrim{display:none!important}
   .actbar{position:static;padding:0;border:0;box-shadow:none;background:transparent;flex-direction:column}
+  .actbar .btn{flex:0 0 auto}
   .prods{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
   .kds{grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
   .grid2{grid-template-columns:1.4fr 1fr;align-items:start}
