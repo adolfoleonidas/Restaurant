@@ -141,4 +141,63 @@ describe('Cocina priority board', () => {
         await act(async () => root.unmount());
         container.remove();
     });
+
+    it('pinta en rojo los minutos desde los 15 y mantiene el aviso intermedio de los 10', async () => {
+        const minutesAgo = (min) => new Date(Date.now() - min * 60 * 1000).toISOString();
+        mockOrders.push(
+            {
+                id: 'order-late', order_number: 40, order_type: 'mesa', table_id: 'table-5', status: 'pendiente',
+                items: [{ id: 'late-item', status: 'en_preparacion', quantity: 1, product_name: 'Guiso', added_at: minutesAgo(20) }],
+            },
+            {
+                id: 'order-warn', order_number: 41, order_type: 'mesa', table_id: 'table-5', status: 'pendiente',
+                items: [{ id: 'warn-item', status: 'en_preparacion', quantity: 1, product_name: 'Milanesa', added_at: minutesAgo(12) }],
+            },
+            {
+                id: 'order-fresh', order_number: 42, order_type: 'mesa', table_id: 'table-5', status: 'pendiente',
+                items: [{ id: 'fresh-item', status: 'en_preparacion', quantity: 1, product_name: 'Ensalada', added_at: minutesAgo(3) }],
+            }
+        );
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        try {
+            await act(async () => root.render(<Cocina />));
+            const timerOf = (number) => container.querySelector(`[data-testid="cocina-ticket-${number}-fuego"] .font-mono`);
+            expect(timerOf(40).className).toContain('text-destructive');
+            expect(timerOf(41).className).toContain('text-primary');
+            expect(timerOf(42).className).toContain('text-muted-foreground');
+        } finally {
+            await act(async () => root.unmount());
+            container.remove();
+            mockOrders.splice(-3, 3);
+            document.body.innerHTML = '';
+        }
+    });
+
+    it('etiqueta el origen del ticket: Mozo para staff y carta web para web/QR', async () => {
+        mockOrders.push({
+            id: 'order-web', order_number: 24, order_type: 'mesa', table_id: 'table-5', source: 'public', status: 'pendiente',
+            items: [{ id: 'web-item', status: 'pendiente', quantity: 1, product_name: 'Tacos', added_at: '2026-09-28T10:10:00Z' }],
+        });
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        try {
+            await act(async () => root.render(<Cocina />));
+            // Los pedidos de staff (sin `source` público) salen como "👤 Mozo".
+            const staffTicket = container.querySelector('[data-testid="cocina-ticket-22-fuego"]');
+            expect(staffTicket.textContent).toContain('👤 Mozo');
+            expect(staffTicket.textContent).not.toContain('carta web');
+            // Los pedidos web/QR conservan "carta web".
+            const webTicket = container.querySelector('[data-testid="cocina-ticket-24-llegan"]');
+            expect(webTicket.textContent).toContain('carta web');
+            expect(webTicket.textContent).not.toContain('Mozo');
+        } finally {
+            await act(async () => root.unmount());
+            container.remove();
+            mockOrders.splice(-1, 1);
+            document.body.innerHTML = '';
+        }
+    });
 });

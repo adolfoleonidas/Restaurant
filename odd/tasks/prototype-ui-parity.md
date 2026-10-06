@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Active
+Status: Slices 1–5 complete (2026-10-06); deferred items under Notes / deviations
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -44,10 +44,16 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S4-2: Open accounts show elapsed minutes (`elapsedMinutes`) and a "Ver" action (`caja-ver-{n}`) opening `/pedidos/:id` as a real anchor. Active/ready counts per row were not in the row data — reported, not implemented.
 - [x] S4-3: Cash presets now dynamic: unique values of `[pendiente, ceil to 10, ceil to 50, 100, 200]` filtered `>= pendiente`, max 4; "Exacto" kept (mobile e2e depends on it); new `caja-preset-{i}` testids (none existed); validation/change/register logic untouched.
 
+## Tasks — Slice 5 (Cocina)
+- [x] S5-1: Red alert at ≥15 min: `timerClass` three levels — ≥15 `text-destructive font-bold` (theme token with dark variant), ≥10 unchanged (`text-primary`), <10 muted.
+- [x] S5-2: Origin tag: non-public orders show `#{n} · 👤 Mozo`; `source === 'public'` keeps `· carta web`. Field: `order.source` (staff orders don't persist it; the `source === 'public'` convention was already used in Cocina/Salón — no backend change).
+
 ## Backlog (next slices)
-- S5 Cocina: red ≥15 min alert; "Mozo" tag on tickets.
+- Empty — remaining open points live in **Notes / deviations** (deferred items).
 
 ## Notes / deviations
+- S5-2: all staff orders show "👤 Mozo" (llevar/recojo/delivery included); distinguishing QR-from-mostrador on staff orders needs a backend field (deferred).
+- S5-1: the red uses `text-destructive` including its dark-theme variant.
 - S4-2: "Ver" is a real anchor (full page load) so the out-of-scope `AccountPaymentAudit.test.jsx` mock stays untouched; it can migrate to SPA `Link` when that mock is extended.
 - S4-1: KPIs render with or without an open shift (prototype parity).
 - S3-1: badge coexists with the stepper (deliberate redundancy; the stepper's center number remains the interaction/test contract).
@@ -81,6 +87,11 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - Slice 4 test-first: 10 assertions failed before implementation.
 - Slice 4 focused: **7 suites / 66 tests passed**; orchestrator re-ran `Caja|Cobrar|AccountPaymentAudit` as a spot check: **5 suites / 49 tests passed**.
 - Slice 4 full suite: **56 suites / 346 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
+- Slice 5 work-unit (this commit): `frontend/src/pages/Cocina.jsx` (+11/−4), `frontend/src/__tests__/Cocina.test.js` (+59); 2 new tests.
+- Slice 5 test-first: 2 failures observed before implementation.
+- Slice 5 focused: **1 suite / 6 tests passed**; orchestrator re-ran `Cocina` as a spot check: **6/6 passed**.
+- Slice 5 full suite: **56 suites / 348 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
+- Parity effort complete: five slices green, build clean, every floor/sheet/composer/caja/kitchen `data-testid` contract preserved.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.
