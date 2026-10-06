@@ -109,7 +109,13 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   }
 
   // The requested bill must show as "Cuentas solicitadas" and be collectable.
-  const cobrar = page.getByTestId(`caja-cobrar-${orderNumber}`);
+  // Scoped to that section AND to this run's table: order numbers restart, so
+  // two accounts can carry the same number (and therefore the same testid).
+  const cobrar = page
+    .getByTestId('caja-solicitadas')
+    .locator(`[data-testid="caja-pedido-${orderNumber}"]`)
+    .filter({ hasText: `Mesa ${TABLE}` })
+    .getByTestId(`caja-cobrar-${orderNumber}`);
   await expect(cobrar).toBeVisible({ timeout: 15_000 });
   await cobrar.click();
 
@@ -133,6 +139,6 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   await page.getByRole('button', { name: 'Historial' }).click();
   const historial = page.getByTestId('caja-historial-pagos');
   await expect(historial).toBeVisible();
-  await expect(historial.getByText(`Pedido #${orderNumber}`)).toBeVisible({ timeout: 15_000 });
+  await expect(historial.getByText(`Pedido #${orderNumber}`).first()).toBeVisible({ timeout: 15_000 });
   await shot(page, `e4-${TABLE}-10-historial`);
 });

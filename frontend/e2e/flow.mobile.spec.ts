@@ -78,7 +78,14 @@ test('mobile: mozo → cocina → caja con CobrarDialog táctil', async ({ page 
     await apertura.click();
   }
 
-  await page.getByTestId(`caja-cobrar-${orderNumber}`).click();
+  // Scoped to "Cuentas solicitadas" and to this run's table: order numbers
+  // restart, so two accounts can carry the same number (and the same testid).
+  await page
+    .getByTestId('caja-solicitadas')
+    .locator(`[data-testid="caja-pedido-${orderNumber}"]`)
+    .filter({ hasText: `Mesa ${TABLE}` })
+    .getByTestId(`caja-cobrar-${orderNumber}`)
+    .click();
   await expect(page.getByTestId('caja-cobrar-dialog')).toBeVisible({ timeout: 15_000 });
 
   // Touch-first CobrarDialog assertions.

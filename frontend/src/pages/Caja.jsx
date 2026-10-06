@@ -742,7 +742,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
             )}
 
             {requestedBills.length > 0 && (
-                <Card className="border-primary/40"><CardContent className="p-4">
+                <Card className="border-primary/40" data-testid="caja-solicitadas"><CardContent className="p-4">
                     <h2 className="font-display text-lg font-semibold mb-3">Cuentas solicitadas ({requestedBills.length})</h2>
                     <div className="divide-y">
                         {requestedBills.filter(matchQ).map((o) => (
@@ -762,7 +762,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                 </CardContent></Card>
             )}
 
-            <Card><CardContent className="p-4">
+            <Card data-testid="caja-otras"><CardContent className="p-4">
                 <h2 className="font-display text-lg font-semibold mb-3">Otras cuentas ({otherBills.length})</h2>
                 {cobrables.length === 0 || otherBills.length === 0 ? (
                     <div className="py-8 text-center text-sm text-muted-foreground">
