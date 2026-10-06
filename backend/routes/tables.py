@@ -157,7 +157,9 @@ def _qr_payload(table: dict, nonce: str) -> dict:
     token = sign_table(table["id"], nonce)
     return {
         "token": token,
-        "path": f"/checkout?mesa={token}",
+        # El QR abre la carta con la mesa en contexto. Antes llevaba al checkout y
+        # el cliente caía en una pantalla de pago sin haber elegido nada.
+        "path": f"/menu?mesa={token}",
         "table_number": table.get("number"),
     }
 

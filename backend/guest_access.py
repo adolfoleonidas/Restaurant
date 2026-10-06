@@ -15,7 +15,13 @@ def sign_table(table_id: str, nonce: str, ttl_seconds: int = 10 * 365 * 24 * 60 
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def read_table_token(token: str) -> tuple[str, str]:
+def read_table_token(token: str, *, allow_expired: bool = False) -> tuple[str, str]:
+    """Verifica la firma del QR de mesa y devuelve (mesa, nonce).
+
+    Un QR impreso y pegado en la mesa no debería dejar de funcionar porque pasó
+    el tiempo: el vencimiento se valida, pero `allow_expired` permite al llamador
+    renovarlo en el momento en vez de rechazar al cliente parado en la mesa.
+    """
     padded = token + "=" * (-len(token) % 4)
     try:
         raw = base64.urlsafe_b64decode(padded.encode()).decode()
@@ -26,7 +32,9 @@ def read_table_token(token: str) -> tuple[str, str]:
         raise ValueError("invalid table token")
     payload = f"{table_id}|{nonce}|{expires_at}"
     expected = hmac.new(jwt_secret().encode(), payload.encode(), sha256).hexdigest()[:32]
-    if not hmac.compare_digest(signature, expected) or expires_at < int(time.time()):
+    if not hmac.compare_digest(signature, expected):
+        raise ValueError("invalid table token")
+    if expires_at < int(time.time()) and not allow_expired:
         raise ValueError("invalid table token")
     return table_id, nonce
 

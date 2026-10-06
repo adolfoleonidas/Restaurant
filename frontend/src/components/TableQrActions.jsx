@@ -1,11 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import QrCode, { QrActions } from '@/components/TableQr';
 
-function buildGuestUrl(path) {
+// El QR abre la carta con la mesa en contexto. Antes llevaba al checkout, así
+// que el cliente caía en una pantalla de pago sin haber elegido nada.
+const MENU_PATH = '/menu';
+
+export function buildGuestUrl(path) {
     if (typeof path !== 'string' || !path.startsWith('/')) throw new Error('Enlace no válido');
     const url = new URL(path, window.location.origin);
-    if (url.origin !== window.location.origin || url.pathname !== '/checkout' || !url.searchParams.get('mesa')) {
+    if (url.origin !== window.location.origin || url.pathname !== MENU_PATH || !url.searchParams.get('mesa')) {
         throw new Error('Enlace no válido');
     }
     return url.toString();
@@ -56,7 +61,7 @@ export default function TableQrActions({ table }) {
     };
 
     const rotateQr = async () => {
-        if (!window.confirm(`¿Regenerar el acceso QR de ${table.name}? El enlace anterior dejará de funcionar.`)) return;
+        if (!window.confirm(`¿Regenerar el acceso QR de ${table.name}? El enlace anterior dejará de funcionar y habrá que reimprimir el cartel.`)) return;
         setGuestUrl('');
         setCopyFallback(false);
         setError('');
@@ -114,7 +119,7 @@ export default function TableQrActions({ table }) {
             <div className="flex flex-wrap gap-2">
                 {status !== 'revoked' && (
                     <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={getGuestLink} data-testid={`mesa-qr-link-${table.id}`}>
-                        {busy === 'link' ? 'Obteniendo enlace…' : guestUrl ? 'Actualizar enlace' : status === 'active' ? 'Obtener enlace' : 'Generar enlace'}
+                        {busy === 'link' ? 'Obteniendo enlace…' : guestUrl ? 'Actualizar enlace' : status === 'active' ? 'Ver QR y enlace' : 'Generar QR y enlace'}
                     </Button>
                 )}
                 {(status === 'active' || status === 'revoked') && (
@@ -129,12 +134,30 @@ export default function TableQrActions({ table }) {
                 )}
             </div>
             {guestUrl && (
-                <div className="space-y-2" data-testid={`mesa-qr-link-view-${table.id}`}>
-                    <input ref={urlRef} type="text" readOnly value={guestUrl} aria-label={`Enlace QR de ${table.name}`} className="w-full rounded-md border bg-background px-3 py-2 text-xs" data-testid={`mesa-qr-url-${table.id}`} />
-                    <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={copyLink} disabled={!!busy} data-testid={`mesa-qr-copy-${table.id}`}>Copiar enlace</Button>
-                        <a className="inline-flex h-9 items-center rounded-md border px-3 text-sm" href={guestUrl} target="_blank" rel="noopener noreferrer" data-testid={`mesa-qr-open-${table.id}`}>Abrir enlace</a>
+                <div className="space-y-3" data-testid={`mesa-qr-link-view-${table.id}`}>
+                    <div className="flex flex-col items-center gap-2 rounded-lg border bg-white p-3 sm:flex-row sm:items-start">
+                        <QrCode value={guestUrl} size={168} label={`QR de ${table.name}`} />
+                        <div className="min-w-0 flex-1 space-y-2">
+                            <p className="text-xs text-muted-foreground">
+                                Imprimí este código y pegalo en {table.name}. El cliente lo escanea, ve la carta y pide desde ahí.
+                            </p>
+                            <input
+                                ref={urlRef}
+                                type="text"
+                                readOnly
+                                value={guestUrl}
+                                aria-label={`Enlace QR de ${table.name}`}
+                                className="w-full rounded-md border bg-background px-3 py-2 text-xs"
+                                data-testid={`mesa-qr-url-${table.id}`}
+                                onFocus={(event) => event.target.select()}
+                            />
+                            <div className="flex flex-wrap gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={copyLink} disabled={!!busy} data-testid={`mesa-qr-copy-${table.id}`}>Copiar enlace</Button>
+                                <a className="inline-flex h-9 items-center rounded-md border px-3 text-sm" href={guestUrl} target="_blank" rel="noopener noreferrer" data-testid={`mesa-qr-open-${table.id}`}>Abrir enlace</a>
+                            </div>
+                        </div>
                     </div>
+                    <QrActions value={guestUrl} name={table.name} url={guestUrl} disabled={!!busy} />
                     {copyFallback && <p className="text-xs text-muted-foreground" data-testid={`mesa-qr-copy-fallback-${table.id}`}>El enlace permanece visible para copiarlo manualmente.</p>}
                 </div>
             )}
