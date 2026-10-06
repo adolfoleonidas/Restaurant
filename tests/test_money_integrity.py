@@ -359,6 +359,8 @@ def test_second_partial_payment_still_closes_the_bill():
 
 
 def _partially_paid_order():
+    # Los dos productos siguen en borrador: lo que estas pruebas cuidan son las
+    # reglas de dinero al quitar o encoger un producto, no el envío a cocina.
     order = _order(amount_paid=40.0, total=50.0, subtotal=50.0, status="pendiente_pago")
     order["items"] = [
         {
@@ -369,7 +371,7 @@ def _partially_paid_order():
             "unit_price": 20.0,
             "subtotal": 40.0,
             "paid_qty": 2,
-            "status": "entregado",
+            "status": "borrador",
         },
         {
             "id": "item-2",
@@ -379,7 +381,7 @@ def _partially_paid_order():
             "unit_price": 10.0,
             "subtotal": 10.0,
             "paid_qty": 0,
-            "status": "pendiente",
+            "status": "borrador",
         },
     ]
     return order

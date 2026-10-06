@@ -99,6 +99,25 @@ def _item_status(item: dict) -> str:
     return status
 
 
+# Un producto en borrador está cargado en la cuenta pero todavía no se envió a
+# cocina: no cuenta como trabajo de cocina ni bloquea servir o cerrar la cuenta.
+DRAFT_STATUS = "borrador"
+_SENT_STATUSES = ("pendiente", "en_preparacion", "listo", "entregado")
+
+
+def is_draft(item: dict) -> bool:
+    return _item_status(item) == DRAFT_STATUS
+
+
+def is_cancelled(item: dict) -> bool:
+    return _item_status(item) == "cancelado"
+
+
+def sent_items(items: list) -> list:
+    """Los productos que cocina ya conoce (todo lo que no es borrador ni anulado)."""
+    return [item for item in items if not is_draft(item) and not is_cancelled(item)]
+
+
 def assert_order_transition(current: str, new: str):
     if current == "pagado":
         raise FlowError("El pedido ya está pagado")
@@ -121,7 +140,10 @@ def assert_kitchen_open(order: dict):
 
 
 def _unready(items: list) -> list:
-    return [item for item in items if _item_status(item) not in ("listo", "entregado", "cancelado")]
+    return [
+        item for item in items
+        if _item_status(item) not in ("listo", "entregado", "cancelado", DRAFT_STATUS)
+    ]
 
 
 def assert_items_ready_to_finish(order: dict):

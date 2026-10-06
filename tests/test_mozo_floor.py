@@ -79,7 +79,12 @@ def test_cannot_release_table_with_active_order():
     )
 
 
-def test_adding_item_to_ready_order_returns_to_kitchen():
+def test_adding_item_waits_for_the_waiter_to_send_it():
+    """Un adicional no vuelve solo a cocina: espera a "Enviar adicionales".
+
+    El mozo carga la gaseosa, la ve como Pendiente y recién viaja cuando la
+    manda. Lo que ya estaba en cocina no se reenvía.
+    """
     h = headers_for("mozo@resto.com", "mozo123")
     admin = headers_for("admin@resto.com", "admin123")
     cocina = headers_for("cocina@resto.com", "cocina123")
@@ -96,6 +101,7 @@ def test_adding_item_to_ready_order_returns_to_kitchen():
     oid = created.json()["id"]
     assert requests.post(f"{BASE}/orders/{oid}/send-to-kitchen", headers=h, timeout=10).status_code == 200
     assert requests.post(f"{BASE}/orders/{oid}/status", headers=cocina, json={"status": "listo"}, timeout=10).status_code == 200
+
     added = requests.post(
         f"{BASE}/orders/{oid}/items",
         headers=h,
@@ -104,10 +110,22 @@ def test_adding_item_to_ready_order_returns_to_kitchen():
     )
     assert added.status_code == 200, added.text
     body = added.json()
-    assert body["status"] == "enviado_cocina"
     statuses = {i["product_id"]: i["status"] for i in body["items"]}
+    # El plato ya enviado no se toca y el nuevo queda pendiente de enviar.
     assert statuses[simples[0]["id"]] == "listo"
-    assert statuses[simples[1]["id"]] == "pendiente"
+    assert statuses[simples[1]["id"]] == "borrador"
+    assert body["status"] == "listo"
+
+    # Cocina todavía no lo ve.
+    kitchen = requests.get(f"{BASE}/orders/kitchen", headers=cocina, timeout=10).json()
+    ticket = next((o for o in kitchen if o["id"] == oid), None)
+    assert ticket is None or all(i["product_id"] != simples[1]["id"] for i in ticket["items"])
+
+    sent = requests.post(f"{BASE}/orders/{oid}/send-to-kitchen", headers=h, timeout=10)
+    assert sent.status_code == 200, sent.text
+    after = {i["product_id"]: i["status"] for i in sent.json()["items"]}
+    assert after[simples[1]["id"]] == "pendiente"
+    assert after[simples[0]["id"]] == "listo"
     kitchen = requests.get(f"{BASE}/orders/kitchen", headers=cocina, timeout=10).json()
     ticket = next(o for o in kitchen if o["id"] == oid)
     pending = [i for i in ticket["items"] if i["status"] == "pendiente"]

@@ -5,15 +5,18 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
+    DRAFT_STATUS,
     FlowError,
     assert_can_serve,
     assert_item_transition,
     assert_items_ready_to_finish,
     assert_kitchen_open,
     assert_order_transition,
+    is_cancelled,
+    is_draft,
     ticket_fields,
     VersionError,
     claim_order,
@@ -175,7 +178,9 @@ def _apply_bill(order: dict, items: list, removed_item: dict = None):
 def _derive_kitchen_status(items: list, current: str) -> str:
     if current in ("pagado", "cancelado"):
         return current
-    work = [i for i in items if i.get("status") not in ("entregado", "cancelado")]
+    # Los borradores y los anulados no son trabajo de cocina: si sólo hay de
+    # esos, el pedido se queda donde estaba.
+    work = [i for i in items if i.get("status") not in ("entregado", "cancelado", DRAFT_STATUS)]
     if not work:
         return current
     if all(i.get("status") == "listo" for i in work):
@@ -252,6 +257,9 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     ).sort("updated_at", -1).to_list(100)
     board.extend(delivered)
     items = [_order_for_user(order, user) for order in board]
+    # Los borradores todavía no son comanda: cocina no los ve.
+    for order in items:
+        order["items"] = [i for i in (order.get("items") or []) if i.get("status") != DRAFT_STATUS]
     # The kitchen must know which table each ticket belongs to: the order only
     # stores table_id, so resolve the number here.
     table_ids = [order["table_id"] for order in items if order.get("table_id")]
@@ -345,6 +353,8 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
         "status": "nuevo", "order_type": data.order_type, "items": enriched,
         "subtotal": subtotal, "discount": 0.0, "tip": 0.0, "total": subtotal,
         "notes": data.notes, "cancellation_reason": None, "sent_to_kitchen_at": None,
+        # Cuenta "Compartido": lo que pidió la mesa entera y no una persona.
+        "shared": bool(getattr(data, "shared", False)),
         "ready_at": None, "paid_at": None, "created_at": _now(), "updated_at": _now(),
     }
     if branch_id is not None:
@@ -443,13 +453,17 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     new_items = [it.model_dump() for it in items]
     enriched_new, _ = await _compute_total(new_items, user["restaurant_id"])
     for it in enriched_new:
-        it["status"] = "pendiente"
+        # Queda como borrador: el mozo todavía puede corregirlo y recién viaja a
+        # cocina cuando pulsa "Enviar a cocina" / "Enviar adicionales".
+        it["status"] = DRAFT_STATUS
         it["added_at"] = _now()
     combined = (o.get("items") or []) + enriched_new
     subtotal, total = _apply_bill(o, combined)
+    # Cargar un producto no manda nada a cocina por sí solo: el pedido conserva
+    # su estado hasta que el mozo envía.
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] in ("entregado", "pendiente_pago"):
-        new_status = "enviado_cocina"
+        new_status = o["status"]
     patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
@@ -668,6 +682,9 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
     target = next((i for i in (o.get("items") or []) if i["id"] == item_id), None)
+    if target is not None and not is_draft(target):
+        # Un producto que cocina ya conoce no desaparece con "−": se anula.
+        raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Usá Anular producto.")
     items = [i for i in (o.get("items") or []) if i["id"] != item_id]
     subtotal, total = _apply_bill(o, items, removed_item=target)
     await _save_order(o, {
@@ -678,6 +695,39 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed", branch_id=o.get("branch_id"))
+    return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/items/{item_id}/void")
+async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Anula un producto ya enviado a cocina, sin borrarlo del historial."""
+    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    items = o.get("items") or []
+    target = next((i for i in items if i["id"] == item_id), None)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    if is_cancelled(target):
+        return await _current_order_response(order_id, user)
+    if int(target.get("paid_qty") or 0) > 0:
+        raise HTTPException(status_code=400, detail="No podés anular un producto que ya fue cobrado")
+    reason = (data.reason or "").strip()
+    now = _now()
+    target["status"] = "cancelado"
+    target["void_reason"] = reason
+    target["voided_at"] = now
+    target["voided_by"] = user["id"]
+    target["voided_by_name"] = user.get("full_name")
+    subtotal, total = _apply_bill(o, items)
+    new_status = _derive_kitchen_status(items, o["status"])
+    patch = {"items": items, "subtotal": subtotal, "total": total, "updated_at": now}
+    patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
+    await _save_order(o, patch)
+    await _audit(user["restaurant_id"], user["id"], "void_item", "order", order_id, {"item_id": item_id, "reason": reason})
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_voided", branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 
@@ -692,6 +742,10 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
     found = False
     for it in items:
         if it["id"] == item_id:
+            # Lo que cocina ya recibió no se edita en silencio: se anula y se
+            # vuelve a pedir. Sólo el borrador se corrige libremente.
+            if not is_draft(it):
+                raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anulalo y volvé a pedirlo.")
             if data.quantity is not None:
                 it["quantity"] = data.quantity
                 it["subtotal"] = it["unit_price"] * data.quantity
@@ -718,33 +772,41 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
     o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    if not (o.get("items") or []):
+    items = o.get("items") or []
+    if not items:
         raise HTTPException(status_code=400, detail="El pedido no tiene productos")
-    if o["status"] == "enviado_cocina" and o.get("acceptance_status") == "aceptado":
+    if o["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+
+    first_send = o["status"] == "nuevo"
+    if first_send:
+        # Una orden que nunca salió manda todo lo que siga pendiente de cocina.
+        to_send = [it for it in items if not is_cancelled(it) and it.get("status") != "entregado"]
+    else:
+        # Envío de adicionales: sólo viaja lo nuevo, no se repite la comanda.
+        to_send = [it for it in items if is_draft(it) or it.get("status") in (None, "", "nuevo")]
+
+    if not to_send:
+        # Nada nuevo que mandar: sólo se reintenta numerar si quedó pendiente.
         if o.get("attention_number_pending"):
             await number_accepted_order(db, order=o)
-            return await _current_order_response(order_id, user)
-        if o.get("attention_number_context") and o.get("attention_number") is not None:
-            return await _current_order_response(order_id, user)
-    if o["status"] == "enviado_cocina" and o.get("attention_number_pending"):
-        await number_accepted_order(db, order=o)
         return await _current_order_response(order_id, user)
-    if o["status"] not in ("nuevo",):
-        raise HTTPException(status_code=400, detail="Solo pedidos nuevos pueden enviarse a cocina")
-    items = o["items"]
-    for it in items:
-        it["status"] = "pendiente"
-        it.setdefault("added_at", _now())
+
     now = _now()
+    for it in to_send:
+        it["status"] = "pendiente"
+        it.setdefault("added_at", now)
+
     patch = {
         "status": "enviado_cocina",
         "fulfillment_status": "enviado_cocina",
-        "acceptance_status": "aceptado",
-        "sent_to_kitchen_at": now,
+        "sent_to_kitchen_at": o.get("sent_to_kitchen_at") or now,
         "items": items,
         "updated_at": now,
     }
-    if o.get("order_type") in ("mesa", "recojo"):
+    if first_send:
+        patch["acceptance_status"] = "aceptado"
+    if first_send and o.get("order_type") in ("mesa", "recojo"):
         branch_id = o.get("branch_id") if o.get("table_id") else user.get("branch_id")
         attention_id = o.get("attention_id") or str(uuid.uuid4())
         try:
