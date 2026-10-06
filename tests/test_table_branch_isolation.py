@@ -16,7 +16,7 @@ import routes.orders as order_routes
 import routes.tables as table_routes
 import routes.zones as zone_routes
 import routes.notifications as notification_routes
-from models import ZoneUpdate
+from models import TableCreate, TableUpdate, ZoneUpdate
 from branch_isolation_fakes import _DB, _Result, _matches, _order, _table, _user
 
 
@@ -94,6 +94,89 @@ def test_zone_branch_propagation_moves_only_tables_inheriting_old_branch(monkeyp
         await zone_routes.update_zone("zone-1", ZoneUpdate(branch_id="branch-b"), _user("admin", None))
         assert next(row for row in db.tables.rows if row["id"] == "inherited")["branch_id"] == "branch-b"
         assert next(row for row in db.tables.rows if row["id"] == "explicit")["branch_id"] == "branch-b"
+    asyncio.run(run())
+
+
+def test_zone_first_branch_assignment_reaches_its_branchless_tables(monkeypatch):
+    """Asignar la primera sucursal de una zona debe alcanzar a sus mesas.
+
+    Es el camino que dejaba mesas invisibles: Local → Mesas mostraba "Hereda:
+    Centro" y el mozo de Centro no veía ninguna, porque el `branch_id` guardado
+    en la mesa seguía vacío y todo el filtrado por sucursal lee ese campo.
+    """
+    async def run():
+        zone = {"id": "zone-1", "restaurant_id": "tenant-1", "name": "Salón"}
+        inherited = _table("t1", None, area="Salón", number=1)
+        override = _table("t2", "branch-b", area="Salón", number=2)
+        db = _DB(branches=[{"id": "branch-a", "restaurant_id": "tenant-1"},
+                           {"id": "branch-b", "restaurant_id": "tenant-1"}],
+                 zones=[zone], tables=[inherited, override])
+        monkeypatch.setattr(zone_routes, "db", db)
+        monkeypatch.setattr(table_routes, "db", db)
+        await zone_routes.update_zone("zone-1", ZoneUpdate(branch_id="branch-a"), _user("admin", None))
+        assert next(row for row in db.tables.rows if row["id"] == "t1")["branch_id"] == "branch-a"
+        # Una mesa con sucursal propia no se mueve con la zona.
+        assert next(row for row in db.tables.rows if row["id"] == "t2")["branch_id"] == "branch-b"
+        visible = await table_routes.list_tables(_user("mozo", "branch-a"))
+        assert [row["id"] for row in visible] == ["t1"]
+    asyncio.run(run())
+
+
+def test_zone_first_branch_assignment_refuses_occupied_tables(monkeypatch):
+    async def run():
+        zone = {"id": "zone-1", "restaurant_id": "tenant-1", "name": "Salón"}
+        db = _DB(branches=[{"id": "branch-a", "restaurant_id": "tenant-1"}], zones=[zone],
+                 tables=[_table("busy", None, area="Salón", status="ocupada")])
+        monkeypatch.setattr(zone_routes, "db", db)
+        with pytest.raises(HTTPException) as caught:
+            await zone_routes.update_zone("zone-1", ZoneUpdate(branch_id="branch-a"), _user("admin", None))
+        assert caught.value.status_code == 409
+        assert "branch_id" not in db.zones.rows[0]
+        assert db.tables.writes == []
+    asyncio.run(run())
+
+
+def test_table_create_inherits_the_only_zone_branch_without_asking(monkeypatch):
+    """La mesa nueva hereda la sucursal de su zona; antes era un 400 sin salida."""
+    async def run():
+        db = _DB(branches=[{"id": "branch-a", "restaurant_id": "tenant-1"}],
+                 zones=[{"id": "zone-a", "restaurant_id": "tenant-1", "name": "Salón",
+                         "branch_id": "branch-a"}])
+        monkeypatch.setattr(table_routes, "db", db)
+        created = await table_routes.create_table(TableCreate(number=1, area="Salón"), _user("admin", None))
+        assert created["branch_id"] == "branch-a"
+    asyncio.run(run())
+
+
+def test_table_create_never_inherits_another_branch_zone_with_the_same_name(monkeypatch):
+    """Dos sucursales con su propio "Salón": no se adivina, se pide la sucursal."""
+    async def run():
+        db = _DB(branches=[{"id": "branch-a", "restaurant_id": "tenant-1"},
+                           {"id": "branch-b", "restaurant_id": "tenant-1"}],
+                 zones=[{"id": "zone-a", "restaurant_id": "tenant-1", "name": "Salón",
+                         "branch_id": "branch-a"},
+                        {"id": "zone-b", "restaurant_id": "tenant-1", "name": "Salón",
+                         "branch_id": "branch-b"}])
+        monkeypatch.setattr(table_routes, "db", db)
+        with pytest.raises(HTTPException) as ambiguous:
+            await table_routes.create_table(TableCreate(number=1, area="Salón"), _user("admin", None))
+        assert ambiguous.value.status_code == 400
+        created = await table_routes.create_table(
+            TableCreate(number=1, area="Salón", branch_id="branch-b"), _user("admin", None))
+        assert created["branch_id"] == "branch-b"
+    asyncio.run(run())
+
+
+def test_table_zone_change_moves_a_branchless_table_to_the_zones_branch(monkeypatch):
+    async def run():
+        db = _DB(branches=[{"id": "branch-a", "restaurant_id": "tenant-1"}],
+                 zones=[{"id": "zone-a", "restaurant_id": "tenant-1", "name": "Terraza",
+                         "branch_id": "branch-a"}],
+                 tables=[_table("t1", None, area="Salón", number=1)])
+        monkeypatch.setattr(table_routes, "db", db)
+        result = await table_routes.update_table("t1", TableUpdate(area="Terraza"), _user("admin", None))
+        assert result["area"] == "Terraza"
+        assert result["branch_id"] == "branch-a"
     asyncio.run(run())
 
 
