@@ -175,6 +175,10 @@ export default function Salon() {
     // hoja sin depender de que la mesa siga en el listado del polling.
     const [lastOpened, setLastOpened] = useState(null);
     const searchRef = useRef(null);
+    const aliasRef = useRef(null);
+    // Cuenta recién creada con "+": cuando queda activa, el cursor va solo al
+    // alias, que es lo único que falta escribir antes de cargar los platos.
+    const freshAccountRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
@@ -420,6 +424,7 @@ export default function Salon() {
         try {
             const { data } = await api.post('/orders', { table_id: t.id, order_type: 'mesa', new_account: true });
             toast.success('Cuenta agregada');
+            freshAccountRef.current = data?.id || null;
             // Queda seleccionada en el sheet: no se sale del salón.
             setOpenTable((s) => (s && s.table.id === t.id
                 ? { ...s, order: data, accountId: data.id, accounts: [...(s.accounts || []), data] }
@@ -854,6 +859,15 @@ export default function Salon() {
         setAliasDraft(openTable?.order?.customer_name || '');
     }, [openTable?.order?.id, openTable?.order?.customer_name]);
 
+    // Al crear una persona con "+" el cursor cae en su alias: nombrarla es lo
+    // único que falta antes de cargar los platos.
+    useEffect(() => {
+        const active = openTable?.order?.id || openTable?.accountId;
+        if (!active || freshAccountRef.current !== active) return;
+        freshAccountRef.current = null;
+        aliasRef.current?.focus();
+    }, [openTable?.order?.id, openTable?.accountId]);
+
     // ── Mini-reproductor del pedido activo ─────────────────────────────────
     // Mientras la hoja está abierta con una cuenta cargada, esa cuenta pasa a
     // ser "la última": es la que el mini mantiene a la vista cuando el mozo
@@ -1232,6 +1246,10 @@ export default function Salon() {
                             const detail = activeOrders[o.id] || o;
                             return { label: personLabel(detail, index), items: detail.items || [] };
                         }));
+                        // Salen de las mismas filas que se despliegan, así el número
+                        // de la barra nunca contradice el detalle.
+                        const tableDishes = summaryRows.reduce((sum, row) => sum + row.quantity, 0);
+                        const tableTotal = summaryRows.reduce((sum, row) => sum + row.subtotal, 0);
                         return (
                             <>
                                 {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
@@ -1248,46 +1266,29 @@ export default function Salon() {
                                 </div>
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
+                                    {/* El resumen va arriba y plegado: el mozo lo lee de
+                                        reojo sin que le empuje la carta hacia abajo. */}
+                                    <TableSummary
+                                        rows={summaryRows}
+                                        accounts={personAccounts.length}
+                                        dishes={tableDishes}
+                                        total={tableTotal}
+                                    />
                                     {(canCompose || (accounts && accounts.length > 0)) && (
-                                        <div className="space-y-2">
-                                            <PersonChips
-                                                people={persons}
-                                                activeId={currentAccountId}
-                                                onSelect={selectAccount}
-                                                onAdd={addAccount}
-                                                canEdit={Boolean(t.active_attention_id) && canTake}
-                                            />
-                                            {Boolean(t.active_attention_id) && canTake && (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={addSharedAccount}
-                                                        data-testid="mesa-sheet-cuenta-compartida"
-                                                        className="min-h-9 rounded-lg border border-dashed border-border px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-secondary"
-                                                    >
-                                                        🍽️ Compartido
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {accounts.length > 1 && canTake && (
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={mergeAccounts}
-                                                        data-testid="mesa-sheet-fusionar-cuentas"
-                                                        className="min-h-9 rounded-lg border border-border px-3 py-1 text-xs font-medium hover:bg-secondary"
-                                                    >
-                                                        <Link2 className="h-3 w-3 inline mr-1" />Fusionar
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
+                                        <PersonChips
+                                            people={persons}
+                                            activeId={currentAccountId}
+                                            onSelect={selectAccount}
+                                            onAdd={addAccount}
+                                            canEdit={Boolean(t.active_attention_id) && canTake}
+                                        />
                                     )}
                                     {canTake && order && (
                                         <div className="space-y-1" data-testid="mesa-sheet-alias-row">
                                             {/* Sin botón de guardar: el alias se escribe y viaja
                                                 con la comanda cuando el mozo envía el pedido. */}
                                             <Input
+                                                ref={aliasRef}
                                                 placeholder={accounts.length > 1 ? 'Alias (ej. Juan) — se guarda al enviar' : 'Alias de la cuenta (opcional) — se guarda al enviar'}
                                                 value={aliasDraft}
                                                 onChange={(e) => setAliasDraft(e.target.value)}
@@ -1301,7 +1302,6 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
-                                    <TableSummary rows={summaryRows} accounts={personAccounts.length} />
                                     <OrderComposer
                                         order={order}
                                         items={orderItems}
@@ -1490,6 +1490,30 @@ export default function Salon() {
                                                     <MoveRight className="h-4 w-4 mr-1" /> Mover esta cuenta a otra mesa
                                                 </Button>
                                             )}
+                                            {/* Acciones poco frecuentes: van al final, después de
+                                                lo que el mozo hace en cada ronda. */}
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {Boolean(t.active_attention_id) && canTake && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-10 flex-1 text-xs text-muted-foreground"
+                                                        onClick={addSharedAccount}
+                                                        data-testid="mesa-sheet-cuenta-compartida"
+                                                    >
+                                                        🍽️ Agregar compartido
+                                                    </Button>
+                                                )}
+                                                {accounts.length > 1 && canTake && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        className="h-10 flex-1 text-xs text-muted-foreground"
+                                                        onClick={mergeAccounts}
+                                                        data-testid="mesa-sheet-fusionar-cuentas"
+                                                    >
+                                                        <Link2 className="h-3.5 w-3.5 mr-1" /> Fusionar cuentas
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </>
                                     ) : accountTable && order ? (
                                         <>
