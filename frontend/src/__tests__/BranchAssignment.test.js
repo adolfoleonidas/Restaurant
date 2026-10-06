@@ -8,6 +8,9 @@ import { toast } from 'sonner';
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
+// `Local` lee la pestaña pedida en la URL; sin router en este harness alcanza con
+// el parámetro vacío.
+jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams()] }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin-1', role: 'admin' } }) }));
 

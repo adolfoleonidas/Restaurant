@@ -17,6 +17,12 @@ import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } 
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
+import {
+    branchScopeParams,
+    readRememberedScope,
+    rememberScope,
+    resolveBranchScope,
+} from '@/lib/branchScope';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
@@ -193,19 +199,82 @@ export default function Salon() {
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
     const [lastOpened, setLastOpened] = useState(null);
+    // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
+    // qué salón mira; el resto del personal queda fijado por el servidor.
+    const [branchCatalog, setBranchCatalog] = useState({ loading: false, error: false, branches: [], resolved: false });
+    const [scope, setScope] = useState(null);
     const searchRef = useRef(null);
 
+    const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
+
+    useEffect(() => {
+        if (!isOwner) {
+            setBranchCatalog({ loading: false, error: false, branches: [], resolved: true });
+            setScope(null);
+            return undefined;
+        }
+        let active = true;
+        setBranchCatalog((current) => ({ ...current, loading: true, error: false }));
+        api.get('/branches').then(({ data }) => {
+            if (!active) return;
+            const branches = Array.isArray(data) ? data : [];
+            setBranchCatalog({ loading: false, error: false, branches, resolved: true });
+            setScope(resolveBranchScope({
+                isOwner: true,
+                branches,
+                remembered: readRememberedScope(user?.id),
+            }));
+        }).catch(() => {
+            if (active) {
+                // Sin catálogo no se puede elegir: el salón queda como estaba.
+                setBranchCatalog({ loading: false, error: true, branches: [], resolved: true });
+                setScope(null);
+            }
+        });
+        return () => { active = false; };
+    }, [isOwner, user?.id]);
+
+    const scopeParams = useMemo(() => branchScopeParams(scope), [scope]);
+    const scopeKey = scope || 'sin-alcance';
+    // Quien elige piso espera a su catálogo: hasta entonces no se pide ninguno,
+    // para no mostrar todas las sucursales mezcladas ni un instante.
+    const scopePending = isOwner && !branchCatalog.resolved;
+    const chooseScope = (next) => {
+        setScope(next);
+        rememberScope(user?.id, next);
+    };
+
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
-        () => api.get('/tables').then((r) => r.data),
+        // Sin sucursal elegida el pedido va sin parámetros: el servidor ya acota
+        // a la sucursal del usuario.
+        () => (scopePending
+            ? Promise.resolve(null)
+            : (scopeParams ? api.get('/tables', { params: scopeParams }) : api.get('/tables'))).then((r) => (r ? r.data : null)),
         8000,
-        [generation]
+        [generation, scopeKey, scopePending]
     );
     const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
-        () => api.get('/orders', { params: { active_only: true } }).then((r) => r.data),
+        () => (scopePending
+            ? Promise.resolve(null)
+            : (scopeParams
+                ? api.get('/orders', { params: { active_only: true, ...scopeParams } })
+                : api.get('/orders', { params: { active_only: true } }))).then((r) => (r ? r.data : null)),
         8000,
-        [generation]
+        [generation, scopeKey, scopePending]
     );
     const orders = useMemo(() => (Array.isArray(liveOrders) ? liveOrders : []), [liveOrders]);
+
+    // Mesas que ningún salón muestra porque no tienen sucursal guardada. Es una
+    // lectura de administración y a un ritmo más lento: sirve para avisar, no
+    // para operar el piso.
+    const { data: unassigned } = usePolling(
+        () => (isOwner && !scopePending && scope !== 'legacy'
+            ? api.get('/tables', { params: { legacy_only: true } }).then((r) => r.data)
+            : Promise.resolve(null)),
+        30000,
+        [generation, isOwner, scopeKey, scopePending]
+    );
+    const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
 
     // Carta para componer el pedido sin salir del salón.
     const { data: liveProducts } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
@@ -959,6 +1028,21 @@ export default function Salon() {
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
+                    {isOwner && branchCatalog.branches.length > 0 && (
+                        <select
+                            aria-label="Sucursal del salón"
+                            data-testid="salon-sucursal"
+                            className="h-11 rounded-sm border border-input bg-background px-3 text-sm sm:h-10"
+                            value={scope || ''}
+                            onChange={(e) => chooseScope(e.target.value)}
+                            disabled={branchCatalog.loading}
+                        >
+                            {branchCatalog.branches.map((branch) => (
+                                <option key={branch.id} value={`branch:${branch.id}`}>{branch.name}</option>
+                            ))}
+                            <option value="legacy">Sin sucursal</option>
+                        </select>
+                    )}
                     <div className="relative">
                         <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                         <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
@@ -1073,10 +1157,40 @@ export default function Salon() {
                 </div>
             )}
 
+            {isOwner && branchCatalog.error && (
+                <p role="alert" className="text-sm text-destructive" data-testid="salon-sucursales-error">
+                    No se pudieron cargar las sucursales: el salón está mostrando todas las mesas del negocio.
+                </p>
+            )}
+
+            {/* Una mesa sin sucursal no pertenece a ningún salón: si el dueño no
+                se entera acá, parece que desapareció del piso. */}
+            {isOwner && scope && scope !== 'legacy' && unassignedCount > 0 && (
+                <div
+                    role="status"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                    data-testid="salon-mesas-sin-sucursal"
+                >
+                    <span className="font-medium">
+                        {unassignedCount === 1
+                            ? '1 mesa sin sucursal no aparece en ningún salón.'
+                            : `${unassignedCount} mesas sin sucursal no aparecen en ningún salón.`}
+                    </span>
+                    <Button
+                        variant="outline"
+                        className="h-11"
+                        onClick={() => navigate('/local?tab=mesas')}
+                        data-testid="salon-ir-mesas-sin-sucursal"
+                    >
+                        Asignar sucursal
+                    </Button>
+                </div>
+            )}
+
             <div role="status" aria-live="polite" className="sr-only">{floorSummary}</div>
 
             {/* Floor grid */}
-            {tablesLoading && !tables ? (
+            {!tables && (tablesLoading || scopePending) ? (
                 // Reserva la rejilla mientras llegan las mesas: sin esto la
                 // grilla aparece entera tras la respuesta (CLS 0,56).
                 <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6" data-testid="salon-skeleton" aria-hidden="true">

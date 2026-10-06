@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -563,7 +564,11 @@ const TABS = [
 ];
 
 export default function Local({ defaultTab = 'sucursales' }) {
-    const [tab, setTab] = useState(defaultTab);
+    const [params] = useSearchParams();
+    // `?tab=mesas` deja entrar directo al arreglo que pide el salón cuando avisa
+    // que hay mesas sin sucursal.
+    const requested = params?.get('tab');
+    const [tab, setTab] = useState(TABS.some((t) => t.key === requested) ? requested : defaultTab);
 
     return (
         <div className="space-y-5" data-testid="local-root">
