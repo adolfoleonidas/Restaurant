@@ -1445,53 +1445,59 @@ export default function Salon() {
                                         />
                                     )}
                                     {canCompose && (
-                                        <div className="space-y-1" data-testid="mesa-sheet-alias-row">
-                                            {/* Sin botón de guardar: el alias se escribe y viaja
-                                                con la comanda cuando el mozo envía el pedido. */}
-                                            <div className="flex items-center gap-1.5">
-                                                <Input
-                                                    placeholder="Alias (opcional)"
-                                                    value={aliasDraft}
-                                                    onChange={(e) => setAliasDraft(e.target.value)}
-                                                    onBlur={() => { if (order) saveAlias(); }}
-                                                    onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
-                                                    data-testid="mesa-sheet-alias"
-                                                />
-                                                {/* La fuente, la jarra, la entrada para compartir:
-                                                    es de la mesa, no de una persona. */}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSharedDraft((cur) => !cur)}
-                                                    aria-pressed={sharedDraft}
-                                                    title="Lo que pide la mesa entera"
-                                                    data-testid="mesa-sheet-compartido"
-                                                    className={`flex h-11 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
-                                                        sharedDraft
-                                                            ? 'border-primary bg-primary text-primary-foreground'
-                                                            : 'border-border text-muted-foreground hover:border-primary'
-                                                    }`}
-                                                >
-                                                    🍽️ Compartido
-                                                </button>
+                                        <details
+                                            className="rounded-xl border px-3 py-2"
+                                            data-testid="mesa-sheet-alias-row"
+                                        >
+                                            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                                                <span>Organizar pedido <span className="font-normal text-muted-foreground">(opcional)</span></span>
+                                                <span className="truncate text-xs font-normal text-muted-foreground">
+                                                    {aliasDraft.trim() || (sharedDraft ? 'Compartido' : 'Alias')}
+                                                </span>
+                                            </summary>
+                                            <div className="mt-2 space-y-2">
+                                                {/* La comanda normal no necesita alias ni reparto por persona. */}
+                                                <div className="flex items-center gap-1.5">
+                                                    <Input
+                                                        placeholder="Alias (opcional)"
+                                                        value={aliasDraft}
+                                                        onChange={(e) => setAliasDraft(e.target.value)}
+                                                        onBlur={() => { if (order) saveAlias(); }}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
+                                                        data-testid="mesa-sheet-alias"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSharedDraft((cur) => !cur)}
+                                                        aria-pressed={sharedDraft}
+                                                        title="Lo que pide la mesa entera"
+                                                        data-testid="mesa-sheet-compartido"
+                                                        className={`flex h-11 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                                                            sharedDraft
+                                                                ? 'border-primary bg-primary text-primary-foreground'
+                                                                : 'border-border text-muted-foreground hover:border-primary'
+                                                        }`}
+                                                    >
+                                                        🍽️ Compartido
+                                                    </button>
+                                                </div>
+                                                <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
+                                                    {persons.length > 0
+                                                        ? 'Escribí un alias o elegí una persona de la franja superior.'
+                                                        : 'Sin alias, el pedido queda como Persona 1.'}
+                                                </p>
+                                                {order && !isComposingDraft(order) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={startAnotherPerson}
+                                                        data-testid="mesa-sheet-otra-persona"
+                                                        className="min-h-9 w-full rounded-lg border border-dashed border-border px-3 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                    >
+                                                        ＋ Pedido de otra persona
+                                                    </button>
+                                                )}
                                             </div>
-                                            <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
-                                                {persons.length > 0
-                                                    ? 'Nuevo pedido: escribí un alias o tocá una persona para sumarle lo suyo.'
-                                                    : 'El alias es opcional: sin él queda como Persona 1.'}
-                                            </p>
-                                            {/* Con una persona ya cargada a la vista, este es el
-                                                camino de vuelta al pedido de la siguiente. */}
-                                            {order && !isComposingDraft(order) && (
-                                                <button
-                                                    type="button"
-                                                    onClick={startAnotherPerson}
-                                                    data-testid="mesa-sheet-otra-persona"
-                                                    className="min-h-9 w-full rounded-lg border border-dashed border-border px-3 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
-                                                >
-                                                    ＋ Pedido de otra persona
-                                                </button>
-                                            )}
-                                        </div>
+                                        </details>
                                     )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo

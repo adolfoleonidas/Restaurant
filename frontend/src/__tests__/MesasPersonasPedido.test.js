@@ -203,6 +203,7 @@ describe('pedido por personas en el salón', () => {
         const sequence = ['mesa-sheet-cuentas', 'mesa-sheet-alias', 'mesa-sheet-pedido'];
         const nodes = sequence.map((id) => sheet.querySelector(`[data-testid="${id}"]`));
         nodes.forEach((node, index) => expect(node).not.toBeNull());
+        expect(sheet.querySelector('[data-testid="mesa-sheet-alias-row"]').open).toBe(false);
         for (let i = 1; i < nodes.length; i += 1) {
             // compareDocumentPosition: 4 = el segundo nodo va después del primero.
             expect(nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -222,6 +223,7 @@ describe('pedido por personas en el salón', () => {
         ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
 
         // Se pasa a la siguiente persona desde la cuenta que se está viendo.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-alias-row"] summary'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
 
@@ -302,6 +304,9 @@ describe('pedido por personas en el salón', () => {
         api.post.mockResolvedValue({ data: { ...borrador, shared: true, status: 'enviado_cocina' } });
         ({ container, root, sheet } = await openTableWith([juan]));
 
+        const organization = sheet.querySelector('[data-testid="mesa-sheet-alias-row"]');
+        expect(organization.open).toBe(false);
+        await click(organization.querySelector('summary'));
         const toggle = sheet.querySelector('[data-testid="mesa-sheet-compartido"]');
         expect(toggle).not.toBeNull();
         expect(toggle.getAttribute('aria-pressed')).toBe('false');

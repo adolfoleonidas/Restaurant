@@ -84,6 +84,10 @@ describe('nuevo pedido sin mesa', () => {
 
         expect(document.body.querySelector('[data-testid="nuevo-pedido-sheet"]')).not.toBeNull();
         expect(api.post).not.toHaveBeenCalled();
+        const customerDetails = document.body.querySelector('[data-testid="nuevo-pedido-datos-opcionales"]');
+        expect(customerDetails.open).toBe(false);
+        await click(customerDetails.querySelector('summary'));
+        expect(customerDetails.open).toBe(true);
 
         await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
 
@@ -96,6 +100,7 @@ describe('nuevo pedido sin mesa', () => {
         await openComposer(host, 'delivery');
 
         expect(document.body.querySelector('[data-testid="nuevo-pedido-direccion"]')).not.toBeNull();
+        expect(document.body.querySelector('[data-testid="nuevo-pedido-datos-opcionales"]').open).toBe(false);
         await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
 
         expect(api.post).not.toHaveBeenCalled();

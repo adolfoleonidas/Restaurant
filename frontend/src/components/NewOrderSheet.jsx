@@ -174,31 +174,39 @@ export default function NewOrderSheet({
                         )
                     ) : (
                         <>
-                            <div className="space-y-2">
+                            {type === 'delivery' && (
                                 <Input
                                     className="h-11"
-                                    placeholder="Nombre (opcional)"
-                                    value={customerName}
-                                    onChange={(e) => setCustomerName(e.target.value)}
-                                    data-testid="nuevo-pedido-cliente"
+                                    placeholder="Dirección de envío"
+                                    value={customerAddress}
+                                    onChange={(e) => setCustomerAddress(e.target.value)}
+                                    data-testid="nuevo-pedido-direccion"
                                 />
-                                <Input
-                                    className="h-11"
-                                    placeholder="Teléfono (opcional)"
-                                    value={customerPhone}
-                                    onChange={(e) => setCustomerPhone(e.target.value)}
-                                    data-testid="nuevo-pedido-telefono"
-                                />
-                                {type === 'delivery' && (
+                            )}
+                            <details
+                                className="rounded-xl border px-3 py-2"
+                                data-testid="nuevo-pedido-datos-opcionales"
+                            >
+                                <summary className="min-h-8 cursor-pointer list-none py-1 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                                    Datos del cliente <span className="font-normal text-muted-foreground">(opcional)</span>
+                                </summary>
+                                <div className="space-y-2 pt-2">
                                     <Input
                                         className="h-11"
-                                        placeholder="Dirección de envío"
-                                        value={customerAddress}
-                                        onChange={(e) => setCustomerAddress(e.target.value)}
-                                        data-testid="nuevo-pedido-direccion"
+                                        placeholder="Nombre"
+                                        value={customerName}
+                                        onChange={(e) => setCustomerName(e.target.value)}
+                                        data-testid="nuevo-pedido-cliente"
                                     />
-                                )}
-                            </div>
+                                    <Input
+                                        className="h-11"
+                                        placeholder="Teléfono"
+                                        value={customerPhone}
+                                        onChange={(e) => setCustomerPhone(e.target.value)}
+                                        data-testid="nuevo-pedido-telefono"
+                                    />
+                                </div>
+                            </details>
                             <OrderComposer
                                 order={order}
                                 items={items}

@@ -221,8 +221,8 @@ Enviar a cocina
 ACCIONES SECUNDARIAS:
 (ninguna: es un flujo de un solo final)
 
-ACCIONES TERCIARIAS:
-⋯ Más → Comensal / alias · Compartida
+OPCIONES PLEGADAS:
+Organizar pedido → Comensal / alias · Compartida · Pedido de otra persona
 
 ELEMENTOS VISIBLES:
 - Carta por categorías, con buscador
@@ -235,11 +235,13 @@ Producto        → suma 1 a la cuenta
 + / −           → ajusta cantidad (el − no baja lo que ya salió a cocina)
 Observación     → se guarda por producto
 Enviar a cocina → valida, crea el pedido y limpia la pantalla para el siguiente
-⋯ Más           → comensal y "compartida"
+Organizar pedido → muestra alias y "compartida" solo cuando se necesita
 
 REGLAS UX:
 - No debe mostrar: cobrar, unir mesas, cerrar atención, transferir, dividir.
 - No debe pedir nombre, forma de pago ni configuración de la mesa.
+- Nombre y teléfono quedan en "Datos del cliente (opcional)"; en delivery, la
+  dirección obligatoria permanece visible.
 - Al enviar, la pantalla queda lista para la siguiente persona.
 ```
 

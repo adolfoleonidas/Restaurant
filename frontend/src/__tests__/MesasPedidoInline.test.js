@@ -168,6 +168,7 @@ describe('pedido inline en el salón', () => {
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
+        await click(document.body.querySelector('[data-testid="mesa-sheet-alias-row"] summary'));
         const input = document.body.querySelector('[data-testid="mesa-sheet-alias"]');
         expect(input).not.toBeNull();
         // No hay botón de guardar: el alias viaja con la comanda.
