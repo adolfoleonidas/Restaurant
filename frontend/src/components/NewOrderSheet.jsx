@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
-import OrderComposer, { OrderItems } from '@/components/OrderComposer';
+import OrderComposer from '@/components/OrderComposer';
+import { PersonOrderSummary } from '@/components/OrderSummary';
 
 /**
  * Compositor único de "Nuevo pedido": las cuatro áreas de venta son pestañas del
@@ -211,10 +212,11 @@ export default function NewOrderSheet({
                                 onSendToKitchen={sendToKitchen}
                             />
                             {order && (
-                                <OrderItems
-                                    items={items}
-                                    canCompose={canTake}
-                                    total={order.total}
+                                <PersonOrderSummary
+                                    items={order.items || []}
+                                    orderStatus={order.status}
+                                    canEdit={canTake}
+                                    saving={savingItem}
                                     onChangeQty={changeQty}
                                     testIdPrefix="nuevo-pedido"
                                 />

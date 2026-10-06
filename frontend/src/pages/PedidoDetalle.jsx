@@ -16,6 +16,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
+import { isDraft } from '@/lib/orderDraft';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -136,10 +137,17 @@ export default function PedidoDetalle() {
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
+    // Lo que sigue en borrador se quita; lo que cocina ya recibió se anula, para
+    // no borrar de la comanda algo que ya se está preparando.
     const removeItem = async (it) => {
         try {
-            await api.delete(`/orders/${order.id}/items/${it.id}`);
-            toast.success(`${it.product_name} quitado`);
+            if (isDraft(it, order.status)) {
+                await api.delete(`/orders/${order.id}/items/${it.id}`);
+                toast.success(`${it.product_name} quitado`);
+            } else {
+                await api.post(`/orders/${order.id}/items/${it.id}/void`, { reason: 'Anulado desde el detalle del pedido' });
+                toast.success(`${it.product_name} anulado`);
+            }
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };

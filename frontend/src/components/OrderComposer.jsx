@@ -1,15 +1,18 @@
-import React, { useMemo, useState } from 'react';
-import { Search, Plus, Minus } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
+import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
+import { isCancelled, isDraft } from '@/lib/orderDraft';
 
 /**
  * Carta para componer un pedido sin salir del panel: buscador, categorías y
- * platos con su "+" y la cantidad ya pedida en la cuenta.
+ * platos con sus controles de cantidad.
  *
- * Lo comparten el sheet de una mesa y el compositor de "Nuevo pedido", para que
- * tomar un pedido se vea y se sienta igual en los dos caminos.
+ * Cada plato arranca con un "+" y, una vez agregado, pasa a "− 1 +" para subir o
+ * bajar sin abrir nada. Cada toque responde al instante: el número cambia, la
+ * fila da un pulso breve y (si el sonido está activo) suena un clic seco.
  */
 export default function OrderComposer({
     order = null,
@@ -23,13 +26,20 @@ export default function OrderComposer({
     title = null,
     emptyLabel = 'Sin productos.',
     onAddProduct,
+    onRemoveProduct,
     onSendToKitchen,
+    sendLabel = 'Enviar a cocina',
 }) {
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
+    const [sound, setSound] = useState(soundEnabled);
+    const [pulse, setPulse] = useState(null);
+    const pulseTimer = useRef(null);
 
-    const lines = items || (order?.items || []).filter((i) => i.status !== 'cancelado');
+    const lines = (items || (order?.items || [])).filter((i) => !isCancelled(i));
 
+    // La cantidad que se muestra es la de la cuenta abierta: el resumen general
+    // de la mesa vive abajo, así que acá no se mezclan las personas.
     const visible = useMemo(() => (products || [])
         .filter((p) => {
             if (categoryId !== 'all' && p.category_id !== categoryId) return false;
@@ -38,9 +48,28 @@ export default function OrderComposer({
         })
         .sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1))), [products, categoryId, search]);
 
+    useEffect(() => () => clearTimeout(pulseTimer.current), []);
+
     const label = title || (order
         ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
         : 'Agregar productos');
+
+    const flash = (productId) => {
+        setPulse(productId);
+        clearTimeout(pulseTimer.current);
+        pulseTimer.current = setTimeout(() => setPulse(null), 260);
+        tick();
+    };
+
+    const add = (product) => {
+        flash(product.id);
+        onAddProduct?.(product);
+    };
+
+    const remove = (product, item) => {
+        flash(product.id);
+        onRemoveProduct?.(product, item);
+    };
 
     // Sin permiso para tomar pedido no hay carta que mostrar.
     if (!canCompose) return null;
@@ -49,11 +78,30 @@ export default function OrderComposer({
         <div className="space-y-2 rounded-xl border p-3" data-testid={`${testIdPrefix}-pedido`}>
             <div className="flex items-center justify-between gap-2">
                 <span className="page-kicker">{label}</span>
-                {showKitchen && (
-                    <Button size="sm" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
-                        Enviar a cocina
-                    </Button>
-                )}
+                <span className="flex items-center gap-1.5">
+                    {/* El sonido es opcional y se recuerda: en un salón ruidoso el
+                        clic confirma el toque, pero no todos lo quieren. */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const next = !sound;
+                            setSound(next);
+                            setSoundEnabled(next);
+                        }}
+                        aria-pressed={sound}
+                        aria-label={sound ? 'Silenciar la confirmación sonora' : 'Activar la confirmación sonora'}
+                        title={sound ? 'Sonido activado' : 'Sonido desactivado'}
+                        data-testid={`${testIdPrefix}-sonido`}
+                        className="grid h-7 w-7 place-items-center rounded-full border border-border text-muted-foreground hover:border-primary hover:text-foreground"
+                    >
+                        {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                    </button>
+                    {showKitchen && (
+                        <Button size="sm" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
+                            {sendLabel}
+                        </Button>
+                    )}
+                </span>
             </div>
             {order && (
                 <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-secondary/50 px-2 py-1 text-xs" data-testid={`${testIdPrefix}-pedido-resumen`}>
@@ -97,36 +145,62 @@ export default function OrderComposer({
             <div className="grid grid-cols-2 gap-1.5 max-h-[38dvh] overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
                 {visible.map((p) => {
                     const out = !p.is_available || (p.is_combo && p.components_available === false);
-                    const qty = lines
-                        .filter((i) => i.product_id === p.id)
-                        .reduce((s, i) => s + Number(i.quantity || 0), 0);
+                    const mine = lines.filter((i) => i.product_id === p.id);
+                    const qty = mine.reduce((s, i) => s + Number(i.quantity || 0), 0);
+                    // El "−" sólo toca lo que sigue en borrador. Lo que ya salió a
+                    // cocina se anula desde el resumen, no desaparece por acá.
+                    const drafts = mine.filter((i) => isDraft(i, order?.status));
+                    const target = drafts[drafts.length - 1] || null;
+                    const busy = out || savingItem;
                     return (
-                        <button
+                        <div
                             key={p.id}
-                            type="button"
-                            disabled={out || savingItem}
-                            onClick={() => onAddProduct?.(p)}
-                            data-testid={`${testIdPrefix}-producto-${p.id}`}
-                            className={`flex items-center justify-between gap-2 rounded-lg border px-2 py-1.5 text-left text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'}`}
+                            data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
+                            className={`flex items-center justify-between gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'} ${pulse === p.id ? 'composer-pulse' : ''}`}
                         >
-                            <span className="flex min-w-0 flex-col">
+                            <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => add(p)}
+                                data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
+                                className="flex min-w-0 flex-1 flex-col text-left"
+                            >
                                 <span className="w-full truncate font-medium">{p.name}</span>
                                 <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
-                            </span>
+                            </button>
                             <span className="flex shrink-0 items-center gap-1">
                                 {qty > 0 && (
-                                    <span
-                                        className="grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-semibold tabular-nums text-primary-foreground"
-                                        data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
-                                    >
-                                        {qty}
-                                    </span>
+                                    <>
+                                        <button
+                                            type="button"
+                                            disabled={busy || !target}
+                                            onClick={() => remove(p, target)}
+                                            aria-label={`Quitar uno de ${p.name}`}
+                                            data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
+                                            className="grid h-6 w-6 place-items-center rounded-full border border-border hover:bg-secondary"
+                                        >
+                                            <Minus className="h-3 w-3" />
+                                        </button>
+                                        <span
+                                            className={`grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-semibold tabular-nums text-primary-foreground ${pulse === p.id ? 'composer-pulse' : ''}`}
+                                            data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
+                                        >
+                                            {qty}
+                                        </span>
+                                    </>
                                 )}
-                                <span className="grid h-6 w-6 place-items-center rounded-full border border-border" aria-hidden="true">
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => add(p)}
+                                    aria-label={`Agregar uno de ${p.name}`}
+                                    data-testid={`${testIdPrefix}-producto-${p.id}`}
+                                    className="grid h-6 w-6 place-items-center rounded-full border border-border hover:bg-primary hover:text-primary-foreground"
+                                >
                                     <Plus className="h-3.5 w-3.5" />
-                                </span>
+                                </button>
                             </span>
-                        </button>
+                        </div>
                     );
                 })}
                 {visible.length === 0 && (
@@ -134,49 +208,5 @@ export default function OrderComposer({
                 )}
             </div>
         </div>
-    );
-}
-
-/**
- * Detalle de la cuenta: cada producto con sus botones − / + y el total.
- */
-export function OrderItems({ items = [], canCompose = false, total = null, onChangeQty, testIdPrefix = 'mesa-sheet' }) {
-    return (
-        <>
-            <div className="border rounded-xl divide-y" data-testid={`${testIdPrefix}-items`}>
-                {items.map((it) => (
-                    <div key={it.id} className="flex items-center justify-between gap-2 py-2 px-3 text-sm">
-                        <span className="min-w-0 truncate">{it.quantity}× {it.product_name}</span>
-                        <span className="font-mono tabular-nums shrink-0">{fmtMoney(it.subtotal)}</span>
-                        {canCompose && (
-                            <span className="flex items-center gap-1 shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => onChangeQty?.(it, -1)}
-                                    aria-label={`Quitar uno de ${it.product_name}`}
-                                    data-testid={`${testIdPrefix}-item-menos-${it.id}`}
-                                    className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"
-                                >
-                                    <Minus className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onChangeQty?.(it, 1)}
-                                    aria-label={`Agregar uno de ${it.product_name}`}
-                                    data-testid={`${testIdPrefix}-item-mas-${it.id}`}
-                                    className="h-11 w-11 sm:h-9 sm:w-9 rounded-md border border-border grid place-items-center hover:bg-secondary"
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                </button>
-                            </span>
-                        )}
-                    </div>
-                ))}
-            </div>
-            <div className="flex justify-between font-display text-lg font-bold">
-                <span>Total</span>
-                <span className="font-mono tabular-nums">{total != null ? fmtMoney(total) : '—'}</span>
-            </div>
-        </>
     );
 }
