@@ -710,7 +710,7 @@ export default function Salon() {
                         En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
                     </p>
                 </div>
-                <div className="flex gap-2 items-center">
+                <div className="flex flex-wrap gap-2 items-center">
                     <div className="relative">
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
                         <Input ref={searchRef} className="pl-9 h-10 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />

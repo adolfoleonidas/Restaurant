@@ -11,7 +11,7 @@ import path from 'path';
  * resetting we mint new high-numbered tables each run and record their numbers
  * in `e2e/.runtime.json` for the specs to read.
  */
-const BASE = 'http://localhost:8000/api';
+const BASE = process.env.PW_API_BASE || 'http://localhost:8000/api';
 const ADMIN = { email: 'admin@resto.com', password: 'admin123' };
 const BRANCH_NAME = 'Sucursal MVP';
 const RUNTIME_PATH = path.resolve('e2e', '.runtime.json');

@@ -14,27 +14,23 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
   // Mozo home is /mesas.
   await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
 
-  // Open the free table sheet and take it.
+  // The table sheet carries the composer: since the unified composer landed,
+  // taking an order never leaves the floor (no areas dialog, no /pedidos/nuevo).
   const card = page.getByTestId(`mesa-card-${tableNumber}`);
   await expect(card).toBeVisible();
   await card.click();
   await expect(page.getByTestId('mesa-sheet')).toBeVisible();
-  await page.getByTestId('mesa-sheet-tomar').click();
 
-  // Sales areas: pick dine-in, which keeps the table flow.
-  await expect(page.getByTestId('areas-venta')).toBeVisible();
-  await page.getByTestId('area-mesa').click();
-
-  // New-order composer for the locked table.
-  await expect(page.getByTestId('pedido-nuevo-root')).toBeVisible({ timeout: 15_000 });
-
-  // Add the first available product and send to kitchen.
-  const add = page.locator('[data-testid^="producto-add-"]:not([disabled])').first();
-  await add.click();
+  // The first product creates the account, and the backend sends it to the
+  // kitchen on that same call (`_derive_kitchen_status`), so the sheet has no
+  // "Enviar a cocina" step: the item row is the confirmation to assert.
+  await page.locator('[data-testid^="mesa-sheet-producto-"]:not([disabled])').first().click();
+  await expect(page.getByTestId('mesa-sheet-items')).toBeVisible({ timeout: 10_000 });
   await shot(page, `e4-${tableNumber}-03-pedido-producto`);
-  await page.getByTestId('pedido-enviar-cocina').click();
 
   // Back on the floor; the table is now "preparando".
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('mesa-sheet')).toBeHidden();
   await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(card).toHaveAttribute('data-floor-state', 'preparando');
 }

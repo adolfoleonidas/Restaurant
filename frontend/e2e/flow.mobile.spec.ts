@@ -17,14 +17,13 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
   await expect(card).toBeVisible();
   await card.click();
   await expect(page.getByTestId('mesa-sheet')).toBeVisible();
-  await page.getByTestId('mesa-sheet-tomar').click();
-  // Sales areas: pick dine-in, which keeps the table flow.
-  await expect(page.getByTestId('areas-venta')).toBeVisible();
-  await page.getByTestId('area-mesa').click();
-  await expect(page.getByTestId('pedido-nuevo-root')).toBeVisible({ timeout: 15_000 });
-
-  await page.locator('[data-testid^="producto-add-"]:not([disabled])').first().click();
-  await page.getByTestId('pedido-enviar-cocina').click();
+  // The table sheet carries the composer (unified composer): the first product
+  // creates the account and the backend sends it to the kitchen on that same
+  // call, so the item row is the confirmation to assert.
+  await page.locator('[data-testid^="mesa-sheet-producto-"]:not([disabled])').first().click();
+  await expect(page.getByTestId('mesa-sheet-items')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('mesa-sheet')).toBeHidden();
   await expect(page.getByTestId('salon-root')).toBeVisible({ timeout: 15_000 });
   await expect(card).toHaveAttribute('data-floor-state', 'preparando');
 }

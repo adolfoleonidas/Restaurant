@@ -51,8 +51,11 @@ export const INIT_SCRIPT = () => {
 
 /** Runs in the page. Keep it self-contained: no closure over module scope. */
 export const COLLECT = () => {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  // En móvil, si el layout desborda, el navegador ENSANCHA el viewport de
+  // layout (window.innerWidth crece y la página se ve alejada). Medir el
+  // desborde contra ese valor lo escondía: se mide contra el viewport visual.
+  const vw = Math.round((window.visualViewport && window.visualViewport.width) || window.innerWidth);
+  const vh = Math.round((window.visualViewport && window.visualViewport.height) || window.innerHeight);
 
   const isVisible = (el) => {
     const r = el.getBoundingClientRect();
