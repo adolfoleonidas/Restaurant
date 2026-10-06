@@ -13,6 +13,20 @@
 export const DRAFT = 'borrador';
 export const SHARED_ALIAS = 'Compartido';
 
+/**
+ * Observaciones que el mozo repite todo el día. Un toque en vez de teclear, que
+ * es donde se pierde el tiempo con el cliente delante.
+ */
+export const QUICK_NOTES = [
+    'Sin ensalada',
+    'Sin cebolla',
+    'Sin ají',
+    'Poco picante',
+    'Término medio',
+    'Parte pierna',
+    'Parte pecho',
+];
+
 const CANCELLED = 'cancelado';
 const SENT = ['pendiente', 'en_preparacion', 'listo', 'entregado'];
 
@@ -113,10 +127,14 @@ export function groupItems(entries = []) {
             subtotal: 0,
             notes: String(item.notes || '').trim(),
             people: [],
+            // Los ítems reales detrás de la línea: el resumen los despliega para
+            // responder "¿quién pidió el pollo sin ensalada?" y para corregirlo.
+            items: [],
         };
         const quantity = Number(item.quantity || 0);
         row.quantity += quantity;
         row.subtotal += Number(item.subtotal ?? quantity * (item.unit_price || 0));
+        row.items.push({ item, person: entry.person || null });
         if (entry.person) {
             const known = row.people.find((p) => p.label === entry.person);
             if (known) known.quantity += quantity;

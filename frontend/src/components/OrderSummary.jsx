@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Ban, ChevronDown, ChevronUp, Minus, Plus, Receipt } from 'lucide-react';
+import { Ban, ChevronDown, ChevronUp, Minus, Plus, Printer, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
-import { itemState, summaryLine, peopleLabel } from '@/lib/orderDraft';
+import { QUICK_NOTES, itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
 
 const TONE_CLASS = {
     draft: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -26,9 +26,35 @@ function StateChip({ item, orderStatus, testIdPrefix }) {
 }
 
 /**
- * Resumen de una persona: lo que pidió, con sus observaciones y sus acciones.
- * Lo que sigue en borrador se corrige libremente; lo que ya salió a cocina se
- * anula, no se borra.
+ * Observaciones rápidas: las que el mozo repite todo el día, a un toque.
+ *
+ * Van siempre a la vista en lo que sigue en borrador: si aparecieran recién al
+ * enfocar el campo, el teclado del móvil las taparía justo cuando hacen falta.
+ * Con más de una unidad la observación es de UNA unidad ("2 sopas, una sin
+ * cebolla"), y de eso se encarga quien recibe el toque.
+ */
+function QuickNotes({ item, onApply, testIdPrefix }) {
+    return (
+        <div className="scroll-x flex gap-1.5 pb-1" data-testid={`${testIdPrefix}-item-notas-rapidas-${item.id}`}>
+            {QUICK_NOTES.map((note) => (
+                <button
+                    key={note}
+                    type="button"
+                    onClick={() => onApply?.(item, note)}
+                    data-testid={`${testIdPrefix}-item-nota-rapida-${item.id}-${note}`}
+                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+                >
+                    {note}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+/**
+ * Lo que lleva la persona seleccionada: sus productos, sus observaciones y sus
+ * acciones. Lo que sigue en borrador se corrige libremente; lo que ya salió a
+ * cocina se anula, no se borra.
  */
 export function PersonOrderSummary({
     items = [],
@@ -37,6 +63,7 @@ export function PersonOrderSummary({
     saving = false,
     onChangeQty,
     onNotes,
+    onApplyNote,
     onVoid,
     testIdPrefix = 'mesa-sheet',
 }) {
@@ -150,6 +177,9 @@ export function PersonOrderSummary({
                                     )}
                                 </div>
                             )}
+                            {draft && canEdit && (
+                                <QuickNotes item={item} onApply={onApplyNote} testIdPrefix={testIdPrefix} />
+                            )}
                             {voidingId === item.id && (
                                 <div className="flex items-center gap-1.5" data-testid={`${testIdPrefix}-item-anular-panel-${item.id}`}>
                                     <Input
@@ -199,68 +229,169 @@ export function PersonOrderSummary({
 /**
  * Resumen general de la mesa: una barra con icono de recibo arriba del todo.
  *
- * Muestra el total y cuántos platos hay sin necesidad de abrirla, porque el
- * mozo necesita ese dato de reojo; el detalle agrupado se despliega al tocarla
- * para no empujar hacia abajo la carta, que es lo que usa todo el tiempo.
+ * Muestra el total y cuántos platos hay sin necesidad de abrirla. Al desplegar,
+ * cada línea se puede abrir para ver quién la pidió y moverla a otra persona:
+ * así se responde "¿quién pidió el pollo sin ensalada?" y se corrige ahí mismo.
  */
 export function TableSummary({
     rows = [],
     accounts = 0,
     dishes = 0,
     total = 0,
+    people = [],
+    canEdit = false,
+    onMoveItem,
+    onOpenReceipt,
     testIdPrefix = 'mesa-sheet',
 }) {
     const [open, setOpen] = useState(false);
+    const [openRow, setOpenRow] = useState(null);
     const empty = rows.length === 0;
 
     return (
         <div className="rounded-xl border" data-testid={`${testIdPrefix}-resumen`}>
-            <button
-                type="button"
-                onClick={() => setOpen((cur) => !cur)}
-                aria-expanded={open}
-                data-testid={`${testIdPrefix}-resumen-toggle`}
-                className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-secondary/60"
-            >
-                <span className="flex min-w-0 items-center gap-1.5">
-                    <Receipt className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <span className="page-kicker">Resumen de mesa</span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                    {!empty && (
-                        <span className="text-xs text-muted-foreground tabular-nums">{dishes} platos</span>
-                    )}
-                    <span className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(total)}</span>
-                    {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                </span>
-            </button>
+            <div className="flex items-center gap-1 pr-2">
+                <button
+                    type="button"
+                    onClick={() => setOpen((cur) => !cur)}
+                    aria-expanded={open}
+                    data-testid={`${testIdPrefix}-resumen-toggle`}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-secondary/60"
+                >
+                    <span className="flex min-w-0 items-center gap-1.5">
+                        <Receipt className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="page-kicker">Resumen de mesa</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                        {!empty && (
+                            <span className="text-xs text-muted-foreground tabular-nums">{dishes} platos</span>
+                        )}
+                        <span className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(total)}</span>
+                        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                    </span>
+                </button>
+                {onOpenReceipt && !empty && (
+                    <button
+                        type="button"
+                        onClick={() => onOpenReceipt()}
+                        aria-label="Ver el recibo de la mesa"
+                        title="Ver el recibo de la mesa"
+                        data-testid={`${testIdPrefix}-ver-recibo`}
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-foreground"
+                    >
+                        <Printer className="h-3.5 w-3.5" />
+                    </button>
+                )}
+            </div>
             {open && (
                 <div className="border-t px-3 py-2">
                     {empty ? (
                         <p className="text-xs text-muted-foreground">La mesa todavía no pidió nada.</p>
                     ) : (
                         <ul className="space-y-0.5">
-                            {rows.map((row) => (
-                                <li
-                                    key={row.key}
-                                    className="flex items-baseline justify-between gap-2 text-sm"
-                                    data-testid={`${testIdPrefix}-resumen-fila-${row.product_id}${row.notes ? '-con-observacion' : ''}`}
-                                >
-                                    <span className="min-w-0 truncate">
-                                        {summaryLine(row)}
-                                        {accounts > 1 && peopleLabel(row) && (
-                                            <span className="ml-1 text-[11px] text-muted-foreground">— {peopleLabel(row)}</span>
+                            {rows.map((row) => {
+                                const expanded = openRow === row.key;
+                                return (
+                                    <li key={row.key} data-testid={`${testIdPrefix}-resumen-fila-${row.product_id}${row.notes ? '-con-observacion' : ''}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenRow(expanded ? null : row.key)}
+                                            aria-expanded={expanded}
+                                            data-testid={`${testIdPrefix}-resumen-abrir-${row.key}`}
+                                            className="flex w-full items-baseline justify-between gap-2 rounded-md px-1 py-0.5 text-left text-sm hover:bg-secondary/60"
+                                        >
+                                            <span className="min-w-0 truncate">
+                                                {summaryLine(row)}
+                                                {accounts > 1 && peopleLabel(row) && (
+                                                    <span className="ml-1 text-[11px] text-muted-foreground">— {peopleLabel(row)}</span>
+                                                )}
+                                            </span>
+                                            <span className="flex shrink-0 items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground">
+                                                {fmtMoney(row.subtotal)}
+                                                {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                            </span>
+                                        </button>
+                                        {expanded && (
+                                            <ul className="mb-1 ml-2 border-l pl-2" data-testid={`${testIdPrefix}-resumen-detalle-${row.key}`}>
+                                                {row.items.map(({ item, person }) => (
+                                                    <li key={item.id} className="flex flex-wrap items-center gap-2 py-0.5 text-xs">
+                                                        <span className="text-muted-foreground">{item.quantity}×</span>
+                                                        <span className="font-medium">{person || 'Compartido'}</span>
+                                                        {item.notes && <span className="text-muted-foreground">({item.notes})</span>}
+                                                        {canEdit && people.length > 1 && onMoveItem && (
+                                                            <select
+                                                                value=""
+                                                                onChange={(e) => { if (e.target.value) onMoveItem(item, e.target.value); }}
+                                                                aria-label={`Mover ${item.product_name} a otra persona`}
+                                                                data-testid={`${testIdPrefix}-mover-item-${item.id}`}
+                                                                className="ml-auto h-7 rounded-md border border-border bg-card px-1 text-[11px]"
+                                                            >
+                                                                <option value="">Mover a…</option>
+                                                                {people
+                                                                    .filter((p) => p.label !== person)
+                                                                    .map((p) => (
+                                                                        <option key={p.id} value={p.id}>{p.label}</option>
+                                                                    ))}
+                                                            </select>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         )}
-                                    </span>
-                                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                                        {fmtMoney(row.subtotal)}
-                                    </span>
-                                </li>
-                            ))}
+                                    </li>
+                                );
+                            })}
                         </ul>
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+/**
+ * Recibo de la mesa para mostrar, imprimir o entregar: el total agrupado y
+ * cuánto puso cada persona. Es la vista de "cuenta", no la de tomar pedido.
+ */
+export function TableReceipt({ table, rows = [], accounts = [], total = 0, pending = 0, testIdPrefix = 'mesa-sheet' }) {
+    return (
+        <div className="space-y-3 rounded-xl border p-3" data-testid={`${testIdPrefix}-recibo`}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="font-display text-lg font-semibold">Mesa {table?.number}</span>
+                <span className="text-xs text-muted-foreground">{table?.area}</span>
+            </div>
+            <div className="space-y-0.5">
+                {rows.length === 0 && <p className="text-xs text-muted-foreground">Aún no hay productos.</p>}
+                {rows.map((row) => (
+                    <div key={row.key} className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate">{summaryLine(row)}</span>
+                        <span className="shrink-0 font-mono tabular-nums">{fmtMoney(row.subtotal)}</span>
+                    </div>
+                ))}
+            </div>
+            {accounts.length > 0 && (
+                <div className="space-y-0.5 border-t pt-2">
+                    <span className="page-kicker">Por persona</span>
+                    {accounts.map((account) => (
+                        <div key={account.id} className="flex items-baseline justify-between gap-2 text-sm" data-testid={`${testIdPrefix}-recibo-persona-${account.id}`}>
+                            <span className="min-w-0 truncate">{account.label}</span>
+                            <span className="shrink-0 font-mono tabular-nums">{fmtMoney(account.total)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <div className="flex items-baseline justify-between border-t pt-2 font-display text-lg font-bold">
+                <span>Total</span>
+                <span className="font-mono tabular-nums">{fmtMoney(total)}</span>
+            </div>
+            {pending > 0 && (
+                <p className="text-[11px] text-muted-foreground" data-testid={`${testIdPrefix}-recibo-pendientes`}>
+                    Hay {pending} producto{pending === 1 ? '' : 's'} por enviar que ya están contados en el total.
+                </p>
+            )}
+            <Button variant="outline" className="w-full" onClick={() => window.print()} data-testid={`${testIdPrefix}-recibo-imprimir`}>
+                <Printer className="h-4 w-4 mr-1" /> Imprimir
+            </Button>
         </div>
     );
 }

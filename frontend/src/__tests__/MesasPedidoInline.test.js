@@ -151,7 +151,7 @@ describe('pedido inline en el salón', () => {
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
         await click(document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
-        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan' });
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan', shared: false });
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
