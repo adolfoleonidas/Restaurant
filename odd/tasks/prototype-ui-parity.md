@@ -39,11 +39,17 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S3-2: Amount inside the send button: `sendAction` returns `amount` and labels `✈ Enviar a cocina · S/ X` / `✈ Enviar adicionales (N) · S/ X`, reusing `itemsTotal` (first send = full billable order; extras = editable drafts). `OrderComposer` falls back to the computed label, so the NewOrderSheet composer shows the amount too without touching that file.
 - [ ] S3-3 (deferred): general order note. The field exists (`orders.notes`, accepted by `POST /orders`, rendered by Cocina) but there is no update path: no `PATCH /orders/{id}`, `PATCH /orders/{id}/status` only takes status/reason, and `send-to-kitchen` accepts no body. Wiring the composer textarea needs a new backend endpoint (out of authorized scope).
 
+## Tasks — Slice 4 (Caja / Cobro)
+- [x] S4-1: Day KPIs row (`caja-kpi-ventas/-cobros/-promedio/-por-cobrar`) rendered always (open or closed shift, prototype parity): sales = sum of completed payments (same criteria as the method totals), payments count, average, and "Por cobrar" from the page's already-listed open accounts. Reuses the `/payments?period=day` source PaymentHistory already polls.
+- [x] S4-2: Open accounts show elapsed minutes (`elapsedMinutes`) and a "Ver" action (`caja-ver-{n}`) opening `/pedidos/:id` as a real anchor. Active/ready counts per row were not in the row data — reported, not implemented.
+- [x] S4-3: Cash presets now dynamic: unique values of `[pendiente, ceil to 10, ceil to 50, 100, 200]` filtered `>= pendiente`, max 4; "Exacto" kept (mobile e2e depends on it); new `caja-preset-{i}` testids (none existed); validation/change/register logic untouched.
+
 ## Backlog (next slices)
-- S4 Caja/Cobro: day KPIs; minutes + "Ver" on open accounts; dynamic rounding quick-cash buttons.
 - S5 Cocina: red ≥15 min alert; "Mozo" tag on tickets.
 
 ## Notes / deviations
+- S4-2: "Ver" is a real anchor (full page load) so the out-of-scope `AccountPaymentAudit.test.jsx` mock stays untouched; it can migrate to SPA `Link` when that mock is extended.
+- S4-1: KPIs render with or without an open shift (prototype parity).
 - S3-1: badge coexists with the stepper (deliberate redundancy; the stepper's center number remains the interaction/test contract).
 - S3-2: the send label now carries the amount in both composers (sheet + new order).
 - S3-3: deferred until a supported note-update path exists; requires a backend endpoint.
@@ -71,6 +77,10 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - Slice 3 test-first: 5 failures observed before the implementation.
 - Slice 3 focused (composer + consumers + sheets): **10 suites / 81 tests passed**; orchestrator re-ran `OrderComposerParity|orderDraft` as a spot check: **2 suites / 17 tests passed**.
 - Slice 3 full suite: **54 suites / 340 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
+- Slice 4 work-unit (this commit): `frontend/src/pages/Caja.jsx` (+68), `frontend/src/components/CobrarDialog.jsx` (+22); new `frontend/src/__tests__/CajaDayKpis.test.js`, `frontend/src/__tests__/CobrarDialogPresets.test.js`.
+- Slice 4 test-first: 10 assertions failed before implementation.
+- Slice 4 focused: **7 suites / 66 tests passed**; orchestrator re-ran `Caja|Cobrar|AccountPaymentAudit` as a spot check: **5 suites / 49 tests passed**.
+- Slice 4 full suite: **56 suites / 346 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.
