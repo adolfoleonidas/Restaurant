@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Ban, Minus, Plus } from 'lucide-react';
+import { Ban, ChevronDown, ChevronUp, Minus, Plus, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
@@ -197,35 +197,69 @@ export function PersonOrderSummary({
 }
 
 /**
- * Resumen general de la mesa: siempre visible debajo del resumen de la persona.
- * Los productos iguales se agrupan y las observaciones distintas los separan.
+ * Resumen general de la mesa: una barra con icono de recibo arriba del todo.
+ *
+ * Muestra el total y cuántos platos hay sin necesidad de abrirla, porque el
+ * mozo necesita ese dato de reojo; el detalle agrupado se despliega al tocarla
+ * para no empujar hacia abajo la carta, que es lo que usa todo el tiempo.
  */
-export function TableSummary({ rows = [], accounts = 0, testIdPrefix = 'mesa-sheet' }) {
+export function TableSummary({
+    rows = [],
+    accounts = 0,
+    dishes = 0,
+    total = 0,
+    testIdPrefix = 'mesa-sheet',
+}) {
+    const [open, setOpen] = useState(false);
+    const empty = rows.length === 0;
+
     return (
-        <div className="space-y-1.5 rounded-xl border p-3" data-testid={`${testIdPrefix}-resumen`}>
-            <span className="page-kicker">Resumen de mesa</span>
-            {rows.length === 0 ? (
-                <p className="text-xs text-muted-foreground">La mesa todavía no pidió nada.</p>
-            ) : (
-                <ul className="space-y-0.5">
-                    {rows.map((row) => (
-                        <li
-                            key={row.key}
-                            className="flex items-baseline justify-between gap-2 text-sm"
-                            data-testid={`${testIdPrefix}-resumen-fila-${row.product_id}${row.notes ? '-con-observacion' : ''}`}
-                        >
-                            <span className="min-w-0 truncate">
-                                {summaryLine(row)}
-                                {accounts > 1 && peopleLabel(row) && (
-                                    <span className="ml-1 text-[11px] text-muted-foreground">— {peopleLabel(row)}</span>
-                                )}
-                            </span>
-                            <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                                {fmtMoney(row.subtotal)}
-                            </span>
-                        </li>
-                    ))}
-                </ul>
+        <div className="rounded-xl border" data-testid={`${testIdPrefix}-resumen`}>
+            <button
+                type="button"
+                onClick={() => setOpen((cur) => !cur)}
+                aria-expanded={open}
+                data-testid={`${testIdPrefix}-resumen-toggle`}
+                className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-secondary/60"
+            >
+                <span className="flex min-w-0 items-center gap-1.5">
+                    <Receipt className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    <span className="page-kicker">Resumen de mesa</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                    {!empty && (
+                        <span className="text-xs text-muted-foreground tabular-nums">{dishes} platos</span>
+                    )}
+                    <span className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(total)}</span>
+                    {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </span>
+            </button>
+            {open && (
+                <div className="border-t px-3 py-2">
+                    {empty ? (
+                        <p className="text-xs text-muted-foreground">La mesa todavía no pidió nada.</p>
+                    ) : (
+                        <ul className="space-y-0.5">
+                            {rows.map((row) => (
+                                <li
+                                    key={row.key}
+                                    className="flex items-baseline justify-between gap-2 text-sm"
+                                    data-testid={`${testIdPrefix}-resumen-fila-${row.product_id}${row.notes ? '-con-observacion' : ''}`}
+                                >
+                                    <span className="min-w-0 truncate">
+                                        {summaryLine(row)}
+                                        {accounts > 1 && peopleLabel(row) && (
+                                            <span className="ml-1 text-[11px] text-muted-foreground">— {peopleLabel(row)}</span>
+                                        )}
+                                    </span>
+                                    <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                                        {fmtMoney(row.subtotal)}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
             )}
         </div>
     );

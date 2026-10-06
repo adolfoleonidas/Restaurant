@@ -189,6 +189,9 @@ describe('pedido inline en el salón', () => {
 
         const summary = document.body.querySelector('[data-testid="mesa-sheet-resumen"]');
         expect(summary).not.toBeNull();
+        // La barra del recibo ya trae el total; el detalle agrupado se despliega.
+        expect(summary.textContent).toContain('134.00');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
         expect(summary.textContent).toContain('3× Ceviche');
         expect(summary.textContent).toContain('2× Chicha');
     });

@@ -71,7 +71,9 @@ describe('multi-cuenta en el salón', () => {
         const items = sheet.querySelector('[data-testid="mesa-sheet-items"]');
         expect(items.textContent).toContain('Lomo');
         expect(items.textContent).not.toContain('Ceviche');
-        // …y el resumen de la mesa agrega lo de todas las cuentas.
+        // …y el resumen de la mesa agrega lo de todas las cuentas (se despliega
+        // desde la barra del recibo).
+        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]').textContent).toContain('Ceviche');
     });
 

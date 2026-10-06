@@ -171,17 +171,50 @@ describe('pedido por personas en el salón', () => {
         expect(api.delete).not.toHaveBeenCalled();
     });
 
-    it('el resumen de mesa está siempre y agrupa lo de todas las personas', async () => {
+    it('el resumen de mesa vive arriba, trae el total a la vista y agrupa a todas las personas', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-sopa' })], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-sopa' })], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
         const summary = sheet.querySelector('[data-testid="mesa-sheet-resumen"]');
         expect(summary).not.toBeNull();
+        // Sin desplegar nada ya se lee el total y cuántos platos hay.
         expect(summary.textContent).toContain('Resumen de mesa');
+        expect(summary.textContent).toContain('24.00');
+        expect(summary.textContent).toContain('2 platos');
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
         expect(summary.textContent).toContain('2× Sopa');
         expect(summary.textContent).toContain('Juan');
         expect(summary.textContent).toContain('María');
+    });
+
+    it('ordena el modal como trabaja el mozo: resumen, personas, alias y recién la carta', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        ({ container, root, sheet } = await openTableWith([juan]));
+
+        const sequence = ['mesa-sheet-resumen', 'mesa-sheet-cuentas', 'mesa-sheet-alias', 'mesa-sheet-pedido'];
+        const nodes = sequence.map((id) => sheet.querySelector(`[data-testid="${id}"]`));
+        nodes.forEach((node, index) => expect(node).not.toBeNull());
+        for (let i = 1; i < nodes.length; i += 1) {
+            // compareDocumentPosition: 4 = el segundo nodo va después del primero.
+            expect(nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+    });
+
+    it('deja compartido y fusionar al final, fuera del camino de carga', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'María' });
+        ({ container, root, sheet } = await openTableWith([juan, maria]));
+
+        const carta = sheet.querySelector('[data-testid="mesa-sheet-pedido"]');
+        const compartido = sheet.querySelector('[data-testid="mesa-sheet-cuenta-compartida"]');
+        const fusionar = sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]');
+        expect(compartido).not.toBeNull();
+        expect(fusionar).not.toBeNull();
+        [compartido, fusionar].forEach((accion) => {
+            expect(carta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
     });
 
     it('agrega una persona más desde el "+"', async () => {
@@ -191,6 +224,18 @@ describe('pedido por personas en el salón', () => {
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]'));
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
+    });
+
+    it('al crear la persona deja el cursor en su alias, sin un clic de más', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        const nueva = { ...order('order-3', 13, 'nuevo', []), customer_name: null };
+        api.post.mockImplementation((url) => (
+            url === '/orders' ? Promise.resolve({ data: nueva }) : Promise.resolve({ data: juan })
+        ));
+        ({ container, root, sheet } = await openTableWith([juan]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]'));
+        expect(document.activeElement).toBe(sheet.querySelector('[data-testid="mesa-sheet-alias"]'));
     });
 
     it('permite una cuenta Compartido para lo que pide la mesa entera', async () => {
