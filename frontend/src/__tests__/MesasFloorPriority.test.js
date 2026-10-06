@@ -113,4 +113,35 @@ describe('Mesas floor priority and actions (T04)', () => {
     await act(async () => { btn.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     expect(api.post).toHaveBeenCalledWith('/orders/o3/serve');
   });
+
+  it('toggles to priority order on demand and remembers the choice', async () => {
+    window.localStorage.clear();
+    await act(async () => root.render(<Salon />));
+    const button = host.querySelector('[data-testid="salon-orden"]');
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('Número');
+
+    await act(async () => { button.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+
+    // Prioridad: listo (3) > cuenta (5) > preparando (7) > libre (1).
+    const cards = Array.from(host.querySelectorAll('[data-floor-state]'));
+    expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual([
+      'mesa-card-3', 'mesa-card-5', 'mesa-card-7', 'mesa-card-1',
+    ]);
+    expect(host.querySelector('[data-testid="salon-orden"]').textContent).toContain('Prioridad');
+    expect(window.localStorage.getItem('salon-orden:staff-1')).toBe('prioridad');
+    window.localStorage.clear();
+  });
+
+  it('keeps the saved priority order on the next visit', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('salon-orden:staff-1', 'prioridad');
+    await act(async () => root.render(<Salon />));
+
+    const cards = Array.from(host.querySelectorAll('[data-floor-state]'));
+    expect(cards.map((c) => c.getAttribute('data-testid'))).toEqual([
+      'mesa-card-3', 'mesa-card-5', 'mesa-card-7', 'mesa-card-1',
+    ]);
+    window.localStorage.clear();
+  });
 });

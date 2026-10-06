@@ -13,7 +13,7 @@ import PersonChips from '@/components/PersonChips';
 import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -78,6 +78,66 @@ const STATE_FILTER_FLOORS = {
     listo: ['listo'],
     cuenta: ['cuenta'],
 };
+
+/**
+ * Orden del piso: "Número" es el de siempre (fijo por mesa de ancla, el piso no
+ * se rebaraja solo) y "Prioridad" es el del prototipo (lo que reclama acción
+ * primero). La preferencia se recuerda por usuario en localStorage, la misma
+ * convención que el alcance de sucursal: la elección de un dispositivo no
+ * cambia la del otro y el navegador puede negarse (modo privado).
+ */
+const SORT_STORAGE_PREFIX = 'salon-orden';
+const SORT_NUMERO = 'numero';
+const SORT_PRIORIDAD = 'prioridad';
+
+function sortStorageKey(userId) {
+    return `${SORT_STORAGE_PREFIX}:${userId || 'anon'}`;
+}
+
+function readSortMode(userId) {
+    try {
+        return window.localStorage.getItem(sortStorageKey(userId)) === SORT_PRIORIDAD
+            ? SORT_PRIORIDAD
+            : SORT_NUMERO;
+    } catch {
+        return SORT_NUMERO;
+    }
+}
+
+function rememberSortMode(userId, mode) {
+    try {
+        window.localStorage.setItem(sortStorageKey(userId), mode);
+    } catch {
+        /* sin memoria: el orden vale solo para esta sesión */
+    }
+}
+
+// Puntaje de prioridad del prototipo: el estado pesa más que la espera.
+// "Ocupada" agrupa los estados intermedios de una visita en curso.
+const FLOOR_PRIORITY = {
+    listo: 5000,
+    cuenta: 4000,
+    sentados: 3000,
+    preparando: 3000,
+    entregado: 3000,
+    atencion: 3000,
+    reservada: 1000,
+};
+
+function priorityScore(unit) {
+    return (FLOOR_PRIORITY[unit.floor.key] || 0) + elapsedMinutes(unit.createdAt);
+}
+
+/** Zona de una unidad: la del ancla; con filtro activo, la del miembro que coincide. */
+function unitZone(unit, activeArea) {
+    const entries = unit.type === 'group' ? unit.members : [unit.entry];
+    if (activeArea !== 'todas') {
+        const hit = entries.find((e) => e.table.area === activeArea);
+        if (hit) return hit.table.area;
+    }
+    const anchor = unit.type === 'group' ? unit.anchor : unit.entry;
+    return anchor.table.area || 'Sin zona';
+}
 
 function floorState(t) {
     const o = t.active_order;
@@ -179,6 +239,7 @@ export default function Salon() {
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
     const [stateFilter, setStateFilter] = useState('todas');
+    const [sortMode, setSortMode] = useState(() => readSortMode(user?.id));
     const [openTable, setOpenTable] = useState(null);
     const [showNewOrder, setShowNewOrder] = useState(false);
     const [closing, setClosing] = useState(null);
@@ -426,10 +487,14 @@ export default function Salon() {
                 elapsed: maxCreated ? fmtElapsed(maxCreated) : null, minutes, urgency,
                 isLate: floor.key === 'cuenta' && urgency === 'bad',
                 anchorNumber: Number(anchor.table.number),
+                createdAt: maxCreated,
             };
         });
         return [
-            ...singles.map((entry) => ({ type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number) })),
+            ...singles.map((entry) => ({
+                type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number),
+                createdAt: entry.displayOrder?.created_at || entry.serviceOrder?.created_at || null,
+            })),
             ...groupUnits,
         ];
     }, [decorated, tables, activeOrders]);
@@ -458,11 +523,43 @@ export default function Salon() {
             if (search && !entries.some((e) => `${e.table.number} ${e.table.name}`.toLowerCase().includes(search.toLowerCase()))) return false;
             return true;
         });
-        // Fixed order by anchor number: the floor must not reshuffle on every
-        // state change (it disorients the waiter mid-service). Urgency is shown
-        // by colour, the state filters and the summary bar instead.
-        return list.slice().sort((a, b) => a.anchorNumber - b.anchorNumber);
-    }, [units, areaFilter, stateFilter, search]);
+        // Fixed order by anchor number keeps the floor stable on every state
+        // change (it disorients the waiter mid-service). Priority is an explicit
+        // choice: it puts what claims action first and breaks ties by anchor
+        // number, so two cards with the same state still have a stable order.
+        return list.slice().sort(sortMode === SORT_PRIORIDAD
+            ? (a, b) => (priorityScore(b) - priorityScore(a)) || (a.anchorNumber - b.anchorNumber)
+            : (a, b) => a.anchorNumber - b.anchorNumber);
+    }, [units, areaFilter, stateFilter, search, sortMode]);
+
+    const toggleSortMode = () => {
+        const next = sortMode === SORT_PRIORIDAD ? SORT_NUMERO : SORT_PRIORIDAD;
+        setSortMode(next);
+        rememberSortMode(user?.id, next);
+    };
+
+    // Consumo del piso: saldos pendientes de todas las unidades (el grupo suma
+    // las cuentas de sus mesas). No depende de los filtros: es el total del
+    // salón, como el "S/ X en mesas" del prototipo.
+    const floorDue = useMemo(() => units.reduce((sum, unit) => (
+        sum + (unit.type === 'group'
+            ? unit.members.reduce((s, m) => s + (m.due || 0), 0)
+            : (unit.entry.due || 0))
+    ), 0), [units]);
+
+    // Piso por zonas: una sección por zona con mesas visibles, en el orden en
+    // que la zona aparece en el piso. Sin mesas, la sección no existe.
+    const zoneSections = useMemo(() => {
+        const buckets = new Map();
+        for (const unit of filteredUnits) {
+            const area = unitZone(unit, areaFilter);
+            if (!buckets.has(area)) buckets.set(area, []);
+            buckets.get(area).push(unit);
+        }
+        const known = areas.filter((a) => a !== 'todas' && buckets.has(a));
+        const extra = [...buckets.keys()].filter((a) => !known.includes(a));
+        return [...known, ...extra].map((area) => ({ area, units: buckets.get(area) }));
+    }, [filteredUnits, areas, areaFilter]);
 
     // ── Actions ────────────────────────────────────────────────────────────
     const openSheet = async (t, preferredOrderId = null) => {
@@ -1035,7 +1132,8 @@ export default function Salon() {
                         <Grid2X2 className="h-6 w-6 text-primary" /> Salón
                     </h1>
                     <p className="text-sm text-muted-foreground" data-testid="salon-resumen">
-                        En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
+                        En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay} ·{' '}
+                        <span data-testid="salon-total-en-mesas">{fmtMoney(floorDue)} en mesas</span>
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
@@ -1103,19 +1201,33 @@ export default function Salon() {
                 </div>
             )}
 
-            {/* State filter */}
-            <div className="scroll-x flex gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
-                {STATE_FILTERS.map((f) => (
-                    <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => setStateFilter(f.key)}
-                        data-testid={`salon-filtro-${f.key}`}
-                        className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
-                    >
-                        {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
-                    </button>
-                ))}
+            {/* State filter + floor order. El orden vive al lado de los filtros
+                porque es la otra forma de mirar el mismo piso. */}
+            <div className="flex items-start gap-2">
+                <div className="scroll-x flex min-w-0 flex-1 gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
+                    {STATE_FILTERS.map((f) => (
+                        <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setStateFilter(f.key)}
+                            data-testid={`salon-filtro-${f.key}`}
+                            className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                        >
+                            {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
+                        </button>
+                    ))}
+                </div>
+                <button
+                    type="button"
+                    onClick={toggleSortMode}
+                    data-testid="salon-orden"
+                    aria-label="Cambiar el orden del piso"
+                    title="Alternar entre orden por número y por prioridad"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-border bg-card hover:bg-secondary"
+                >
+                    <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    Orden: {sortMode === SORT_PRIORIDAD ? 'Prioridad' : 'Número'}
+                </button>
             </div>
 
             {/* Zones as a segmented control: same behaviour and same testids as
@@ -1214,43 +1326,57 @@ export default function Salon() {
                     {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
                 </div>
             ) : (
-                <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                    {/* The card shortcut for taking an order opens the same sales-area
-                        decision as the sheet, so no table is seated before the waiter
-                        picks mesa / llevar / recojo / delivery. */}
-                    {filteredUnits.map((unit) => (
-                        unit.type === 'group' ? (
-                            <GroupCard
-                                key={unit.group.id}
-                                unit={unit}
-                                canServe={canServe}
-                                canCharge={canCharge}
-                                selectMode={selectMode}
-                                onOpen={() => openSheet(unit.anchor.table)}
-                                onOpenMember={(table) => openSheet(table)}
-                                onDeliver={deliver}
-                                onCharge={openCharge}
-                            />
-                        ) : (
-                            <MesaCard
-                                key={unit.entry.table.id}
-                                item={unit.entry}
-                                branchNames={branchNames}
-                                canServe={canServe}
-                                canCharge={canCharge}
-                                canClose={canClose}
-                                canTake={canTake}
-                                closing={closing}
-                                selectMode={selectMode}
-                                picked={selected.includes(unit.entry.table.id)}
-                                onSelect={toggleSelected}
-                                onOpen={openSheet}
-                                onDeliver={deliver}
-                                onCharge={openCharge}
-                                onCloseAttention={closeAttention}
-                                onTake={takeOrderInline}
-                            />
-                        )
+                // El piso se lee por zonas, como el salón real: una sección por
+                // zona con mesas visibles después de búsqueda y filtros.
+                <div className="space-y-5" data-testid="salon-piso">
+                    {zoneSections.map(({ area, units: zoneUnits }) => (
+                        <section key={area} aria-label={area} data-testid={`salon-zona-${area}`}>
+                            <div className="mb-2 flex items-baseline justify-between gap-2">
+                                <h2 className="font-display text-lg font-semibold">{area}</h2>
+                                <span className="text-sm text-muted-foreground">
+                                    {zoneUnits.length} {zoneUnits.length === 1 ? 'mesa' : 'mesas'}
+                                </span>
+                            </div>
+                            <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                                {/* The card shortcut for taking an order opens the same sales-area
+                                    decision as the sheet, so no table is seated before the waiter
+                                    picks mesa / llevar / recojo / delivery. */}
+                                {zoneUnits.map((unit) => (
+                                    unit.type === 'group' ? (
+                                        <GroupCard
+                                            key={unit.group.id}
+                                            unit={unit}
+                                            canServe={canServe}
+                                            canCharge={canCharge}
+                                            selectMode={selectMode}
+                                            onOpen={() => openSheet(unit.anchor.table)}
+                                            onOpenMember={(table) => openSheet(table)}
+                                            onDeliver={deliver}
+                                            onCharge={openCharge}
+                                        />
+                                    ) : (
+                                        <MesaCard
+                                            key={unit.entry.table.id}
+                                            item={unit.entry}
+                                            branchNames={branchNames}
+                                            canServe={canServe}
+                                            canCharge={canCharge}
+                                            canClose={canClose}
+                                            canTake={canTake}
+                                            closing={closing}
+                                            selectMode={selectMode}
+                                            picked={selected.includes(unit.entry.table.id)}
+                                            onSelect={toggleSelected}
+                                            onOpen={openSheet}
+                                            onDeliver={deliver}
+                                            onCharge={openCharge}
+                                            onCloseAttention={closeAttention}
+                                            onTake={takeOrderInline}
+                                        />
+                                    )
+                                ))}
+                            </div>
+                        </section>
                     ))}
                 </div>
             )}
