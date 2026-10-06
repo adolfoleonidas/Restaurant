@@ -196,6 +196,10 @@ export default function Salon() {
     // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
     const [sharedDraft, setSharedDraft] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
+    // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
+    // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
+    // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
+    const [composerOpen, setComposerOpen] = useState(false);
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
@@ -468,11 +472,15 @@ export default function Salon() {
         const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
         const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
+        setComposerOpen(false);
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
+                // abre sola, sin obligar a buscar el botón.
+                if (isComposingDraft(data)) setComposerOpen(true);
             } catch {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
@@ -727,8 +735,10 @@ export default function Salon() {
             await reloadCurrentOrder(targetId);
             if (targetId === openId) {
                 // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente, que es como el mozo trabaja de verdad.
+                // la siguiente, que es como el mozo trabaja de verdad. La carta se
+                // pliega y el "+ Pedido" del encabezado queda listo para el próximo.
                 setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
+                setComposerOpen(false);
                 setOpenTable((s) => (s ? {
                     ...s,
                     order: null,
@@ -1370,10 +1380,31 @@ export default function Salon() {
                                         <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
                                     </div>
                                 </div>
+                                {/* "+ Pedido" arriba, donde el mozo ya está mirando: abre la
+                                    carta. La acción principal de cada momento (Enviar,
+                                    Entregar, Cuenta) vive abajo, en el pulgar. */}
+                                {canCompose && (
+                                    <div className="flex items-center justify-end gap-2 border-b px-5 py-2">
+                                        <Button
+                                            variant={composerOpen ? 'outline' : 'default'}
+                                            className="h-11"
+                                            onClick={() => setComposerOpen((open) => !open)}
+                                            aria-expanded={composerOpen}
+                                            data-testid="mesa-sheet-nuevo-pedido"
+                                        >
+                                            {composerOpen ? 'Ocultar carta' : '+ Pedido'}
+                                        </Button>
+                                    </div>
+                                )}
                                 <div className="flex-1 overflow-y-auto p-5 space-y-4">
                                     {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
                                     {/* El resumen va arriba y plegado: el mozo lo lee de
                                         reojo sin que le empuje la carta hacia abajo. */}
+                                    {/* El resumen sólo aparece cuando hay más de una cuenta:
+                                        ahí es donde sirve (organizar personas y ver el recibo).
+                                        Con una sola repetiría lo que ya dicen la lista y el pie,
+                                        y el modal tiene que ser simple. */}
+                                    {personAccounts.length > 1 && (
                                     <TableSummary
                                         rows={summaryRows}
                                         accounts={personAccounts.length}
@@ -1384,6 +1415,7 @@ export default function Salon() {
                                         onMoveItem={moveItemToPerson}
                                         onOpenReceipt={() => setReceiptOpen(true)}
                                     />
+                                    )}
                                     {receiptOpen && (
                                         <TableReceipt
                                             table={t}
@@ -1461,19 +1493,24 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
-                                    <OrderComposer
-                                        order={order}
-                                        items={orderItems}
-                                        products={products}
-                                        categories={categories}
-                                        savingItem={savingItem}
-                                        canCompose={canCompose}
-                                        showKitchen={showSend}
-                                        sendLabel={sendState?.label}
-                                        onAddProduct={addProductToAccount}
-                                        onRemoveProduct={removeProductFromAccount}
-                                        onSendToKitchen={sendCurrentToKitchen}
-                                    />
+                                    {/* La carta se queda montada al plegarse: así conserva
+                                        la búsqueda y la categoría elegidas cuando el mozo
+                                        la vuelve a abrir para el pedido siguiente. */}
+                                    <div hidden={!composerOpen}>
+                                        <OrderComposer
+                                            order={order}
+                                            items={orderItems}
+                                            products={products}
+                                            categories={categories}
+                                            savingItem={savingItem}
+                                            canCompose={canCompose}
+                                            showKitchen={showSend}
+                                            sendLabel={sendState?.label}
+                                            onAddProduct={addProductToAccount}
+                                            onRemoveProduct={removeProductFromAccount}
+                                            onSendToKitchen={sendCurrentToKitchen}
+                                        />
+                                    </div>
                                     {order && (
                                         <>
                                             <div className="text-sm text-muted-foreground space-y-1">

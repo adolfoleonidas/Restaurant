@@ -21,9 +21,10 @@ async function takeTableAndOrder(page: Page, tableNumber: number) {
   await card.click();
   await expect(page.getByTestId('mesa-sheet')).toBeVisible();
 
-  // The first product creates the account, and the backend sends it to the
-  // kitchen on that same call (`_derive_kitchen_status`), so the sheet has no
-  // "Enviar a cocina" step: the item row is the confirmation to assert.
+  // La carta arranca plegada: "+ Pedido" la abre. El primer producto crea la
+  // cuenta y el backend la manda a cocina en esa misma llamada, así que la fila
+  // del plato es la confirmación que se verifica.
+  await page.getByTestId('mesa-sheet-nuevo-pedido').click();
   await page.locator('[data-testid^="mesa-sheet-producto-"]:not([disabled])').first().click();
   await expect(page.getByTestId('mesa-sheet-items')).toBeVisible({ timeout: 10_000 });
   await shot(page, `e4-${tableNumber}-03-pedido-producto`);

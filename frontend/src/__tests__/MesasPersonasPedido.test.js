@@ -193,11 +193,14 @@ describe('pedido por personas en el salón', () => {
         expect(summary.textContent).toContain('María');
     });
 
-    it('ordena el modal como trabaja el mozo: resumen, personas, alias y recién la carta', async () => {
+    it('ordena el modal como trabaja el mozo: personas, alias y recién la carta', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        const sequence = ['mesa-sheet-resumen', 'mesa-sheet-cuentas', 'mesa-sheet-alias', 'mesa-sheet-pedido'];
+        // Con una sola cuenta no hay resumen de mesa: repetiría lo que ya dicen la
+        // lista de platos y el pie, y el modal tiene que ser simple.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]')).toBeNull();
+        const sequence = ['mesa-sheet-cuentas', 'mesa-sheet-alias', 'mesa-sheet-pedido'];
         const nodes = sequence.map((id) => sheet.querySelector(`[data-testid="${id}"]`));
         nodes.forEach((node, index) => expect(node).not.toBeNull());
         for (let i = 1; i < nodes.length; i += 1) {
@@ -350,9 +353,10 @@ describe('pedido por personas en el salón', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/items/i1/move', { target_order_id: 'order-2' });
     });
 
-    it('el recibo de la mesa se abre desde el resumen', async () => {
+    it('el recibo de la mesa se abre desde el resumen cuando hay varias cuentas', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 2, 12, 'pendiente')], { customer_name: 'Juan' });
-        ({ container, root, sheet } = await openTableWith([juan]));
+        const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Chicha', 1, 10, 'pendiente')], { customer_name: 'María' });
+        ({ container, root, sheet } = await openTableWith([juan, maria]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ver-recibo"]'));
         const recibo = sheet.querySelector('[data-testid="mesa-sheet-recibo"]');
