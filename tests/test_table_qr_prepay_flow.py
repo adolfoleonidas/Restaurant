@@ -36,6 +36,7 @@ from routes.tables import _qr_payload
 from test_money_integrity import _DB, _cashier
 import routes.cash as cash_routes
 import routes.orders as order_routes
+import routes.tables as table_routes
 import routes.payment_config as payment_config_routes
 import routes.payments as payment_routes
 import routes.prepay as prepay_routes
@@ -410,6 +411,33 @@ def test_cancelling_an_abandoned_prepayment_frees_the_table():
     assert table_after["status"] == "disponible"
     assert blocked_after is None, f"la mesa quedó trabada: {blocked_after and blocked_after.detail}"
     assert again["id"] != cancelled["id"]
+
+
+def test_a_cancelled_opening_stops_being_the_table_live_account():
+    """Un pedido cancelado no puede seguir siendo la cuenta viva de la mesa.
+
+    La apertura que nunca llegó a visita deja el pedido en "opening". Si al
+    cancelarlo se queda así, el salón abre la hoja de la mesa en ese pedido
+    muerto —con todos sus platos anulados— y el mozo no ve las cuentas que sí
+    están en curso ni puede entregar los platos que tiene en cocina.
+    """
+    async def run():
+        db = _world(table_prepay_mode="always")
+        _bind(db)
+        table_routes.db = db
+        created = await _create(db, _body(payment_method="yape"))
+        stored = await db.orders.find_one({"id": created["id"]})
+        before = await table_routes.list_tables(_cashier())
+        await order_routes.change_status(
+            stored["id"], _status_input("cancelado", "el cliente no pagó"), _cashier(),
+        )
+        after = await table_routes.list_tables(_cashier())
+        return stored, before, after
+
+    stored, before, after = asyncio.run(run())
+    assert stored["attention_state"] == "opening"  # la mesa quedó reservada por una apertura
+    assert before[0]["active_order"]["id"] == stored["id"]  # y la mesa la mostraba como su cuenta
+    assert after[0]["active_order"] is None  # cancelada, ya no es la cuenta viva
 
 
 def _status_input(status, reason=None):
