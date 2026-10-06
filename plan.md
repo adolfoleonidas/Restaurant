@@ -124,9 +124,21 @@
 - Testing agent: 92.6% backend pass, frontend roles + páginas clave verificadas, sin bugs reales
 
 ## Próximos pasos posibles (V2/V3 a pedido del usuario):
-- Clientes, Delivery, QR menu, descuentos/promos, impresión de tickets, app Android empaquetada (Capacitor)
+- Clientes, Delivery, descuentos/promos, impresión de tickets, app Android empaquetada (Capacitor)
 - Unir mesas **ya ocupadas**: agrupar con cuentas separadas (F1) ya está en la rama `feat/unir-mesas`; fusionar dos pedidos en una sola cuenta (F2, toca dinero y cocina) queda diferido en el [issue #40](https://github.com/adolfoleonidas/Restaurant/issues/40)
 - Facturación electrónica, inventario, recetas, stock, capacidades multi-sucursal más amplias, fidelización y pasarelas de pago
+
+## Pedido desde el QR de mesa con prepago opcional (2026-10-06)
+
+El QR de una mesa ya no lleva al checkout: abre la carta con la mesa en contexto
+y el pedido sigue el flujo normal (carrito → revisión → pago si corresponde →
+cocina). El restaurante elige en Ajustes cómo cobra los pedidos hechos por el
+cliente: pago al finalizar (por defecto, el comportamiento anterior), prepago
+obligatorio, o según el tipo de pedido. Con prepago, un pedido por
+Yape/Plin/transferencia no entra a cocina hasta que Caja confirme el pago; el
+efectivo y la tarjeta se preparan y se cobran en caja. Alcance, reglas y evidencia
+en la [nota de la entrega](docs/releases/mesa-qr-prepago.md). Nada de esto está
+desplegado.
 
 ## Estado local de aislamiento por sucursal (2026-10-03)
 
