@@ -24,7 +24,7 @@
   --on-c:#ffffff;
   --r:10px;--sh:0 1px 2px rgba(16,32,26,.06),0 6px 18px rgba(16,32,26,.06);
   --font-h:Sora,system-ui,sans-serif;--font-b:Manrope,system-ui,sans-serif;
-  --tab:64px;--safe:env(safe-area-inset-bottom,0px);
+  --tab:64px;--safe:env(safe-area-inset-bottom,0px);--hdr:calc(48px + env(safe-area-inset-top,0px));
 }
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0e1411;--sf:#17201c;--sf2:#1f2a25;--tx:#e9f1ed;--mut:#93a69c;--bd:#2b3832;
@@ -54,7 +54,7 @@ h1,h2,h3{margin:0;font-family:var(--font-h);font-weight:600}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 /* ---------- Cabecera ---------- */
-header{position:sticky;top:0;z-index:20;background:var(--nav);color:var(--nav-tx);display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+header{position:sticky;top:0;z-index:20;height:var(--hdr);background:var(--nav);color:var(--nav-tx);display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
 .brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0;font-family:var(--font-h);font-size:17px;font-weight:700}
 .logo{width:28px;height:28px;border-radius:7px;background:var(--pri);color:var(--prit);display:grid;place-items:center;font-weight:800;flex:none}
 .consumption{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--nav-mut);white-space:nowrap}
@@ -278,9 +278,9 @@ td.r{text-align:right}
 .joinlist{display:grid;gap:8px}
 .joinlist .btn{justify-content:space-between}
 
-/* ---------- Toast ---------- */
-.toast{position:fixed;left:12px;right:12px;bottom:calc(var(--tab) + var(--safe) + 12px);transform:translateY(calc(100% + var(--tab) + 40px));background:#10201a;color:#fff;border-radius:12px;padding:12px 16px;display:flex;gap:14px;align-items:center;justify-content:space-between;z-index:60;transition:transform .22s}
-.toast.on{transform:none}
+/* ---------- Toast (arriba, no tapa la zona de acciones) ---------- */
+.toast{position:fixed;left:12px;right:12px;top:calc(var(--hdr) + 10px);transform:translateY(-12px);opacity:0;pointer-events:none;background:#10201a;color:#fff;border-radius:12px;padding:12px 16px;display:flex;gap:14px;align-items:center;justify-content:space-between;z-index:60;transition:transform .22s,opacity .22s;box-shadow:0 12px 32px rgba(0,0,0,.28)}
+.toast.on{transform:translateY(0);opacity:1;pointer-events:auto}
 .toast button{background:none;border:0;color:#6ee7b7;font-weight:800;padding:6px}
 
 /* =========================================================
@@ -304,7 +304,7 @@ td.r{text-align:right}
   .menu-row .foot{grid-column:auto;gap:10px}
   .back{align-items:center;padding:16px}
   .modal{border-radius:18px;width:min(460px,100%);padding:20px}
-  .toast{left:50%;right:auto;transform:translate(-50%,calc(100% + var(--tab) + 40px));max-width:560px}
+  .toast{left:50%;right:auto;transform:translate(-50%,-12px);max-width:560px}
   .toast.on{transform:translate(-50%,0)}
   .qr-products{max-height:none}
 }
@@ -313,6 +313,7 @@ td.r{text-align:right}
    ≥ 960px (escritorio / tablet horizontal): nav arriba, dos columnas
    ========================================================= */
 @media(min-width:960px){
+  :root{--hdr:52px}
   header{padding:12px 24px;gap:20px}
   .brand{flex:none}
   nav{position:static;display:flex;gap:4px;height:auto;padding:0;background:transparent;border:0;flex:1}
@@ -336,7 +337,7 @@ td.r{text-align:right}
   .grid2{grid-template-columns:1.4fr 1fr;align-items:start}
   .qrwrap{grid-template-columns:320px 380px;justify-content:center;align-items:start}
   .mobile-shell{border:10px solid #10201a;border-radius:34px;min-height:640px}
-  .toast{bottom:20px}
+  .toast{top:calc(var(--hdr) + 12px)}
 }
 </style>
 </head>
@@ -460,7 +461,7 @@ function toast(msg,prev){
   $('#toastTxt').textContent=msg;undoSnap=prev;
   $('#undo').style.display=prev?'':'none';
   $('#toast').classList.add('on');clearTimeout(toastT);
-  toastT=setTimeout(()=>$('#toast').classList.remove('on'),5000);
+  toastT=setTimeout(()=>$('#toast').classList.remove('on'),3500);
 }
 $('#undo').onclick=()=>{if(!undoSnap)return;localStorage.setItem(KEY,undoSnap);S=load();undoSnap=null;$('#toast').classList.remove('on');ch?.postMessage('sync');render()};
 
