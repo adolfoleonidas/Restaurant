@@ -127,9 +127,9 @@ describe('pedido inline en el salón', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
-    it('guarda el alias de la cuenta', async () => {
-        const existing = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 1, 38)], 38);
-        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
+    it('guarda el alias al enviar el pedido, sin botón de guardar', async () => {
+        const existing = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 1, 38)], 38);
+        mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'nuevo' } }));
         mockOrders.splice(0, mockOrders.length, existing);
         api.get.mockImplementation((url) => {
             if (url === '/branches') return Promise.resolve({ data: [] });
@@ -137,18 +137,22 @@ describe('pedido inline en el salón', () => {
             return Promise.resolve({ data: [existing] });
         });
         api.patch.mockResolvedValue({ data: existing });
+        api.post.mockResolvedValue({ data: { ...existing, customer_name: 'Juan' } });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const input = document.body.querySelector('[data-testid="mesa-sheet-alias"]');
         expect(input).not.toBeNull();
+        // No hay botón de guardar: el alias viaja con la comanda.
+        expect(document.body.querySelector('[data-testid="mesa-sheet-alias-guardar"]')).toBeNull();
         await act(async () => {
             const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
             setter.call(input, 'Juan');
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
-        await click(document.body.querySelector('[data-testid="mesa-sheet-alias-guardar"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan' });
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
     it('muestra la cantidad ya pedida por producto y el resumen de la cuenta', async () => {

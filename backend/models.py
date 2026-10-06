@@ -379,7 +379,9 @@ OrderStatus = Literal[
     "nuevo", "enviado_cocina", "en_preparacion", "listo",
     "entregado", "pendiente_pago", "pagado", "cancelado"
 ]
-OrderItemStatus = Literal["pendiente", "en_preparacion", "listo", "entregado", "cancelado"]
+# `borrador` es el "Pendiente" de la pantalla: el producto está cargado en la
+# cuenta pero todavía no viajó a cocina, así que se puede corregir o borrar.
+OrderItemStatus = Literal["borrador", "pendiente", "en_preparacion", "listo", "entregado", "cancelado"]
 OrderType = Literal["mesa", "local", "recojo", "delivery", "llevar"]
 
 
@@ -397,6 +399,8 @@ class OrderCreate(BaseModel):
     notes: Optional[str] = None
     # Cuenta adicional dentro de la misma visita de la mesa (multi-cuenta).
     new_account: bool = False
+    # Cuenta "Compartido": lo que pide la mesa entera (fuente, jarra, entrada).
+    shared: bool = False
     # Staff can take counter/pickup/delivery orders too, so they need the customer.
     customer_name: Optional[str] = None
     customer_phone: Optional[str] = None
@@ -430,6 +434,12 @@ class OrderAlias(BaseModel):
     """Alias opcional de una cuenta, para identificar quién pidió."""
 
     alias: Optional[str] = Field(default=None, max_length=40)
+
+
+class OrderItemVoid(BaseModel):
+    """Anulación de un producto ya enviado a cocina."""
+
+    reason: str = Field(min_length=3, max_length=140)
 
 
 class PublicOrderCreate(BaseModel):

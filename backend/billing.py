@@ -11,6 +11,15 @@ def money(value) -> float:
     return round(float(value or 0), 2)
 
 
+def is_billable(item: dict) -> bool:
+    """Un producto anulado no se cobra ni cuenta como vendido."""
+    return (item.get("status") or "") != "cancelado"
+
+
+def billable_items(items: list) -> list:
+    return [item for item in items if is_billable(item)]
+
+
 def account_total(*, subtotal, delivery_fee=0, discount=0, tip=0) -> float:
     base = money(subtotal) + money(delivery_fee) - money(discount)
     return money(max(0.0, base) + money(tip))
@@ -19,12 +28,12 @@ def account_total(*, subtotal, delivery_fee=0, discount=0, tip=0) -> float:
 def guarded_totals(order: dict, items: list, removed_item: dict = None):
     if removed_item is not None and int(removed_item.get("paid_qty") or 0) > 0:
         raise BillError("No podés quitar un producto que ya fue cobrado")
-    for item in items:
+    for item in billable_items(items):
         quantity = int(item.get("quantity") or 0)
         paid = int(item.get("paid_qty") or 0)
         if quantity < 1 or quantity < paid:
             raise BillError("No podés dejar un producto por debajo de lo ya cobrado")
-    subtotal = money(sum(float(item.get("subtotal") or 0) for item in items))
+    subtotal = money(sum(float(item.get("subtotal") or 0) for item in billable_items(items)))
     total = account_total(
         subtotal=subtotal,
         delivery_fee=order.get("delivery_fee") or 0,
@@ -128,6 +137,7 @@ def payment_deltas(payment: dict, start: str, end: str):
 
 
 def build_sold_lines(items: list, line_payload: list, fully_paid: bool) -> list:
+    items = billable_items(items)
     by_id = {item.get("id"): item for item in items}
     taken = {}
     lines = []

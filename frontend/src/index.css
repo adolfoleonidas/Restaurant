@@ -239,6 +239,20 @@ body,
     .floor-late { animation: none; }
 }
 
+/* Carta del mozo: pulso breve al tocar "+" o "−" en un plato, para que el toque
+   se sienta respondido aunque la red tarde. */
+.composer-pulse {
+    animation: composer-pulse 260ms ease-out;
+}
+@keyframes composer-pulse {
+    0% { transform: scale(1); }
+    40% { transform: scale(1.06); box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25); }
+    100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .composer-pulse { animation: none; }
+}
+
 .App {
     min-height: 100dvh;
 }

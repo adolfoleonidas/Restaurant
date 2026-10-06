@@ -89,6 +89,21 @@ async def ensure_indexes():
             name="uniq_open_legacy_cash_register",
         )
     await db.attentions.create_index("id", unique=True, name="uniq_attention_id")
+    # Una versión anterior de este índice filtraba por el estado legado "abierta".
+    # Con ese nombre ya ocupado, Mongo rechaza la definición nueva y el arranque
+    # muere, así que se retira antes de recrearlo.
+    attention_indexes = await db.attentions.list_indexes().to_list(length=100)
+    stale_open_attention = next(
+        (
+            index for index in attention_indexes
+            if index.get("name") == "uniq_open_attention_per_table"
+            and (index.get("partialFilterExpression") or {}).get("status")
+            != {"$in": ["opening", "open", "closing"]}
+        ),
+        None,
+    )
+    if stale_open_attention is not None:
+        await db.attentions.drop_index("uniq_open_attention_per_table")
     await db.attentions.create_index(
         [("restaurant_id", 1), ("table_id", 1)], unique=True,
         partialFilterExpression={"status": {"$in": ["opening", "open", "closing"]}},
