@@ -74,6 +74,10 @@ describe('pickup branch selection and administration', () => {
         });
         expect(submit.disabled).toBe(false);
         await click(submit);
+        // El primer paso es la revisión del pedido; el segundo confirma y envía.
+        const pay = view.host.querySelector('[data-testid="checkout-pay-button"]');
+        expect(pay).not.toBeNull();
+        await click(pay);
         expect(api.post).toHaveBeenCalledWith('/public/orders', expect.objectContaining({ order_type: 'recojo', branch_id: 'branch-a' }));
         await unmount(view);
     });

@@ -67,8 +67,14 @@ describe('Checkout confirmed-order persistence', () => {
     it('shows the owner tracking confirmation even when session storage cleanup throws after POST success', async () => {
         const { container, root } = await renderCheckout();
         expect(container.textContent).toContain('Mesa 1');
+        // El flujo tiene dos pasos: revisar el pedido y recién ahí confirmar/pagar.
         await act(async () => {
             container.querySelector('[data-testid="checkout-confirmar-button"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+        expect(container.querySelector('[data-testid="checkout-review-root"]')).not.toBeNull();
+        await act(async () => {
+            container.querySelector('[data-testid="checkout-pay-button"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
         });
 
@@ -78,7 +84,7 @@ describe('Checkout confirmed-order persistence', () => {
         expect(container.querySelector('[data-testid="checkout-tracking-code"]').textContent).toBe('owner-code');
         expect(container.textContent).toContain('Atención 2');
         expect(container.textContent).toContain('2026-10-02');
-        expect(toast.success).toHaveBeenCalledWith('Pedido #17 confirmado');
+        expect(toast.success).toHaveBeenCalledWith('Pedido #17 guardado: falta el pago');
         expect(mockClearCart).toHaveBeenCalled();
 
         await act(async () => root.unmount());

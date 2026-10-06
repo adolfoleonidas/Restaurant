@@ -73,6 +73,10 @@ describe('delivery branch selection', () => {
         });
         expect(submit.disabled).toBe(false);
         await act(async () => { submit.click(); await Promise.resolve(); await Promise.resolve(); });
+        // El primer paso es la revisión del pedido; el segundo confirma y envía.
+        const pay = view.host.querySelector('[data-testid="checkout-pay-button"]');
+        expect(pay).not.toBeNull();
+        await act(async () => { pay.click(); await Promise.resolve(); await Promise.resolve(); });
         expect(api.post).toHaveBeenCalledWith('/public/orders', expect.objectContaining({ order_type: 'delivery', branch_id: 'branch-a' }));
         await unmount(view);
     });

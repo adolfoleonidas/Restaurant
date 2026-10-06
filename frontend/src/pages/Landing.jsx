@@ -7,6 +7,8 @@ import { Search } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import usePublicStream from '@/hooks/usePublicStream';
+import { useTableContext } from '@/contexts/TableContext';
+import { Utensils, X } from 'lucide-react';
 
 const PREVIEW = 8;
 
@@ -54,6 +56,8 @@ export default function Landing() {
     const [activeCategory, setActiveCategory] = useState('');
     const sectionRefs = useRef({});
     const { generation } = usePublicStream({ restaurantId: restaurant?.id });
+    const { table, hasTable, error: tableError, clearTable } = useTableContext();
+    const [tableHintDismissed, setTableHintDismissed] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -164,6 +168,36 @@ export default function Landing() {
 
     return (
         <div data-testid="public-landing-root">
+            {/* El QR deja la mesa en contexto. El cliente no tiene que volver a
+                elegirla, pero puede cambiarla o pedir para llevar más adelante. */}
+            {hasTable && !tableHintDismissed && (
+                <div className="border-b border-primary/30 bg-primary/10" data-testid="public-table-context">
+                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center gap-3 text-sm">
+                        <Utensils className="h-4 w-4 text-primary shrink-0" />
+                        <span className="min-w-0 flex-1">
+                            Estás pidiendo desde <span className="font-semibold">Mesa {table?.number}</span>
+                            {table?.area ? ` · ${table.area}` : ''}. La carta es la misma para mesa, recojo o delivery.
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setTableHintDismissed(true)}
+                            aria-label="Ocultar el aviso de mesa"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:text-foreground"
+                            data-testid="public-table-context-dismiss"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
+            {tableError && (
+                <div className="border-b border-destructive/40 bg-destructive/10" role="alert" data-testid="public-table-context-error">
+                    <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center gap-3 text-sm">
+                        <span className="min-w-0 flex-1">{tableError} Pedí el QR otra vez o avisá al personal.</span>
+                        <button type="button" onClick={clearTable} className="h-9 shrink-0 rounded-md border px-3 text-xs">Descartar</button>
+                    </div>
+                </div>
+            )}
             {loading ? (
                 // Reserva el espacio de la portada para que la imagen no salte
                 // al cargar (CLS de la carta pública: 0,89 sin esto).
@@ -196,8 +230,7 @@ export default function Landing() {
                 </section>
             )}
             <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border shadow-sm" role="navigation" aria-label="Categorías del menú">
-                <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 snap-x scroll-x">
-                    <div className="relative shrink-0">
+                <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 snap-x scroll-x">                    <div className="relative shrink-0">
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
                         <Input type="search" enterKeyHint="search" className="pl-9 h-10 w-44 sm:w-52 rounded-sm bg-card" placeholder="Buscar en la carta" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="landing-search" />
                     </div>

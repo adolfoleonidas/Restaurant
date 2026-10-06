@@ -133,6 +133,32 @@ function Restaurante() {
                 </label>
                 <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
             </div>
+            <div className="md:col-span-2 border-t pt-4 space-y-3">
+                <div>
+                    <Label>Cobro de pedidos hechos por el cliente (QR, web)</Label>
+                    <Select value={r.table_prepay_mode || 'never'} onValueChange={(v) => setR({ ...r, table_prepay_mode: v })}>
+                        <SelectTrigger aria-label="Cuándo se cobra un pedido hecho por el cliente" data-testid="config-prepay-mode"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="never">Pago al finalizar — se cocina y se cobra al terminar</SelectItem>
+                            <SelectItem value="always">Prepago obligatorio — nada se cocina sin pago confirmado</SelectItem>
+                            <SelectItem value="by_order_type">Según el tipo — mesa prepago, mostrador al final</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        Con prepago, un pedido por Yape, Plin o transferencia no llega a cocina hasta que Caja confirme el pago.
+                        El efectivo y la tarjeta se preparan y se cobran en caja, con el aviso «cobra en caja» en el ticket.
+                        El mozo que toma el pedido en la mesa siempre cobra al final.
+                    </p>
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:min-h-0">
+                    <Switch checked={!!r.prepay_pickup} onCheckedChange={(v) => setR({ ...r, prepay_pickup: v })} data-testid="config-prepay-pickup" aria-label="Exigir pago antes de preparar los pedidos para recojo" />
+                    Exigir pago antes de preparar los pedidos para recojo
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:min-h-0">
+                    <Switch checked={!!r.prepay_delivery} onCheckedChange={(v) => setR({ ...r, prepay_delivery: v })} data-testid="config-prepay-delivery" aria-label="Exigir pago antes de preparar los pedidos de delivery" />
+                    Exigir pago antes de preparar los pedidos de delivery
+                </label>
+            </div>
             <div className="md:col-span-2 flex justify-end"><Button onClick={save} data-testid="config-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button></div>
         </CardContent></Card>
     );
