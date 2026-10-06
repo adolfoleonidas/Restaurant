@@ -41,6 +41,24 @@ async function renderPage() {
 
 async function click(el) { await act(async () => el.dispatchEvent(new MouseEvent('click', { bubbles: true }))); }
 
+/**
+ * Abre el menú "⋯ Más opciones" de la hoja y toca una opción.
+ *
+ * Las acciones ocasionales viven dentro del menú para que la barra de la hoja no
+ * acumule botones (ver docs/spec/especificacion-ui-ux-pantallas-v0.1.md).
+ */
+async function openMore(sheet, testId = 'mesa-sheet-mas') {
+    const trigger = sheet.querySelector(`[data-testid="${testId}"]`);
+    expect(trigger).not.toBeNull();
+    await click(trigger);
+}
+
+async function clickOption(sheet, testId) {
+    const option = sheet.querySelector(`[data-testid="${testId}"]`);
+    expect(option).not.toBeNull();
+    await click(option);
+}
+
 describe('multi-cuenta en el salón', () => {
     let container, root;
     beforeEach(() => { api.get.mockReset(); api.post.mockReset(); });
@@ -134,7 +152,8 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]'));
+        await openMore(sheet);
+        await clickOption(sheet, 'mesa-sheet-fusionar-cuentas');
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/merge', { source_order_id: 'order-2' });
     });
 
@@ -157,7 +176,8 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        await click(sheet.querySelector('[data-testid="mesa-sheet-mover-cuenta"]'));
+        await openMore(sheet);
+        await clickOption(sheet, 'mesa-sheet-mover-cuenta');
         const dialog = document.body.querySelector('[data-testid="mover-cuenta"]');
         expect(dialog).not.toBeNull();
         await click(dialog.querySelector('[data-testid="mover-cuenta-mesa-3"]'));
@@ -184,7 +204,8 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        await click(sheet.querySelector('[data-testid="mesa-sheet-dividir-2"]'));
+        await openMore(sheet);
+        await clickOption(sheet, 'mesa-sheet-dividir-2');
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/split', { parts: 2 });
     });
 });

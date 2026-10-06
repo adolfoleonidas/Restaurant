@@ -78,6 +78,8 @@ test('mozo → cocina → cuenta → caja: efectivo exacto hasta pagado', async 
   await expect(tableCard).toHaveAttribute('data-floor-state', 'listo');
   await tableCard.click();
   await expect(page.getByTestId('mesa-sheet')).toBeVisible();
+  // Ver el pedido es una acción ocasional: vive en ⋯ Más.
+  await page.getByTestId('mesa-sheet-mas').click();
   await page.getByTestId('mesa-sheet-ver-pedido').click();
 
   await expect(page.getByTestId('pedido-detalle-root')).toBeVisible({ timeout: 15_000 });

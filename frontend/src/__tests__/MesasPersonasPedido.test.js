@@ -255,10 +255,11 @@ describe('pedido por personas en el salón', () => {
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        const carta = sheet.querySelector('[data-testid="mesa-sheet-pedido"]');
-        const fusionar = sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]');
-        expect(fusionar).not.toBeNull();
-        expect(carta.compareDocumentPosition(fusionar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        // Fusionar es ocasional: no aparece en la barra ni compite con la carta.
+        // Vive en ⋯ Más, junto al resto de las excepciones.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]')).toBeNull();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mas"]'));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]')).not.toBeNull();
     });
 
     it('no hay botón de crear cuenta: la persona nace al enviar y la pantalla queda lista', async () => {

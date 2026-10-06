@@ -9,7 +9,7 @@ const mockNavigate = jest.fn();
 const owner = { id: 'owner-1', restaurant_id: 'restaurant-1', role: 'admin' };
 const mozo = { id: 'mozo-1', restaurant_id: 'restaurant-1', role: 'mozo', branch_id: 'branch-a' };
 // El prefijo `mock` es obligatorio: `jest.mock` se eleva por encima de estas
-// declaraciones y sÃ³lo acepta referencias con ese nombre.
+// declaraciones y sólo acepta referencias con ese nombre.
 let mockCurrentUser = owner;
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
@@ -19,7 +19,7 @@ jest.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 
 const branches = [{ id: 'branch-a', name: 'Centro' }, { id: 'branch-b', name: 'Norte' }];
-const unassigned = [{ id: 'table-x', number: 9, name: 'Mesa 9', area: 'SalÃ³n', status: 'disponible' }];
+const unassigned = [{ id: 'table-x', number: 9, name: 'Mesa 9', area: 'Salón', status: 'disponible' }];
 const mounted = [];
 
 function tableCalls() {
@@ -62,14 +62,14 @@ beforeEach(() => {
 
 afterEach(unmountAll);
 
-describe('salÃ³n scope by branch', () => {
+describe('salón scope by branch', () => {
     it('scopes the floor to one branch for the owner and offers the branchless bucket', async () => {
         const host = await renderSalon();
         const select = host.querySelector('[data-testid="salon-sucursal"]');
         expect(Array.from(select.options).map((option) => option.value))
             .toEqual(['branch:branch-a', 'branch:branch-b', 'legacy']);
         expect(select.value).toBe('branch:branch-a');
-        // El piso del dueÃ±o nunca pide "todas": pide un salÃ³n concreto.
+        // El piso del dueño nunca pide "todas": pide un salón concreto.
         expect(tableCalls().some((call) => branchScopeOf(call) === null && !call[1]?.params?.legacy_only)).toBe(false);
         expect(tableCalls().some((call) => branchScopeOf(call) === 'branch-a')).toBe(true);
     });

@@ -116,6 +116,8 @@ describe('salón table groups', () => {
         expect(sheet).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-grupo"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-grupo"]').textContent).toContain('Cuenta de Mesa 1');
+        // Ver el pedido de la otra mesa es ocasional: vive en ⋯ Más.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mas-grupo"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ver-pedido-grupo"]').textContent).toContain('Mesa 1');
         expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-miembro-1"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-grupo-miembro-2"]')).not.toBeNull();
@@ -174,6 +176,7 @@ describe('salón table groups', () => {
 
         await click(container.querySelector('[data-testid="mesa-grupo-miembro-2"]'));
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mas-grupo"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ver-pedido-grupo"]')).not.toBeNull();
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-pedir-grupo"]'));
@@ -255,6 +258,7 @@ describe('salón table groups', () => {
         ({ container, root } = await renderPage());
 
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-mover-pedido"]'));
 
         expect(document.body.querySelector('[data-testid="mover-pedido"]')).not.toBeNull();
@@ -274,6 +278,7 @@ describe('salón table groups', () => {
         ({ container, root } = await renderPage());
 
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-mover-pedido"]'));
 
         expect(document.body.querySelector('[data-testid="mover-pedido-sin-mesas"]')).not.toBeNull();

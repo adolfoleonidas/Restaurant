@@ -14,6 +14,7 @@ import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/Ord
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
@@ -1592,15 +1593,21 @@ export default function Salon() {
                                 <div className="border-t p-4 space-y-2">
                                     {t.active_order ? (
                                         <>
+                                            {/* La barra tiene un lugar por tipo de acción:
+                                                operar (Entregar), cerrar (Cuenta) y el resto
+                                                en ⋯ Más. Así el cuerpo del modal queda para
+                                                tomar pedidos, que es lo que más se hace. */}
                                             {floor.key === 'listo' && canServe && (
                                                 <Button className="w-full h-12" onClick={() => deliver(actionAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
                                             )}
-                                            {closeable && (
+                                            {/* Un solo lugar para cerrar: la etiqueta cambia
+                                                con el momento de la visita en vez de sumar un
+                                                botón por cada paso del cobro. */}
+                                            {closeable ? (
                                                 <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(actionOrder)} disabled={closing === actionOrder?.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
                                                     {closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa'}
                                                 </Button>
-                                            )}
-                                            {billRequested ? (
+                                            ) : billRequested ? (
                                                 <Button disabled variant="outline" className="w-full h-12" data-testid="mesa-sheet-cuenta-solicitada">
                                                     Cuenta solicitada
                                                 </Button>
@@ -1611,70 +1618,54 @@ export default function Salon() {
                                                     </Button>
                                                 )
                                             )}
-                                            <Button
-                                                variant={floor.key === 'listo' ? 'outline' : 'default'}
-                                                className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); }}
-                                                disabled={!actionAccountId}
-                                                data-testid="mesa-sheet-ver-pedido"
-                                            >
-                                                {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
-                                            </Button>
-                                            {canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2 && (
-                                                <div className="flex gap-2">
-                                                    <span className="text-xs text-muted-foreground self-center">Dividir:</span>
-                                                    {[2, 3, 4].map((n) => (
-                                                        <Button key={n} variant="outline" className="flex-1 h-11" onClick={() => splitAccount(n)} data-testid={`mesa-sheet-dividir-${n}`}>÷{n}</Button>
-                                                    ))}
-                                                </div>
-                                            )}
-                                            {canTake && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="w-full h-12"
-                                                    onClick={() => openTransfer(t)}
-                                                    data-testid="mesa-sheet-mover-pedido"
-                                                >
-                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover pedido a otra mesa
-                                                </Button>
-                                            )}
-                                            {accounts.length > 1 && canTake && (
-                                                <Button
-                                                    variant="outline"
-                                                    className="w-full h-12"
-                                                    onClick={() => setMoveAccountId(actionAccountId)}
-                                                    data-testid="mesa-sheet-mover-cuenta"
-                                                >
-                                                    <MoveRight className="h-4 w-4 mr-1" /> Mover esta cuenta a otra mesa
-                                                </Button>
-                                            )}
-                                            {/* Acción poco frecuente: va al final, después de
-                                                lo que el mozo hace en cada ronda. */}
-                                            {accounts.length > 1 && canTake && (
-                                                <div className="flex flex-wrap gap-2 pt-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-10 flex-1 text-xs text-muted-foreground"
-                                                        onClick={mergeAccounts}
-                                                        data-testid="mesa-sheet-fusionar-cuentas"
-                                                    >
-                                                        <Link2 className="h-3.5 w-3.5 mr-1" /> Fusionar cuentas
-                                                    </Button>
-                                                </div>
-                                            )}
+                                            <MoreActions
+                                                testId="mesa-sheet-mas"
+                                                actions={[
+                                                    {
+                                                        key: 'ver-pedido',
+                                                        label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
+                                                        testId: 'mesa-sheet-ver-pedido',
+                                                        disabled: !actionAccountId,
+                                                        onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
+                                                    },
+                                                    ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
+                                                        ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
+                                                            key: `dividir-${n}`,
+                                                            label: `En ${n} cuentas`,
+                                                            testId: `mesa-sheet-dividir-${n}`,
+                                                            onSelect: () => splitAccount(n),
+                                                        }))]
+                                                        : []),
+                                                    ...(canTake ? [{
+                                                        key: 'mover-pedido',
+                                                        label: 'Mover pedido a otra mesa',
+                                                        icon: MoveRight,
+                                                        testId: 'mesa-sheet-mover-pedido',
+                                                        onSelect: () => openTransfer(t),
+                                                    }] : []),
+                                                    ...(accounts.length > 1 && canTake ? [
+                                                        {
+                                                            key: 'mover-cuenta',
+                                                            label: 'Mover esta cuenta a otra mesa',
+                                                            icon: MoveRight,
+                                                            testId: 'mesa-sheet-mover-cuenta',
+                                                            onSelect: () => setMoveAccountId(actionAccountId),
+                                                        },
+                                                        {
+                                                            key: 'fusionar-cuentas',
+                                                            label: 'Fusionar cuentas',
+                                                            icon: Link2,
+                                                            testId: 'mesa-sheet-fusionar-cuentas',
+                                                            onSelect: mergeAccounts,
+                                                        },
+                                                    ] : []),
+                                                ]}
+                                            />
                                         </>
                                     ) : accountTable && order ? (
                                         <>
-                                            <Button
-                                                className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${order.id}`); }}
-                                                data-testid="mesa-sheet-ver-pedido-grupo"
-                                            >
-                                                Ver pedido de Mesa {accountTable.number}
-                                            </Button>
                                             {canTake && (
                                                 <Button
-                                                    variant="outline"
                                                     className="w-full h-12"
                                                     onClick={() => takeOrderInline(t)}
                                                     data-testid="mesa-sheet-pedir-grupo"
@@ -1682,6 +1673,15 @@ export default function Salon() {
                                                     <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
                                                 </Button>
                                             )}
+                                            <MoreActions
+                                                testId="mesa-sheet-mas-grupo"
+                                                actions={[{
+                                                    key: 'ver-pedido-grupo',
+                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
+                                                    testId: 'mesa-sheet-ver-pedido-grupo',
+                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
+                                                }]}
+                                            />
                                         </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
