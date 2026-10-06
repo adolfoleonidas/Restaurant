@@ -108,6 +108,10 @@ class RestaurantUpdate(BaseModel):
     auto_release_table: Optional[bool] = None
     theme_id: Optional[str] = None
     features: Optional[RestaurantFeatures] = None
+    # Cobro de pedidos hechos por el cliente desde el QR.
+    table_prepay_mode: Optional[Literal["never", "always", "by_order_type"]] = None
+    prepay_pickup: Optional[bool] = None
+    prepay_delivery: Optional[bool] = None
 
 
 # ============== PAYMENT CONFIG ==============

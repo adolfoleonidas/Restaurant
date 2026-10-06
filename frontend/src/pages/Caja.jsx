@@ -21,8 +21,7 @@ import { accountLabel, round2 } from '@/lib/cash';
 import CobrarDialog from '@/components/CobrarDialog';
 import AccountPaymentAudit from '@/components/AccountPaymentAudit';
 
-function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
-    const [proof, setProof] = useState(null);
+function WebOrderRow({ order, onConfirm, scopeParams = {} }) {    const [proof, setProof] = useState(null);
     const [showProof, setShowProof] = useState(false);
     const [loading, setLoading] = useState(false);
 
@@ -66,6 +65,116 @@ function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
                 <Button size="sm" className="h-11 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
             </div>
         </div>
+    );
+}
+
+const PREPAY_STATE_LABELS = {
+    pendiente: 'Esperando el pago del cliente',
+    reportado: 'El cliente dice que ya pagó',
+    rechazado: 'Pago rechazado',
+};
+
+/**
+ * Cola de prepagos por verificar.
+ *
+ * Con prepago activo, un pedido por Yape/Plin/transferencia no llega a cocina
+ * hasta que alguien comprueba que el dinero entró. Confirmar acá registra el
+ * cobro y envía el pedido a cocina en un solo paso; rechazar lo deja fuera.
+ */
+function PrepayQueue({ runMutation, onChanged }) {
+    const [rows, setRows] = useState([]);
+    const [loaded, setLoaded] = useState(false);
+    const [busy, setBusy] = useState('');
+    const [proof, setProof] = useState(null);
+    const [load, setLoad] = useState(0);
+
+    useEffect(() => {
+        let active = true;
+        api.get('/public-prepay/pending')
+            .then((r) => { if (active) setRows(Array.isArray(r.data) ? r.data : []); })
+            .catch(() => { if (active) setRows([]); })
+            .finally(() => { if (active) setLoaded(true); });
+        return () => { active = false; };
+    }, [load]);
+
+    const reload = () => setLoad((n) => n + 1);
+
+    const openProof = async (row) => {
+        try {
+            const { data } = await api.get(`/orders/${row.id}`);
+            setProof({ order: row, url: data.payment_proof_url || null });
+        } catch {
+            toast.error('No se pudo cargar el comprobante');
+        }
+    };
+
+    const decide = async (row, action) => {
+        if (action === 'reject' && !window.confirm(`¿Rechazar el pago del pedido #${row.order_number}? El pedido no va a cocina.`)) return;
+        setBusy(`${action}-${row.id}`);
+        try {
+            await runMutation(() => api.post(`/public-prepay/${row.id}/${action}`));
+            toast.success(action === 'confirm'
+                ? `Pedido #${row.order_number}: pago registrado y enviado a cocina`
+                : `Pedido #${row.order_number}: pago rechazado`);
+            reload();
+            onChanged?.();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo completar la acción');
+        } finally {
+            setBusy('');
+        }
+    };
+
+    if (!loaded || rows.length === 0) return null;
+
+    return (
+        <Card className="border-amber-500/50" data-testid="caja-prepagos">
+            <CardContent className="p-4">
+                <h2 className="font-display text-lg font-semibold mb-1">Prepagos por verificar ({rows.length})</h2>
+                <p className="text-xs text-muted-foreground mb-3">
+                    Verificá el pago en tu app antes de confirmar: recién ahí el pedido entra a cocina.
+                </p>
+                <div className="divide-y">
+                    {rows.map((row) => (
+                        <div key={row.id} className="py-3 flex items-start justify-between gap-3" data-testid={`caja-prepago-${row.order_number}`}>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-display text-lg font-bold">#{row.order_number}</span>
+                                    {row.table_number ? <span className="text-sm font-medium">Mesa {row.table_number}</span> : null}
+                                    <span className="text-xs text-muted-foreground">{PAYMENT_LABELS[row.payment_method_choice] || row.payment_method_choice}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                    {PREPAY_STATE_LABELS[row.payment_state] || row.payment_state}
+                                    {' · '}{(row.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} ítems
+                                    {row.customer_name ? ` · ${row.customer_name}` : ''}
+                                </div>
+                            </div>
+                            <div className="text-right shrink-0 space-y-1">
+                                <div className="font-mono font-bold tabular-nums">{fmtMoney(row.total)}</div>
+                                {row.has_proof && (
+                                    <Button size="sm" variant="outline" className="h-11 w-full" onClick={() => openProof(row)} data-testid={`caja-prepago-ver-${row.order_number}`}>Ver comprobante</Button>
+                                )}
+                                <Button size="sm" className="h-11 w-full" disabled={!!busy} onClick={() => decide(row, 'confirm')} data-testid={`caja-prepago-confirmar-${row.order_number}`}>
+                                    {busy === `confirm-${row.id}` ? 'Registrando…' : 'Confirmar pago'}
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-11 w-full" disabled={!!busy} onClick={() => decide(row, 'reject')} data-testid={`caja-prepago-rechazar-${row.order_number}`}>Rechazar</Button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+                {proof && (
+                    <div className="mt-3 border-t pt-3" data-testid="caja-prepago-comprobante">
+                        <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium">Comprobante del pedido #{proof.order.order_number}</span>
+                            <Button size="sm" variant="ghost" onClick={() => setProof(null)}>Cerrar</Button>
+                        </div>
+                        {proof.url
+                            ? <img src={proof.url} alt="Comprobante" className="mt-2 max-h-72 rounded-sm border" />
+                            : <p className="mt-2 text-xs text-muted-foreground">El cliente todavía no subió imagen.</p>}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 }
 
@@ -639,12 +748,15 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
         return `${o.order_number} ${o.customer_name || ''} ${o.table_id || ''} ${accountLabel(o)}`.toLowerCase().includes(q);
     };
 
+    // Los pedidos que esperan verificación de prepago tienen su propia cola:
+    // acá quedan los web que ya entraron a cocina y solo falta comprobar el pago.
     const webPending = useMemo(() =>
         (pending || []).filter((o) =>
             o.source === 'public'
             && o.status !== 'pagado'
             && o.status !== 'cancelado'
             && o.payment_status !== 'confirmado'
+            && o.acceptance_status !== 'pendiente'
         )
     , [pending]);
 
@@ -723,6 +835,8 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
             {tab === 'cobrar' && (
             <>
+            <PrepayQueue runMutation={runMutation} onChanged={() => { refetchPending(); refetchReg(); }} />
+
             {webPending.length > 0 && (
                 <Card><CardContent className="p-4">
                     <h2 className="font-display text-lg font-semibold mb-3">Pedidos web ({webPending.length})</h2>

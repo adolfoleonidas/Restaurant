@@ -1,14 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
 import usePolling from '@/hooks/usePolling';
 import usePublicStream from '@/hooks/usePublicStream';
+import { useTableContext } from '@/contexts/TableContext';
+import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
-import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
+import TableSessionPanel from '@/components/TableSessionPanel';
+
+const PAYMENT_STATE_TONES = {
+    confirmado: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
+    rechazado: 'border-destructive/40 bg-destructive/10 text-destructive',
+    expirado: 'border-destructive/40 bg-destructive/10 text-destructive',
+    reportado: 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200',
+};
+
+const PAYMENT_STATE_LABELS = {
+    pendiente: 'Pendiente de pago',
+    reportado: 'Comprobante en revisión: el restaurante está verificando tu pago',
+    confirmado: 'Pago confirmado ✓',
+    rechazado: 'Pago rechazado: no pudimos verificar el pago',
+    expirado: 'Pago vencido',
+    reembolsado: 'Pago reembolsado',
+    no_requerido: 'Se paga al final',
+};
 
 const STATUS_STEPS = [
     { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
@@ -45,6 +65,9 @@ const statusIndex = (s) => {
 
 export default function PedidoTracking() {
     const { code } = useParams();
+    const navigate = useNavigate();
+    const { table, session, hasTable, refresh: refreshTable } = useTableContext();
+    const { clearMeta } = useLiveOrder();
     const [restaurant, setRestaurant] = useState(null);
     const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden);
     const { generation } = usePublicStream({ trackingCode: code });
@@ -69,6 +92,19 @@ export default function PedidoTracking() {
     );
     const [proof, setProof] = useState(null);
     const [uploading, setUploading] = useState(false);
+    // Resumen de la mesa resuelto por el propio pedido: el enlace de seguimiento
+    // se comparte y se abre sin el `?mesa=` del QR, así que no se puede depender
+    // del contexto guardado en el teléfono.
+    const [ownTable, setOwnTable] = useState(null);
+    const tableId = order?.table_id || '';
+    useEffect(() => {
+        if (!code || !tableId) return undefined;
+        let active = true;
+        api.get(`/public/orders/${code}/table`)
+            .then((r) => { if (active) setOwnTable(r.data); })
+            .catch(() => { if (active) setOwnTable(null); });
+        return () => { active = false; };
+    }, [code, tableId, generation, order?.status]);
 
     if (loading && !order) {
         return (
@@ -106,6 +142,22 @@ export default function PedidoTracking() {
         finally { setUploading(false); }
     };
     const needsProof = !order.has_proof && ['yape', 'plin', 'transferencia'].includes(order.payment_method_choice);
+    const paymentState = order.payment_state || (order.prepay_required ? 'pendiente' : 'no_requerido');
+    const waitingForPayment = order.prepay_required && (paymentState === 'pendiente' || paymentState === 'reportado');
+    const isTableOrder = order.order_type === 'local' && Boolean(order.table_id);
+    // El resumen de la mesa sale del propio pedido; el del contexto del QR queda
+    // como respaldo inmediato mientras llega la respuesta.
+    const sessionTable = isTableOrder ? (ownTable || (hasTable ? { table, session } : null)) : null;
+    const showSession = Boolean(sessionTable?.table && sessionTable?.session);
+    const currentOrderId = order.id;
+
+    // "Pedir algo más" no modifica el pedido ya enviado: abre una cuenta nueva
+    // en la misma mesa, que se cobra y se prepara por separado.
+    const orderMore = () => {
+        clearMeta();
+        refreshTable().catch(() => {});
+        navigate('/menu');
+    };
 
     return (
         <div className="max-w-3xl mx-auto px-4 py-8 space-y-5" data-testid="tracking-root">
@@ -118,6 +170,24 @@ export default function PedidoTracking() {
                 <AttentionReference order={order} publicView />
                 <div className="text-sm text-muted-foreground">Realizado hace {fmtElapsed(order.created_at)}</div>
             </div>
+
+            {(waitingForPayment || paymentState === 'rechazado' || paymentState === 'expirado') && !cancelled && (
+                <div
+                    className={`rounded-xl border p-4 text-sm ${PAYMENT_STATE_TONES[paymentState] || 'border-border bg-secondary/40 text-muted-foreground'}`}
+                    data-testid="tracking-payment-state"
+                    data-payment-state={paymentState}
+                >
+                    <div className="flex items-center gap-2 font-semibold">
+                        {paymentState === 'confirmado' ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                        {PAYMENT_STATE_LABELS[paymentState] || 'Estado de pago'}
+                    </div>
+                    <p className="mt-1 opacity-90">
+                        {waitingForPayment
+                            ? 'Tu pedido queda guardado y todavía no entra a cocina. Cuando el restaurante confirme el pago, empieza la preparación.'
+                            : 'No se pudo verificar el pago. Probá de nuevo o consultá al personal del local.'}
+                    </p>
+                </div>
+            )}
 
             <Card>
                 <CardContent className="p-5">
@@ -202,6 +272,17 @@ export default function PedidoTracking() {
                     <div className="flex justify-between font-display text-xl font-bold pt-2 border-t mt-2"><span>Total</span><span className="tabular-nums">{fmtMoney(order.total)}</span></div>
                 </div>
             </CardContent></Card>
+
+            {showSession && (
+                <Card><CardContent className="p-5">
+                    <TableSessionPanel
+                        table={sessionTable.table}
+                        session={sessionTable.session}
+                        currentOrderId={currentOrderId}
+                        onOrderMore={orderMore}
+                    />
+                </CardContent></Card>
+            )}
 
             {waMeLink(restaurant?.social_whatsapp, `Hola, consulto pedido #${order.order_number} código ${order.tracking_code}`) && (
                 <Button asChild variant="outline" className="w-full">

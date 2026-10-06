@@ -7,13 +7,15 @@ jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), patch: jest.fn() } }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 function Probe() {
-    const { darkMode, toggle, theme, setTheme } = useTheme();
+    const { darkMode, kitchenDark, toggle, theme, setTheme, setActivePath } = useTheme();
     return (
         <div>
             <span data-testid="dm">{String(darkMode)}</span>
+            <span data-testid="kitchen">{String(kitchenDark)}</span>
             <span data-testid="th">{theme}</span>
             <button type="button" data-testid="toggle" onClick={toggle}>toggle</button>
             <button type="button" data-testid="set-calido" onClick={() => setTheme('calido')}>calido</button>
+            <button type="button" data-testid="ir-cocina" onClick={() => setActivePath('/cocina')}>cocina</button>
         </div>
     );
 }
@@ -67,5 +69,59 @@ describe('tema y modo oscuro', () => {
         const link = document.head.querySelector('#theme-css');
         expect(link).not.toBeNull();
         expect(link.getAttribute('href')).toBe('/themes/theme-calido.css');
+    });
+
+    it('la cocina ya no se pone oscura por su cuenta', async () => {
+        await render();
+        expect(document.body.classList.contains('dark')).toBe(false);
+
+        await act(async () => container.querySelector('[data-testid="ir-cocina"]').click());
+        expect(container.querySelector('[data-testid="kitchen"]').textContent).toBe('true');
+        // Entrar al pase no cambia el tema ni deja una elección grabada.
+        expect(document.body.classList.contains('dark')).toBe(false);
+        expect(localStorage.getItem('restaurant-dark-mode')).toBeNull();
+    });
+
+    it('respeta el tema del dispositivo cuando el usuario aún no eligió', async () => {
+        const original = window.matchMedia;
+        window.matchMedia = (query) => ({ matches: query.includes('dark'), addEventListener: () => {}, removeEventListener: () => {} });
+        try {
+            await render();
+            expect(document.body.classList.contains('dark')).toBe(true);
+            await act(async () => container.querySelector('[data-testid="ir-cocina"]').click());
+            expect(document.body.classList.contains('dark')).toBe(true);
+            // Sigue sin ser una elección de la app.
+            expect(localStorage.getItem('restaurant-dark-mode')).toBeNull();
+        } finally {
+            window.matchMedia = original;
+        }
+    });
+
+    it('la elección del usuario gana sobre el tema del dispositivo', async () => {
+        const original = window.matchMedia;
+        window.matchMedia = (query) => ({ matches: query.includes('dark'), addEventListener: () => {}, removeEventListener: () => {} });
+        try {
+            await render();
+            expect(document.body.classList.contains('dark')).toBe(true);
+            // El usuario apaga el oscuro a mano.
+            await act(async () => container.querySelector('[data-testid="toggle"]').click());
+            expect(document.body.classList.contains('dark')).toBe(false);
+            expect(localStorage.getItem('restaurant-dark-mode')).toBe('false');
+
+            await act(async () => container.querySelector('[data-testid="ir-cocina"]').click());
+            expect(document.body.classList.contains('dark')).toBe(false);
+        } finally {
+            window.matchMedia = original;
+        }
+    });
+
+    it('en la cocina el interruptor sigue funcionando', async () => {
+        await render();
+        await act(async () => container.querySelector('[data-testid="ir-cocina"]').click());
+        expect(document.body.classList.contains('dark')).toBe(false);
+
+        await act(async () => container.querySelector('[data-testid="toggle"]').click());
+        expect(document.body.classList.contains('dark')).toBe(true);
+        expect(localStorage.getItem('restaurant-dark-mode')).toBe('true');
     });
 });

@@ -5,10 +5,17 @@ import { api } from '@/lib/api';
 
 let mockTrackedOrder;
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
-jest.mock('react-router-dom', () => ({ useParams: () => ({ code: 'TRACK-1' }), Link: ({ children }) => <a>{children}</a> }));
+jest.mock('react-router-dom', () => ({
+    useParams: () => ({ code: 'TRACK-1' }),
+    useNavigate: () => jest.fn(),
+    Link: ({ children }) => <a>{children}</a>,
+}));
 jest.mock('@/hooks/usePublicStream', () => ({ __esModule: true, default: () => ({ generation: 0 }) }));
 jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: () => ({ data: mockTrackedOrder, loading: false, error: null, refetch: jest.fn() }) }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock('@/contexts/LiveOrderContext', () => ({
+    useLiveOrder: () => ({ clearMeta: jest.fn(), meta: null, isActive: false }),
+}));
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 

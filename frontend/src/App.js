@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { CartProvider } from '@/contexts/CartContext';
 import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
+import { TableProvider } from '@/contexts/TableContext';
 import { AssistantProvider } from '@/contexts/AssistantContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { AppShell } from '@/components/AppShell';
@@ -113,6 +114,7 @@ function App() {
                         <LiveOrderProvider>
                             <AssistantProvider>
                             <BrowserRouter>
+                                <TableProvider>
                                 <ScrollToTop />
                                 <RouteTitle />
                                 <ThemeRouteSync />
@@ -157,6 +159,7 @@ function App() {
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
                             </RouteErrorBoundary>
+                            </TableProvider>
                         </BrowserRouter>
                             </AssistantProvider>
                     </LiveOrderProvider>

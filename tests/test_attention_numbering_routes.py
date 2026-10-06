@@ -446,7 +446,9 @@ def test_public_retry_finishes_numbering_from_persisted_snapshot_without_leaking
     assert stored["attention_number"] == 1
     assert stored["order_number"] == 18
     assert response == {"id": "public-order", "order_number": 18, "tracking_code": "TRACK123",
-                        "status": "enviado_cocina", "total": 12, "payment_method": "efectivo"}
+                        "status": "enviado_cocina", "total": 12, "payment_method": "efectivo",
+                        "payment_state": "no_requerido", "prepay_required": False,
+                        "pay_at_counter": False, "sent_to_kitchen": True}
     assert "attention_number_context" not in response
     assert "attention_id" not in response
 
@@ -460,7 +462,7 @@ def test_public_pickup_acceptance_snapshots_branch_and_creates_attention_identit
               "pickup_enabled": True, "timezone": "America/Lima", "business_day_cutoff": "04:00"}
     db = Database(branches=[branch])
     monkeypatch.setattr(public_routes, "db", db)
-    monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-a"}))
+    monkeypatch.setattr(public_routes, "_get_restaurant", lambda: asyncio.sleep(0, result={"id": "tenant-a", "table_prepay_mode": "never"}))
     monkeypatch.setattr(public_routes.public_order_limiter, "allow", lambda _host: True)
     monkeypatch.setattr(public_routes, "_enrich_items", lambda *_: asyncio.sleep(0, result=([{"product_id": "dish", "quantity": 1}], 12)))
     monkeypatch.setattr(public_routes, "_next_order_number", lambda *_: asyncio.sleep(0, result=18))
@@ -484,7 +486,9 @@ def test_public_pickup_acceptance_snapshots_branch_and_creates_attention_identit
     assert stored["attention_number_context"]["timezone_name"] == "America/Lima"
     assert stored["attention_number_context"]["cutoff"] == "04:00:00"
     assert response == {"id": stored["id"], "order_number": 18, "tracking_code": "TRACK123",
-                        "status": "enviado_cocina", "total": 12, "payment_method": "efectivo"}
+                        "status": "enviado_cocina", "total": 12, "payment_method": "efectivo",
+                        "payment_state": "no_requerido", "prepay_required": False,
+                        "pay_at_counter": False, "sent_to_kitchen": True}
 
 
 def test_public_pickup_invalid_branch_time_configuration_writes_no_order_or_order_counter(monkeypatch):

@@ -34,14 +34,16 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
             data-floor-state={floor.key}
             data-grouped="true"
             onClick={() => { if (!selectMode) onOpen(); }}
-            className={`relative col-span-2 rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${selectMode ? 'opacity-60' : ''} ${isLate ? 'floor-late' : ''} ${needsAttention ? 'ring-2 ring-offset-1' : ''}`}
+            className={`relative col-span-2 rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${selectMode ? 'opacity-60' : ''} ${isLate ? 'floor-late' : ''}`}
             style={{
                 background: s.bg,
                 color: s.fg,
+                // Un solo contorno: el aviso de atención engrosa el mismo borde en
+                // vez de sumar un `ring` que se veía como un segundo borde.
+                borderWidth: needsAttention ? 3 : 2,
                 borderColor: needsAttention ? s.dot : s.border,
                 borderLeftWidth: 6,
                 borderLeftColor: '#7C6BC4',
-                ...(needsAttention ? { ['--tw-ring-color']: s.dot } : {}),
             }}
         >
             <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1">

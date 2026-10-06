@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
+import { useTableContext } from '@/contexts/TableContext';
 import { api } from '@/lib/api';
 import { submitPublicOrder } from '@/lib/orderRequest';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,7 +14,10 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fmtMoney, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
-import { Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote, CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon } from 'lucide-react';
+import {
+    Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote,
+    CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon, AlertCircle, Clock,
+} from 'lucide-react';
 
 const ORDER_TYPE_INFO = {
     local: { label: 'Comer en local', icon: Utensils, desc: 'Te esperamos en nuestra mesa' },
@@ -23,9 +27,46 @@ const ORDER_TYPE_INFO = {
 
 const METHOD_ICON = { efectivo: Banknote, yape: Smartphone, plin: Smartphone, tarjeta: CreditCardIcon, transferencia: Building2 };
 
+// Métodos donde el cliente transfiere y manda su comprobante: el pedido espera
+// que caja lo verifique.
+const RECEIPT_METHODS = ['yape', 'plin', 'transferencia'];
+
+// Estados del dinero tal como los cuenta el backend.
+const PAYMENT_STATE_INFO = {
+    pendiente: { label: 'Pendiente de pago', tone: 'amber', hint: 'Todavía no registramos tu pago.' },
+    reportado: { label: 'Comprobante en revisión', tone: 'amber', hint: 'El restaurante está verificando tu pago.' },
+    confirmado: { label: 'Pago confirmado', tone: 'green', hint: 'Tu pedido ya está en cocina.' },
+    rechazado: { label: 'Pago rechazado', tone: 'red', hint: 'No pudimos verificar el pago. Probá con otro método o consultá al personal.' },
+    expirado: { label: 'Pago vencido', tone: 'red', hint: 'El tiempo para pagar terminó. Empezá un pedido nuevo.' },
+    reembolsado: { label: 'Pago reembolsado', tone: 'gray', hint: 'El dinero fue devuelto.' },
+    no_requerido: { label: 'Se paga al final', tone: 'gray', hint: 'Podés pagar cuando termines.' },
+};
+
+const TONE_CLASSES = {
+    amber: 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200',
+    green: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
+    red: 'border-destructive/40 bg-destructive/10 text-destructive',
+    gray: 'border-border bg-secondary/40 text-muted-foreground',
+};
+
+function PaymentStateBanner({ state, orderNumber, className = '' }) {
+    const info = PAYMENT_STATE_INFO[state] || PAYMENT_STATE_INFO.pendiente;
+    return (
+        <div className={`rounded-xl border p-4 ${TONE_CLASSES[info.tone]} ${className}`} data-testid="checkout-payment-state" data-payment-state={state}>
+            <div className="flex items-center gap-2 font-semibold">
+                {state === 'confirmado' ? <CheckCircle2 className="h-4 w-4" /> : state === 'rechazado' || state === 'expirado' ? <AlertCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+                <span>{info.label}</span>
+                {orderNumber ? <span className="font-normal opacity-80">· Pedido #{orderNumber}</span> : null}
+            </div>
+            <p className="mt-1 text-sm opacity-90">{info.hint}</p>
+        </div>
+    );
+}
+
 export default function Checkout() {
     const { items, subtotal, clear } = useCart();
     const { setMeta, isActive } = useLiveOrder();
+    const { table: contextTable, policy: contextPolicy, refresh: refreshTable } = useTableContext();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [restaurant, setRestaurant] = useState(null);
@@ -51,10 +92,14 @@ export default function Checkout() {
     const [method, setMethod] = useState('yape');
     const [submitting, setSubmitting] = useState(false);
     const [confirmed, setConfirmed] = useState(null); // { tracking_code, order_number, total, payment_method }
+    const [reviewing, setReviewing] = useState(false); // revisión antes de cobrar
     const [copied, setCopied] = useState(null);
     const [proofFile, setProofFile] = useState(null); // data URL
     const [uploading, setUploading] = useState(false);
     const [uploadPct, setUploadPct] = useState(0);
+    const [proofSent, setProofSent] = useState(false);
+    const [livePaymentState, setLivePaymentState] = useState(null);
+    const pollRef = useRef(null);
 
     useEffect(() => {
         api.get('/public/restaurant').then((r) => setRestaurant(r.data));
@@ -65,6 +110,7 @@ export default function Checkout() {
         });
     }, []);
 
+    // Mesa del QR: se resuelve la capacidad firmada y queda preseleccionada.
     useEffect(() => {
         if (tableToken) {
             api.get('/public/tables/resolve', { params: { token: tableToken } })
@@ -72,9 +118,13 @@ export default function Checkout() {
                 .catch(() => setTableInfo(null));
             return;
         }
+        if (contextTable) {
+            setTableInfo(contextTable);
+            return;
+        }
         if (restaurant?.require_table_qr) return;
         api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
-    }, [tableToken, restaurant]);
+    }, [tableToken, restaurant, contextTable]);
 
     useEffect(() => {
         let active = true;
@@ -114,10 +164,41 @@ export default function Checkout() {
         if (confirmed) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }, [confirmed]);
 
+    // Mientras el pedido espera pago, el cliente ve el estado real: caja puede
+    // confirmarlo en cualquier momento desde otra pantalla.
+    useEffect(() => {
+        if (!confirmed?.tracking_code) return undefined;
+        const settled = livePaymentState === 'confirmado' || livePaymentState === 'rechazado' || livePaymentState === 'expirado';
+        if (!confirmed.prepay_required || settled) return undefined;
+        pollRef.current = setInterval(() => {
+            api.get(`/public/orders/${confirmed.tracking_code}`)
+                .then((r) => {
+                    setLivePaymentState(r.data?.payment_state || null);
+                    if (r.data?.payment_state === 'confirmado') {
+                        setConfirmed((cur) => (cur ? { ...cur, sent_to_kitchen: true, payment_state: 'confirmado', status: r.data.status } : cur));
+                    }
+                })
+                .catch(() => { /* el sondeo se reintenta solo */ });
+        }, 5000);
+        return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    }, [confirmed?.tracking_code, confirmed?.prepay_required, livePaymentState]);
+
     const deliveryFee = orderType === 'delivery' ? (restaurant?.delivery_fee || 0) : 0;
     const total = subtotal + deliveryFee;
 
     const enabledMethods = paymentCfg ? ['efectivo', 'yape', 'plin', 'transferencia', 'tarjeta'].filter((m) => paymentCfg[`enable_${m}`]) : [];
+
+    const prepayPolicy = useMemo(() => {
+        const fromRestaurant = restaurant?.prepay;
+        if (!fromRestaurant) return { prepay_required: false, prepay_mode: 'never' };
+        if (orderType === 'recojo') return { ...fromRestaurant, prepay_required: Boolean(fromRestaurant.prepay_pickup) };
+        if (orderType === 'delivery') return { ...fromRestaurant, prepay_required: Boolean(fromRestaurant.prepay_delivery) };
+        return fromRestaurant;
+    }, [restaurant, orderType]);
+
+    const needsCounterVerification = prepayPolicy.prepay_required && RECEIPT_METHODS.includes(method);
+    const payAtCounter = prepayPolicy.prepay_required && !needsCounterVerification;
+    const requiresPaymentBeforeKitchen = needsCounterVerification;
 
     if (items.length === 0 && !confirmed) {
         return (
@@ -159,30 +240,37 @@ export default function Checkout() {
                     if (event.total) setUploadPct(Math.round((event.loaded / event.total) * 100));
                 },
             });
+            setProofSent(true);
+            setLivePaymentState('reportado');
             toast.success('Comprobante enviado al restaurante');
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo subir'); }
         finally { setUploading(false); setUploadPct(0); }
     };
 
-    const submit = async () => {
+    const validate = () => {
         if (orderType !== 'local' && (!customer.name.trim() || !customer.phone.trim())) {
-            toast.error('Completa tu nombre y celular'); return;
+            toast.error('Completa tu nombre y celular'); return false;
         }
         if (orderType === 'delivery' && !customer.address.trim()) {
-            toast.error('Indica la dirección para delivery'); return;
+            toast.error('Indica la dirección para delivery'); return false;
         }
         if (orderType === 'recojo' && !pickupBranches.some((branch) => branch.id === pickupBranchId)) {
-            toast.error('Selecciona una sucursal habilitada para recojo'); return;
+            toast.error('Selecciona una sucursal habilitada para recojo'); return false;
         }
         if (orderType === 'delivery' && !deliveryBranches.some((branch) => branch.id === deliveryBranchId)) {
-            toast.error('Selecciona una sucursal para delivery'); return;
+            toast.error('Selecciona una sucursal para delivery'); return false;
         }
         if (orderType === 'local' && tableToken && !tableInfo) {
-            toast.error('Escaneá el QR de tu mesa'); return;
+            toast.error('Escaneá el QR de tu mesa'); return false;
         }
-        if (orderType === 'local' && !tableToken && !tableId) {
-            toast.error(restaurant?.require_table_qr ? 'Escaneá el QR de tu mesa' : 'Elegí tu mesa'); return;
+        if (orderType === 'local' && !tableToken && !contextTable && !tableId) {
+            toast.error(restaurant?.require_table_qr ? 'Escaneá el QR de tu mesa' : 'Elegí tu mesa'); return false;
         }
+        return true;
+    };
+
+    const submit = async () => {
+        if (!validate()) return;
         setSubmitting(true);
         try {
             const payload = {
@@ -195,7 +283,7 @@ export default function Checkout() {
                 notes: notes.trim() || null,
                 payment_method: method,
                 table_token: orderType === 'local' && tableToken ? tableToken : null,
-                table_id: orderType === 'local' && !tableToken ? tableId : null,
+                table_id: orderType === 'local' && !tableToken ? (contextTable?.id || tableId) : null,
                 ...(orderType === 'recojo' ? { branch_id: pickupBranchId } : {}),
                 ...(orderType === 'delivery' ? { branch_id: deliveryBranchId } : {}),
             };
@@ -206,21 +294,39 @@ export default function Checkout() {
                 payload,
                 post: (requestPayload) => api.post('/public/orders', requestPayload),
                 onConfirmed: (data) => {
-                    setConfirmed({
+                    const next = {
                         ...data,
                         order_type: orderType,
                         branchName: (orderType === 'recojo' ? pickupBranches : deliveryBranches)
                             .find((branch) => branch.id === (orderType === 'recojo' ? pickupBranchId : deliveryBranchId))?.name || null,
-                    });
-                    if (!isActive) {
-                        setMeta({
-                            tracking_code: data.tracking_code,
-                            order_number: data.order_number,
-                            table_id: orderType === 'local' ? tableInfo?.id : null,
-                        });
-                    }
+                    };
+                    setConfirmed(next);
+                    // El estado en vivo solo manda si el servidor lo informó; si
+                    // no, se usa el de la respuesta para no mostrarlo pendiente
+                    // cuando el pedido ya fue a cocina.
+                    setLivePaymentState(data.payment_state || null);
+                    // Lo primero es vaciar el carrito: el pedido ya existe. Si algo
+                    // de lo que sigue falla, el cliente no puede reenviar lo mismo
+                    // por accidente. Cada intento posterior arranca de cero.
                     clear();
-                    toast.success(`Pedido #${data.order_number} confirmado`);
+                    setProofFile(null);
+                    setProofSent(false);
+                    setNotes('');
+                    // Lo demás es accesorio y nunca debe impedir el reinicio.
+                    try {
+                        if (!isActive) {
+                            setMeta({
+                                tracking_code: data.tracking_code,
+                                order_number: data.order_number,
+                                table_id: orderType === 'local' ? (tableInfo?.id || contextTable?.id) : null,
+                            });
+                        }
+                    } catch { /* el seguimiento también queda en pantalla */ }
+                    try {
+                        if (orderType === 'local' && data.table_id) refreshTable();
+                    } catch { /* el grupo de la mesa se refresca al volver */ }
+                    if (data.sent_to_kitchen) toast.success(`Pedido #${data.order_number} en cocina`);
+                    else toast.success(`Pedido #${data.order_number} guardado: falta el pago`);
                 },
             });
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
@@ -228,16 +334,30 @@ export default function Checkout() {
     };
 
     if (confirmed) {
-        const needsProof = ['yape', 'plin', 'transferencia'].includes(confirmed.payment_method);
+        const paymentState = livePaymentState || confirmed.payment_state || (confirmed.prepay_required ? 'pendiente' : 'no_requerido');
+        // Un pedido que se cobra en caja ya está en cocina: solo espera pago el
+        // que el restaurante quiso cobrar antes de preparar.
+        const waiting = confirmed.prepay_required && !confirmed.pay_at_counter
+            && paymentState !== 'confirmado' && paymentState !== 'rechazado' && paymentState !== 'expirado';
+        const showProofBox = RECEIPT_METHODS.includes(confirmed.payment_method) && !confirmed.pay_at_counter;
+        const wentToKitchen = !waiting && confirmed.sent_to_kitchen !== false;
         return (
             <div className="max-w-2xl mx-auto px-4 py-10 space-y-5" data-testid="checkout-confirmed-root">
                 <Card>
                     <CardContent className="p-6 text-center">
-                        <div className="h-16 w-16 rounded-sm bg-primary text-primary-foreground mx-auto flex items-center justify-center mb-3">
-                            <CheckCircle2 className="h-9 w-9" />
+                        <div className={`h-16 w-16 rounded-sm mx-auto flex items-center justify-center mb-3 ${wentToKitchen ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}>
+                            {wentToKitchen ? <CheckCircle2 className="h-9 w-9" /> : <Clock className="h-9 w-9" />}
                         </div>
-                        <h1 className="font-display text-3xl font-bold">Pedido en cocina</h1>
-                        <p className="text-muted-foreground mt-1">Seguí el estado con tu código. Si necesitás hablar con la casa, usá WhatsApp.</p>
+                        <h1 className="font-display text-3xl font-bold" data-testid="checkout-result-title">
+                            {wentToKitchen ? 'Pago confirmado ✓' : waiting ? 'Pendiente de pago' : 'Pedido guardado'}
+                        </h1>
+                        <p className="text-muted-foreground mt-1">
+                            {wentToKitchen
+                                ? `Pedido #${confirmed.order_number} enviado a cocina.`
+                                : waiting
+                                    ? 'Tu pedido queda guardado. Cuando el restaurante confirme el pago, pasa a cocina.'
+                                    : 'Seguí el estado con tu código.'}
+                        </p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
                             <span className="font-display text-3xl font-bold">#{confirmed.order_number}</span>
@@ -251,10 +371,27 @@ export default function Checkout() {
                     </CardContent>
                 </Card>
 
-                {needsProof && (
+                <PaymentStateBanner state={paymentState} orderNumber={confirmed.order_number} />
+
+                {payAtCounter && (
+                    <Card><CardContent className="p-5 space-y-1">
+                        <h2 className="font-display text-lg font-semibold">Se cobra en caja</h2>
+                        <p className="text-sm text-muted-foreground">
+                            Tu pedido ya está en cocina. Acercate a caja para pagar {fmtMoney(confirmed.total)} cuando quieras.
+                        </p>
+                    </CardContent></Card>
+                )}
+
+                {waiting && showProofBox && (
                     <Card><CardContent className="p-5 space-y-3">
-                        <h2 className="font-display text-lg font-semibold">Sube tu comprobante (opcional pero recomendado)</h2>
-                        <p className="text-sm text-muted-foreground">Adjunta la captura del pago para confirmar más rápido tu pedido.</p>
+                        <h2 className="font-display text-lg font-semibold">
+                            {proofSent ? 'Comprobante enviado' : 'Sube tu comprobante'}
+                        </h2>
+                        <p className="text-sm text-muted-foreground">
+                            {proofSent
+                                ? 'El restaurante está verificando tu pago. Esta pantalla se actualiza sola cuando lo confirme.'
+                                : 'Transferí el monto y adjuntá la captura. El restaurante verifica el pago antes de preparar tu pedido.'}
+                        </p>
                         {proofFile ? (
                             <div className="flex items-center gap-3 border rounded-xl p-2">
                                 <img src={proofFile} alt="comprobante" className="h-20 w-20 object-cover rounded-lg" />
@@ -298,6 +435,86 @@ export default function Checkout() {
         );
     }
 
+    // ---- Paso de revisión: el cliente ve exactamente qué está pagando ----
+    if (reviewing) {
+        const tableLabel = tableInfo?.number || contextTable?.number;
+        return (
+            <div className="max-w-2xl mx-auto px-4 py-8 pb-32 space-y-5" data-testid="checkout-review-root">
+                <Button variant="ghost" size="sm" onClick={() => setReviewing(false)} data-testid="checkout-review-back">
+                    <ChevronLeft className="h-4 w-4 mr-1" /> Volver a editar
+                </Button>
+                <div>
+                    <p className="page-kicker mb-2">Revisa tu pedido</p>
+                    <h1 className="font-display text-3xl font-bold">
+                        {orderType === 'local' && tableLabel ? `Mesa ${tableLabel}` : ORDER_TYPE_INFO[orderType].label}
+                    </h1>
+                </div>
+
+                <Card><CardContent className="p-5">
+                    <div className="divide-y">
+                        {items.map((it) => (
+                            <div key={it.product_id} className="py-3 flex justify-between gap-3 text-sm">
+                                <div className="flex-1">
+                                    <div className="font-medium">{it.quantity} × {it.name}</div>
+                                    {it.notes && <div className="text-xs italic text-muted-foreground mt-0.5" data-testid="checkout-review-note">Observación: {it.notes}</div>}
+                                </div>
+                                <div className="tabular-nums font-semibold">{fmtMoney(it.price * it.quantity)}</div>
+                            </div>
+                        ))}
+                    </div>
+                    {notes.trim() && (
+                        <p className="mt-3 rounded-lg bg-secondary/40 p-3 text-sm" data-testid="checkout-review-order-note">
+                            <span className="font-medium">Observaciones del pedido: </span>{notes.trim()}
+                        </p>
+                    )}
+                    <div className="border-t mt-3 pt-3 space-y-1 text-sm">
+                        <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{fmtMoney(subtotal)}</span></div>
+                        {deliveryFee > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Envío</span><span className="tabular-nums">{fmtMoney(deliveryFee)}</span></div>}
+                        <div className="flex justify-between font-display text-xl font-bold pt-2 border-t mt-2"><span>Total</span><span className="tabular-nums" data-testid="checkout-review-total">{fmtMoney(total)}</span></div>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+                        <div className="flex gap-2"><dt className="text-muted-foreground">Modalidad:</dt><dd className="font-medium">{ORDER_TYPE_INFO[orderType].label}</dd></div>
+                        {orderType === 'local' && <div className="flex gap-2"><dt className="text-muted-foreground">Mesa:</dt><dd className="font-medium">{tableLabel ? `Mesa ${tableLabel}` : 'Sin definir'}</dd></div>}
+                        <div className="flex gap-2"><dt className="text-muted-foreground">Pago:</dt><dd className="font-medium">{PAYMENT_LABELS[method]}</dd></div>
+                    </dl>
+                </CardContent></Card>
+
+                {needsCounterVerification && (
+                    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100" data-testid="checkout-prepay-warning">
+                        <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-4 w-4" /> Se paga antes de preparar</div>
+                        <p className="mt-1">
+                            Este restaurante exige el pago antes de enviar a cocina. Al continuar vas a ver los datos para
+                            transferir {fmtMoney(total)} y subir tu comprobante. Tu pedido entra a cocina cuando el restaurante confirme el pago.
+                        </p>
+                    </div>
+                )}
+                {payAtCounter && (
+                    <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm text-muted-foreground" data-testid="checkout-pay-counter-warning">
+                        <div className="flex items-center gap-2 font-semibold text-foreground"><Banknote className="h-4 w-4" /> Se cobra al entregar</div>
+                        <p className="mt-1">Tu pedido va a cocina ahora y pagás {fmtMoney(total)} en caja.</p>
+                    </div>
+                )}
+
+                <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
+                    <div className="max-w-2xl mx-auto">
+                        <Button
+                            onClick={submit}
+                            disabled={submitting || !enabledMethods.includes(method)}
+                            className="w-full h-12"
+                            data-testid="checkout-pay-button"
+                        >
+                            {submitting
+                                ? 'Procesando…'
+                                : needsCounterVerification
+                                    ? `Pagar ${fmtMoney(total)}`
+                                    : `Confirmar pedido · ${fmtMoney(total)}`}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-5xl mx-auto px-4 py-8 pb-32" data-testid="checkout-root">
             <div className="mb-5">
@@ -331,33 +548,30 @@ export default function Checkout() {
                         <Card><CardContent className="p-5">
                             <h2 className="font-display text-lg font-semibold mb-3">{tableInfo ? 'Tu mesa' : '¿En qué mesa estás?'}</h2>
                             {tableInfo ? (
-                                <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{tableInfo.number}</span>{tableInfo.area ? ` · ${tableInfo.area}` : ''}</p>
+                                <div className="space-y-3">
+                                    <p className="text-sm">
+                                        Mesa <span className="font-display text-xl font-semibold" data-testid="checkout-mesa-preseleccionada">{tableInfo.number}</span>
+                                        {tableInfo.area ? ` · ${tableInfo.area}` : ''}
+                                        <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Del QR</span>
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Si te moviste a otra mesa, elegila abajo. Las mesas ocupadas o reservadas no se pueden elegir.
+                                    </p>
+                                    {tables.length > 0 && (
+                                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                            {tables.map((t) => <TableButton key={t.id} t={t} selected={false} onSelect={() => toast.info('Pedile al mozo que mueva tu cuenta a esa mesa')} />)}
+                                        </div>
+                                    )}
+                                </div>
                             ) : restaurant?.require_table_qr ? (
                                 <p className="text-sm text-muted-foreground">Escaneá el QR de tu mesa para pedir en el local.</p>
+                            ) : contextTable ? (
+                                <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{contextTable.number}</span></p>
                             ) : tables.length === 0 ? (
                                 <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pedí recojo o avisá al mozo.</p>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                    {tables.map((t) => {
-                                        const active = t.active_order;
-                                        const billPending = active?.status === 'pendiente_pago';
-                                        const blocked = billPending || t.status !== 'disponible';
-                                        return (
-                                            <button
-                                                key={t.id}
-                                                type="button"
-                                                onClick={() => setTableId(t.id)}
-                                                disabled={blocked}
-                                                data-testid={`checkout-mesa-${t.number}`}
-                                                className={`rounded-sm border p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tableId === t.id ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
-                                            >
-                                                <div className="font-display text-xl font-semibold">{t.number}</div>
-                                                <div className="text-xs text-muted-foreground">{t.area}</div>
-                                                {billPending && <div className="mt-1 text-xs font-medium text-amber-700">Cuenta solicitada</div>}
-                                                {blocked && !billPending && <div className="mt-1 text-xs font-medium text-red-700">Ocupado</div>}
-                                            </button>
-                                        );
-                                    })}
+                                    {tables.map((t) => <TableButton key={t.id} t={t} selected={tableId === t.id} onSelect={() => setTableId(t.id)} />)}
                                 </div>
                             )}
                         </CardContent></Card>
@@ -420,27 +634,37 @@ export default function Checkout() {
 
                         <div className="mt-4">
                             {(method === 'yape' || method === 'plin') && paymentCfg && (
-                                <div className="rounded-xl border bg-secondary/30 p-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-                                        <div className="flex items-center justify-center">
-                                            {paymentCfg[`${method}_qr`] ? (
-                                                /* Caja fija para el QR: con max-h-56 la
-                                                   tarjeta crecía justo donde se lee
-                                                   el monto (y el dedo ya está ahí). */
+                                <div className="rounded-xl border bg-secondary/30 p-4" data-testid={`checkout-wallet-${method}`}>
+                                    <div className={`grid grid-cols-1 gap-4 items-center ${paymentCfg[`${method}_qr`] ? 'md:grid-cols-2' : ''}`}>
+                                        {/* Sin imagen de QR no se deja un recuadro vacío: el
+                                            cliente paga con el número, que es como funciona
+                                            Yape/Plin cuando el local no subió su código. */}
+                                        {paymentCfg[`${method}_qr`] ? (
+                                            <div className="flex items-center justify-center">
                                                 <div className="h-56 w-56 shrink-0 rounded-xl border bg-white p-2 flex items-center justify-center">
                                                     <img src={paymentCfg[`${method}_qr`]} alt={`QR ${method}`} width={224} height={224} loading="eager" decoding="async" className="max-h-full max-w-full object-contain" />
                                                 </div>
-                                            ) : (
-                                                <div className="h-56 w-56 rounded-xl border-2 border-dashed flex items-center justify-center text-muted-foreground text-sm text-center px-4">QR no configurado aún</div>
-                                            )}
-                                        </div>
-                                        <div className="space-y-2">
+                                            </div>
+                                        ) : null}
+                                        <div className="space-y-3">
                                             <div className="text-xs uppercase text-muted-foreground tracking-wide">{PAYMENT_LABELS[method]}</div>
-                                            <div className="font-display text-2xl font-bold tabular-nums">{paymentCfg[`${method}_number`] || '—'}</div>
-                                            <Button variant="outline" size="sm" onClick={() => copyText(paymentCfg[`${method}_number`] || '', method)} data-testid={`checkout-copy-${method}`}><Copy className="h-3.5 w-3.5 mr-1" /> {copied === method ? 'Copiado' : 'Copiar número'}</Button>
-                                            <div className="text-sm text-muted-foreground pt-2">Titular: <span className="text-foreground">{paymentCfg[`${method}_holder`] || '—'}</span></div>
-                                            <div className="text-sm pt-2">Monto a pagar: <span className="font-bold tabular-nums">{fmtMoney(total)}</span></div>
-                                            <div className="text-xs text-muted-foreground pt-2">Realiza el pago y al confirmar el pedido podrás subir tu comprobante.</div>
+                                            <div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {paymentCfg[`${method}_qr`] ? 'O yapea al número' : 'Yapea o plinea al número'}
+                                                </div>
+                                                <div className="font-display text-2xl font-bold tabular-nums break-all">{paymentCfg[`${method}_number`] || '—'}</div>
+                                            </div>
+                                            <div className="text-sm">Titular: <span className="text-foreground">{paymentCfg[`${method}_holder`] || '—'}</span></div>
+                                            <div className="rounded-lg border bg-background p-3">
+                                                <div className="text-xs uppercase tracking-wide text-muted-foreground">Monto a pagar</div>
+                                                <div className="font-display text-2xl font-bold tabular-nums" data-testid={`checkout-wallet-total-${method}`}>{fmtMoney(total)}</div>
+                                            </div>
+                                            <Button variant="outline" size="sm" className="h-11" onClick={() => copyText(paymentCfg[`${method}_number`] || '', method)} data-testid={`checkout-copy-${method}`}><Copy className="h-3.5 w-3.5 mr-1" /> {copied === method ? 'Copiado' : 'Copiar número'}</Button>
+                                            <p className="text-xs text-muted-foreground">
+                                                {needsCounterVerification
+                                                    ? 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante. Cocina arranca cuando el restaurante lo verifique.'
+                                                    : 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante.'}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -465,10 +689,18 @@ export default function Checkout() {
                                 </div>
                             )}
                             {method === 'efectivo' && (
-                                <div className="rounded-xl border bg-secondary/30 p-4 text-sm">Paga {fmtMoney(total)} en efectivo al recibir tu pedido. Te recomendamos llevar monto exacto.</div>
+                                <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
+                                    {payAtCounter
+                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} en caja.`
+                                        : `Paga ${fmtMoney(total)} en efectivo al recibir tu pedido. Te recomendamos llevar monto exacto.`}
+                                </div>
                             )}
                             {method === 'tarjeta' && (
-                                <div className="rounded-xl border bg-secondary/30 p-4 text-sm">Aceptamos tarjeta al momento de entrega/recojo. Cobro: {fmtMoney(total)}.</div>
+                                <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
+                                    {payAtCounter
+                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} con tarjeta en caja.`
+                                        : `Aceptamos tarjeta al momento de entrega/recojo. Cobro: ${fmtMoney(total)}.`}
+                                </div>
                             )}
                         </div>
                     </CardContent></Card>
@@ -502,11 +734,36 @@ export default function Checkout() {
 
             <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
                 <div className="max-w-5xl mx-auto">
-                    <Button onClick={submit} disabled={submitting || enabledMethods.length === 0 || (orderType === 'recojo' && (pickupBranchesLoading || pickupBranchesError || !pickupBranches.some((branch) => branch.id === pickupBranchId))) || (orderType === 'delivery' && (deliveryBranchesLoading || deliveryBranchesError || !deliveryBranches.some((branch) => branch.id === deliveryBranchId)))} className="w-full h-12" data-testid="checkout-confirmar-button">
-                        {submitting ? 'Procesando…' : `Confirmar pedido · ${fmtMoney(total)}`}
+                    <Button
+                        onClick={() => { if (validate()) setReviewing(true); }}
+                        disabled={submitting || enabledMethods.length === 0 || (orderType === 'recojo' && (pickupBranchesLoading || pickupBranchesError || !pickupBranches.some((branch) => branch.id === pickupBranchId))) || (orderType === 'delivery' && (deliveryBranchesLoading || deliveryBranchesError || !deliveryBranches.some((branch) => branch.id === deliveryBranchId)))}
+                        className="w-full h-12"
+                        data-testid="checkout-confirmar-button"
+                    >
+                        Revisar pedido · {fmtMoney(total)}
                     </Button>
                 </div>
             </div>
         </div>
+    );
+}
+
+function TableButton({ t, selected, onSelect }) {
+    const active = t.active_order;
+    const billPending = active?.status === 'pendiente_pago';
+    const blocked = billPending || t.status !== 'disponible';
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            disabled={blocked}
+            data-testid={`checkout-mesa-${t.number}`}
+            className={`rounded-sm border p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed ${selected ? 'border-primary ring-2 ring-primary/30 bg-primary/10' : 'hover:bg-secondary/40'}`}
+        >
+            <div className="font-display text-xl font-semibold">{t.number}</div>
+            <div className="text-xs text-muted-foreground">{t.area}</div>
+            {billPending && <div className="mt-1 text-xs font-medium text-amber-700">Cuenta solicitada</div>}
+            {blocked && !billPending && <div className="mt-1 text-xs font-medium text-red-700">Ocupado</div>}
+        </button>
     );
 }

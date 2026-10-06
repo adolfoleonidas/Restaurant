@@ -76,13 +76,13 @@ describe('configuration table guest links', () => {
         api.get.mockImplementation((path) => Promise.resolve({
             data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : path === '/tables/table-a/guest-link' ? { path: '/checkout?mesa=private-table-token', table_number: 1 } : null,
+                    : path === '/tables/table-a/guest-link' ? { path: '/menu?mesa=private-table-token', table_number: 1 } : null,
         }));
         const view = await renderPage();
         await click('mesa-qr-link-table-a');
         expect(api.get).toHaveBeenCalledWith('/tables/table-a/guest-link');
-        expect(document.body.querySelector('[data-testid="mesa-qr-url-table-a"]').value).toBe(`${window.location.origin}/checkout?mesa=private-table-token`);
-        expect(document.body.querySelector('[data-testid="mesa-qr-open-table-a"]').getAttribute('href')).toBe(`${window.location.origin}/checkout?mesa=private-table-token`);
+        expect(document.body.querySelector('[data-testid="mesa-qr-url-table-a"]').value).toBe(`${window.location.origin}/menu?mesa=private-table-token`);
+        expect(document.body.querySelector('[data-testid="mesa-qr-open-table-a"]').getAttribute('href')).toBe(`${window.location.origin}/menu?mesa=private-table-token`);
         await cleanup(view);
     });
 
@@ -90,7 +90,7 @@ describe('configuration table guest links', () => {
         api.get.mockImplementation((path) => Promise.resolve({
             data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : { path: '/checkout?mesa=created-token', table_number: 2 },
+                    : { path: '/menu?mesa=created-token', table_number: 2 },
         }));
         const view = await renderPage();
         await click('mesa-qr-link-table-b');
@@ -105,12 +105,12 @@ describe('configuration table guest links', () => {
             ? new Promise((resolve) => { resolveLink = resolve; })
             : Promise.resolve({ data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : { path: '/checkout?mesa=table-b-token', table_number: 2 } }));
+                    : { path: '/menu?mesa=table-b-token', table_number: 2 } }));
         const view = await renderPage();
         await act(async () => document.body.querySelector('[data-testid="mesa-qr-link-table-a"]').click());
         expect(document.body.querySelector('[data-testid="mesa-qr-link-table-a"]').disabled).toBe(true);
         expect(document.body.querySelector('[data-testid="mesa-qr-link-table-b"]').disabled).toBe(false);
-        await act(async () => resolveLink({ data: { path: '/checkout?mesa=table-a-token', table_number: 1 } }));
+        await act(async () => resolveLink({ data: { path: '/menu?mesa=table-a-token', table_number: 1 } }));
         await flush();
         await cleanup(view);
     });
@@ -119,9 +119,9 @@ describe('configuration table guest links', () => {
         api.get.mockImplementation((path) => Promise.resolve({
             data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : { path: '/checkout?mesa=old-token', table_number: 1 },
+                    : { path: '/menu?mesa=old-token', table_number: 1 },
         }));
-        api.post.mockResolvedValueOnce({ data: { path: '/checkout?mesa=new-token', table_number: 1 } })
+        api.post.mockResolvedValueOnce({ data: { path: '/menu?mesa=new-token', table_number: 1 } })
             .mockRejectedValueOnce(new Error('connection lost'));
         const view = await renderPage();
         await click('mesa-qr-link-table-a');
@@ -140,7 +140,7 @@ describe('configuration table guest links', () => {
         api.get.mockImplementation((path) => Promise.resolve({
             data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : { path: '/checkout?mesa=old-token', table_number: 1 },
+                    : { path: '/menu?mesa=old-token', table_number: 1 },
         }));
         const view = await renderPage();
         await click('mesa-qr-link-table-a');
@@ -159,7 +159,7 @@ describe('configuration table guest links', () => {
         api.get.mockImplementation((path) => Promise.resolve({
             data: path === '/tables' ? tables.map((table) => ({ ...table }))
                 : path === '/zones' ? [] : path === '/restaurants/current' ? { name: 'Restaurant' }
-                    : { path: '/checkout?mesa=table-a-token', table_number: 1 },
+                    : { path: '/menu?mesa=table-a-token', table_number: 1 },
         }));
         const originalClipboard = navigator.clipboard;
         Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: jest.fn().mockRejectedValue(new Error('denied')) } });

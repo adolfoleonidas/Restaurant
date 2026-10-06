@@ -24,7 +24,8 @@ from order_flow import (
 )
 from routes.products import combo_components_for
 from notify import emit_order, emit_notice
-from attention import AttentionBlocked, open_table_attention, close_table_attention, reserve_table_opening, recover_opening_intent
+from payment_policy import kitchen_visible, payment_label
+from attention import AttentionBlocked, open_table_attention, close_table_attention, reserve_table_opening, recover_opening_intent, discard_table_opening
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from branch_access import (
     assert_record_branch_access,
@@ -226,9 +227,12 @@ async def list_orders(
 @router.get("/kitchen")
 async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
     """Orders relevant for kitchen board (no payment info)."""
-    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_proof_url": 0,
-                  "payment_proof_method": 0, "payment_proof_sha256": 0, "payment_proof_uploaded_by": 0,
-                  "payment_proof_uploaded_at": 0}
+    # Solo exclusiones: el ticket no expone importes ni el comprobante, pero sí
+    # necesita saber cómo está el cobro para imprimir su etiqueta.
+    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0,
+                  "payment_proof_url": 0, "payment_proof_method": 0, "payment_proof_sha256": 0,
+                  "payment_proof_uploaded_by": 0, "payment_proof_uploaded_at": 0,
+                  "amount_paid": 0, "request_fingerprint": 0}
     branch_id = await validate_user_branch(user, db.branches)
     branch_filter = {"branch_id": branch_id} if branch_id is not None else {}
     items = await db.orders.find(
@@ -241,7 +245,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     ).sort("created_at", 1).to_list(500)
     board = []
     for o in items:
-        if o.get("status") == "entregado" or o.get("acceptance_status") == "pendiente":
+        if o.get("status") == "entregado" or not kitchen_visible(o):
             continue
         if any(i.get("status") in ("pendiente", "en_preparacion", "listo", None) for i in (o.get("items") or [])):
             board.append(o)
@@ -272,6 +276,29 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
         for order in items:
             if order.get("table_id"):
                 order["table_number"] = numbers.get(order["table_id"])
+    # El ticket dice cómo está el dinero sin exponer importes: si ya se cobró, si
+    # se cobra al entregar, o si es una cuenta nueva de una mesa ya atendida
+    # (para que el personal sepa que es un pedido adicional).
+    attention_ids = [order["attention_id"] for order in items if order.get("attention_id")]
+    siblings = {}
+    if attention_ids:
+        rows = await db.orders.find(
+            {"restaurant_id": user["restaurant_id"], "attention_id": {"$in": attention_ids}},
+            {"_id": 0, "id": 1, "attention_id": 1, "acceptance_status": 1,
+             "status": 1, "created_at": 1},
+        ).to_list(500)
+        for row in rows:
+            # Los pedidos que todavía esperan pago no cuentan como comanda.
+            if row.get("status") in ("pagado", "cancelado") or not kitchen_visible(row):
+                continue
+            siblings.setdefault(row["attention_id"], []).append(row)
+    for order in items:
+        order["payment_label"] = payment_label(order)
+        order["pay_at_counter"] = bool(order.get("pay_at_counter"))
+        # Es adicional si la visita ya tenía otra comanda, no si este ticket es
+        # el segundo de la lista.
+        others = [row for row in (siblings.get(order.get("attention_id")) or []) if row["id"] != order["id"]]
+        order["is_additional"] = bool(order.get("attention_id")) and bool(others)
     return items
 
 
@@ -1037,6 +1064,13 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
+    # Un pedido prepagado no se libera marcando el pago: hay que registrar el
+    # cobro y abrir la visita, o quedaría en cocina sin dinero respaldándolo.
+    if o.get("acceptance_status") == "pendiente":
+        raise HTTPException(
+            status_code=409,
+            detail="Confirmá el prepago desde Caja para registrar el cobro y enviarlo a cocina",
+        )
     await _save_order(o, {"payment_status": "confirmado", "payment_proof_status": "verificado", "updated_at": _now()})
     await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)
     emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), payment_status="confirmado", branch_id=o.get("branch_id"))
@@ -1139,6 +1173,20 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
                                     **({"branch_id": o["branch_id"]} if o.get("branch_id") is not None else {})},
             {"$set": {"status": "disponible", "updated_at": _now()}})
         emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="disponible", branch_id=o.get("branch_id"))
+    # Una intención de prepago que nunca se pagó reserva la mesa sin visita
+    # abierta. Si el restaurante la cancela, la reserva debe soltarse: si no, la
+    # mesa queda trabada y nadie puede volver a abrirla desde el QR.
+    if new_status == "cancelado" and o.get("table_id") and o.get("attention_state") == "opening":
+        released = await discard_table_opening(
+            db, table_id=o["table_id"], restaurant_id=user["restaurant_id"], order_id=order_id
+        )
+        if released:
+            await db.tables.update_one(
+                {"id": o["table_id"], "restaurant_id": user["restaurant_id"],
+                 **({"branch_id": o["branch_id"]} if o.get("branch_id") is not None else {})},
+                {"$set": {"status": "disponible", "updated_at": _now()}},
+            )
+            emit_notice(user["restaurant_id"], "table", table_id=o["table_id"], status="disponible", branch_id=o.get("branch_id"))
     await _release_paid_table(o, update["status"])
     await _audit(user["restaurant_id"], user["id"], f"status:{new_status}", "order", order_id, {"reason": data.reason})
     emit_order(user["restaurant_id"], order_id, update["status"], source=o.get("source"), branch_id=o.get("branch_id"))

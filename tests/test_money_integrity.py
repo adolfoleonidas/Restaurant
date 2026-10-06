@@ -135,6 +135,10 @@ class _Collection:
                 if _match(doc, filt):
                     for key, value in (update.get("$set") or {}).items():
                         doc[key] = copy.deepcopy(value)
+                    for key, value in (update.get("$addToSet") or {}).items():
+                        current = doc.setdefault(key, [])
+                        if value not in current:
+                            current.append(copy.deepcopy(value))
                     for key in (update.get("$unset") or {}):
                         doc.pop(key, None)
                     return _Result(1)

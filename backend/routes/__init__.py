@@ -10,6 +10,7 @@ from .payments import router as payments_router
 from .cash import router as cash_router
 from .reports import router as reports_router
 from .public import router as public_router
+from .prepay import router as prepay_router
 from .payment_config import router as payment_config_router
 from .notifications import router as notifications_router
 from .approvals import router as approvals_router
@@ -31,6 +32,7 @@ __all__ = [
     "cash_router",
     "reports_router",
     "public_router",
+    "prepay_router",
     "payment_config_router",
     "notifications_router",
     "approvals_router",

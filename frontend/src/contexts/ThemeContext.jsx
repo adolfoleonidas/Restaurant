@@ -47,10 +47,15 @@ export function ThemeProvider({ children }) {
   // La guía de diseño limita el modo oscuro a la pantalla de cocina (y opcional
   // a caja). Antes se derivaba de la preferencia del sistema, así que un tablet
   // con el SO en oscuro arrancaba el POS entero oscuro, incluida Caja.
+  //
+  // `null` significa "el usuario todavía no eligió": ahí la cocina puede ponerse
+  // oscura por su cuenta. En cuanto el usuario toca el interruptor, su elección
+  // manda en todas las pantallas, cocina incluida.
   const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') return null;
     const stored = localStorage.getItem('restaurant-dark-mode');
-    return stored !== null && stored === 'true';
+    if (stored === null) return null;
+    return stored === 'true';
   });
   // Ruta activa, reportada desde el router (ThemeProvider vive fuera de él).
   const [activePath, setActivePath] = useState(() => (typeof window !== 'undefined' ? window.location.pathname : ''));
@@ -84,10 +89,16 @@ export function ThemeProvider({ children }) {
     loadRestaurantTheme();
   }, []);
 
-  // La cocina queda siempre en oscuro (pantalla de pase, tablet); el resto de
-  // la app respeta la elección del usuario. La ruta llega por setActivePath.
+  // Ninguna pantalla cambia el tema por su cuenta. Antes la cocina se ponía
+  // oscura sola, y quien no había elegido nada entraba a una pantalla negra que
+  // no pidió. Ahora manda, en este orden: lo que eligió el usuario en la app y,
+  // si todavía no eligió, lo que pide su dispositivo.
+  const prefersDark = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false;
   const kitchenDark = (activePath || '').startsWith('/cocina');
-  const effectiveDark = darkMode || kitchenDark;
+  const userChoice = darkMode === null ? null : darkMode;
+  const effectiveDark = userChoice === null ? prefersDark : userChoice;
 
   // Aplicar el tema (clase + hoja CSS) SOLO cuando cambia el tema. Recargar la
   // hoja en cada toggle de modo oscuro provocaba un parpadeo (FOUC) y una
@@ -116,8 +127,14 @@ export function ThemeProvider({ children }) {
     } else {
       document.body.classList.remove('dark');
     }
-    localStorage.setItem('restaurant-dark-mode', darkMode.toString());
-  }, [effectiveDark, darkMode, loading]);
+    // Solo se persiste una elección real del usuario: el oscuro automático de la
+    // cocina no debe quedar grabado y seguir al usuario al salir de esa pantalla.
+    if (userChoice === null) {
+      localStorage.removeItem('restaurant-dark-mode');
+    } else {
+      localStorage.setItem('restaurant-dark-mode', String(userChoice));
+    }
+  }, [effectiveDark, userChoice, loading]);
 
   const setTheme = (newTheme) => {
     setThemeState(newTheme);
@@ -132,7 +149,9 @@ export function ThemeProvider({ children }) {
   };
 
   const toggle = () => {
-    setDarkMode(!darkMode);
+    // El interruptor siempre deja una elección explícita: parte de lo que se ve
+    // ahora y lo invierte.
+    setDarkMode(!effectiveDark);
   };
 
   return (

@@ -46,6 +46,35 @@ const AREA_BADGE = {
     delivery: 'bg-violet-100 text-violet-900 border-violet-300',
 };
 
+/**
+ * Cada carril del pase tiene su color, como una columna de tablero: el carril se
+ * lee por su cabecera y su tinte, no por un borde alrededor de todo. Antes cada
+ * columna era una caja con borde dentro de otra caja con borde, y la pantalla se
+ * veía como un tablero de cuadros.
+ */
+const COLUMN_TONE = {
+    llegan: {
+        dot: 'bg-sky-500',
+        column: 'border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/30',
+        count: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200',
+    },
+    fuego: {
+        dot: 'bg-amber-500',
+        column: 'border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30',
+        count: 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-200',
+    },
+    listo: {
+        dot: 'bg-emerald-500',
+        column: 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/30',
+        count: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
+    },
+    retirado: {
+        dot: 'bg-slate-400',
+        column: 'border-border bg-muted/40',
+        count: 'bg-secondary text-muted-foreground',
+    },
+};
+
 const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }) => {
     const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
@@ -58,7 +87,7 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
     return (
         <Card
             data-testid={`cocina-ticket-${order.order_number}-${stage}`}
-            className={`rounded-sm ${stage === 'retirado' ? 'opacity-70' : stage === 'listo' ? '' : 'border-primary/30'}`}
+            className={`rounded-lg border-border shadow-sm ${stage === 'retirado' ? 'opacity-70 shadow-none' : ''}`}
         >
             <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -252,13 +281,29 @@ export default function Cocina() {
                 844x390, `max-h-[calc(100dvh-300px)]` dejaba la columna en ~90 px (un
                 solo ticket). Los 4 carriles pasan a xl: a 1024 px cada columna
                 quedaba en ~210 px y el nombre del plato se apretaba. */}
-            <div className="rounded-md border border-border bg-secondary/40 p-3 md:p-4">
-                <div data-testid="cocina-kanban" className="flex w-full min-w-0 max-h-[calc(100dvh-var(--header-h)-var(--safe-top)-var(--bottom-nav-h)-var(--safe-bottom))] snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:max-h-none md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 xl:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]">
-                {columns.map((col) => (
-                    <section key={col.key} className="flex w-[90%] max-w-[24rem] shrink-0 snap-start min-w-0 flex-col rounded-sm border border-border bg-card p-3 md:block md:w-auto md:max-w-none md:shrink md:p-4" data-testid={`cocina-columna-${col.key}`}>
-                        <div className="flex items-center justify-between mb-3">
-                            <div><h2 className="font-display text-lg font-semibold">{col.label}</h2><p className="mt-0.5 text-xs text-muted-foreground">{col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}</p></div>
-                            <span className="rounded-full bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">{col.cards.length}</span>
+            <div
+                data-testid="cocina-kanban"
+                className="flex w-full min-w-0 max-h-[calc(100dvh-var(--header-h)-var(--safe-top)-var(--bottom-nav-h)-var(--safe-bottom))] snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain pb-3 md:grid md:max-h-none md:grid-cols-2 md:overflow-visible md:snap-none md:pb-0 xl:grid-cols-[1.2fr_1.2fr_0.8fr_0.9fr]"
+            >
+                {columns.map((col) => {
+                    const tone = COLUMN_TONE[col.key] || COLUMN_TONE.retirado;
+                    return (
+                    <section
+                        key={col.key}
+                        className={`flex w-[90%] max-w-[24rem] shrink-0 snap-start min-w-0 flex-col rounded-xl border p-3 md:block md:w-auto md:max-w-none md:shrink md:p-4 ${tone.column}`}
+                        data-testid={`cocina-columna-${col.key}`}
+                    >
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+                                <div className="min-w-0">
+                                    <h2 className="font-display text-lg font-semibold truncate">{col.label}</h2>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}
+                                    </p>
+                                </div>
+                            </div>
+                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums ${tone.count}`}>{col.cards.length}</span>
                         </div>
                         <div
                             role="region"
@@ -284,8 +329,8 @@ export default function Cocina() {
                             ))}
                         </div>
                     </section>
-                ))}
-                </div>
+                    );
+                })}
             </div>
 
             {priorPickups.length > 0 && (

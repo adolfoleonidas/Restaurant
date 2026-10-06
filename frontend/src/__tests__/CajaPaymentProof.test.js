@@ -119,10 +119,14 @@ describe('Caja QR and payment-proof collection', () => {
     });
 
     it('shows the missing QR state but still permits proof attachment for an enabled account', async () => {
-        api.get.mockResolvedValueOnce({ data: {
-            yape: { enabled: true, number: '900111222', holder: null, qr: null },
-            plin: { enabled: false, number: null, holder: null, qr: null },
-        } });
+        // Por ruta, no por "la próxima llamada": la caja también pide la cola de
+        // prepagos al montar, y un mock de un solo uso se lo llevaba esa petición.
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/payment-config/collection' ? {
+                yape: { enabled: true, number: '900111222', holder: null, qr: null },
+                plin: { enabled: false, number: null, holder: null, qr: null },
+            } : null,
+        }));
         const view = await openCollectionDialog();
         await selectMethod('yape');
         expect(document.body.textContent).toContain('No hay código QR configurado');
@@ -132,10 +136,12 @@ describe('Caja QR and payment-proof collection', () => {
     });
 
     it('does not offer proof upload for a disabled method', async () => {
-        api.get.mockResolvedValueOnce({ data: {
-            yape: { enabled: false, number: null, holder: null, qr: null },
-            plin: { enabled: false, number: null, holder: null, qr: null },
-        } });
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/payment-config/collection' ? {
+                yape: { enabled: false, number: null, holder: null, qr: null },
+                plin: { enabled: false, number: null, holder: null, qr: null },
+            } : null,
+        }));
         const view = await openCollectionDialog();
         await selectMethod('yape');
         expect(document.body.textContent).toContain('Este método no está habilitado');
