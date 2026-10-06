@@ -227,6 +227,38 @@ export function PersonOrderSummary({
 }
 
 /**
+ * Desglose Consumido / Pagado / Pendiente de una cuenta o mesa.
+ *
+ * Lo usan el resumen de mesa (varias personas) y la hoja de una sola cuenta:
+ * en ambos casos los testids salen del mismo `testIdPrefix`. La versión suelta
+ * trae su propio borde; dentro de `TableSummary` se apoya en el borde superior.
+ */
+export function AccountTotals({
+    testIdPrefix = 'mesa-sheet',
+    consumido = 0,
+    pagado = 0,
+    pendiente = 0,
+    className = 'space-y-0.5 rounded-xl border px-3 py-2',
+}) {
+    return (
+        <div className={className}>
+            <div className="flex items-baseline justify-between gap-2 text-sm" data-testid={`${testIdPrefix}-consumido`}>
+                <span className="text-muted-foreground">Consumido</span>
+                <span className="font-mono tabular-nums">{fmtMoney(consumido)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-sm" data-testid={`${testIdPrefix}-pagado`}>
+                <span className="text-muted-foreground">Pagado</span>
+                <span className="font-mono tabular-nums">{fmtMoney(pagado)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-sm font-semibold" data-testid={`${testIdPrefix}-pendiente`}>
+                <span>Pendiente</span>
+                <span className="font-mono tabular-nums">{fmtMoney(pendiente)}</span>
+            </div>
+        </div>
+    );
+}
+
+/**
  * Resumen general de la mesa: una barra con icono de recibo arriba del todo.
  *
  * Muestra el total y cuántos platos hay sin necesidad de abrirla. Al desplegar,
@@ -238,6 +270,9 @@ export function TableSummary({
     accounts = 0,
     dishes = 0,
     total = 0,
+    consumido = 0,
+    pagado = 0,
+    pendiente = 0,
     people = [],
     canEdit = false,
     onMoveItem,
@@ -283,6 +318,15 @@ export function TableSummary({
                     </button>
                 )}
             </div>
+            {/* Consumido/Pagado/Pendiente siempre a la vista, como el resumen del
+                prototipo: el mozo los lee de reojo sin desplegar los platos. */}
+            <AccountTotals
+                testIdPrefix={testIdPrefix}
+                consumido={consumido}
+                pagado={pagado}
+                pendiente={pendiente}
+                className="space-y-0.5 border-t px-3 py-2"
+            />
             {open && (
                 <div className="border-t px-3 py-2">
                     {empty ? (

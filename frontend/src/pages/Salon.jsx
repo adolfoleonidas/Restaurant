@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import PersonChips from '@/components/PersonChips';
-import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
+import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown } from 'lucide-react';
@@ -177,6 +177,15 @@ function groupFloorState(members) {
 
 function itemQty(items, predicate) {
     return (items || []).filter(predicate).reduce((s, it) => s + (it.quantity || 0), 0);
+}
+
+/**
+ * Saldo de una cuenta: la misma fuente que la tarjeta muestra como "Debe S/ X"
+ * (total menos lo ya pagado), sin volver a sumar los platos. La usan el piso,
+ * el resumen de la hoja y el botón de cobro para que digan siempre lo mismo.
+ */
+function accountDue(order) {
+    return Math.max(0, Number(order?.total || 0) - Number(order?.amount_paid || 0));
 }
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
@@ -389,7 +398,7 @@ export default function Salon() {
             const items = o.items || [];
             toPrep += itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
             toReady += itemQty(items, (it) => it.status === 'listo');
-            const due = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
+            const due = accountDue(o);
             if (due > 0) toPay += 1;
         }
         return { toPrep, toReady, toPay };
@@ -430,7 +439,7 @@ export default function Salon() {
             const ready = itemQty(items, (it) => it.status === 'listo');
             const pendingPrep = itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
             const due = serviceOrder && serviceOrder.status !== 'cancelado'
-                ? Math.max(0, Number(serviceOrder.total || 0) - Number(serviceOrder.amount_paid || 0))
+                ? accountDue(serviceOrder)
                 : 0;
             const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
             const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
@@ -863,6 +872,32 @@ export default function Salon() {
         if (!orderId || !canTake) return;
         try {
             await persistAlias(orderId);
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        }
+    };
+
+    /**
+     * Renombra una cuenta desde el ✎ de la franja de personas. Es el mismo
+     * PATCH de alias que usa "Organizar pedido", pero apuntado a la persona
+     * elegida y conservando el "Compartido" que la cuenta ya tenía.
+     */
+    const renamePerson = async (orderId, alias) => {
+        if (!canTake || !orderId) return;
+        const account = (openTable?.accounts || []).find((o) => o.id === orderId)
+            || (openTable?.order?.id === orderId ? openTable.order : null);
+        const nextName = alias || null;
+        try {
+            await api.patch(`/orders/${orderId}/alias`, { alias: nextName, shared: Boolean(account?.shared) });
+            // La franja lee las cuentas de la hoja: se actualiza en el acto para
+            // que el nombre no espere al próximo refresco del piso.
+            setOpenTable((s) => (s ? {
+                ...s,
+                accounts: (s.accounts || []).map((o) => (o.id === orderId ? { ...o, customer_name: nextName } : o)),
+                order: s.order?.id === orderId ? { ...s.order, customer_name: nextName } : s.order,
+            } : s));
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
@@ -1468,6 +1503,9 @@ export default function Salon() {
                                 id: o.id,
                                 number: o.order_number,
                                 label: personLabel(detail, index),
+                                // Alias real de la cuenta: el ✎ lo edita tal cual, sin
+                                // arrancar con el "Persona N" de relleno.
+                                alias: String(detail.customer_name || '').trim(),
                                 shared: Boolean(detail.shared),
                                 draftCount: draftCount(detail.items || [], detail.status),
                             };
@@ -1480,6 +1518,12 @@ export default function Salon() {
                         // de la barra nunca contradice el detalle.
                         const tableDishes = summaryRows.reduce((sum, row) => sum + row.quantity, 0);
                         const tableTotal = summaryRows.reduce((sum, row) => sum + row.subtotal, 0);
+                        // Consumido/Pagado/Pendiente de la mesa: del total y el pago
+                        // parcial de cada cuenta —la misma fuente del "Debe S/ X" de
+                        // la tarjeta—, sin volver a sumar platos.
+                        const tableConsumido = allAccounts.reduce((sum, o) => sum + Number((activeOrders[o.id] || o).total || 0), 0);
+                        const tablePagado = allAccounts.reduce((sum, o) => sum + Number((activeOrders[o.id] || o).amount_paid || 0), 0);
+                        const tablePendiente = allAccounts.reduce((sum, o) => sum + accountDue(activeOrders[o.id] || o), 0);
                         // Lo que falta enviar de la cuenta que se está armando.
                         const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
                         // Con la pantalla limpia para la siguiente persona, las acciones
@@ -1488,6 +1532,9 @@ export default function Salon() {
                         const actionOrder = order
                             || (fallbackPerson ? (activeOrders[fallbackPerson.id] || allAccounts.find((o) => o.id === fallbackPerson.id)) : null);
                         const actionAccountId = currentAccountId || fallbackPerson?.id || null;
+                        // El botón de cobro cobra la cuenta que la hoja tiene activa:
+                        // el monto es su saldo, no el agregado de la mesa.
+                        const actionDue = accountDue(actionOrder);
                         // Con la pantalla limpia para la siguiente persona, las acciones
                         // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
                         const closeable = canClose && canCloseAttention(t, actionOrder);
@@ -1536,11 +1583,25 @@ export default function Salon() {
                                         accounts={personAccounts.length}
                                         dishes={tableDishes}
                                         total={tableTotal}
+                                        consumido={tableConsumido}
+                                        pagado={tablePagado}
+                                        pendiente={tablePendiente}
                                         people={persons}
                                         canEdit={canCompose && persons.length > 1}
                                         onMoveItem={moveItemToPerson}
                                         onOpenReceipt={() => setReceiptOpen(true)}
                                     />
+                                    )}
+                                    {/* Con una sola cuenta no hay barra plegable (repetiría
+                                        la lista y el pie), pero el desglose de plata se ve
+                                        igual: es la lectura de la mesa del prototipo. */}
+                                    {personAccounts.length === 1 && (
+                                        <AccountTotals
+                                            testIdPrefix="mesa-sheet"
+                                            consumido={tableConsumido}
+                                            pagado={tablePagado}
+                                            pendiente={tablePendiente}
+                                        />
                                     )}
                                     {receiptOpen && (
                                         <TableReceipt
@@ -1568,6 +1629,7 @@ export default function Salon() {
                                             people={persons}
                                             activeId={currentAccountId}
                                             onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
+                                            onRename={canTake ? renamePerson : undefined}
                                         />
                                     )}
                                     {canCompose && (
@@ -1769,6 +1831,19 @@ export default function Salon() {
                                         pedido, así que la carta es la acción y no hay botón
                                         que la reemplace. Los botones de tomar mesa que había
                                         acá sólo repetían esa acción y parecían recargar. */}
+                                    {/* Cobrar directo con el mismo saldo que muestra la
+                                        tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
+                                        en el flujo de pago del pedido, que es quien exige el
+                                        turno de caja abierto antes de registrar. */}
+                                    {canCharge && actionDue > 0 && ((accountTable && order) || hasAccount) && (
+                                        <Button
+                                            className="w-full h-12"
+                                            onClick={() => openCharge(actionOrder)}
+                                            data-testid="mesa-sheet-cobrar"
+                                        >
+                                            Cobrar {fmtMoney(actionDue)}
+                                        </Button>
+                                    )}
                                     {accountTable && order ? (
                                         <>
                                             {canTake && (
