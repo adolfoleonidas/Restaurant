@@ -9,6 +9,7 @@
  * Todo lo que sea agrupar, contar o etiquetar vive acá y no en el JSX, para que
  * la pantalla y los tests compartan exactamente la misma regla.
  */
+import { fmtMoney } from './format';
 
 export const DRAFT = 'borrador';
 export const SHARED_ALIAS = 'Compartido';
@@ -68,16 +69,20 @@ export function itemsTotal(items = []) {
 
 /**
  * Etiqueta del botón de envío. En el primer envío manda toda la comanda; después
- * sólo los adicionales, y el número dice cuántos son.
+ * sólo los adicionales, y el número y el monto dicen cuánto viaja. El total sale
+ * de `itemsTotal` (el mismo que usa el resto del sistema): la cuenta entera en el
+ * primer envío, sólo el borrador en los adicionales.
  */
 export function sendAction(items = [], order = null) {
     const status = order?.status;
-    const drafts = draftCount(items, status);
+    const drafts = editableItems(items, status);
     if (!order || status === 'nuevo') {
-        return { kind: 'first', count: drafts, label: '✈ Enviar a cocina' };
+        const amount = itemsTotal(items);
+        return { kind: 'first', count: drafts.length, amount, label: `✈ Enviar a cocina · ${fmtMoney(amount)}` };
     }
-    if (drafts > 0) {
-        return { kind: 'extra', count: drafts, label: `✈ Enviar adicionales (${drafts})` };
+    if (drafts.length > 0) {
+        const amount = itemsTotal(drafts);
+        return { kind: 'extra', count: drafts.length, amount, label: `✈ Enviar adicionales (${drafts.length}) · ${fmtMoney(amount)}` };
     }
     return null;
 }

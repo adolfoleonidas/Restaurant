@@ -34,12 +34,19 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S2-2: Direct "Cobrar S/ X" in the sheet (`mesa-sheet-cobrar`) with the active account balance. Decision: navigation (`openCharge`), not inline `CobrarDialog` — `POST /payments` requires an open cash shift, and replicating the Caja/PedidoDetalle gate in Salón would duplicate payment logic.
 - [x] S2-3: ✎ rename per person/account (`mesa-sheet-renombrar-{key}` + inline `mesa-sheet-renombrar-input-{key}`), same `PATCH /orders/:id/alias` path with optimistic update; the "Organizar pedido" input keeps working.
 
+## Tasks — Slice 3 (Composer)
+- [x] S3-1: Quantity badge on product cards (`{prefix}-producto-badge-{id}`, top-right, only when qty > 0; `pointer-events-none` + `aria-hidden` so taps fall through to the card button and SR announces once). Stepper and every existing testid kept — the badge is a deliberate one-digit glance indicator (the stepper's center number stays the test contract).
+- [x] S3-2: Amount inside the send button: `sendAction` returns `amount` and labels `✈ Enviar a cocina · S/ X` / `✈ Enviar adicionales (N) · S/ X`, reusing `itemsTotal` (first send = full billable order; extras = editable drafts). `OrderComposer` falls back to the computed label, so the NewOrderSheet composer shows the amount too without touching that file.
+- [ ] S3-3 (deferred): general order note. The field exists (`orders.notes`, accepted by `POST /orders`, rendered by Cocina) but there is no update path: no `PATCH /orders/{id}`, `PATCH /orders/{id}/status` only takes status/reason, and `send-to-kitchen` accepts no body. Wiring the composer textarea needs a new backend endpoint (out of authorized scope).
+
 ## Backlog (next slices)
-- S3 Composer: quantity badge on product card; amount inside "Enviar a cocina · S/ X"; general order note.
 - S4 Caja/Cobro: day KPIs; minutes + "Ver" on open accounts; dynamic rounding quick-cash buttons.
 - S5 Cocina: red ≥15 min alert; "Mozo" tag on tickets.
 
 ## Notes / deviations
+- S3-1: badge coexists with the stepper (deliberate redundancy; the stepper's center number remains the interaction/test contract).
+- S3-2: the send label now carries the amount in both composers (sheet + new order).
+- S3-3: deferred until a supported note-update path exists; requires a backend endpoint.
 - S2-2: cobro from the sheet navigates to the order's collection screen (PedidoDetalle → CobrarDialog); the cash-shift gate stays where it already lives. Inline checkout in the Salón was rejected to avoid duplicating payment rules.
 - S2-1: the three rows show for every table with at least one account; the full `TableSummary` (dishes/receipt/people) still renders only with 2+ accounts (previous rule untouched).
 - S2-1: `Pagado` always renders (S/ 0.00 with no payments) for deterministic labels/testids, unlike the prototype which hides it at zero.
@@ -60,6 +67,10 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - Slice 2 focused (parity + sheet/floor suites): -> **7 suites / 61 tests passed**.
 - Slice 2 full suite: **53 suites / 336 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully, no warnings.
 - `PersonChips` testids preserved: `-cuenta-{key}` and `-cuenta-pendientes-{number ?? id}` re-added with identical rendered values.
+- Slice 3 work-unit (this commit): `frontend/src/components/OrderComposer.jsx` (+23/−4), `frontend/src/lib/orderDraft.js` (+15/−6); new `frontend/src/__tests__/OrderComposerParity.test.js`; `orderDraft.test.js` labels updated (same test count).
+- Slice 3 test-first: 5 failures observed before the implementation.
+- Slice 3 focused (composer + consumers + sheets): **10 suites / 81 tests passed**; orchestrator re-ran `OrderComposerParity|orderDraft` as a spot check: **2 suites / 17 tests passed**.
+- Slice 3 full suite: **54 suites / 340 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
-import { isCancelled, isDraft } from '@/lib/orderDraft';
+import { isCancelled, isDraft, sendAction } from '@/lib/orderDraft';
 
 /**
  * Carta para componer un pedido sin salir del panel.
@@ -31,7 +31,7 @@ export default function OrderComposer({
     onAddProduct,
     onRemoveProduct,
     onSendToKitchen,
-    sendLabel = 'Enviar a cocina',
+    sendLabel = null,
 }) {
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
@@ -57,6 +57,9 @@ export default function OrderComposer({
         ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
         : 'Agregar productos');
     const accountQty = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    // El envío dice cuánto viaja. Si la pantalla no trae su propia etiqueta
+    // (Nuevo pedido), sale de las mismas reglas de `sendAction`.
+    const sendButtonLabel = sendLabel || sendAction(lines, order)?.label || 'Enviar a cocina';
 
     const flash = (productId) => {
         setPulse(productId);
@@ -145,8 +148,20 @@ export default function OrderComposer({
                             <div
                                 key={p.id}
                                 data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-                                className={`flex flex-col rounded-xl border bg-card p-2.5 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
+                                className={`relative flex flex-col rounded-xl border bg-card p-2.5 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
                             >
+                                {/* Badge del prototipo: indicador persistente de la
+                                    cantidad, arriba a la derecha. No reemplaza al
+                                    stepper: el número del medio es el del control. */}
+                                {qty > 0 && (
+                                    <span
+                                        aria-hidden="true"
+                                        data-testid={`${testIdPrefix}-producto-badge-${p.id}`}
+                                        className="pointer-events-none absolute right-1.5 top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-semibold leading-none text-primary-foreground"
+                                    >
+                                        {qty}
+                                    </span>
+                                )}
                                 <button
                                     type="button"
                                     disabled={busy}
@@ -210,7 +225,7 @@ export default function OrderComposer({
                     </div>
                     {showKitchen && (
                         <Button onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
-                            {sendLabel}
+                            {sendButtonLabel}
                         </Button>
                     )}
                 </div>
