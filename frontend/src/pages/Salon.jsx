@@ -10,8 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import PersonChips from '@/components/PersonChips';
-import { PersonOrderSummary, TableSummary } from '@/components/OrderSummary';
-import { draftCount, personLabel, sendAction, tableSummary } from '@/lib/orderDraft';
+import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
+import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -150,6 +150,17 @@ function tallyLabel(tally) {
  */
 const MINI_OPEN_CLASS = 'pb-44 md:!pb-0';
 
+/**
+ * Una cuenta sigue siendo el pedido a medio armar mientras nada haya salido a
+ * cocina: sus productos están en borrador y nadie la reclamó. Recién al enviarla
+ * se convierte en una persona de la mesa, sin que el mozo "abra" nada.
+ */
+function isComposingDraft(order) {
+    if (!order) return false;
+    if (order.customer_name || order.shared) return false;
+    return !(order.items || []).some((item) => !isDraft(item, order.status));
+}
+
 export default function Salon() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
@@ -170,15 +181,17 @@ export default function Salon() {
     const [moveAccountId, setMoveAccountId] = useState(null);
     const [savingItem, setSavingItem] = useState(false);
     const [aliasDraft, setAliasDraft] = useState('');
+    // Mensaje de confirmación tras enviar: "✓ Pedido de Juan enviado.
+    // ¿Siguiente persona?" — la pantalla queda limpia para la siguiente.
+    const [flash, setFlash] = useState(null);
+    // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
+    const [sharedDraft, setSharedDraft] = useState(false);
+    const [receiptOpen, setReceiptOpen] = useState(false);
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
     const [lastOpened, setLastOpened] = useState(null);
     const searchRef = useRef(null);
-    const aliasRef = useRef(null);
-    // Cuenta recién creada con "+": cuando queda activa, el cursor va solo al
-    // alias, que es lo único que falta escribir antes de cargar los platos.
-    const freshAccountRef = useRef(null);
 
     const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
         () => api.get('/tables').then((r) => r.data),
@@ -398,8 +411,13 @@ export default function Salon() {
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
-            // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
-            if (!targetOrderId && active.length) await selectAccount(active[0].id);
+            // Volver a la mesa retoma el pedido a medio armar si quedó uno; si no,
+            // la pantalla arranca limpia para la siguiente persona.
+            if (!targetOrderId && active.length) {
+                const composing = active.find((o) => isComposingDraft(o));
+                if (composing) await selectAccount(composing.id);
+                else setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: null, accountId: null, loading: false } : s));
+            }
         } catch { /* historial opcional */ }
     };
 
@@ -414,43 +432,6 @@ export default function Salon() {
             setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
         } catch {
             setOpenTable((s) => (s ? { ...s, loading: false } : s));
-        }
-    };
-
-    // Multi-cuenta: abre una cuenta adicional dentro de la misma visita.
-    const addAccount = async () => {
-        const t = openTable?.table;
-        if (!t || !canTake) return;
-        try {
-            const { data } = await api.post('/orders', { table_id: t.id, order_type: 'mesa', new_account: true });
-            toast.success('Cuenta agregada');
-            freshAccountRef.current = data?.id || null;
-            // Queda seleccionada en el sheet: no se sale del salón.
-            setOpenTable((s) => (s && s.table.id === t.id
-                ? { ...s, order: data, accountId: data.id, accounts: [...(s.accounts || []), data] }
-                : s));
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar la cuenta');
-        }
-    };
-
-    /**
-     * Cuenta "Compartido": lo que pide la mesa entera (una fuente, una jarra,
-     * una entrada). No es de una persona, pero se cobra y se manda igual.
-     */
-    const addSharedAccount = async () => {
-        const t = openTable?.table;
-        if (!t || !canTake) return;
-        try {
-            const { data } = await api.post('/orders', { table_id: t.id, order_type: 'mesa', new_account: true, shared: true });
-            toast.success('Cuenta compartida agregada');
-            setOpenTable((s) => (s && s.table.id === t.id
-                ? { ...s, order: data, accountId: data.id, accounts: [...(s.accounts || []), data] }
-                : s));
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar la cuenta compartida');
         }
     };
 
@@ -530,6 +511,8 @@ export default function Salon() {
     const addProductToAccount = async (product) => {
         if (!canTake || savingItem) return;
         setSavingItem(true);
+        // Arrancó el pedido siguiente: el aviso del envío anterior ya cumplió.
+        setFlash(null);
         try {
             const orderId = await ensureAccount();
             if (!orderId) return;
@@ -592,16 +575,53 @@ export default function Salon() {
     };
 
     /**
-     * El alias se escribe y se guarda al enviar el pedido: no hay botón de
-     * guardar. Se persiste sólo si el mozo lo cambió.
+     * La identidad de la cuenta (alias y compartida) se guarda al enviar: no hay
+     * botón de guardar. Sólo se persiste lo que el mozo cambió.
      */
     const persistAlias = async (orderId) => {
         const account = (openTable?.accounts || []).find((o) => o.id === orderId)
             || (openTable?.order?.id === orderId ? openTable.order : null);
-        const current = account?.customer_name || '';
-        const next = aliasDraft.trim();
-        if (next === current) return;
-        await api.patch(`/orders/${orderId}/alias`, { alias: next || null });
+        const currentName = account?.customer_name || '';
+        const nextName = aliasDraft.trim();
+        const currentShared = Boolean(account?.shared);
+        if (nextName === currentName && sharedDraft === currentShared) return;
+        await api.patch(`/orders/${orderId}/alias`, { alias: nextName || null, shared: sharedDraft });
+    };
+
+    /**
+     * Observación rápida. Con más de una unidad la observación es de UNA unidad
+     * ("2 sopas, una sin cebolla"), así que primero se agrega la unidad anotada y
+     * recién después se descuenta del grupo: si algo falla, nunca se pierde comida.
+     */
+    const applyItemNote = async (item, note) => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake || !item) return;
+        try {
+            if (Number(item.quantity || 1) > 1) {
+                await api.post(`/orders/${orderId}/items`, [{ product_id: item.product_id, quantity: 1, notes: note }]);
+                await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: Number(item.quantity) - 1 });
+            } else {
+                await api.patch(`/orders/${orderId}/items/${item.id}`, { notes: note });
+            }
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+        }
+    };
+
+    // Corregir "quién pidió qué" sin borrar y volver a cargar el producto.
+    const moveItemToPerson = async (item, targetOrderId) => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !targetOrderId || !canTake) return;
+        try {
+            await api.post(`/orders/${orderId}/items/${item.id}/move`, { target_order_id: targetOrderId });
+            toast.success('Producto movido de persona');
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo mover el producto');
+        }
     };
 
     /**
@@ -623,8 +643,22 @@ export default function Salon() {
             if (targetId === openId) await persistAlias(targetId);
             const { data } = await api.post(`/orders/${targetId}/send-to-kitchen`);
             const pending = draftCount(sendItemsFor(targetId), data?.status);
+            const who = data?.customer_name || (data?.shared ? 'Compartido' : 'la persona');
             toast.success(pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina');
             await reloadCurrentOrder(targetId);
+            if (targetId === openId) {
+                // La persona ya quedó registrada: la pantalla se limpia sola para
+                // la siguiente, que es como el mozo trabaja de verdad.
+                setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
+                setOpenTable((s) => (s ? {
+                    ...s,
+                    order: null,
+                    accountId: null,
+                    accounts: (s.accounts || []).some((o) => o.id === data?.id)
+                        ? (s.accounts || []).map((o) => (o.id === data?.id ? data : o))
+                        : [...(s.accounts || []), data].filter(Boolean),
+                } : s));
+            }
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
@@ -637,15 +671,14 @@ export default function Salon() {
         return (account || sheetOrder || {}).items || [];
     };
 
-    // Alias opcional de la cuenta (identifica quién pidió; viaja a cocina).
+    // El alias también se puede fijar sin enviar (al salir del campo).
     const saveAlias = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
         if (!orderId || !canTake) return;
         try {
-            await api.patch(`/orders/${orderId}/alias`, { alias: aliasDraft.trim() || null });
+            await persistAlias(orderId);
             await reloadCurrentOrder(orderId);
             refreshAll();
-            toast.success('Alias guardado');
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
         }
@@ -857,16 +890,8 @@ export default function Salon() {
     // El alias del formulario sigue a la cuenta que se está viendo.
     useEffect(() => {
         setAliasDraft(openTable?.order?.customer_name || '');
-    }, [openTable?.order?.id, openTable?.order?.customer_name]);
-
-    // Al crear una persona con "+" el cursor cae en su alias: nombrarla es lo
-    // único que falta antes de cargar los platos.
-    useEffect(() => {
-        const active = openTable?.order?.id || openTable?.accountId;
-        if (!active || freshAccountRef.current !== active) return;
-        freshAccountRef.current = null;
-        aliasRef.current?.focus();
-    }, [openTable?.order?.id, openTable?.accountId]);
+        setSharedDraft(Boolean(openTable?.order?.shared));
+    }, [openTable?.order?.id, openTable?.order?.customer_name, openTable?.order?.shared]);
 
     // ── Mini-reproductor del pedido activo ─────────────────────────────────
     // Mientras la hoja está abierta con una cuenta cargada, esa cuenta pasa a
@@ -1215,8 +1240,6 @@ export default function Salon() {
                         const currentAccountId = order?.id || accountId || t.active_order?.id || null;
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
-                        const closeable = canClose && canCloseAttention(t, order);
-                        const billRequested = Boolean(order?.payment_requested) || order?.status === 'pendiente_pago';
                         // Composición inline: se puede pedir mientras la mesa no esté cerrada.
                         const canCompose = canTake && ['disponible', 'ocupada'].includes(t.status);
                         const allItems = order?.items || [];
@@ -1226,23 +1249,22 @@ export default function Salon() {
                         const sendState = order ? sendAction(allItems, order) : null;
                         const showSend = Boolean(sendState)
                             && (sendState.kind === 'extra' ? sendState.count > 0 : allItems.length > 0);
-                        // Cada cuenta es una persona/subcuenta. Sin cuenta todavía se
-                        // muestra la Persona 1 para que la estructura se vea desde el
-                        // principio, sin crear una orden vacía.
-                        const personAccounts = (accounts && accounts.length) ? accounts : (order ? [order] : []);
-                        const persons = personAccounts.length
-                            ? personAccounts.map((o, index) => {
-                                const detail = activeOrders[o.id] || o;
-                                return {
-                                    id: o.id,
-                                    number: o.order_number,
-                                    label: personLabel(detail, index),
-                                    shared: Boolean(detail.shared),
-                                    draftCount: draftCount(detail.items || [], detail.status),
-                                };
-                            })
-                            : [{ id: 'preview', number: null, label: 'Persona 1', draftCount: 0, preview: true }];
-                        const summaryRows = tableSummary(personAccounts.map((o, index) => {
+                        // Cada cuenta es una persona, pero sólo se muestra como tal
+                        // cuando algo salió a cocina: mientras todo es borrador, es el
+                        // "nuevo pedido" que el mozo todavía está armando.
+                        const allAccounts = accounts || [];
+                        const personAccounts = allAccounts.filter((o) => !isComposingDraft(activeOrders[o.id] || o));
+                        const persons = personAccounts.map((o, index) => {
+                            const detail = activeOrders[o.id] || o;
+                            return {
+                                id: o.id,
+                                number: o.order_number,
+                                label: personLabel(detail, index),
+                                shared: Boolean(detail.shared),
+                                draftCount: draftCount(detail.items || [], detail.status),
+                            };
+                        });
+                        const summaryRows = tableSummary(allAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
                             return { label: personLabel(detail, index), items: detail.items || [] };
                         }));
@@ -1250,6 +1272,18 @@ export default function Salon() {
                         // de la barra nunca contradice el detalle.
                         const tableDishes = summaryRows.reduce((sum, row) => sum + row.quantity, 0);
                         const tableTotal = summaryRows.reduce((sum, row) => sum + row.subtotal, 0);
+                        // Lo que falta enviar de la cuenta que se está armando.
+                        const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
+                        // Con la pantalla limpia para la siguiente persona, las acciones
+                        // de la mesa siguen apuntando a una cuenta real.
+                        const fallbackPerson = persons[0] || null;
+                        const actionOrder = order
+                            || (fallbackPerson ? (activeOrders[fallbackPerson.id] || allAccounts.find((o) => o.id === fallbackPerson.id)) : null);
+                        const actionAccountId = currentAccountId || fallbackPerson?.id || null;
+                        // Con la pantalla limpia para la siguiente persona, las acciones
+                        // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
+                        const closeable = canClose && canCloseAttention(t, actionOrder);
+                        const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
                         return (
                             <>
                                 {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
@@ -1273,33 +1307,74 @@ export default function Salon() {
                                         accounts={personAccounts.length}
                                         dishes={tableDishes}
                                         total={tableTotal}
+                                        people={persons}
+                                        canEdit={canCompose && persons.length > 1}
+                                        onMoveItem={moveItemToPerson}
+                                        onOpenReceipt={() => setReceiptOpen(true)}
                                     />
+                                    {receiptOpen && (
+                                        <TableReceipt
+                                            table={t}
+                                            rows={summaryRows}
+                                            accounts={personAccounts.map((o, index) => {
+                                                const detail = activeOrders[o.id] || o;
+                                                return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
+                                            })}
+                                            total={tableTotal}
+                                            pending={pendingCount}
+                                        />
+                                    )}
+                                    {flash && (
+                                        <p
+                                            className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-medium text-primary"
+                                            role="status"
+                                            data-testid="mesa-sheet-flash"
+                                        >
+                                            {flash}
+                                        </p>
+                                    )}
                                     {(canCompose || (accounts && accounts.length > 0)) && (
                                         <PersonChips
                                             people={persons}
                                             activeId={currentAccountId}
-                                            onSelect={selectAccount}
-                                            onAdd={addAccount}
-                                            canEdit={Boolean(t.active_attention_id) && canTake}
+                                            onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
                                         />
                                     )}
-                                    {canTake && order && (
+                                    {canCompose && (
                                         <div className="space-y-1" data-testid="mesa-sheet-alias-row">
                                             {/* Sin botón de guardar: el alias se escribe y viaja
                                                 con la comanda cuando el mozo envía el pedido. */}
-                                            <Input
-                                                ref={aliasRef}
-                                                placeholder={accounts.length > 1 ? 'Alias (ej. Juan) — se guarda al enviar' : 'Alias de la cuenta (opcional) — se guarda al enviar'}
-                                                value={aliasDraft}
-                                                onChange={(e) => setAliasDraft(e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
-                                                data-testid="mesa-sheet-alias"
-                                            />
-                                            {accounts.length > 1 && !order.customer_name && (
-                                                <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
-                                                    Poné un alias para reconocer a esta persona y agregarle lo suyo.
-                                                </p>
-                                            )}
+                                            <div className="flex items-center gap-1.5">
+                                                <Input
+                                                    placeholder="Alias (opcional)"
+                                                    value={aliasDraft}
+                                                    onChange={(e) => setAliasDraft(e.target.value)}
+                                                    onBlur={() => { if (order) saveAlias(); }}
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
+                                                    data-testid="mesa-sheet-alias"
+                                                />
+                                                {/* La fuente, la jarra, la entrada para compartir:
+                                                    es de la mesa, no de una persona. */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSharedDraft((cur) => !cur)}
+                                                    aria-pressed={sharedDraft}
+                                                    title="Lo que pide la mesa entera"
+                                                    data-testid="mesa-sheet-compartido"
+                                                    className={`flex h-11 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                                                        sharedDraft
+                                                            ? 'border-primary bg-primary text-primary-foreground'
+                                                            : 'border-border text-muted-foreground hover:border-primary'
+                                                    }`}
+                                                >
+                                                    🍽️ Compartido
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
+                                                {persons.length > 0
+                                                    ? 'Nuevo pedido: escribí un alias o tocá una persona para sumarle lo suyo.'
+                                                    : 'El alias es opcional: sin él queda como Persona 1.'}
+                                            </p>
                                         </div>
                                     )}
                                     <OrderComposer
@@ -1323,6 +1398,9 @@ export default function Salon() {
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
+                                            <p className="page-kicker" data-testid="mesa-sheet-items-titulo">
+                                                {order.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
+                                            </p>
                                             <PersonOrderSummary
                                                 items={allItems}
                                                 orderStatus={order.status}
@@ -1330,6 +1408,7 @@ export default function Salon() {
                                                 saving={savingItem}
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
+                                                onApplyNote={applyItemNote}
                                                 onVoid={voidProduct}
                                             />
                                             <div className="flex justify-between font-display text-lg font-bold">
@@ -1436,11 +1515,11 @@ export default function Salon() {
                                     {t.active_order ? (
                                         <>
                                             {floor.key === 'listo' && canServe && (
-                                                <Button className="w-full h-12" onClick={() => deliver(currentAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
+                                                <Button className="w-full h-12" onClick={() => deliver(actionAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
                                             )}
                                             {closeable && (
-                                                <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(order)} disabled={closing === order.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
-                                                    {closing === order.id ? 'Cerrando…' : 'Finalizar mesa'}
+                                                <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(actionOrder)} disabled={closing === actionOrder?.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
+                                                    {closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa'}
                                                 </Button>
                                             )}
                                             {billRequested ? (
@@ -1448,8 +1527,8 @@ export default function Salon() {
                                                     Cuenta solicitada
                                                 </Button>
                                             ) : (
-                                                ['listo', 'entregado'].includes(order?.status) && canTake && (
-                                                    <Button variant="outline" className="w-full h-12" onClick={() => requestBill(order)} data-testid="mesa-sheet-solicitar-cuenta">
+                                                ['listo', 'entregado'].includes(actionOrder?.status) && canTake && (
+                                                    <Button variant="outline" className="w-full h-12" onClick={() => requestBill(actionOrder)} data-testid="mesa-sheet-solicitar-cuenta">
                                                         Solicitar cuenta
                                                     </Button>
                                                 )
@@ -1457,12 +1536,13 @@ export default function Salon() {
                                             <Button
                                                 variant={floor.key === 'listo' ? 'outline' : 'default'}
                                                 className="w-full h-12"
-                                                onClick={() => { closeSheet(); navigate(`/pedidos/${currentAccountId}`); }}
+                                                onClick={() => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); }}
+                                                disabled={!actionAccountId}
                                                 data-testid="mesa-sheet-ver-pedido"
                                             >
                                                 {floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido'}
                                             </Button>
-                                            {canTake && order && (order.items || []).filter((i) => i.status !== 'cancelado').length >= 2 && (
+                                            {canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2 && (
                                                 <div className="flex gap-2">
                                                     <span className="text-xs text-muted-foreground self-center">Dividir:</span>
                                                     {[2, 3, 4].map((n) => (
@@ -1484,26 +1564,16 @@ export default function Salon() {
                                                 <Button
                                                     variant="outline"
                                                     className="w-full h-12"
-                                                    onClick={() => setMoveAccountId(currentAccountId)}
+                                                    onClick={() => setMoveAccountId(actionAccountId)}
                                                     data-testid="mesa-sheet-mover-cuenta"
                                                 >
                                                     <MoveRight className="h-4 w-4 mr-1" /> Mover esta cuenta a otra mesa
                                                 </Button>
                                             )}
-                                            {/* Acciones poco frecuentes: van al final, después de
+                                            {/* Acción poco frecuente: va al final, después de
                                                 lo que el mozo hace en cada ronda. */}
-                                            <div className="flex flex-wrap gap-2 pt-1">
-                                                {Boolean(t.active_attention_id) && canTake && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        className="h-10 flex-1 text-xs text-muted-foreground"
-                                                        onClick={addSharedAccount}
-                                                        data-testid="mesa-sheet-cuenta-compartida"
-                                                    >
-                                                        🍽️ Agregar compartido
-                                                    </Button>
-                                                )}
-                                                {accounts.length > 1 && canTake && (
+                                            {accounts.length > 1 && canTake && (
+                                                <div className="flex flex-wrap gap-2 pt-1">
                                                     <Button
                                                         variant="ghost"
                                                         className="h-10 flex-1 text-xs text-muted-foreground"
@@ -1512,8 +1582,8 @@ export default function Salon() {
                                                     >
                                                         <Link2 className="h-3.5 w-3.5 mr-1" /> Fusionar cuentas
                                                     </Button>
-                                                )}
-                                            </div>
+                                                </div>
+                                            )}
                                         </>
                                     ) : accountTable && order ? (
                                         <>

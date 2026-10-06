@@ -431,9 +431,16 @@ class OrderSplit(BaseModel):
 
 
 class OrderAlias(BaseModel):
-    """Alias opcional de una cuenta, para identificar quién pidió."""
+    """Identidad de una cuenta: cómo se llama la persona y si es la compartida."""
 
     alias: Optional[str] = Field(default=None, max_length=40)
+    shared: Optional[bool] = None
+
+
+class OrderItemMove(BaseModel):
+    """Mueve un producto de una persona a otra de la misma mesa."""
+
+    target_order_id: str = Field(min_length=1)
 
 
 class OrderItemVoid(BaseModel):

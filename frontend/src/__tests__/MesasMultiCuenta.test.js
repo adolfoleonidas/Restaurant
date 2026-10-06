@@ -99,7 +99,7 @@ describe('multi-cuenta en el salón', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]').textContent).toContain('Agregar a Juan');
     });
 
-    it('abre una cuenta nueva con new_account=true', async () => {
+    it('no pide crear cuentas: la persona aparece recién al enviar su pedido', async () => {
         const o1 = order('order-1', 11, 'Ceviche', 30);
         mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: 'order-1', status: 'en_preparacion' } }));
         mockOrders.splice(0, mockOrders.length, o1);
@@ -108,15 +108,14 @@ describe('multi-cuenta en el salón', () => {
             if (url.startsWith('/orders/')) return Promise.resolve({ data: o1 });
             return Promise.resolve({ data: [o1] });
         });
-        api.post.mockResolvedValue({ data: { id: 'order-3' } });
+        api.post.mockResolvedValue({ data: o1 });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        const nueva = sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]');
-        expect(nueva).not.toBeNull();
-        await click(nueva);
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
+        // Ya no hay un botón de "abrir cuenta": el mozo sólo escribe el alias.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-alias"]')).not.toBeNull();
     });
 
     it('fusiona las demás cuentas dentro de la seleccionada', async () => {

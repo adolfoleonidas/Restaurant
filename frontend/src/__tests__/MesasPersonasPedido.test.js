@@ -202,50 +202,113 @@ describe('pedido por personas en el salón', () => {
         }
     });
 
-    it('deja compartido y fusionar al final, fuera del camino de carga', async () => {
+    it('deja fusionar al final, fuera del camino de carga', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
         const carta = sheet.querySelector('[data-testid="mesa-sheet-pedido"]');
-        const compartido = sheet.querySelector('[data-testid="mesa-sheet-cuenta-compartida"]');
         const fusionar = sheet.querySelector('[data-testid="mesa-sheet-fusionar-cuentas"]');
-        expect(compartido).not.toBeNull();
         expect(fusionar).not.toBeNull();
-        [compartido, fusionar].forEach((accion) => {
-            expect(carta.compareDocumentPosition(accion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(carta.compareDocumentPosition(fusionar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('no hay botón de crear cuenta: la persona nace al enviar y la pantalla queda lista', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        const borrador = {
+            ...order('order-9', 13, 'nuevo', [item('i9', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })]),
+            customer_name: null,
+        };
+        api.patch.mockResolvedValue({ data: borrador });
+        api.post.mockResolvedValue({ data: { ...borrador, customer_name: 'Pedro', status: 'enviado_cocina' } });
+        // El pedido a medio armar es el que la mesa retoma al abrirse.
+        ({ container, root, sheet } = await openTableWith([borrador, juan]));
+
+        // No hay "+" que abra cuentas: eso lo decide el sistema por dentro.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]')).toBeNull();
+        // Mientras todo es borrador, la cuenta todavía no figura como persona.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]').textContent).not.toContain('Persona 1');
+
+        const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
+        expect(enviar).not.toBeNull();
+        await click(enviar);
+
+        // Confirma el envío y deja la pantalla limpia para la siguiente persona.
+        expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
+        const flash = sheet.querySelector('[data-testid="mesa-sheet-flash"]');
+        expect(flash.textContent).toContain('¿Siguiente persona?');
+        expect(flash.textContent).toContain('Pedro');
+    });
+
+    it('Compartido es un interruptor junto al alias, no una cuenta aparte', async () => {
+        const borrador = {
+            ...order('order-9', 13, 'nuevo', [item('i9', 'Fuente', 1, 45, 'borrador', { product_id: 'prod-n1' })]),
+            customer_name: null,
+        };
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        api.patch.mockResolvedValue({ data: { ...borrador, shared: true } });
+        api.post.mockResolvedValue({ data: { ...borrador, shared: true, status: 'enviado_cocina' } });
+        ({ container, root, sheet } = await openTableWith([juan]));
+
+        const toggle = sheet.querySelector('[data-testid="mesa-sheet-compartido"]');
+        expect(toggle).not.toBeNull();
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        await click(toggle);
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    });
+
+    it('las observaciones rápidas se aplican a una sola unidad', async () => {
+        const borrador = {
+            ...order('order-9', 13, 'nuevo', [item('i9', 'Sopa', 2, 12, 'borrador', { product_id: 'prod-n1' })]),
+            customer_name: null,
+        };
+        api.post.mockResolvedValue({ data: borrador });
+        api.patch.mockResolvedValue({ data: borrador });
+        ({ container, root, sheet } = await openTableWith([borrador]));
+
+        // Los chips están a la vista sin tener que abrir nada.
+        const chip = sheet.querySelector('[data-testid="mesa-sheet-item-nota-rapida-i9-Sin cebolla"]');
+        expect(chip).not.toBeNull();
+        await click(chip);
+
+        // Primero agrega la unidad anotada y recién después descuenta del grupo:
+        // si algo falla, nunca se pierde comida.
+        expect(api.post).toHaveBeenCalledWith('/orders/order-9/items', [
+            { product_id: 'prod-n1', quantity: 1, notes: 'Sin cebolla' },
+        ]);
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-9/items/i9', { quantity: 1 });
+    });
+
+    it('mueve un producto de una persona a otra', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [
+            item('i1', 'Pollo', 1, 20, 'pendiente', { product_id: 'prod-p' }),
+        ], { customer_name: 'Juan' });
+        const maria = order('order-2', 12, 'en_preparacion', [], { customer_name: 'María' });
+        api.post.mockResolvedValue({ data: maria });
+        ({ container, root, sheet } = await openTableWith([juan, maria]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
+        await click(sheet.querySelector('[data-testid^="mesa-sheet-resumen-abrir-"]'));
+        const selector = sheet.querySelector('[data-testid="mesa-sheet-mover-item-i1"]');
+        expect(selector).not.toBeNull();
+        await act(async () => {
+            selector.value = 'order-2';
+            selector.dispatchEvent(new Event('change', { bubbles: true }));
         });
+
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/items/i1/move', { target_order_id: 'order-2' });
     });
 
-    it('agrega una persona más desde el "+"', async () => {
-        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
-        api.post.mockResolvedValue({ data: { id: 'order-3' } });
+    it('el recibo de la mesa se abre desde el resumen', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 2, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]'));
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
-    });
-
-    it('al crear la persona deja el cursor en su alias, sin un clic de más', async () => {
-        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
-        const nueva = { ...order('order-3', 13, 'nuevo', []), customer_name: null };
-        api.post.mockImplementation((url) => (
-            url === '/orders' ? Promise.resolve({ data: nueva }) : Promise.resolve({ data: juan })
-        ));
-        ({ container, root, sheet } = await openTableWith([juan]));
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]'));
-        expect(document.activeElement).toBe(sheet.querySelector('[data-testid="mesa-sheet-alias"]'));
-    });
-
-    it('permite una cuenta Compartido para lo que pide la mesa entera', async () => {
-        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
-        api.post.mockResolvedValue({ data: { id: 'order-9', shared: true } });
-        ({ container, root, sheet } = await openTableWith([juan]));
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-compartida"]'));
-        expect(api.post).toHaveBeenCalledWith('/orders', {
-            table_id: 'table-1', order_type: 'mesa', new_account: true, shared: true,
-        });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ver-recibo"]'));
+        const recibo = sheet.querySelector('[data-testid="mesa-sheet-recibo"]');
+        expect(recibo).not.toBeNull();
+        expect(recibo.textContent).toContain('2× Sopa');
+        expect(recibo.textContent).toContain('Por persona');
+        expect(recibo.textContent).toContain('Juan');
+        expect(recibo.querySelector('[data-testid="mesa-sheet-recibo-imprimir"]')).not.toBeNull();
     });
 });
