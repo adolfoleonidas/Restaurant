@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import routes.orders as order_routes  # noqa: E402
 from branch_isolation_fakes import _Collection  # noqa: E402
-from models import OrderItemInput, OrderItemUpdate, OrderItemVoid, OrderCreate  # noqa: E402
+from models import OrderItemInput, OrderItemUpdate, OrderItemVoid, OrderItemMove, OrderAlias, OrderCreate  # noqa: E402
 
 RID = "tenant-1"
 STAMP = "2026-01-01T00:00:00+00:00"
@@ -301,6 +301,115 @@ def test_a_draft_can_be_corrected_and_keeps_its_notes():
     assert item["quantity"] == 2
     assert item["notes"] == "Sin ensalada"
     assert order["total"] == 40.0
+
+
+# ---------- mover un producto de una persona a otra ----------
+
+def _two_persons(**extra):
+    """Dos personas de la misma mesa y la misma visita."""
+    juan = _order(
+        "order-1", status="enviado_cocina", customer_name="Juan",
+        items=[_item("item-1", "prod-1", "Pollo", 20.0, status="pendiente")],
+    )
+    maria = _order(
+        "order-2", status="enviado_cocina", customer_name="María", items=[],
+    )
+    juan["attention_id"] = maria["attention_id"] = "att-1"
+    return [juan, maria]
+
+
+def test_moving_a_product_reassigns_it_without_losing_its_history():
+    async def run():
+        db = _FakeDB(orders=_two_persons())
+        _bind(db)
+        moved = await order_routes.move_item("order-1", "item-1", OrderItemMove(target_order_id="order-2"), _user())
+        return moved, db
+
+    moved, db = asyncio.run(run())
+    assert [i["product_name"] for i in moved["items"]] == ["Pollo"]
+    assert moved["total"] == 20.0
+    # Conserva su estado y deja rastro de dónde vino.
+    assert moved["items"][0]["status"] == "pendiente"
+    assert moved["items"][0]["moved_from"] == "order-1"
+    # La persona que se quedó sin nada no sigue abierta.
+    origen = next(o for o in db.orders.rows if o["id"] == "order-1")
+    assert origen["status"] == "cancelado"
+    assert origen["items"] == []
+    assert origen["total"] == 0.0
+
+
+def test_moving_does_not_touch_the_kitchen_status_of_the_target():
+    async def run():
+        db = _FakeDB(orders=_two_persons())
+        _bind(db)
+        return await order_routes.move_item("order-1", "item-1", OrderItemMove(target_order_id="order-2"), _user())
+
+    moved = asyncio.run(run())
+    assert moved["status"] == "enviado_cocina"
+
+
+def test_a_charged_product_cannot_be_moved():
+    async def run():
+        orders = _two_persons()
+        orders[0]["items"][0]["paid_qty"] = 1
+        orders[0]["amount_paid"] = 20.0
+        db = _FakeDB(orders=orders)
+        _bind(db)
+        await order_routes.move_item("order-1", "item-1", OrderItemMove(target_order_id="order-2"), _user())
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(run())
+    assert caught.value.status_code == 400
+
+
+def test_a_product_cannot_be_moved_to_another_visit():
+    async def run():
+        orders = _two_persons()
+        orders[1]["attention_id"] = "att-otra"  # otra visita de la misma mesa
+        db = _FakeDB(orders=orders)
+        _bind(db)
+        await order_routes.move_item("order-1", "item-1", OrderItemMove(target_order_id="order-2"), _user())
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(run())
+    assert caught.value.status_code == 400
+
+
+def test_a_product_cannot_be_moved_to_itself():
+    async def run():
+        db = _FakeDB(orders=_two_persons())
+        _bind(db)
+        await order_routes.move_item("order-1", "item-1", OrderItemMove(target_order_id="order-1"), _user())
+
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(run())
+    assert caught.value.status_code == 400
+
+
+# ---------- la cuenta compartida se marca desde su identidad ----------
+
+def test_the_account_identity_carries_the_alias_and_the_shared_flag():
+    async def run():
+        db = _FakeDB(orders=[_order()])
+        _bind(db)
+        return await order_routes.set_order_alias(
+            "order-1", OrderAlias(alias="Juan", shared=True), _user()
+        )
+
+    order = asyncio.run(run())
+    assert order["customer_name"] == "Juan"
+    assert order["shared"] is True
+
+
+def test_changing_only_the_alias_does_not_clear_the_shared_flag():
+    async def run():
+        db = _FakeDB(orders=[_order(shared=True)])
+        _bind(db)
+        return await order_routes.set_order_alias("order-1", OrderAlias(alias="María"), _user())
+
+    order = asyncio.run(run())
+    assert order["customer_name"] == "María"
+    assert order["shared"] is True
 
 
 # ---------- cuenta compartida ----------

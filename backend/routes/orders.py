@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid, OrderItemMove
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     DRAFT_STATUS,
@@ -663,14 +663,19 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
 
 @router.patch("/{order_id}/alias")
 async def set_order_alias(order_id: str, data: OrderAlias, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    """Alias opcional de la cuenta, para identificar quién pidió (viaja a cocina)."""
+    """Identidad de la cuenta: el alias con el que viaja a cocina, y si es la
+    compartida de la mesa. El alias se guarda al enviar el pedido, no antes."""
     order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
-    alias = (data.alias or "").strip()
-    await _save_order(order, {"customer_name": alias or None, "updated_at": _now()})
+    patch = {"updated_at": _now()}
+    if data.alias is not None:
+        patch["customer_name"] = (data.alias or "").strip() or None
+    if data.shared is not None:
+        patch["shared"] = bool(data.shared)
+    await _save_order(order, patch)
     return await _current_order_response(order_id, user)
 
 
@@ -729,6 +734,87 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     await _audit(user["restaurant_id"], user["id"], "void_item", "order", order_id, {"item_id": item_id, "reason": reason})
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_voided", branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
+
+
+@router.post("/{order_id}/items/{item_id}/move")
+async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Mueve un producto de una persona a otra de la misma mesa y visita.
+
+    Sirve para corregir "quién pidió qué" sin borrar y volver a cargar: el ítem
+    conserva su estado, su hora y sus observaciones.
+    """
+    source = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not source:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if source["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    target = await db.orders.find_one(await _order_lookup_scope(data.target_order_id, user), {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
+    if target["id"] == source["id"]:
+        raise HTTPException(status_code=400, detail="Elegí otra persona")
+    if target["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="La cuenta destino está cerrada")
+    if target.get("attention_id") != source.get("attention_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma visita")
+    item = next((i for i in (source.get("items") or []) if i["id"] == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Ítem no encontrado")
+    if is_cancelled(item):
+        raise HTTPException(status_code=400, detail="El producto está anulado")
+    if int(item.get("paid_qty") or 0) > 0:
+        raise HTTPException(status_code=400, detail="No podés mover un producto que ya fue cobrado")
+
+    now = _now()
+    source_items = [i for i in (source.get("items") or []) if i["id"] != item_id]
+    moved = dict(item)
+    moved["moved_from"] = source["id"]
+    moved["moved_at"] = now
+    target_items = (target.get("items") or []) + [moved]
+
+    source_subtotal, source_total = _apply_bill(source, source_items)
+    target_subtotal, target_total = _apply_bill(target, target_items)
+
+    source_patch = {
+        "items": source_items,
+        "subtotal": source_subtotal,
+        "total": source_total,
+        "updated_at": now,
+    }
+    # Una cuenta que se queda sin nada y sin cobros no tiene por qué seguir
+    # abierta ocupando lugar entre las personas de la mesa.
+    emptied = not [i for i in source_items if not is_cancelled(i)]
+    if emptied and float(source.get("amount_paid") or 0) <= 0.009:
+        source_patch.update({
+            "status": "cancelado",
+            "cancellation_reason": "Cuenta sin productos: su último producto pasó a otra persona",
+        })
+    else:
+        source_patch.update(ticket_fields(
+            source, source.get("fulfillment_status") or source["status"],
+            source.get("amount_paid"), source_total,
+        ))
+
+    target_status = _derive_kitchen_status(target_items, target["status"])
+    if target["status"] in ("entregado", "pendiente_pago"):
+        target_status = target["status"]
+    target_patch = {
+        "items": target_items,
+        "subtotal": target_subtotal,
+        "total": target_total,
+        "updated_at": now,
+    }
+    target_patch.update(ticket_fields(target, target_status, target.get("amount_paid"), target_total))
+
+    await _save_order(source, source_patch)
+    await _save_order(target, target_patch)
+    await _audit(user["restaurant_id"], user["id"], "move_item", "order", order_id,
+                 {"item_id": item_id, "target_order_id": target["id"]})
+    emit_order(user["restaurant_id"], source["id"], source_patch.get("status", source["status"]),
+               source=source.get("source"), extra="item_moved_out", branch_id=source.get("branch_id"))
+    emit_order(user["restaurant_id"], target["id"], target_status,
+               source=target.get("source"), extra="item_moved_in", branch_id=target.get("branch_id"))
+    return await _current_order_response(target["id"], user)
 
 
 @router.patch("/{order_id}/items/{item_id}")
