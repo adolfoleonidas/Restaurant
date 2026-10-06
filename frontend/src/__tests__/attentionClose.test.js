@@ -14,6 +14,28 @@ describe('active table attention presentation', () => {
         expect(activeAttentionOrder({ id: 'table-1' }, [historical])).toBeNull();
     });
 
+    it('never takes an account that is already closed as the table live account', () => {
+        // El servidor lista por fecha descendente: la cuenta ya cobrada suele
+        // llegar primero. Si la tarjeta la toma a ella, "Entregar" responde "el
+        // pedido ya está cerrado" aunque la mesa tenga platos por servir.
+        const paidFirst = { ...delivered, id: 'order-9' };
+        const idle = {
+            ...delivered, id: 'order-4', status: 'entregado', payment_status: 'pendiente',
+            amount_paid: 0, items: [{ status: 'entregado' }],
+        };
+        const withReady = {
+            ...delivered, id: 'order-3', status: 'listo', payment_status: 'pendiente',
+            amount_paid: 0, items: [{ status: 'listo' }],
+        };
+        expect(activeAttentionOrder(table, [paidFirst, idle])).toBe(idle);
+        expect(activeAttentionOrder(table, [paidFirst, idle, withReady])).toBe(withReady);
+        // Con todas las cuentas cerradas la visita sigue teniendo representante,
+        // así la mesa todavía se puede finalizar.
+        expect(activeAttentionOrder(table, [paidFirst])).toBe(paidFirst);
+        const cancelled = { ...paidFirst, id: 'order-8', status: 'cancelado', payment_status: 'pendiente', amount_paid: 0 };
+        expect([paidFirst, cancelled]).toContain(activeAttentionOrder(table, [cancelled, paidFirst]));
+    });
+
     it('allows explicit close only after verified payment and completed food', () => {
         expect(canCloseAttention(table, delivered)).toBe(true);
         expect(canCloseAttention(table, { ...delivered, items: [{ status: 'listo' }] })).toBe(false);
