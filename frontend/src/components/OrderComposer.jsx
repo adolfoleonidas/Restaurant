@@ -7,12 +7,15 @@ import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
 import { isCancelled, isDraft } from '@/lib/orderDraft';
 
 /**
- * Carta para componer un pedido sin salir del panel: buscador, categorías y
- * platos con sus controles de cantidad.
+ * Carta para componer un pedido sin salir del panel.
  *
- * Cada plato arranca con un "+" y, una vez agregado, pasa a "− 1 +" para subir o
- * bajar sin abrir nada. Cada toque responde al instante: el número cambia, la
- * fila da un pulso breve y (si el sonido está activo) suena un clic seco.
+ * La disposición sigue la del prototipo de referencia: buscador, categorías como
+ * pestañas, cada plato como tarjeta con su stepper `− n +` siempre visible, y un
+ * pie pegajoso con lo que se lleva la cuenta y la acción de enviar. El pie es el
+ * que evita que el mozo tenga que subir a buscar el botón después de agregar.
+ *
+ * Cada toque responde al instante: el número cambia, la tarjeta da un pulso breve
+ * y (si el sonido está activo) suena un clic seco.
  */
 export default function OrderComposer({
     order = null,
@@ -39,7 +42,7 @@ export default function OrderComposer({
     const lines = (items || (order?.items || [])).filter((i) => !isCancelled(i));
 
     // La cantidad que se muestra es la de la cuenta abierta: el resumen general
-    // de la mesa vive abajo, así que acá no se mezclan las personas.
+    // de la mesa vive en el resumen de arriba, así que acá no se mezclan personas.
     const visible = useMemo(() => (products || [])
         .filter((p) => {
             if (categoryId !== 'all' && p.category_id !== categoryId) return false;
@@ -53,6 +56,7 @@ export default function OrderComposer({
     const label = title || (order
         ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
         : 'Agregar productos');
+    const accountQty = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
 
     const flash = (productId) => {
         setPulse(productId);
@@ -74,139 +78,143 @@ export default function OrderComposer({
     // Sin permiso para tomar pedido no hay carta que mostrar.
     if (!canCompose) return null;
 
+    const chip = (active) => [
+        'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+        active ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary hover:text-foreground',
+    ].join(' ');
+
     return (
-        <div className="space-y-2 rounded-xl border p-3" data-testid={`${testIdPrefix}-pedido`}>
-            <div className="flex items-center justify-between gap-2">
-                <span className="page-kicker">{label}</span>
-                <span className="flex items-center gap-1.5">
-                    {/* El sonido es opcional y se recuerda: en un salón ruidoso el
-                        clic confirma el toque, pero no todos lo quieren. */}
-                    <button
-                        type="button"
-                        onClick={() => {
-                            const next = !sound;
-                            setSound(next);
-                            setSoundEnabled(next);
-                        }}
-                        aria-pressed={sound}
-                        aria-label={sound ? 'Silenciar la confirmación sonora' : 'Activar la confirmación sonora'}
-                        title={sound ? 'Sonido activado' : 'Sonido desactivado'}
-                        data-testid={`${testIdPrefix}-sonido`}
-                        className="grid h-7 w-7 place-items-center rounded-full border border-border text-muted-foreground hover:border-primary hover:text-foreground"
-                    >
-                        {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
-                    </button>
-                    {showKitchen && (
-                        <Button size="sm" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
-                            {sendLabel}
-                        </Button>
-                    )}
-                </span>
+        <div className="rounded-xl border" data-testid={`${testIdPrefix}-pedido`}>
+            <div className="flex items-center justify-between gap-2 px-3 pt-3">
+                <span className="text-xs font-medium text-muted-foreground">{label}</span>
+                {/* El sonido es opcional y se recuerda: en un salón ruidoso el clic
+                    confirma el toque, pero no todos lo quieren. */}
+                <button
+                    type="button"
+                    onClick={() => {
+                        const next = !sound;
+                        setSound(next);
+                        setSoundEnabled(next);
+                    }}
+                    aria-pressed={sound}
+                    aria-label={sound ? 'Silenciar la confirmación sonora' : 'Activar la confirmación sonora'}
+                    title={sound ? 'Sonido activado' : 'Sonido desactivado'}
+                    data-testid={`${testIdPrefix}-sonido`}
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border text-muted-foreground hover:border-primary hover:text-foreground"
+                >
+                    {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                </button>
             </div>
-            {order && (
-                <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-secondary/50 px-2 py-1 text-xs" data-testid={`${testIdPrefix}-pedido-resumen`}>
-                    <span className="text-muted-foreground">
-                        {lines.reduce((s, i) => s + Number(i.quantity || 0), 0)} en esta cuenta
-                    </span>
-                    <span className="font-mono font-semibold tabular-nums">{fmtMoney(order.total)}</span>
+
+            <div className="space-y-2 p-3">
+                <div className="relative">
+                    <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
+                    <Input
+                        className="pl-9"
+                        placeholder="Buscar plato"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        data-testid={`${testIdPrefix}-buscar-producto`}
+                    />
                 </div>
-            )}
-            <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
-                <Input
-                    className="pl-9"
-                    placeholder="Buscar plato"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    data-testid={`${testIdPrefix}-buscar-producto`}
-                />
-            </div>
-            {categories.length > 0 && (
-                <div className="scroll-x flex gap-1.5 pb-1">
-                    <button
-                        type="button"
-                        onClick={() => setCategoryId('all')}
-                        className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${categoryId === 'all' ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
-                    >
-                        Todas
-                    </button>
-                    {categories.map((c) => (
-                        <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setCategoryId(c.id)}
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-xs border ${categoryId === c.id ? 'bg-primary text-primary-foreground border-primary' : 'border-border'}`}
-                        >
-                            {c.name}
+
+                {categories.length > 0 && (
+                    <div className="scroll-x flex gap-1.5 pb-1">
+                        <button type="button" onClick={() => setCategoryId('all')} className={chip(categoryId === 'all')}>
+                            Todas
                         </button>
-                    ))}
-                </div>
-            )}
-            <div className="grid grid-cols-2 gap-1.5 max-h-[38dvh] overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
-                {visible.map((p) => {
-                    const out = !p.is_available || (p.is_combo && p.components_available === false);
-                    const mine = lines.filter((i) => i.product_id === p.id);
-                    const qty = mine.reduce((s, i) => s + Number(i.quantity || 0), 0);
-                    // El "−" sólo toca lo que sigue en borrador. Lo que ya salió a
-                    // cocina se anula desde el resumen, no desaparece por acá.
-                    const drafts = mine.filter((i) => isDraft(i, order?.status));
-                    const target = drafts[drafts.length - 1] || null;
-                    const busy = out || savingItem;
-                    return (
-                        <div
-                            key={p.id}
-                            data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-                            className={`flex items-center justify-between gap-1.5 rounded-lg border px-2 py-1.5 text-xs transition-colors ${out ? 'opacity-50' : 'hover:border-primary hover:bg-primary/5'} ${pulse === p.id ? 'composer-pulse' : ''}`}
-                        >
-                            <button
-                                type="button"
-                                disabled={busy}
-                                onClick={() => add(p)}
-                                data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
-                                className="flex min-w-0 flex-1 flex-col text-left"
-                            >
-                                <span className="w-full truncate font-medium">{p.name}</span>
-                                <span className="font-mono tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
+                        {categories.map((c) => (
+                            <button key={c.id} type="button" onClick={() => setCategoryId(c.id)} className={chip(categoryId === c.id)}>
+                                {c.name}
                             </button>
-                            <span className="flex shrink-0 items-center gap-1">
-                                {qty > 0 && (
-                                    <>
-                                        <button
-                                            type="button"
-                                            disabled={busy || !target}
-                                            onClick={() => remove(p, target)}
-                                            aria-label={`Quitar uno de ${p.name}`}
-                                            data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                                            className="grid h-6 w-6 place-items-center rounded-full border border-border hover:bg-secondary"
-                                        >
-                                            <Minus className="h-3 w-3" />
-                                        </button>
-                                        <span
-                                            className={`grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 font-semibold tabular-nums text-primary-foreground ${pulse === p.id ? 'composer-pulse' : ''}`}
-                                            data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
-                                        >
-                                            {qty}
-                                        </span>
-                                    </>
-                                )}
+                        ))}
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 max-h-[42dvh] overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
+                    {visible.map((p) => {
+                        const out = !p.is_available || (p.is_combo && p.components_available === false);
+                        const mine = lines.filter((i) => i.product_id === p.id);
+                        const qty = mine.reduce((s, i) => s + Number(i.quantity || 0), 0);
+                        // El "−" sólo toca lo que sigue en borrador: lo que ya salió a
+                        // cocina se anula desde el resumen, no desaparece por acá.
+                        const drafts = mine.filter((i) => isDraft(i, order?.status));
+                        const target = drafts[drafts.length - 1] || null;
+                        const busy = out || savingItem;
+                        return (
+                            <div
+                                key={p.id}
+                                data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
+                                className={`flex flex-col rounded-xl border bg-card p-2.5 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
+                            >
                                 <button
                                     type="button"
                                     disabled={busy}
                                     onClick={() => add(p)}
-                                    aria-label={`Agregar uno de ${p.name}`}
-                                    data-testid={`${testIdPrefix}-producto-${p.id}`}
-                                    className="grid h-6 w-6 place-items-center rounded-full border border-border hover:bg-primary hover:text-primary-foreground"
+                                    data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
+                                    className="flex min-w-0 flex-col text-left"
                                 >
-                                    <Plus className="h-3.5 w-3.5" />
+                                    <span className="w-full truncate text-sm font-semibold">{p.name}</span>
+                                    <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
                                 </button>
-                            </span>
-                        </div>
-                    );
-                })}
-                {visible.length === 0 && (
-                    <p className="col-span-2 text-xs text-muted-foreground py-2 text-center">{emptyLabel}</p>
-                )}
+                                <div className="mt-2 flex items-center justify-between">
+                                    <button
+                                        type="button"
+                                        disabled={busy || qty === 0 || !target}
+                                        onClick={() => remove(p, target)}
+                                        aria-label={`Quitar uno de ${p.name}`}
+                                        data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
+                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                                    >
+                                        <Minus className="h-3.5 w-3.5" />
+                                    </button>
+                                    <span
+                                        className={`text-sm font-bold tabular-nums ${qty > 0 ? '' : 'text-muted-foreground'} ${pulse === p.id ? 'composer-pulse' : ''}`}
+                                        data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
+                                    >
+                                        {qty}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => add(p)}
+                                        aria-label={`Agregar uno de ${p.name}`}
+                                        data-testid={`${testIdPrefix}-producto-${p.id}`}
+                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                                    >
+                                        <Plus className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {visible.length === 0 && (
+                        <p className="col-span-2 py-2 text-center text-xs text-muted-foreground">{emptyLabel}</p>
+                    )}
+                </div>
             </div>
+
+            {/* Pie: lo que se lleva la cuenta y la acción de enviar, juntos y siempre
+                a la vista. Antes el envío vivía arriba y el mozo tenía que subir a
+                buscarlo después de agregar. */}
+            {order && (
+                <div
+                    className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-3 py-2 backdrop-blur"
+                    data-testid={`${testIdPrefix}-pedido-resumen`}
+                >
+                    <div className="leading-tight">
+                        <div className="text-xs text-muted-foreground">
+                            {accountQty} en esta cuenta
+                        </div>
+                        <div className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(order.total)}</div>
+                    </div>
+                    {showKitchen && (
+                        <Button onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
+                            {sendLabel}
+                        </Button>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

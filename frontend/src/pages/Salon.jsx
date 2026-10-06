@@ -1477,7 +1477,7 @@ export default function Salon() {
                                                 {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
                                                 <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
                                             </div>
-                                            <p className="page-kicker" data-testid="mesa-sheet-items-titulo">
+                                            <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
                                                 {order.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
                                             </p>
                                             <PersonOrderSummary
@@ -1507,7 +1507,7 @@ export default function Salon() {
                                     )}
                                     {group && (
                                         <div className="rounded-xl border p-3 space-y-2" data-testid="mesa-sheet-grupo">
-                                            <div className="page-kicker">Mesas unidas</div>
+                                            <div className="text-xs font-medium text-muted-foreground">Mesas unidas</div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {members.map((member) => (
                                                     <span
@@ -1574,7 +1574,7 @@ export default function Salon() {
                                     )}
                                     {history && history.length > 0 && (
                                         <div className="space-y-2">
-                                            <div className="page-kicker">Turnos anteriores</div>
+                                            <div className="text-xs font-medium text-muted-foreground">Turnos anteriores</div>
                                             <div className="border rounded-xl divide-y">
                                                 {history.map((o) => (
                                                     <div key={o.id} className="py-2 px-3 flex items-center justify-between gap-2 text-sm">
