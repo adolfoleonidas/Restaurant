@@ -173,7 +173,12 @@ describe('PedidoDetalle collection entry', () => {
     });
 
     it('preserves the Caja deep-link fallback when no register is active', async () => {
-        api.get.mockResolvedValueOnce({ data: null });
+        // Ruteo explícito: el hook de features también consulta /restaurants/current.
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/restaurants/current' ? { features: {} }
+                : path === '/cash/current' ? null
+                    : path === '/orders/order-1' ? mockOrder : [],
+        }));
         const view = await renderDetail();
         await click(view.host.querySelector('[data-testid="pedido-cobrar-button"]'));
         expect(mockNavigate).toHaveBeenCalledWith('/caja?order=order-1');
@@ -238,7 +243,11 @@ describe('PedidoDetalle collection entry', () => {
     });
 
     it('fails closed when checking the active register fails', async () => {
-        api.get.mockRejectedValueOnce(new Error('register lookup failed'));
+        api.get.mockImplementation((path) => {
+            if (path === '/restaurants/current') return Promise.resolve({ data: { features: {} } });
+            if (path === '/cash/current') return Promise.reject(new Error('register lookup failed'));
+            return Promise.resolve({ data: path === '/orders/order-1' ? mockOrder : [] });
+        });
         const view = await renderDetail();
         await click(view.host.querySelector('[data-testid="pedido-cobrar-button"]'));
         expect(mockNavigate).not.toHaveBeenCalled();
@@ -253,5 +262,39 @@ describe('PedidoDetalle collection entry', () => {
         expect(view.host.querySelector('[data-testid="pedido-cobrar-button"]')).toBeNull();
         expect(api.get).not.toHaveBeenCalledWith('/cash/current');
         await cleanup(view);
+    });
+
+    it('sin la flag `item_void` no muestra el ✕ de cancelar por ítem', async () => {
+        const originalItems = mockOrder.items;
+        mockOrder.items = [{ id: 'item-2', product_name: 'Lomo', quantity: 1, unit_price: 25, subtotal: 25, paid_qty: 0, status: 'pendiente' }];
+        try {
+            const view = await renderDetail();
+            expect(view.host.querySelector('[data-testid="pedido-item-cancel-item-2"]')).toBeNull();
+            await cleanup(view);
+        } finally {
+            mockOrder.items = originalItems;
+        }
+    });
+
+    it('con la flag `item_void` activa el ✕ aparece y anular sigue funcionando', async () => {
+        const originalItems = mockOrder.items;
+        mockOrder.items = [{ id: 'item-2', product_name: 'Lomo', quantity: 1, unit_price: 25, subtotal: 25, paid_qty: 0, status: 'pendiente' }];
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/restaurants/current' ? { features: { item_void: true } }
+                : path === '/cash/current' ? mockRegister
+                    : path === '/payment-config/collection' ? mockCollectionConfig
+                        : path === '/orders/order-1' ? mockOrder : [],
+        }));
+        try {
+            const view = await renderDetail();
+            const cancel = view.host.querySelector('[data-testid="pedido-item-cancel-item-2"]');
+            expect(cancel).not.toBeNull();
+            await click(cancel);
+            // Ítem enviado: no se borra, se anula con motivo.
+            expect(api.post).toHaveBeenCalledWith('/orders/order-1/items/item-2/void', { reason: 'Anulado desde el detalle del pedido' });
+            await cleanup(view);
+        } finally {
+            mockOrder.items = originalItems;
+        }
     });
 });

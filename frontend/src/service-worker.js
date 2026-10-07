@@ -11,14 +11,19 @@
 // siempre se piden al servidor; como mucho se sirve la carta pública desde
 // caché durante 5 minutos, y aun así con revalidación en segundo plano.
 
-import { clientsClaim } from 'workbox-core';
+import { clientsClaim, skipWaiting } from 'workbox-core';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
 
-// Toma el control de las pestañas ya abiertas en cuanto activa, sin esperar a
-// que se cierren todas (si no, una actualización puede tardar días en applied).
+// Auto-update (patrón de la doc de Workbox): el service worker nuevo NO espera
+// a que se cierren todas las pestañas; `skipWaiting()` lo activa en cuanto
+// termina de instalar y `clientsClaim()` toma el control de las pestañas
+// abiertas. El cliente escucha `controllerchange` y recarga una única vez para
+// que esas pestañas queden con la build nueva (ver `lib/serviceWorker.js`): sin
+// esto, una tablet podía quedar días mostrando una UI que ya no existe.
+skipWaiting();
 clientsClaim();
 
 // Si el manifiesto llegara vacío, el service worker sigue siendo útil: las

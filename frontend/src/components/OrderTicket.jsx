@@ -17,6 +17,7 @@ export default function OrderTicket({
     order = null,
     items = [],
     canEdit = false,
+    canVoid = false,
     saving = false,
     draftUnits = 0,
     sendLabel = null,
@@ -59,6 +60,7 @@ export default function OrderTicket({
                 items={items}
                 orderStatus={order.status}
                 canEdit={canEdit}
+                canVoid={canVoid}
                 saving={saving}
                 onChangeQty={onChangeQty}
                 onNotes={onNotes}

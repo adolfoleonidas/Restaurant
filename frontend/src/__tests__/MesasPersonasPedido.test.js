@@ -63,10 +63,11 @@ async function type(input, value) {
 }
 
 /** Abre la mesa 1 con las cuentas indicadas ya cargadas en la API. */
-async function openTableWith(accounts, tableExtra = {}, { select = null } = {}) {
+async function openTableWith(accounts, tableExtra = {}, { select = null, features = null } = {}) {
     mockTables.splice(0, mockTables.length, baseTable(1, { active_order: { id: accounts[0].id, status: accounts[0].status }, ...tableExtra }));
     mockOrders.splice(0, mockOrders.length, ...accounts);
     api.get.mockImplementation((url) => {
+        if (url === '/restaurants/current') return Promise.resolve({ data: { features: features || {} } });
         if (url === '/branches') return Promise.resolve({ data: [] });
         const match = accounts.find((o) => url === `/orders/${o.id}`);
         if (match) return Promise.resolve({ data: match });
@@ -177,10 +178,18 @@ describe('pedido por personas en el salón', () => {
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { notes: 'Sin ensalada' });
     });
 
+    it('sin la flag `item_void` no muestra el ✕ de anular en lo enviado', async () => {
+        const account = order('order-1', 11, 'enviado_cocina', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
+
+        // S11: anular productos individualmente es una flag apagada por defecto.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]')).toBeNull();
+    });
+
     it('anula un producto ya enviado pidiendo el motivo', async () => {
         const account = order('order-1', 11, 'enviado_cocina', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
         api.post.mockResolvedValue({ data: account });
-        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11, features: { item_void: true } }));
 
         // Lo enviado no se borra: se anula.
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]'));
@@ -310,10 +319,10 @@ describe('pedido por personas en el salón', () => {
         expect(enviar).not.toBeNull();
         await click(enviar);
 
-        // Confirma el envío con el toast (el cartel fijo se fue) y deja la
-        // pantalla limpia para la siguiente persona.
+        // Confirma el envío con el toast del mockup (S11: "Enviado a cocina ·
+        // Mesa N"), no con el "¿Siguiente persona?" anterior.
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
-        expect(toast.success).toHaveBeenCalledWith('Pedido de Pedro enviado. ¿Siguiente persona?');
+        expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
     });
 
     it('Compartido es un interruptor dentro del editor del nombre', async () => {

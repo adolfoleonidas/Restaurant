@@ -86,6 +86,7 @@ class RestaurantFeatures(BaseModel):
     voice_commands: bool = False
     voice_queries: bool = False
     proof_ocr: bool = False
+    item_void: bool = False
 
 
 class RestaurantUpdate(BaseModel):

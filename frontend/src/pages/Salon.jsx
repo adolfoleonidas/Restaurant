@@ -28,6 +28,7 @@ import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
 import GroupCard from '@/components/GroupCard';
 import useBranchNames from '@/hooks/useBranchNames';
+import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
@@ -265,6 +266,10 @@ export default function Salon() {
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const navigate = useNavigate();
     const { generation } = useNotify();
+    // Módulos del local (Ajustes). `item_void` apagada por defecto: el ✕ para
+    // anular productos enviados solo aparece con la flag activa.
+    const features = useRestaurantFeatures();
+    const canVoidItems = Boolean(features.item_void);
 
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
@@ -871,8 +876,8 @@ export default function Salon() {
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
         if (!targetId || !canTake || sendingToKitchen) return;
         const openId = openTable?.order?.id || openTable?.accountId;
-        // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso lleva el
-        // "¿Siguiente persona?" del prototipo en vez del conteo de adicionales.
+        // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso es el
+        // del prototipo, "Enviado a cocina · Mesa N".
         const accountBefore = (openTable?.accounts || []).find((o) => o.id === targetId)
             || (openTable?.order?.id === targetId ? openTable.order : null);
         const firstSend = (accountBefore?.status || 'nuevo') === 'nuevo';
@@ -882,10 +887,10 @@ export default function Salon() {
             if (targetId === openId) await persistAlias(targetId);
             const { data } = await api.post(`/orders/${targetId}/send-to-kitchen`);
             const pending = draftCount(sendItemsFor(targetId), data?.status);
-            const who = data?.customer_name || (data?.shared ? 'Compartido' : 'la persona');
+            const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
             // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
             toast.success(firstSend
-                ? `Pedido de ${who} enviado. ¿Siguiente persona?`
+                ? (mesaNumber ? `Enviado a cocina · Mesa ${mesaNumber}` : 'Enviado a cocina')
                 : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
             await reloadCurrentOrder(targetId);
             if (targetId === openId) {
@@ -1909,6 +1914,7 @@ export default function Salon() {
                                                     mode="detail"
                                                     testIdPrefix={cardPrefix}
                                                     canEdit={isActive && canCompose}
+                                                    canVoid={canVoidItems}
                                                     saving={savingItem}
                                                     onVoid={voidProduct}
                                                 />
@@ -2044,6 +2050,7 @@ export default function Salon() {
                                                 order={order}
                                                 items={allItems}
                                                 canEdit={canCompose}
+                                                canVoid={canVoidItems}
                                                 saving={savingItem}
                                                 draftUnits={draftUnits}
                                                 sendLabel={sendState?.label}
@@ -2202,6 +2209,7 @@ export default function Salon() {
                                                 order={order}
                                                 items={allItems}
                                                 canEdit={canCompose}
+                                                canVoid={canVoidItems}
                                                 saving={savingItem}
                                                 draftUnits={draftUnits}
                                                 sendLabel={sendState?.label}

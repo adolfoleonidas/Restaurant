@@ -40,6 +40,7 @@ export function PersonOrderSummary({
     items = [],
     orderStatus,
     canEdit = false,
+    canVoid = false,
     saving = false,
     mode = 'ticket',
     onChangeQty,
@@ -169,9 +170,10 @@ export function PersonOrderSummary({
                                             </button>
                                         </>
                                     )}
-                                    {!draft && canEdit && voidingId !== item.id && (
+                                    {canVoid && !draft && canEdit && voidingId !== item.id && (
                                         /* Acción discreta, como el mockup: ✕ chico, no un
-                                           botón rojo con texto. */
+                                           botón rojo con texto. Apagada por defecto
+                                           (flag `item_void` en Ajustes). */
                                         <button
                                             type="button"
                                             onClick={() => { setVoidingId(item.id); setVoidReason(''); }}
