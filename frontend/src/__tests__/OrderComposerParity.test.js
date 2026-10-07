@@ -63,6 +63,10 @@ describe('compositor · paridad del prototipo (Slice 3)', () => {
         // Contratos del stepper intactos: cantidad, − y + siguen ahí.
         expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').textContent).toBe('2');
         expect(host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]')).not.toBeNull();
+        // S9b: el mockup no muestra el stepper en la tarjeta (la resta vive en
+        // el ticket), así que la fila queda oculta pero con sus testids.
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]').closest('.hidden')).not.toBeNull();
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').closest('.hidden')).not.toBeNull();
         expect(host.querySelector('[data-testid="mesa-sheet-producto-p1"]')).not.toBeNull();
         expect(host.querySelector('[data-testid="mesa-sheet-producto-nombre-p1"]')).not.toBeNull();
         expect(host.querySelector('[data-testid="mesa-sheet-producto-fila-p1"]')).not.toBeNull();
@@ -101,8 +105,10 @@ describe('compositor · paridad del prototipo (Slice 3)', () => {
             order, items, products: [product('p1', 'Sopa', 38), product('p2', 'Agua', 10)], showKitchen: true, testIdPrefix: 'mesa-sheet',
         }));
 
+        // S9b: el mockup no usa "adicionales (N)"; el monto sigue siendo el de
+        // lo que viaja ahora (no el total de la cuenta).
         const send = host.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
-        expect(send.textContent).toContain('Enviar adicionales (1)');
+        expect(send.textContent).toContain('Enviar a cocina');
         expect(send.textContent).toContain('S/ 10.00');
         expect(send.textContent).not.toContain('S/ 86.00');
     });

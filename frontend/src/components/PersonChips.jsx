@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Pencil, Plus } from 'lucide-react';
+import { ChevronDown, ChevronUp, Plus } from 'lucide-react';
 
 /**
  * Personas / subcuentas de una mesa, en una franja compacta.
@@ -8,8 +8,8 @@ import { ChevronDown, ChevronUp, Pencil, Plus } from 'lucide-react';
  * activa y un contador, y el mozo la expande sólo cuando necesita cambiar.
  * La estructura es siempre la misma: Juan | María | Persona 3 | +
  *
- * Cada persona con cuenta puede renombrarse con el ✎ (`onRename`): edita el
- * alias en la misma franja, sin bajar hasta "Organizar pedido".
+ * El ✎ para renombrar vive en la tarjeta de cada cuenta (como el `.order` del
+ * prototipo); acá queda sólo la navegación entre personas.
  */
 export default function PersonChips({
     people = [],
@@ -17,32 +17,14 @@ export default function PersonChips({
     onSelect,
     onAdd,
     canEdit = false,
-    onRename,
     testIdPrefix = 'mesa-sheet',
 }) {
     // Con hasta tres personas no hace falta esconder nada; a partir de ahí la
     // franja arranca reducida para no comerse la carta.
     const [override, setOverride] = useState(null);
-    const [renamingId, setRenamingId] = useState(null);
-    const [renameDraft, setRenameDraft] = useState('');
     const expanded = override === null ? people.length <= 3 : override;
     const active = people.find((p) => p.id === activeId) || people[0] || null;
     const others = people.filter((p) => p.id !== active?.id);
-
-    const startRename = (person) => {
-        setRenamingId(person.id);
-        setRenameDraft(person.alias ?? person.label ?? '');
-    };
-
-    // Se guarda al confirmar (Enter o salir del campo) y sólo si el alias
-    // cambió: mismo PATCH que el input de "Organizar pedido".
-    const commitRename = (person) => {
-        if (renamingId !== person.id) return;
-        const next = renameDraft.trim();
-        setRenamingId(null);
-        if (next === String(person.alias ?? '').trim()) return;
-        onRename?.(person.id, next);
-    };
 
     const chip = (person, { compact = false } = {}) => {
         // Persona 1 todavía no tiene cuenta: se muestra la estructura sin crear
@@ -59,75 +41,35 @@ export default function PersonChips({
             );
         }
         const isActive = person.id === active?.id;
-        const key = person.number ?? person.id;
-        const editing = renamingId === person.id;
         return (
-            <span
+            <button
                 key={person.id}
-                className={`flex shrink-0 items-center overflow-hidden rounded-full border text-xs font-medium transition-colors ${
+                type="button"
+                onClick={() => onSelect?.(person.id)}
+                aria-pressed={isActive}
+                data-testid={`${testIdPrefix}-cuenta-${person.number ?? person.id}`}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                     isActive
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'border-border hover:border-primary hover:bg-primary/5'
                 }`}
             >
-                {editing ? (
-                    <input
-                        autoFocus
-                        value={renameDraft}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onBlur={() => commitRename(person)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') commitRename(person);
-                            if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        aria-label={`Editar nombre de ${person.label}`}
-                        data-testid={`${testIdPrefix}-renombrar-input-${key}`}
-                        className="my-0.5 ml-2 mr-1 h-6 w-28 rounded-sm border border-border bg-card px-1.5 text-xs text-foreground"
-                    />
-                ) : (
-                    <>
-                        <button
-                            type="button"
-                            onClick={() => onSelect?.(person.id)}
-                            aria-pressed={isActive}
-                            data-testid={`${testIdPrefix}-cuenta-${key}`}
-                            className="flex min-w-0 items-center gap-1.5 py-1 pl-2.5 pr-1.5"
-                        >
-                            <span className="max-w-[9rem] truncate">{person.label}</span>
-                            {person.shared && <span aria-hidden="true">🍽️</span>}
-                            {!compact && person.number != null && (
-                                <span className={`tabular-nums ${isActive ? 'opacity-80' : 'text-muted-foreground'}`}>#{person.number}</span>
-                            )}
-                            {person.draftCount > 0 && (
-                                <span
-                                    className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums ${
-                                        isActive ? 'bg-primary-foreground/20' : 'bg-secondary'
-                                    }`}
-                                    data-testid={`${testIdPrefix}-cuenta-pendientes-${person.number ?? person.id}`}
-                                >
-                                    {person.draftCount}
-                                </span>
-                            )}
-                        </button>
-                        {onRename && (
-                            <button
-                                type="button"
-                                onClick={() => startRename(person)}
-                                title="Editar nombre"
-                                aria-label={`Editar nombre de ${person.label}`}
-                                data-testid={`${testIdPrefix}-renombrar-${key}`}
-                                className={`mr-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full ${
-                                    isActive
-                                        ? 'hover:bg-primary-foreground/20'
-                                        : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
-                                }`}
-                            >
-                                <Pencil className="h-3 w-3" />
-                            </button>
-                        )}
-                    </>
+                <span className="max-w-[9rem] truncate">{person.label}</span>
+                {person.shared && <span aria-hidden="true">🍽️</span>}
+                {!compact && person.number != null && (
+                    <span className={`tabular-nums ${isActive ? 'opacity-80' : 'text-muted-foreground'}`}>#{person.number}</span>
                 )}
-            </span>
+                {person.draftCount > 0 && (
+                    <span
+                        className={`grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px] font-semibold tabular-nums ${
+                            isActive ? 'bg-primary-foreground/20' : 'bg-secondary'
+                        }`}
+                        data-testid={`${testIdPrefix}-cuenta-pendientes-${person.number ?? person.id}`}
+                    >
+                        {person.draftCount}
+                    </span>
+                )}
+            </button>
         );
     };
 

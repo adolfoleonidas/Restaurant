@@ -94,8 +94,8 @@ export function PersonOrderSummary({
     };
 
     return (
-        <div className="space-y-2">
-            <div className="divide-y rounded-xl border" data-testid={`${testIdPrefix}-items`}>
+        <div className="min-w-0 space-y-2">
+            <div className="min-w-0 divide-y rounded-xl border" data-testid={`${testIdPrefix}-items`}>
                 {visible.map((item) => {
                     const state = itemState(item, orderStatus);
                     const draft = state.key === 'pendiente';
@@ -116,10 +116,10 @@ export function PersonOrderSummary({
                                 </span>
                             </div>
                             {!voided && (
-                                <div className="flex items-center gap-1.5">
+                                <div className={`flex items-center gap-1.5 ${!draft && !item.notes ? 'justify-end' : ''}`}>
                                     {draft ? (
                                         <Input
-                                            className="h-8 text-xs"
+                                            className="h-8 min-w-0 flex-1 text-xs"
                                             placeholder="Observaciones (sin ensalada, sin cebolla…)"
                                             value={notesValue}
                                             disabled={!canEdit}
@@ -131,12 +131,16 @@ export function PersonOrderSummary({
                                     ) : (
                                         // Lo que ya está en cocina no se edita en silencio: se
                                         // muestra tal como viajó y se cambia anulando y repitiendo.
-                                        <span
-                                            className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
-                                            data-testid={`${testIdPrefix}-item-notas-${item.id}`}
-                                        >
-                                            {item.notes || 'Sin observaciones'}
-                                        </span>
+                                        // Sin nota no se inventa un "Sin observaciones": el
+                                        // mockup solo muestra la nota cuando existe.
+                                        item.notes ? (
+                                            <span
+                                                className="min-w-0 flex-1 truncate text-xs font-medium text-[hsl(var(--warn))]"
+                                                data-testid={`${testIdPrefix}-item-notas-${item.id}`}
+                                            >
+                                                {item.notes}
+                                            </span>
+                                        ) : null
                                     )}
                                     {draft && canEdit && (
                                         <>
@@ -166,13 +170,17 @@ export function PersonOrderSummary({
                                         </>
                                     )}
                                     {!draft && canEdit && voidingId !== item.id && (
+                                        /* Acción discreta, como el mockup: ✕ chico, no un
+                                           botón rojo con texto. */
                                         <button
                                             type="button"
                                             onClick={() => { setVoidingId(item.id); setVoidReason(''); }}
+                                            aria-label={`Anular ${item.product_name}`}
+                                            title="Anular producto"
                                             data-testid={`${testIdPrefix}-item-anular-${item.id}`}
-                                            className="flex shrink-0 items-center gap-1 rounded-md border border-destructive/40 px-2 py-1 text-[11px] text-destructive hover:bg-destructive/10"
+                                            className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                                         >
-                                            <Ban className="h-3 w-3" /> Anular producto
+                                            <Ban className="h-3.5 w-3.5" />
                                         </button>
                                     )}
                                 </div>
@@ -183,7 +191,7 @@ export function PersonOrderSummary({
                             {voidingId === item.id && (
                                 <div className="flex items-center gap-1.5" data-testid={`${testIdPrefix}-item-anular-panel-${item.id}`}>
                                     <Input
-                                        className="h-8 text-xs"
+                                        className="h-8 min-w-0 flex-1 text-xs"
                                         placeholder="Motivo de la anulación"
                                         value={voidReason}
                                         autoFocus
@@ -250,7 +258,9 @@ export function AccountTotals({
                 <span className="text-muted-foreground">Pagado</span>
                 <span className="font-mono tabular-nums">{fmtMoney(pagado)}</span>
             </div>
-            <div className="flex items-baseline justify-between gap-2 text-sm font-semibold" data-testid={`${testIdPrefix}-pendiente`}>
+            {/* Pendiente como el `.total` del prototipo: separador punteado y
+                monto grande, que es el número que el mozo dice en voz alta. */}
+            <div className="mt-0.5 flex items-baseline justify-between gap-2 border-t border-dashed pt-2.5 text-lg font-extrabold" data-testid={`${testIdPrefix}-pendiente`}>
                 <span>Pendiente</span>
                 <span className="font-mono tabular-nums">{fmtMoney(pendiente)}</span>
             </div>
@@ -284,7 +294,7 @@ export function TableSummary({
     const empty = rows.length === 0;
 
     return (
-        <div className="rounded-xl border" data-testid={`${testIdPrefix}-resumen`}>
+        <div className="min-w-0 rounded-xl border" data-testid={`${testIdPrefix}-resumen`}>
             <div className="flex items-center gap-1 pr-2">
                 <button
                     type="button"
@@ -399,7 +409,7 @@ export function TableSummary({
  */
 export function TableReceipt({ table, rows = [], accounts = [], total = 0, pending = 0, testIdPrefix = 'mesa-sheet' }) {
     return (
-        <div className="space-y-3 rounded-xl border p-3" data-testid={`${testIdPrefix}-recibo`}>
+        <div className="min-w-0 space-y-3 rounded-xl border p-3" data-testid={`${testIdPrefix}-recibo`}>
             <div className="flex items-center justify-between gap-2">
                 <span className="font-display text-lg font-semibold">Mesa {table?.number}</span>
                 <span className="text-xs text-muted-foreground">{table?.area}</span>

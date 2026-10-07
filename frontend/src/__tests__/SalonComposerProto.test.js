@@ -149,7 +149,7 @@ describe('compositor · paridad posView (S8)', () => {
         expect(ticket).not.toBeNull();
         expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-items"]')).not.toBeNull();
         expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-nota-general"]')).not.toBeNull();
-        expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-enviar"]').textContent).toContain('S/ 24.00');
+        expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]').textContent).toContain('S/ 24.00');
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-scrim"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
@@ -161,7 +161,7 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
@@ -176,4 +176,44 @@ describe('compositor · paridad posView (S8)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-fab"]')).toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
     });
+
+    it('S9c: tocar un producto con línea en borrador suma cantidad en vez de crear otra', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1' })], { customer_name: 'Juan' });
+        api.patch.mockResolvedValue({ data: {} });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        // Gesto real: tocar la tarjeta (el botón de nombre).
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 2 });
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/items', expect.anything());
+    });
+
+    it('S9c: no fusiona con líneas enviadas', async () => {
+        const sent = order('order-1', 11, 'en_preparacion', [item('i1', 'Agua', 1, 5, 'pendiente', { product_id: 'prod-n1' })], { customer_name: 'Juan' });
+        api.post.mockResolvedValue({ data: {} });
+        ({ container, root, sheet } = await openTableWith([sent]));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+        // Lo enviado no se toca: la unidad nueva entra como línea aparte.
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+    });
+
+    it('S9c: no fusiona con líneas que tienen nota', async () => {
+        const noted = order('order-2', 12, 'nuevo', [item('i2', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1', notes: 'Sin hielo' })], { customer_name: 'Ana' });
+        api.post.mockResolvedValue({ data: {} });
+        ({ container, root, sheet } = await openTableWith([noted]));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+        // Una línea con nota no absorbe unidades sin nota.
+        expect(api.post).toHaveBeenCalledWith('/orders/order-2/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+    });
+
+    it('S9c: el − del borrador decrementa y borra la línea al llegar a 0', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1' })], { customer_name: 'Juan' });
+        api.delete.mockResolvedValue({ data: {} });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]'));
+        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/i1');
+    });
 });
+

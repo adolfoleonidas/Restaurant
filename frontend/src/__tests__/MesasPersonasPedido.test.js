@@ -116,7 +116,7 @@ describe('pedido por personas en el salón', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]')).not.toBeNull();
     });
 
-    it('ofrece "Enviar adicionales" con la cuenta ya enviada y sólo manda lo nuevo', async () => {
+    it('ofrece "Enviar a cocina" con el monto de lo nuevo y sólo manda lo nuevo', async () => {
         const sent = item('i1', 'Ceviche', 1, 38, 'pendiente');
         const draft = item('i2', 'Ceviche', 1, 38, 'borrador');
         const account = order('order-1', 11, 'en_preparacion', [sent, draft], { customer_name: 'Juan' });
@@ -125,7 +125,9 @@ describe('pedido por personas en el salón', () => {
 
         const button = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(button).not.toBeNull();
-        expect(button.textContent).toContain('Enviar adicionales (1)');
+        // S9b: el mockup no usa "adicionales (N)"; muestra el monto de lo nuevo.
+        expect(button.textContent).toContain('Enviar a cocina');
+        expect(button.textContent).toContain('S/ 38.00');
 
         await click(button);
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');

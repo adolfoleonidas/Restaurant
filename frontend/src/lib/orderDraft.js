@@ -68,21 +68,21 @@ export function itemsTotal(items = []) {
 }
 
 /**
- * Etiqueta del botón de envío. En el primer envío manda toda la comanda; después
- * sólo los adicionales, y el número y el monto dicen cuánto viaja. El total sale
- * de `itemsTotal` (el mismo que usa el resto del sistema): la cuenta entera en el
- * primer envío, sólo el borrador en los adicionales.
+ * Etiqueta del botón de envío. El mockup del tomador siempre dice
+ * "Enviar a cocina · S/ X", tanto en el primer envío como en los adicionales;
+ * el monto sale de `itemsTotal` (la cuenta entera en el primer envío, sólo el
+ * borrador en los adicionales). `kind` y `count` se conservan para la lógica.
  */
 export function sendAction(items = [], order = null) {
     const status = order?.status;
     const drafts = editableItems(items, status);
     if (!order || status === 'nuevo') {
         const amount = itemsTotal(items);
-        return { kind: 'first', count: drafts.length, amount, label: `✈ Enviar a cocina · ${fmtMoney(amount)}` };
+        return { kind: 'first', count: drafts.length, amount, label: `Enviar a cocina · ${fmtMoney(amount)}` };
     }
     if (drafts.length > 0) {
         const amount = itemsTotal(drafts);
-        return { kind: 'extra', count: drafts.length, amount, label: `✈ Enviar adicionales (${drafts.length}) · ${fmtMoney(amount)}` };
+        return { kind: 'extra', count: drafts.length, amount, label: `Enviar a cocina · ${fmtMoney(amount)}` };
     }
     return null;
 }

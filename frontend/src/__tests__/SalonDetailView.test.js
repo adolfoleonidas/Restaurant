@@ -193,10 +193,13 @@ describe('detalle de mesa · vista completa (S7)', () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        const toggle = sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]');
-        expect(toggle.getAttribute('aria-expanded')).toBe('false');
-        await click(toggle);
-        expect(toggle.getAttribute('aria-expanded')).toBe('true');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        // S9: el compositor es la pantalla del tomador (posView): la cabecera
+        // pasa a "Pedido · Mesa N" y las tarjetas del detalle se reemplazan por
+        // la carta + el ticket del borrador. El botón de la barra se desmonta
+        // porque la barra pertenece al detalle.
         expect(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]')).not.toBeNull();
+        expect(sheet.textContent).toContain('Pedido · Mesa 1');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]')).toBeNull();
     });
 });

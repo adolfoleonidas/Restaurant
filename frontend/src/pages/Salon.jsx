@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
-import OrderComposer, { OrderNote } from '@/components/OrderComposer';
+import OrderComposer from '@/components/OrderComposer';
+import OrderTicket from '@/components/OrderTicket';
 import PersonChips from '@/components/PersonChips';
 import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft } from 'lucide-react';
+import { Search, Grid2X2, Plus, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft, Pencil } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -203,10 +204,10 @@ function accountKitchenState(items = []) {
 }
 
 const KITCHEN_TONE = {
-    ready: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-    kitchen: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-400',
-    draft: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
-    done: 'border-border bg-secondary text-muted-foreground',
+    ready: 'bg-[hsl(var(--warn))] text-[hsl(var(--background))]',
+    kitchen: 'bg-[hsl(var(--chart-2))] text-[hsl(var(--background))]',
+    draft: 'bg-secondary text-muted-foreground',
+    done: 'bg-[hsl(var(--green))] text-[hsl(var(--background))]',
 };
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
@@ -295,6 +296,10 @@ export default function Salon() {
     // persona, al estilo posView del prototipo.
     const [ticketOpen, setTicketOpen] = useState(false);
     const [personNameEdit, setPersonNameEdit] = useState(false);
+    // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
+    // editor que antes vivía en la franja de personas).
+    const [cardRenameId, setCardRenameId] = useState(null);
+    const [cardRenameDraft, setCardRenameDraft] = useState('');
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
@@ -410,9 +415,17 @@ export default function Salon() {
         10000,
         [openOrderId]
     );
-    const sheetOrder = openTable?.order && liveOrderData && liveOrderData.id === openTable.order.id
-        ? liveOrderData
-        : (openTable?.order || null);
+    // La hoja muestra el snapshot más fresco: el polling vivo puede ser anterior
+    // a una recarga puntual (alta de producto, alias), y con la versión vieja la
+    // línea recién agregada no aparecía hasta el próximo refresco.
+    const sheetOrder = (() => {
+        const open = openTable?.order || null;
+        if (!open) return null;
+        if (!liveOrderData || liveOrderData.id !== open.id) return open;
+        return String(liveOrderData.updated_at || '') >= String(open.updated_at || '')
+            ? liveOrderData
+            : open;
+    })();
 
     // ── Summary (former Servicio header) ───────────────────────────────────
     const summary = useMemo(() => {
@@ -736,7 +749,24 @@ export default function Salon() {
         try {
             const orderId = await ensureAccount();
             if (!orderId) return;
-            await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            // Como el mockup: si ya hay una línea EN BORRADOR de este producto
+            // (sin nota) en la cuenta activa, la unidad se suma ahí en vez de
+            // abrir otra línea. Se lee `openTable.order` (recién recargado tras
+            // cada alta) y no `sheetOrder`, que puede venir del polling anterior.
+            // Lo ya enviado no se toca: va como línea nueva.
+            const current = openTable?.order || sheetOrder;
+            const existing = (current?.items || []).find((it) => (
+                it.product_id === product.id
+                && isDraft(it, current?.status)
+                && !String(it.notes || '').trim()
+            ));
+            if (existing) {
+                await api.patch(`/orders/${orderId}/items/${existing.id}`, {
+                    quantity: Number(existing.quantity || 0) + 1,
+                });
+            } else {
+                await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            }
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
@@ -931,6 +961,32 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        }
+    };
+
+    // Cierra el editor del ✎ de una tarjeta guardando sólo si el alias cambió.
+    const commitCardRename = (view) => {
+        if (!view || cardRenameId !== view.id) return;
+        const next = cardRenameDraft.trim();
+        setCardRenameId(null);
+        if (next === String(view.customer_name || '').trim()) return;
+        renamePerson(view.id, next);
+    };
+
+    // "Vaciar" del ticket del prototipo: borra sólo lo que sigue en borrador,
+    // con la API existente (un DELETE por línea). Lo enviado no se toca.
+    const clearDraft = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake) return;
+        const current = sheetOrder;
+        const drafts = (current?.items || []).filter((it) => isDraft(it, current?.status));
+        if (!drafts.length) return;
+        try {
+            for (const it of drafts) await api.delete(`/orders/${orderId}/items/${it.id}`);
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo vaciar el pedido');
         }
     };
 
@@ -1601,43 +1657,92 @@ export default function Salon() {
                         // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
                         const closeable = canClose && canCloseAttention(t, actionOrder);
                         const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
+                        // "Más opciones" del prototipo: todas las acciones
+                        // ocasionales en un solo menú, arriba de la barra principal.
+                        const moreActions = accountTable && order
+                            ? [{
+                                key: 'ver-pedido-grupo',
+                                label: `Ver pedido de Mesa ${accountTable.number}`,
+                                testId: 'mesa-sheet-ver-pedido-grupo',
+                                onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
+                            }]
+                            : hasAccount ? [
+                                {
+                                    key: 'ver-pedido',
+                                    label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
+                                    testId: 'mesa-sheet-ver-pedido',
+                                    disabled: !actionAccountId,
+                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
+                                },
+                                ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
+                                    ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
+                                        key: `dividir-${n}`,
+                                        label: `En ${n} cuentas`,
+                                        testId: `mesa-sheet-dividir-${n}`,
+                                        onSelect: () => splitAccount(n),
+                                    }))]
+                                    : []),
+                                ...(canTake ? [{
+                                    key: 'mover-pedido',
+                                    label: 'Mover pedido a otra mesa',
+                                    icon: MoveRight,
+                                    testId: 'mesa-sheet-mover-pedido',
+                                    onSelect: () => openTransfer(t),
+                                }] : []),
+                                ...(accounts.length > 1 && canTake ? [
+                                    {
+                                        key: 'mover-cuenta',
+                                        label: 'Mover esta cuenta a otra mesa',
+                                        icon: MoveRight,
+                                        testId: 'mesa-sheet-mover-cuenta',
+                                        onSelect: () => setMoveAccountId(actionAccountId),
+                                    },
+                                    {
+                                        key: 'fusionar-cuentas',
+                                        label: 'Fusionar cuentas',
+                                        icon: Link2,
+                                        testId: 'mesa-sheet-fusionar-cuentas',
+                                        onSelect: mergeAccounts,
+                                    },
+                                ] : []),
+                            ] : [];
                         return (
                             <section
                                 data-testid="mesa-sheet"
                                 className={`space-y-4 ${hasAccount || canCompose || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
                             >
-                                {/* Cabecera del detalle: volver a la grilla + estado. */}
-                                <div className="rounded-xl border p-4 sm:p-5" style={{ background: s.bg }}>
-                                    <div className="flex items-start gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={closeSheet}
-                                            aria-label="Volver al salón"
-                                            data-testid="mesa-sheet-volver"
-                                            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border bg-card/60 transition-colors hover:bg-card"
-                                            style={{ borderColor: s.border, color: s.fg }}
-                                        >
-                                            <ChevronLeft className="h-5 w-5" />
-                                        </button>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
-                                                <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
-                                            </div>
-                                            <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
-                                                <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
-                                            </div>
-                                        </div>
-                                        {t.active_order && loading && (
-                                            <span className="shrink-0 text-sm" style={{ color: s.fg, opacity: 0.8 }}>Cargando pedido…</span>
+                                {/* Cabecera del detalle, como `detail-head`/`poshead` del
+                                    prototipo: ← + título grande y estado en color. */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={composerOpen ? () => setComposerOpen(false) : closeSheet}
+                                        aria-label={composerOpen ? 'Volver a la mesa' : 'Volver al salón'}
+                                        data-testid="mesa-sheet-volver"
+                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border"
+                                        style={{ borderColor: s.border, color: s.fg, background: 'hsl(var(--card))' }}
+                                    >
+                                        <ChevronLeft className="h-5 w-5" />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                        <h2 className="truncate font-display text-2xl font-bold">
+                                            {composerOpen ? `Pedido · Mesa ${t.number}` : `Mesa ${t.number}`}
+                                        </h2>
+                                        {composerOpen ? null : (
+                                            <>
+                                                <p className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</p>
+                                                <p className="text-xs text-muted-foreground">Capacidad {t.capacity} personas</p>
+                                            </>
                                         )}
                                     </div>
+                                    {t.active_order && loading && (
+                                        <span className="shrink-0 text-sm text-muted-foreground">Cargando pedido…</span>
+                                    )}
                                 </div>
 
                                 <div
                                     data-testid="mesa-sheet-layout"
-                                    className="grid gap-4 min-[820px]:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.65fr)] min-[820px]:items-start"
+                                    className={`grid gap-4 min-[820px]:items-start ${composerOpen ? 'min-[820px]:grid-cols-[minmax(0,1fr)_380px]' : 'min-[820px]:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.65fr)]'}`}
                                 >
                                     {/* Columna de pedidos */}
                                     <div className="min-w-0 space-y-3">
@@ -1650,13 +1755,17 @@ export default function Salon() {
                                             {flash}
                                         </p>
                                     )}
+                                    {/* S9b: la franja de personas es ruido con una sola
+                                        cuenta (el mockup no la muestra); se conserva en el
+                                        DOM oculta para no romper contratos de testid. */}
                                     {(canCompose || (accounts && accounts.length > 0)) && (
-                                        <PersonChips
-                                            people={persons}
-                                            activeId={currentAccountId}
-                                            onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
-                                            onRename={canTake ? renamePerson : undefined}
-                                        />
+                                        <div hidden={persons.length <= 1}>
+                                            <PersonChips
+                                                people={persons}
+                                                activeId={currentAccountId}
+                                                onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
+                                            />
+                                        </div>
                                     )}
                                     {canCompose && (
                                         <details
@@ -1719,7 +1828,6 @@ export default function Salon() {
                                         <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
                                             <span className="min-w-0 truncate text-sm">
                                                 Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
-                                                {!aliasDraft.trim() && <span className="text-muted-foreground"> · nombre opcional</span>}
                                             </span>
                                             {canTake && (personNameEdit ? (
                                                 <Input
@@ -1763,13 +1871,15 @@ export default function Salon() {
                                             onAddProduct={addProductToAccount}
                                             onRemoveProduct={removeProductFromAccount}
                                             onSendToKitchen={sendCurrentToKitchen}
+                                            showActions={!composerOpen}
+                                            showHeader={!composerOpen}
                                         />
                                     </div>
-                                    {/* Tarjetas por cuenta, como los `.order` del prototipo.
-                                        La cuenta activa conserva su lista editable; las demás
-                                        muestran los platos en modo lectura y al tocarlas pasan
-                                        a ser la cuenta activa. */}
-                                    {hasAccount ? cards.map((account, index) => {
+                                    {/* Tarjetas por cuenta, como los `.order` del
+                                        prototipo: persona + ✎, #id · hora, píldora de
+                                        estado, líneas y footer con total. La cuenta
+                                        activa conserva su lista editable. */}
+                                    {!composerOpen && (hasAccount ? cards.map((account, index) => {
                                         const detail = activeOrders[account.id] || account;
                                         const isActive = account.id === currentAccountId;
                                         const view = isActive && order ? order : detail;
@@ -1777,34 +1887,61 @@ export default function Salon() {
                                         const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
                                         const kitchen = accountKitchenState(view.items || []);
                                         const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
+                                        const cardKey = account.order_number ?? account.id;
                                         return (
                                             <article
                                                 key={account.id}
-                                                data-testid={`mesa-sheet-pedido-${account.order_number ?? account.id}`}
+                                                data-testid={`mesa-sheet-pedido-${cardKey}`}
                                                 onClick={() => { if (!isActive) { setReceiptOpen(false); setFlash(null); selectAccount(account.id); } }}
-                                                className={`rounded-xl border bg-card p-3 space-y-2 transition-colors ${isActive ? 'border-primary/60 ring-1 ring-primary/20' : 'cursor-pointer hover:border-primary/40'}`}
+                                                className={`grid min-w-0 gap-2.5 rounded-xl border bg-card p-3.5 transition-colors ${isActive ? 'border-primary' : 'cursor-pointer hover:border-primary/50'}`}
                                             >
-                                                <header className="flex items-start justify-between gap-2">
+                                                <header className="flex items-start justify-between gap-2.5">
                                                     <div className="min-w-0">
-                                                        <div className="truncate font-display text-lg font-semibold">
-                                                            {draftAccount ? 'Nuevo pedido' : personLabel(view, index)}
+                                                        <div className="flex items-center gap-1 font-extrabold">
+                                                            {cardRenameId === account.id ? (
+                                                                <input
+                                                                    autoFocus
+                                                                    value={cardRenameDraft}
+                                                                    onChange={(e) => setCardRenameDraft(e.target.value)}
+                                                                    onBlur={() => commitCardRename(view)}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') commitCardRename(view);
+                                                                        if (e.key === 'Escape') setCardRenameId(null);
+                                                                    }}
+                                                                    aria-label={`Editar nombre de ${personLabel(view, index)}`}
+                                                                    data-testid={`mesa-sheet-renombrar-input-${cardKey}`}
+                                                                    className="h-8 w-36 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+                                                                />
+                                                            ) : (
+                                                                <>
+                                                                    <span className="min-w-0 truncate">{draftAccount ? 'Nuevo pedido' : personLabel(view, index)}</span>
+                                                                    {canTake && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setCardRenameId(account.id);
+                                                                                setCardRenameDraft(String(detail.customer_name || '').trim());
+                                                                            }}
+                                                                            aria-label={`Editar nombre de ${personLabel(view, index)}`}
+                                                                            data-testid={`mesa-sheet-renombrar-${cardKey}`}
+                                                                            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                                                        >
+                                                                            <Pencil className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            )}
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground">
-                                                            #{view.order_number} · {fmtTime(view.created_at)}{view.shared ? ' · Compartido' : ''}
-                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">#{view.order_number} · {fmtTime(view.created_at)}</div>
                                                     </div>
-                                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${KITCHEN_TONE[kitchen.tone]}`}>
+                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.tone]}`}>
                                                         {kitchen.label}
                                                     </span>
                                                 </header>
                                                 {isActive ? (
                                                     <>
-                                                        <div className="text-xs text-muted-foreground space-y-0.5">
-                                                            <div>Pedido #{view.order_number} · {view.source === 'public' ? 'Carta web' : 'Salón'}</div>
-                                                            <AttentionReference order={view} branchNames={branchNames} />
-                                                            {view.customer_name && <div>Cliente: <span className="text-foreground">{view.customer_name}</span></div>}
-                                                            <div>Hace {fmtElapsed(view.created_at)} · {ORDER_STATUS_LABELS[view.status] || view.status}</div>
-                                                        </div>
                                                         <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
                                                             {view.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
                                                         </p>
@@ -1820,35 +1957,37 @@ export default function Salon() {
                                                         />
                                                     </>
                                                 ) : (
-                                                    <ul className="divide-y text-sm">
+                                                    <ul className="grid gap-1.5">
                                                         {cardItems.map((it) => (
-                                                            <li key={it.id} className="py-1">
-                                                                <div className="flex justify-between gap-2">
-                                                                    <span className="min-w-0 truncate">{it.quantity} × {it.product_name}</span>
-                                                                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{fmtMoney(it.subtotal)}</span>
-                                                                </div>
-                                                                {it.notes && <div className="text-xs italic text-muted-foreground">{it.notes}</div>}
+                                                            <li key={it.id} className="flex justify-between gap-3 text-sm">
+                                                                <span className="min-w-0 break-words">
+                                                                    {it.quantity} × {it.product_name}
+                                                                    {it.notes && <em className="ml-1 text-xs font-bold not-italic text-[hsl(var(--warn))]">— {it.notes}</em>}
+                                                                </span>
+                                                                <strong className="shrink-0 font-mono tabular-nums">{fmtMoney(it.subtotal)}</strong>
                                                             </li>
                                                         ))}
-                                                        {cardItems.length === 0 && <li className="py-1 text-xs text-muted-foreground">Todavía no pidió nada.</li>}
+                                                        {cardItems.length === 0 && <li className="text-xs text-muted-foreground">Todavía no pidió nada.</li>}
                                                     </ul>
                                                 )}
-                                                {view.notes && <p className="text-sm text-primary dark:text-sky-300">📝 {view.notes}</p>}
-                                                <div className="flex items-center justify-between gap-2 border-t pt-2">
-                                                    <span className="font-display text-sm font-semibold">
-                                                        Total <span className="font-mono tabular-nums">{fmtMoney(cardTotal)}</span>
-                                                    </span>
+                                                {view.notes && (
+                                                    <p className="rounded-lg bg-[hsl(var(--warn)/0.12)] px-2 py-1.5 text-[13px] font-bold text-[hsl(var(--warn))]">
+                                                        📝 {view.notes}
+                                                    </p>
+                                                )}
+                                                <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
+                                                    <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
                                                     {kitchen.tone === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
-                                                            className="h-9"
+                                                            className="h-9 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
                                                             onClick={(e) => { e.stopPropagation(); deliver(view.id); }}
                                                             data-testid={`mesa-sheet-entregar-${view.order_number}`}
                                                         >
                                                             ✓ Entregado
                                                         </Button>
                                                     )}
-                                                </div>
+                                                </footer>
                                             </article>
                                         );
                                     }) : (
@@ -1858,7 +1997,7 @@ export default function Salon() {
                                             </p>
                                             <p className="text-sm text-muted-foreground">Toca «Nuevo pedido» para empezar.</p>
                                         </div>
-                                    )}
+                                    ))}
                                     {accountTable && order && (
                                         <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
                                             Cuenta de Mesa {accountTable.number}
@@ -1953,15 +2092,40 @@ export default function Salon() {
                                     )}
                                     </div>
 
-                                    {/* Columna de resumen: sticky en escritorio; en móvil
-                                        la barra de acciones queda fija arriba de la nav. */}
+                                    {composerOpen ? (
+                                        /* Ticket del borrador, como el `.ticket` del
+                                           prototipo: columna sticky en escritorio; en
+                                           móvil queda en flujo y el FAB abre la hoja. */
+                                        <div className="min-w-0 min-[820px]:sticky min-[820px]:top-4">
+                                            <OrderTicket
+                                                testIdPrefix="mesa-sheet"
+                                                order={order}
+                                                items={allItems}
+                                                canEdit={canCompose}
+                                                saving={savingItem}
+                                                draftUnits={draftUnits}
+                                                sendLabel={sendState?.label}
+                                                showSend={showSend}
+                                                onChangeQty={changeItemQty}
+                                                onNotes={saveItemNotes}
+                                                onApplyNote={applyItemNote}
+                                                onVoid={voidProduct}
+                                                onSend={() => sendCurrentToKitchen()}
+                                                onClear={clearDraft}
+                                            />
+                                        </div>
+                                    ) : (
+                                    /* Resumen del prototipo: Pedidos / Consumido /
+                                       Pagado / Pendiente y la barra de acciones. */
                                     <aside
                                         data-testid="mesa-sheet-resumen-panel"
-                                        className="space-y-3 min-[820px]:sticky min-[820px]:top-4"
+                                        className="grid content-start gap-3 min-[820px]:sticky min-[820px]:top-4"
                                     >
-                                        <p className="page-kicker">
-                                            Resumen · <span data-testid="mesa-sheet-pedidos-count">{cards.length}</span> {cards.length === 1 ? 'pedido' : 'pedidos'}
-                                        </p>
+                                        <h3 className="font-display text-base font-semibold">Resumen</h3>
+                                        <div className="flex justify-between gap-2.5 text-sm">
+                                            <span className="text-muted-foreground">Pedidos</span>
+                                            <strong data-testid="mesa-sheet-pedidos-count">{cards.length}</strong>
+                                        </div>
                                         {personAccounts.length > 1 && (
                                             <TableSummary
                                                 rows={summaryRows}
@@ -1997,6 +2161,20 @@ export default function Salon() {
                                                 pending={pendingCount}
                                             />
                                         )}
+                                        {/* Contexto de la visita (atención/sucursal), el
+                                            único dato de la metadata vieja que se conserva:
+                                            una línea bajo el resumen, fuera de las tarjetas. */}
+                                        {actionOrder && (
+                                            <div className="text-xs text-muted-foreground" data-testid="mesa-sheet-atencion">
+                                                <AttentionReference order={actionOrder} branchNames={branchNames} />
+                                            </div>
+                                        )}
+                                        {moreActions.length > 0 && (
+                                            <MoreActions
+                                                testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
+                                                actions={moreActions}
+                                            />
+                                        )}
                                         {/* Una sola instancia de cada botón: en móvil esta
                                             barra se fija abajo; en escritorio vive en el
                                             resumen. Así no se duplican testids. */}
@@ -2012,33 +2190,22 @@ export default function Salon() {
                                         tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
                                         en el flujo de pago del pedido, que es quien exige el
                                         turno de caja abierto antes de registrar. */}
-                                    {/* FAB del borrador (solo móvil): abre la hoja con
-                                        las líneas y el envío. Va arriba de los botones
-                                        de la barra de acciones. */}
-                                    {composerOpen && order && draftUnits > 0 && sendState && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setTicketOpen(true)}
-                                            data-testid="mesa-sheet-fab"
-                                            className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground min-[820px]:hidden"
-                                        >
-                                            <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
-                                            <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
-                                        </button>
-                                    )}
+                                    {/* Acción principal del prototipo: carta clara; el
+                                        cobro va en naranja (token warn) como el mockup. */}
                                     {canCompose && (
                                         <Button
+                                            variant="outline"
                                             className="w-full h-12"
                                             onClick={() => setComposerOpen((open) => !open)}
                                             aria-expanded={composerOpen}
                                             data-testid="mesa-sheet-nuevo-pedido"
                                         >
-                                            <Plus className="h-4 w-4 mr-1" /> {composerOpen ? 'Ocultar carta' : '+ Nuevo pedido'}
+                                            <Plus className="h-4 w-4 mr-1" /> + Nuevo pedido
                                         </Button>
                                     )}
                                     {canCharge && actionDue > 0 && ((accountTable && order) || hasAccount) && (
                                         <Button
-                                            className="w-full h-12"
+                                            className="w-full h-12 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
                                             onClick={() => openCharge(actionOrder)}
                                             data-testid="mesa-sheet-cobrar"
                                         >
@@ -2056,15 +2223,6 @@ export default function Salon() {
                                                     <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
                                                 </Button>
                                             )}
-                                            <MoreActions
-                                                testId="mesa-sheet-mas-grupo"
-                                                actions={[{
-                                                    key: 'ver-pedido-grupo',
-                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
-                                                    testId: 'mesa-sheet-ver-pedido-grupo',
-                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
-                                                }]}
-                                            />
                                         </>
                                     ) : hasAccount ? (
                                         <>
@@ -2093,49 +2251,6 @@ export default function Salon() {
                                                     </Button>
                                                 )
                                             )}
-                                            <MoreActions
-                                                testId="mesa-sheet-mas"
-                                                actions={[
-                                                    {
-                                                        key: 'ver-pedido',
-                                                        label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
-                                                        testId: 'mesa-sheet-ver-pedido',
-                                                        disabled: !actionAccountId,
-                                                        onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
-                                                    },
-                                                    ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
-                                                        ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
-                                                            key: `dividir-${n}`,
-                                                            label: `En ${n} cuentas`,
-                                                            testId: `mesa-sheet-dividir-${n}`,
-                                                            onSelect: () => splitAccount(n),
-                                                        }))]
-                                                        : []),
-                                                    ...(canTake ? [{
-                                                        key: 'mover-pedido',
-                                                        label: 'Mover pedido a otra mesa',
-                                                        icon: MoveRight,
-                                                        testId: 'mesa-sheet-mover-pedido',
-                                                        onSelect: () => openTransfer(t),
-                                                    }] : []),
-                                                    ...(accounts.length > 1 && canTake ? [
-                                                        {
-                                                            key: 'mover-cuenta',
-                                                            label: 'Mover esta cuenta a otra mesa',
-                                                            icon: MoveRight,
-                                                            testId: 'mesa-sheet-mover-cuenta',
-                                                            onSelect: () => setMoveAccountId(actionAccountId),
-                                                        },
-                                                        {
-                                                            key: 'fusionar-cuentas',
-                                                            label: 'Fusionar cuentas',
-                                                            icon: Link2,
-                                                            testId: 'mesa-sheet-fusionar-cuentas',
-                                                            onSelect: mergeAccounts,
-                                                        },
-                                                    ] : []),
-                                                ]}
-                                            />
                                         </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
@@ -2144,56 +2259,53 @@ export default function Salon() {
                                     ) : null}
                                         </div>
                                     </aside>
+                                    )}
                                 </div>
 
-                                {/* Hoja inferior del borrador (móvil, patrón FAB del
-                                    prototipo): líneas con stepper y nota, nota general
-                                    y envío. El detalle inline sigue montado, así el
-                                    contrato del e2e no queda oculto tras el FAB. */}
+                                {/* FAB del borrador (solo móvil): abre la hoja con las
+                                    líneas y el envío, como el `.fab` del prototipo. */}
+                                {composerOpen && order && draftUnits > 0 && sendState && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTicketOpen(true)}
+                                        data-testid="mesa-sheet-fab"
+                                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex min-h-[52px] items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_rgba(0,0,0,0.4)] min-[820px]:hidden"
+                                    >
+                                        <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
+                                        <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
+                                    </button>
+                                )}
+
+                                {/* Hoja inferior del borrador (móvil): el mismo
+                                    ticket del prototipo con otro prefijo de testids,
+                                    para no duplicar los del ticket en flujo. */}
                                 {ticketOpen && order && (
                                     <div className="fixed inset-0 z-40 min-[820px]:hidden" data-testid="mesa-sheet-ticket-sheet">
                                         <div
-                                            className="absolute inset-0 bg-black/40"
+                                            className="absolute inset-0 bg-black/45"
                                             data-testid="mesa-sheet-ticket-scrim"
                                             aria-hidden="true"
                                             onClick={() => setTicketOpen(false)}
                                         />
-                                        <div className="absolute inset-x-0 bottom-0 max-h-[85dvh] space-y-3 overflow-y-auto rounded-t-2xl border-t bg-card p-4 pb-[calc(1rem+var(--safe-bottom))]">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <p className="page-kicker">
-                                                    Pedido nuevo{draftUnits > 0 ? ` · ${draftUnits} por enviar` : ''}
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTicketOpen(false)}
-                                                    aria-label="Cerrar pedido"
-                                                    data-testid="mesa-sheet-ticket-cerrar"
-                                                    className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-foreground"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                            <PersonOrderSummary
+                                        <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl pb-[var(--safe-bottom)]">
+                                            <OrderTicket
                                                 testIdPrefix="mesa-sheet-ticket"
+                                                order={order}
                                                 items={allItems}
-                                                orderStatus={order.status}
                                                 canEdit={canCompose}
                                                 saving={savingItem}
+                                                draftUnits={draftUnits}
+                                                sendLabel={sendState?.label}
+                                                showSend={showSend}
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
                                                 onApplyNote={applyItemNote}
                                                 onVoid={voidProduct}
+                                                onSend={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
+                                                onClear={clearDraft}
+                                                onClose={() => setTicketOpen(false)}
+                                                className="rounded-b-none border-x-0 border-b-0"
                                             />
-                                            <OrderNote order={order} testIdPrefix="mesa-sheet-ticket" />
-                                            {showSend && (
-                                                <Button
-                                                    className="w-full h-12"
-                                                    onClick={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
-                                                    data-testid="mesa-sheet-ticket-enviar"
-                                                >
-                                                    {sendState?.label}
-                                                </Button>
-                                            )}
                                         </div>
                                     </div>
                                 )}

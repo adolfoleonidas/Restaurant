@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option + S7 table-detail presentation + S8 composer presentation. No open items.
+Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option + S7 table-detail presentation + S8 composer presentation + S9 mockup-faithful order taker (screenshot-verified). No open items.
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -54,6 +54,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S7 (2026-10-06): Table-selected experience rebuilt to the prototype presentation (user: "el modal es aburrido… debe ser como el html del prototipo"). The narrow right Sheet (`max-w-md`) is gone: selecting a table swaps the salón grid for the detail view — back control (`mesa-sheet-volver`, Escape also returns), desktop ≥820px two columns `minmax(0,1.4fr) minmax(280px,.65fr)` (orders left, sticky "Resumen" right), mobile single column with the action bar fixed above the bottom nav. Prototype-style order card per account (person + ✎, `#id · hora`, status tag, items with per-item notes, total, "✓ Entregado" `mesa-sheet-entregar-{n}` when ready), "Resumen" panel (Pedidos/Consumido/Pagado/Pendiente), "Más opciones" keeping every existing action, "+ Nuevo pedido" / "Cobrar S/ X" bar. Composer untouched; every e2e `data-testid` preserved (automated diff: 0 removed).
 
 - [x] S8 (2026-10-06): Order-taking (composer) aligned to the prototype's `posView()`: person strip "Para {nombre} · nombre opcional" + inline ✎ rename (`mesa-sheet-persona`), and on mobile a FAB "Ver pedido · N nuevo(s) · S/ X" (`mesa-sheet-fab`, <820px) opening a bottom sheet (`mesa-sheet-ticket-sheet`, scrim, reusing `PersonOrderSummary`/`OrderNote` with `mesa-sheet-ticket-*` testids + `mesa-sheet-ticket-enviar`). Inline content stays visible (e2e contract) — the sheet is an additional surface. Desktop keeps the draft in the active account card + sticky footer; the send button is now `h-12` with the amount. E2E inventory checked: `mesa-sheet-nuevo-pedido`, `mesa-sheet-producto-*`, `mesa-sheet-items` preserved in both specs.
+
+- [x] S9 (2026-10-06, screenshot-verified side by side): "Order taker exactly like the mockup" (direct user request). Table detail and composer rebuilt faithful to `restoflow.html` (`tableDetailView()`/`posView()`): clean header, `.order` cards with status pills and ✎, summary with big Pendiente + orange "Cobrar S/ X", composer with "Para {nombre}" strip, auto-fill 4-col product grid, name+price+badge cards (stepper hidden; testids kept), sticky 380px ticket on desktop / FAB + bottom sheet on mobile via new `OrderTicket`, "Enviar a cocina · S/ X", and tap-merge (PATCH quantity) so repeated taps never duplicate lines. Visual verification with side-by-side Playwright captures each iteration (`s9-*`, `s9b-*`, `s9c-*`). 0 e2e testids removed. Conscious differences: active-account editor kept, "Organizar pedido" row visible, app shell around both screens, mobile ticket also rendered inline (e2e contract).
 
 ## Backlog (next slices)
 - Empty — all planned work delivered.
@@ -118,6 +120,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S7 test-first: 5 failures observed before implementation; focused salón/sheet **14 suites / 91 tests**; full frontend **59 suites / 365 tests**; Build compiled (breakpoints verified in the compiled CSS); orchestrator re-ran `SalonDetailView|SalonSheetParity|SalonActiveOrderBar`: **3 suites / 16 tests passed**; testid diff 0 removed.
 - S8 work-unit (this commit): `frontend/src/pages/Salon.jsx` (+128), `frontend/src/components/OrderComposer.jsx` (internal refactor); new `frontend/src/__tests__/SalonComposerProto.test.js` (4 tests).
 - S8 test-first: 3 failures observed; focused salón/compositor **11 suites / 78 tests**; full frontend **60 suites / 369 tests**; Build compiled; orchestrator re-ran `SalonComposerProto|SalonDetailView`: **2 suites / 11 tests passed**; testid diff 0 removed.
+- S9 work-unit (this commit): `frontend/src/pages/Salon.jsx`, `frontend/src/components/OrderComposer.jsx`, `OrderSummary.jsx`, `PersonChips.jsx`, `frontend/src/lib/orderDraft.js`, new `frontend/src/components/OrderTicket.jsx`; test updates in `MesasAttention`, `MesasPersonasPedido`, `OrderComposerParity`, `SalonComposerProto`, `SalonDetailView`, `orderDraft`.
+- S9 verification: side-by-side captures (`%TEMP%\opencode\shots\s9-*`, `s9b-*`, `s9c-*`), tap-merge confirmed in capture (5 taps → one "5×" line), full frontend **60 suites / 373 tests**, build compiled; orchestrator re-ran focused **2 suites / 15 tests passed** and grep-verified every e2e-critical testid (`mesa-sheet`, `-nuevo-pedido`, `-producto-*`, `-items`, `-mas`, `-ver-pedido`, `-solicitar-cuenta`, `-cuenta-solicitada`, `-entregar`).
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.
