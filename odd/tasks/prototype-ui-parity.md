@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link complete (2026-10-06); only the global theme decision remains open.
+Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option. No open items.
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -48,12 +48,17 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S5-1: Red alert at ≥15 min: `timerClass` three levels — ≥15 `text-destructive font-bold` (theme token with dark variant), ≥10 unchanged (`text-primary`), <10 muted.
 - [x] S5-2: Origin tag: non-public orders show `#{n} · 👤 Mozo`; `source === 'public'` keeps `· carta web`. Field: `order.source` (staff orders don't persist it; the `source === 'public'` convention was already used in Cocina/Salón — no backend change).
 
+## Follow-ups (completed)
+- [x] S6 (2026-10-06): Prototype look as a theme option. New palette `restoflow` ("RestoFlow — Verde menta del prototipo · Sora + Manrope") added to the existing theme mechanism: `ThemeContext` themes list, selector in Configuración (4 options), new `public/themes/theme-restoflow.css` with light/dark HSL tokens, state colors, radius, shadows and `--font`/`--display` hooks; Google Fonts link now loads Manrope + Sora; `body`/`.font-display`/headings consume the pre-existing `--font`/`--display` vars (other three palettes unchanged); preview card added to `theme-preview.html`.
+
 ## Backlog (next slices)
-- Empty — remaining open points live in **Notes / deviations** (deferred items).
+- Empty — all planned work delivered.
 
 ## Notes / deviations
 - S5-2: all staff orders show "👤 Mozo" (llevar/recojo/delivery included); distinguishing QR-from-mostrador on staff orders needs a backend field (deferred).
 - S5-1: the red uses `text-destructive` including its dark-theme variant.
+- S6: dark `--destructive` keeps the system's `#dc2626` (button-fill contrast) instead of the prototype's `#f87171`; split a `--red` token later if the exact badge color is wanted.
+- S6: floor-state colors in `floorStyle.js` are hardcoded hex and don't follow themes (pre-existing behavior); the prototype's `--nav`/`--ocupada` have no system token equivalent.
 - S4-2 (closed 2026-10-06): "Ver" migrated to SPA `Link`; router mocks updated in `AccountPaymentAudit.test.jsx` and `CajaPaymentProof.test.js`.
 - S1-5: badge counts plates (units) like Salon's `toReady` (the prototype counted orders). The shell now has two lightweight polls of the same endpoint (`RoleInbox` 20s + badge 25s) — unify later if desired.
 - S1-5: badge refreshes by poll (≤25s); instant SSE updates would need moving the call inside `NotifyProvider` (small refactor, not done).
@@ -99,6 +104,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S3-3 verification: backend focused `tests/test_order_notes.py` -> **6 passed** (orchestrator re-ran: 6 passed); backend hermetic `pytest tests -m "not integration" -q` -> **466 passed, 49 deselected**. Frontend composer consumers **10 suites / 73 tests**; full frontend **56 suites / 352 tests**; Build `$env:CI='true'; npm run build` -> compiled successfully; orchestrator re-ran `OrderComposerParity`: **8/8**.
 - S1-5 + S4-2 follow-up work-unit (this commit): new `frontend/src/hooks/useReadyDishes.js`; `frontend/src/components/AppShell.jsx` (+55), `frontend/src/pages/Caja.jsx`, `frontend/src/components/AccountPaymentAudit.test.jsx`, `frontend/src/__tests__/CajaPaymentProof.test.js`; new `frontend/src/__tests__/AppShellReadyBadge.test.js` (3 tests).
 - Follow-up test-first: badge RED (1 failing) then green **3/3**. Focused: **8 suites / 69 tests**; full frontend **57 suites / 355 tests**; Build compiled successfully; orchestrator re-ran `AppShellReadyBadge|AccountPaymentAudit`: **2 suites / 15 tests passed**.
+- S6 work-unit (this commit): new `frontend/public/themes/theme-restoflow.css`, new `frontend/src/__tests__/RestoflowTheme.test.js`; `frontend/src/contexts/ThemeContext.jsx`, `frontend/src/pages/Configuracion.jsx`, `frontend/src/index.css`, `frontend/public/index.html`, `frontend/public/theme-preview.html`, `frontend/src/__tests__/ThemeDarkMode.test.js`.
+- S6 test-first: 3 failures observed; focused `ThemeDarkMode|RestoflowTheme` -> **2 suites / 9 tests** (orchestrator re-ran: same); full frontend **58 suites / 358 tests**; Build compiled successfully (theme css copied and fonts link included).
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

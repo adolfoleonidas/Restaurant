@@ -20,7 +20,9 @@ html {
 
 body {
     margin: 0;
-    font-family: 'Instrument Sans', 'Inter', system-ui, sans-serif;
+    /* La familia sale del token del tema: sólo RestoFlow define --font/--display
+       propias (Sora + Manrope); el resto hereda las de siempre desde :root. */
+    font-family: var(--font, 'Instrument Sans', 'Inter', system-ui, sans-serif);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     /* El rebote del scroll en iOS no debe arrastrar la interfaz fija. */
@@ -35,7 +37,7 @@ body,
 }
 
 .font-display {
-    font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+    font-family: var(--display, 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif);
     letter-spacing: -0.02em;
 }
 
@@ -168,7 +170,7 @@ body,
         @apply bg-background text-foreground;
     }
     h1, h2, h3 {
-        font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+        font-family: var(--display, 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif);
         letter-spacing: -0.02em;
     }
 }

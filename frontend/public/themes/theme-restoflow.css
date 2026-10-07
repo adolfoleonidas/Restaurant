@@ -1,0 +1,151 @@
+/* ============================================================
+   TEMA: RestoFlow — el look del prototipo final
+   Verde menta sobre papel, con Sora (títulos) y Manrope (texto).
+   Overrides the Tailwind/shadcn design tokens (HSL triplets) used by
+   the current UI. Loaded on demand by ThemeContext when active, so the
+   plain :root scope wins over the @layer base defaults in index.css.
+
+   Mapa desde el prototipo (restoflow.html):
+     --bg   #f3f5f4 → --background        --sf   #ffffff → --card
+     --sf2  #eef2f0 → --secondary/--muted --tx   #10201a → --foreground
+     --mut  #5c6f66 → --muted-foreground  --bd   #e2e7e4 → --border/--input
+     --pri  #0b8a5f → --primary           --prit #ffffff → --primary-foreground
+     --priw #e2f5ec → --brand-soft/--green-soft
+   ============================================================ */
+
+:root {
+  /* ---- Core surfaces ---- */
+  --background: 150 9% 96%;
+  --foreground: 158 33% 9%;
+  --card: 0 0% 100%;
+  --card-foreground: 158 33% 9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 158 33% 9%;
+
+  /* ---- Brand: verde prototipo ---- */
+  --primary: 160 85% 29%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 150 13% 94%;
+  --secondary-foreground: 158 33% 9%;
+  --muted: 150 13% 94%;
+  --muted-foreground: 152 9% 40%;
+  --accent: 160 85% 29%;
+  --accent-foreground: 0 0% 100%;
+
+  /* ---- Feedback ---- */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* ---- Lines & focus ---- */
+  --border: 144 9% 90%;
+  --input: 144 9% 90%;
+  --ring: 160 85% 29%;
+
+  /* ---- Charts ---- */
+  --chart-1: 160 85% 29%;
+  --chart-2: 221 83% 53%;
+  --chart-3: 155 42% 43%;
+  --chart-4: 32 95% 44%;
+  --chart-5: 17 88% 40%;
+
+  /* ---- Derived brand tokens used directly in CSS ---- */
+  --brand: hsl(var(--primary));
+  --brand-hover: hsl(159 85% 24%);
+  --brand-soft: hsl(152 49% 92%);
+  --on-brand: hsl(var(--primary-foreground));
+  --page: hsl(var(--background));
+  --paper: hsl(var(--card));
+  --surface: hsl(var(--secondary));
+  --line: hsl(var(--border));
+  --ink: hsl(var(--foreground));
+  --muted-ink: hsl(var(--muted-foreground));
+  --soft: hsl(150 8% 58%);
+  --green: hsl(155 42% 43%);
+  --green-soft: hsl(152 49% 92%);
+  --red: hsl(var(--destructive));
+  --red-soft: hsl(0 69% 95%);
+  --warn: 32 95% 44%;
+  --warn-soft: 37 91% 92%;
+
+  /* Estados que el sistema pinta con tokens propios (fidelidad al prototipo:
+     listo ámbar, entregado verde, pagado neutro) */
+  --listo-soft: 37 91% 92%;
+  --listo-ink: 23 83% 31%;
+  --entregado-soft: 159 45% 91%;
+  --entregado-ink: 162 73% 22%;
+  --pagado-soft: 160 10% 94%;
+  --pagado-ink: 150 11% 28%;
+
+  --shadow: 0 1px 2px hsl(158 33% 9% / 0.06), 0 6px 18px hsl(158 33% 9% / 0.06);
+  --shadow-sm: 0 1px 2px hsl(158 33% 9% / 0.08);
+
+  /* 10px del prototipo */
+  --radius: 0.625rem;
+
+  /* ---- Tipografías del prototipo: las consumen body/headings vía
+     var(--font)/var(--display); ninguna otra paleta las define, así que
+     fuera de RestoFlow el sistema sigue con sus familias de siempre. ---- */
+  --font: 'Manrope', 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: 'Sora', 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+}
+
+.dark {
+  /* ---- Core surfaces ---- */
+  --background: 150 18% 7%;
+  --foreground: 150 22% 93%;
+  --card: 153 16% 11%;
+  --card-foreground: 150 22% 93%;
+  --popover: 153 16% 11%;
+  --popover-foreground: 150 22% 93%;
+
+  /* ---- Brand: verde menta sobre fondo oscuro ---- */
+  --primary: 160 59% 45%;
+  --primary-foreground: 159 74% 9%;
+  --secondary: 153 15% 14%;
+  --secondary-foreground: 150 22% 93%;
+  --muted: 153 15% 14%;
+  --muted-foreground: 148 10% 61%;
+  --accent: 160 59% 45%;
+  --accent-foreground: 159 74% 9%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 152 13% 19%;
+  --input: 152 13% 19%;
+  --ring: 160 59% 45%;
+
+  --chart-1: 160 59% 45%;
+  --chart-2: 213 94% 68%;
+  --chart-3: 142 69% 58%;
+  --chart-4: 43 96% 56%;
+  --chart-5: 27 96% 61%;
+
+  --brand: hsl(var(--primary));
+  --brand-hover: hsl(160 62% 55%);
+  --brand-soft: hsl(161 54% 14%);
+  --on-brand: hsl(var(--primary-foreground));
+  --page: hsl(var(--background));
+  --paper: hsl(var(--card));
+  --surface: hsl(var(--secondary));
+  --line: hsl(var(--border));
+  --ink: hsl(var(--foreground));
+  --muted-ink: hsl(var(--muted-foreground));
+  --soft: hsl(152 12% 75%);
+  --green: hsl(142 69% 58%);
+  --green-soft: hsl(161 54% 14%);
+  --red: hsl(var(--destructive));
+  --red-soft: hsl(0 35% 17%);
+  --warn: 43 96% 56%;
+  --warn-soft: 38 53% 15%;
+
+  --listo-soft: 38 53% 15%;
+  --listo-ink: 43 96% 56%;
+  --entregado-soft: 167 51% 13%;
+  --entregado-ink: 142 69% 58%;
+  --pagado-soft: 153 15% 14%;
+  --pagado-ink: 148 10% 61%;
+
+  --shadow: 0 24px 60px -20px hsl(150 30% 0% / 0.6);
+  --shadow-sm: 0 2px 8px -2px hsl(150 30% 0% / 0.4);
+}

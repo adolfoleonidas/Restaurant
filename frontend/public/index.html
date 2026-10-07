@@ -18,14 +18,16 @@
         <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
         <link rel="icon" href="%PUBLIC_URL%/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/icons/apple-touch-icon-180.png" />
-        <!-- Las tres familias que la app usa de verdad (Instrument Sans para el
+        <!-- Las familias que la app usa de verdad (Instrument Sans para el
              texto, Bricolage Grotesque para los títulos e IBM Plex Mono para
-             importes). Antes se cargaban aquí Inter + IBM Plex Mono y además
-             un @import en index.css con las otras dos: cinco familias en dos
-             peticiones en serie. display=swap evita el texto invisible. -->
+             importes), más Sora + Manrope de la paleta RestoFlow: sólo se
+             descargan cuando esa paleta está activa, porque ningún otro tema
+             las referencia. Antes se cargaban aquí Inter + IBM Plex Mono y
+             además un @import en index.css con las otras dos: cinco familias
+             en dos peticiones en serie. display=swap evita el texto invisible. -->
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-        <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700&display=swap" rel="stylesheet" />
         <title>Sabor Peruano</title>
         <script>try{if(localStorage.getItem('restaurant-dark-mode')==='true')document.documentElement.classList.add('dark')}catch(e){}</script>
     </head>
