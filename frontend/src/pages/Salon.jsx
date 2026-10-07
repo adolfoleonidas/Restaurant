@@ -9,8 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import OrderTicket from '@/components/OrderTicket';
-import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
-import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
+import { AccountTotals, KITCHEN_TONE, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
+import { draftCount, isDraft, orderStateTag, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft, Pencil } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
@@ -189,26 +189,14 @@ function accountDue(order) {
 }
 
 /**
- * Estado agregado de una cuenta para el tag de su tarjeta en el detalle:
- * lo que reclama acción primero (listo > en cocina > por enviar > entregado),
- * con los mismos tonos que los chips de estado del resumen de productos.
+ * Estado agregado de una cuenta para el tag de su tarjeta en el detalle
+ * (S12: el estado es POR PEDIDO, no por ítem). Delega en `orderStateTag` para
+ * que la tarjeta y el bloque enviado del ticket compartan exactamente la misma
+ * regla; los tonos viven en `KITCHEN_TONE` (OrderSummary).
  */
-function accountKitchenState(items = []) {
-    const visible = (items || []).filter((it) => it.status !== 'cancelado');
-    if (!visible.length) return { label: 'Sin platos', tone: 'draft' };
-    const pending = visible.filter((it) => (it.status || 'pendiente') !== 'entregado');
-    if (pending.some((it) => it.status === 'listo')) return { label: 'Listo', tone: 'ready' };
-    if (pending.some((it) => !['borrador', 'nuevo', ''].includes(it.status || ''))) return { label: 'En cocina', tone: 'kitchen' };
-    if (pending.length) return { label: 'Por enviar', tone: 'draft' };
-    return { label: 'Entregado', tone: 'done' };
+function accountKitchenState(items = [], orderStatus) {
+    return orderStateTag(items, orderStatus);
 }
-
-const KITCHEN_TONE = {
-    ready: 'bg-[hsl(var(--warn))] text-[hsl(var(--background))]',
-    kitchen: 'bg-[hsl(var(--chart-2))] text-[hsl(var(--background))]',
-    draft: 'bg-secondary text-muted-foreground',
-    done: 'bg-[hsl(var(--green))] text-[hsl(var(--background))]',
-};
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
 const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
@@ -1845,7 +1833,7 @@ export default function Salon() {
                                         const view = isActive && order ? order : detail;
                                         const draftAccount = isComposingDraft(view);
                                         const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
-                                        const kitchen = accountKitchenState(view.items || []);
+                                        const kitchen = accountKitchenState(view.items || [], view.status);
                                         const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
                                         const cardKey = account.order_number ?? account.id;
                                         // La cuenta activa conserva los testids base
@@ -1900,7 +1888,7 @@ export default function Salon() {
                                                         </div>
                                                         <div className="text-xs text-muted-foreground">#{view.order_number} · {fmtTime(view.created_at)}</div>
                                                     </div>
-                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.tone]}`}>
+                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.key]}`}>
                                                         {kitchen.label}
                                                     </span>
                                                 </header>
@@ -1928,7 +1916,7 @@ export default function Salon() {
                                                 )}
                                                 <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
                                                     <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
-                                                    {kitchen.tone === 'ready' && canServe && (
+                                                    {kitchen.key === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
                                                             className="h-9 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"

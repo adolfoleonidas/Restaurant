@@ -61,6 +61,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 
 - [x] S11 (2026-10-06): (a) PWA service worker switched to auto-update — the root cause of the user seeing already-removed UI ("Personas/Contraer personas/Organizar pedido" were deleted in S10) was the old cached SW. `skipWaiting()` on install + `controllerchange` single reload (`hadController`/`reloading` guards) + `updateViaCache:'none'`; nginx `service-worker.js` cache hardened to `no-store` (both nginx.conf and nginx.tls.conf); new `serviceWorker.test.js` (5). (b) Send toast now mockup-faithful: "Enviado a cocina · Mesa N". (c) New `item_void` feature flag ("Cancelar productos individualmente", default OFF) gating every per-item ✕ (`mesa-sheet-item-anular-*`, `pedido-item-cancel-*`), exposed via Configuración → Funciones (backend `RestaurantFeatures.item_void = False`).
 
+- [x] S12 (2026-10-06): Status shown per order, not per item (user request). Removed the per-item state chips (`-item-estado-*`, `StateChip` deleted) from the detail cards and the composer ticket; the ticket now renders sent items in a mockup-style `.sent` block (`mesa-sheet-enviados` + `-meta` + `-estado`) with the order tag in its header and bare item lines; draft lines keep stepper + 📝. New `orderStateTag(items, orderStatus)` derives the per-order tag (least-advanced stage among sent items; nothing sent → "Por enviar"; mixed → least advanced wins). PedidoDetalle untouched (different sectioned structure, reported).
+
 ## Backlog (next slices)
 - Empty — all planned work delivered.
 
@@ -130,6 +132,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S10 verification: side-by-side captures `s10-*` / `s10b-*` (detail, composer, ticket-with-note; 1440 + 390), full frontend **60 suites / 374 tests**, CI build compiled; orchestrator re-ran `SalonComposerProto|SalonDetailView|SalonSheetParity` (22 tests) and `SalonDetailView` (7) — all green.
 - S11 work-unit (this commit): `service-worker.js`, `lib/serviceWorker.js`, `nginx.conf`, `nginx.tls.conf`, `lib/features.js`, `hooks/useRestaurantFeatures.js`, `OrderSummary.jsx`, `OrderTicket.jsx`, `Salon.jsx`, `PedidoDetalle.jsx`, `backend/models.py` (flag key only); tests `serviceWorker.test.js` (new, 5), `MesasPersonasPedido`, `PedidoDetalleCollection`.
 - S11 verification: full frontend **61 suites / 382 tests**, CI build compiled (SW artifact contains `skipWaiting` + `clientsClaim`; bundle contains `controllerchange`/`updateViaCache`); orchestrator re-ran `serviceWorker` (5/5); e2e specs grep — no references to the gated testids or the toast copy.
+- S12 work-unit (this commit): `OrderSummary.jsx`, `OrderTicket.jsx`, `lib/orderDraft.js`, `Salon.jsx`; test updates `SalonComposerProto`, `MesasPersonasPedido`; full frontend **61 suites / 384 tests**; CI build compiled; captures `s12-*` side-by-side; e2e `mesa-sheet-items` preserved (sent block + drafts).
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

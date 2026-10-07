@@ -234,5 +234,29 @@ describe('compositor · paridad posView (S8)', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]'));
         expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/i1');
     });
+
+    it('S12: lo enviado va en su bloque `.sent` con el tag del pedido y líneas peladas', async () => {
+        const sent = item('i1', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-sopa' });
+        const draft = item('i2', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1' });
+        const account = order('order-1', 11, 'en_preparacion', [sent, draft], { customer_name: 'Juan' });
+        ({ container, root, sheet } = await openTableWith([account]));
+
+        // La tarjeta ya no edita acá: el ticket se abre con "+ Nuevo pedido".
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+
+        const block = sheet.querySelector('[data-testid="mesa-sheet-enviados"]');
+        expect(block).not.toBeNull();
+        // Cabecera `#id · hh:mm` + tag de estado del PEDIDO, una sola vez.
+        expect(block.textContent).toContain('#11');
+        expect(block.querySelector('[data-testid="mesa-sheet-enviados-estado"]').textContent).toBe('En cocina');
+        expect(block.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
+        // El borrador vive fuera del bloque (conserva su stepper).
+        expect(block.querySelector('[data-testid="mesa-sheet-item-i2"]')).toBeNull();
+        const items = sheet.querySelector('[data-testid="mesa-sheet-items"]');
+        expect(items.contains(block)).toBe(true);
+        expect(items.querySelector('[data-testid="mesa-sheet-item-menos-i2"]')).not.toBeNull();
+        // S12: sin chips de estado por línea (el estado es por pedido).
+        expect(sheet.querySelector('[data-testid^="mesa-sheet-item-estado-"]')).toBeNull();
+    });
 });
 

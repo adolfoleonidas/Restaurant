@@ -186,6 +186,17 @@ describe('pedido por personas en el salón', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]')).toBeNull();
     });
 
+    it('S12: el estado va en el tag del pedido y las líneas de la tarjeta van peladas', async () => {
+        const account = order('order-1', 11, 'en_preparacion', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
+
+        // El tag del pedido vive en la cabecera de la tarjeta…
+        const card = sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]');
+        expect(card.textContent).toContain('En cocina');
+        // …y ninguna línea lleva chip de estado por ítem (cambio pedido: es por pedido).
+        expect(card.querySelector('[data-testid="mesa-sheet-item-estado-i1"]')).toBeNull();
+    });
+
     it('anula un producto ya enviado pidiendo el motivo', async () => {
         const account = order('order-1', 11, 'enviado_cocina', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
         api.post.mockResolvedValue({ data: account });
