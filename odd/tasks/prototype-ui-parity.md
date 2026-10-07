@@ -63,6 +63,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 
 - [x] S12 (2026-10-06): Status shown per order, not per item (user request). Removed the per-item state chips (`-item-estado-*`, `StateChip` deleted) from the detail cards and the composer ticket; the ticket now renders sent items in a mockup-style `.sent` block (`mesa-sheet-enviados` + `-meta` + `-estado`) with the order tag in its header and bare item lines; draft lines keep stepper + 📝. New `orderStateTag(items, orderStatus)` derives the per-order tag (least-advanced stage among sent items; nothing sent → "Por enviar"; mixed → least advanced wins). PedidoDetalle untouched (different sectioned structure, reported).
 
+- [x] S13 (2026-10-06): "Más opciones" became a compact ⋯ icon button in the detail header (right-aligned; desktop + mobile; hidden while composing). The action bar (mobile fixed + desktop aside) keeps EXACTLY two buttons: "+ Nuevo pedido" and "Cobrar S/ X". Moved into the ⋯ menu keeping testids/labels: Entregar, Finalizar mesa, Solicitar cuenta, Pedir para Mesa N, Liberar mesa. "Cuenta solicitada" is now a disabled notice in the summary (outside the action bar; e2e contract visible+disabled preserved). `mesa-sheet-mas` preserved on the new ⋯ trigger (e2e clicks it → `mesa-sheet-ver-pedido`).
+
 ## Backlog (next slices)
 - Empty — all planned work delivered.
 
@@ -133,6 +135,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S11 work-unit (this commit): `service-worker.js`, `lib/serviceWorker.js`, `nginx.conf`, `nginx.tls.conf`, `lib/features.js`, `hooks/useRestaurantFeatures.js`, `OrderSummary.jsx`, `OrderTicket.jsx`, `Salon.jsx`, `PedidoDetalle.jsx`, `backend/models.py` (flag key only); tests `serviceWorker.test.js` (new, 5), `MesasPersonasPedido`, `PedidoDetalleCollection`.
 - S11 verification: full frontend **61 suites / 382 tests**, CI build compiled (SW artifact contains `skipWaiting` + `clientsClaim`; bundle contains `controllerchange`/`updateViaCache`); orchestrator re-ran `serviceWorker` (5/5); e2e specs grep — no references to the gated testids or the toast copy.
 - S12 work-unit (this commit): `OrderSummary.jsx`, `OrderTicket.jsx`, `lib/orderDraft.js`, `Salon.jsx`; test updates `SalonComposerProto`, `MesasPersonasPedido`; full frontend **61 suites / 384 tests**; CI build compiled; captures `s12-*` side-by-side; e2e `mesa-sheet-items` preserved (sent block + drafts).
+- S13 work-unit (this commit): `Salon.jsx`, `MoreActions.jsx`; `SalonDetailView.test.js` (+2); full frontend **61 suites / 386 tests**; CI build compiled; captures `s13-*` (desktop + mobile: ⋯ header + two-button bar, open menu); orchestrator re-ran `SalonDetailView` (9/9).
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

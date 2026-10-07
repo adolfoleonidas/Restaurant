@@ -120,6 +120,39 @@ describe('detalle de mesa · vista completa (S7)', () => {
         expect(container.querySelector('[data-testid="mesa-card-1"]').closest('[hidden]')).not.toBeNull();
     });
 
+    it('S13: el ⋯ vive en la cabecera y la barra queda con dos botones', async () => {
+        const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
+        ({ container, root, sheet } = await openTableWith([juan]));
+
+        // Cambio pedido: "⋯ Más opciones" salió de la barra y es un botón
+        // compacto en la cabecera, en la misma fila del ← y el título.
+        const mas = sheet.querySelector('[data-testid="mesa-sheet-mas"]');
+        expect(mas).not.toBeNull();
+        const header = sheet.querySelector('[data-testid="mesa-sheet-volver"]').parentElement;
+        expect(header.contains(mas)).toBe(true);
+        expect(header.textContent).toContain('Mesa 1');
+
+        // La zona de acciones queda con exactamente dos botones.
+        const bar = sheet.querySelector('[data-testid="mesa-sheet-acciones"]');
+        expect(bar.contains(mas)).toBe(false);
+        expect([...bar.querySelectorAll('button')].map((b) => b.dataset.testid))
+            .toEqual(['mesa-sheet-nuevo-pedido', 'mesa-sheet-cobrar']);
+    });
+
+    it('S13: la cuenta solicitada es un aviso deshabilitado fuera de la barra', async () => {
+        const juan = order('order-1', 11, 'pendiente_pago', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan', payment_requested: true });
+        ({ container, root, sheet } = await openTableWith([juan]));
+
+        const marker = sheet.querySelector('[data-testid="mesa-sheet-cuenta-solicitada"]');
+        expect(marker).not.toBeNull();
+        expect(marker.disabled).toBe(true);
+        // El contrato del e2e (visible + deshabilitado) se mantiene, pero como
+        // estado informativo: no es un tercer botón de la barra.
+        const bar = sheet.querySelector('[data-testid="mesa-sheet-acciones"]');
+        expect(bar.contains(marker)).toBe(false);
+        expect(sheet.querySelector('[data-testid="mesa-sheet-solicitar-cuenta"]')).toBeNull();
+    });
+
     it('el botón volver regresa a la grilla del salón', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([juan]));

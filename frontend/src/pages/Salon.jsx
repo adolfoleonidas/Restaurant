@@ -1640,14 +1640,21 @@ export default function Salon() {
                         const closeable = canClose && canCloseAttention(t, actionOrder);
                         const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
                         // "Más opciones" del prototipo: todas las acciones
-                        // ocasionales en un solo menú, arriba de la barra principal.
+                        // ocasionales en un solo menú, disparado por el botón de
+                        // tres puntitos de la cabecera (S13). La zona de acciones
+                        // queda con dos botones: "+ Nuevo pedido" y "Cobrar".
                         const moreActions = accountTable && order
                             ? [{
                                 key: 'ver-pedido-grupo',
                                 label: `Ver pedido de Mesa ${accountTable.number}`,
                                 testId: 'mesa-sheet-ver-pedido-grupo',
                                 onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
-                            }]
+                            }, ...(canTake ? [{
+                                key: 'pedir-grupo',
+                                label: `Pedir para Mesa ${t.number} (cuenta aparte)`,
+                                testId: 'mesa-sheet-pedir-grupo',
+                                onSelect: () => takeOrderInline(t),
+                            }] : [])]
                             : hasAccount ? [
                                 {
                                     key: 'ver-pedido',
@@ -1656,6 +1663,29 @@ export default function Salon() {
                                     disabled: !actionAccountId,
                                     onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
                                 },
+                                // S13: lo que antes vivía en la barra (entregar,
+                                // cerrar, solicitar cuenta) ahora es una opción del
+                                // menú; mismos testids para las suites.
+                                ...(floor.key === 'listo' && canServe ? [{
+                                    key: 'entregar',
+                                    label: 'Entregar',
+                                    testId: 'mesa-sheet-entregar',
+                                    onSelect: () => deliver(actionAccountId),
+                                }] : []),
+                                ...(closeable ? [{
+                                    key: 'cerrar',
+                                    label: closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa',
+                                    testId: `servicio-cerrar-sheet-${t.number}`,
+                                    disabled: closing === actionOrder?.id,
+                                    onSelect: () => closeAttention(actionOrder),
+                                }] : []),
+                                ...(!closeable && !billRequested
+                                    && ['listo', 'entregado'].includes(actionOrder?.status) && canTake ? [{
+                                    key: 'solicitar-cuenta',
+                                    label: 'Solicitar cuenta',
+                                    testId: 'mesa-sheet-solicitar-cuenta',
+                                    onSelect: () => requestBill(actionOrder),
+                                }] : []),
                                 {
                                     key: 'resumen-recibo',
                                     label: 'Resumen de mesa / Recibo',
@@ -1698,7 +1728,15 @@ export default function Salon() {
                                         onSelect: mergeAccounts,
                                     },
                                 ] : []),
-                            ] : [];
+                            ] : t.status === 'pagada' ? [{
+                                // La mesa ya está pagada: liberarla es la única
+                                // acción y vive en ⋯, no en la barra (S13).
+                                key: 'liberar',
+                                label: 'Liberar mesa',
+                                testId: 'mesa-sheet-liberar',
+                                disabled: !canTake,
+                                onSelect: () => releaseTable(t),
+                            }] : [];
                         return (
                             <>
                             <section
@@ -1728,6 +1766,16 @@ export default function Salon() {
                                     </div>
                                     {t.active_order && loading && (
                                         <span className="shrink-0 text-sm text-muted-foreground">Cargando pedido…</span>
+                                    )}
+                                    {/* S13: las acciones ocasionales viven en este
+                                        botón de tres puntitos, alineado a la derecha
+                                        de la cabecera; la barra baja queda para las
+                                        dos acciones del día a día. */}
+                                    {!composerOpen && moreActions.length > 0 && (
+                                        <MoreActions
+                                            testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
+                                            actions={moreActions}
+                                        />
                                     )}
                                 </div>
 
@@ -2073,11 +2121,19 @@ export default function Salon() {
                                                 pendiente={tablePendiente}
                                             />
                                         )}
-                                        {moreActions.length > 0 && (
-                                            <MoreActions
-                                                testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
-                                                actions={moreActions}
-                                            />
+                                        {/* El estado "cuenta solicitada" es información,
+                                            no una tercera acción: vive como aviso en el
+                                            resumen y la barra queda con sus dos botones. */}
+                                        {hasAccount && billRequested && !closeable && (
+                                            <button
+                                                type="button"
+                                                disabled
+                                                aria-disabled="true"
+                                                data-testid="mesa-sheet-cuenta-solicitada"
+                                                className="w-full h-12 rounded-xl border border-dashed text-sm font-semibold text-muted-foreground"
+                                            >
+                                                Cuenta solicitada
+                                            </button>
                                         )}
                                         {/* Una sola instancia de cada botón: en móvil esta
                                             barra se fija abajo; en escritorio vive en el
@@ -2086,16 +2142,9 @@ export default function Salon() {
                                             data-testid="mesa-sheet-acciones"
                                             className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 backdrop-blur min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3 min-[820px]:backdrop-blur-none"
                                         >
-                                    {/* La mesa no se "toma": la atención nace con el primer
-                                        pedido, así que la carta es la acción y no hay botón
-                                        que la reemplace. Los botones de tomar mesa que había
-                                        acá sólo repetían esa acción y parecían recargar. */}
-                                    {/* Cobrar directo con el mismo saldo que muestra la
-                                        tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
-                                        en el flujo de pago del pedido, que es quien exige el
-                                        turno de caja abierto antes de registrar. */}
-                                    {/* Acción principal del prototipo: carta clara; el
-                                        cobro va en naranja (token warn) como el mockup. */}
+                                    {/* S13: exactamente dos botones. Entregar,
+                                        finalizar/solicitar cuenta y liberar viven
+                                        ahora en el menú ⋯ de la cabecera. */}
                                     {canCompose && (
                                         <Button
                                             variant="outline"
@@ -2116,51 +2165,6 @@ export default function Salon() {
                                             Cobrar {fmtMoney(actionDue)}
                                         </Button>
                                     )}
-                                    {accountTable && order ? (
-                                        <>
-                                            {canTake && (
-                                                <Button
-                                                    className="w-full h-12"
-                                                    onClick={() => takeOrderInline(t)}
-                                                    data-testid="mesa-sheet-pedir-grupo"
-                                                >
-                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
-                                                </Button>
-                                            )}
-                                        </>
-                                    ) : hasAccount ? (
-                                        <>
-                                            {/* La barra tiene un lugar por tipo de acción:
-                                                operar (Entregar), cerrar (Cuenta) y el resto
-                                                en ⋯ Más. Así el cuerpo del modal queda para
-                                                tomar pedidos, que es lo que más se hace. */}
-                                            {floor.key === 'listo' && canServe && (
-                                                <Button className="w-full h-12" onClick={() => deliver(actionAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
-                                            )}
-                                            {/* Un solo lugar para cerrar: la etiqueta cambia
-                                                con el momento de la visita en vez de sumar un
-                                                botón por cada paso del cobro. */}
-                                            {closeable ? (
-                                                <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(actionOrder)} disabled={closing === actionOrder?.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
-                                                    {closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa'}
-                                                </Button>
-                                            ) : billRequested ? (
-                                                <Button disabled variant="outline" className="w-full h-12" data-testid="mesa-sheet-cuenta-solicitada">
-                                                    Cuenta solicitada
-                                                </Button>
-                                            ) : (
-                                                ['listo', 'entregado'].includes(actionOrder?.status) && canTake && (
-                                                    <Button variant="outline" className="w-full h-12" onClick={() => requestBill(actionOrder)} data-testid="mesa-sheet-solicitar-cuenta">
-                                                        Solicitar cuenta
-                                                    </Button>
-                                                )
-                                            )}
-                                        </>
-                                    ) : t.status === 'pagada' ? (
-                                        <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
-                                            Liberar mesa
-                                        </Button>
-                                    ) : null}
                                         </div>
                                     </aside>
                                     )}
