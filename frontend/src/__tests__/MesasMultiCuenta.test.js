@@ -79,19 +79,22 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-11"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]')).not.toBeNull();
+        // S10: las cuentas son tarjetas de lectura (la franja "Personas" se fue).
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido-12"]')).not.toBeNull();
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-pedido-12"]'));
         // El detalle muestra solo los ítems de la cuenta elegida…
         const items = sheet.querySelector('[data-testid="mesa-sheet-items"]');
         expect(items.textContent).toContain('Lomo');
         expect(items.textContent).not.toContain('Ceviche');
-        // …y el resumen de la mesa agrega lo de todas las cuentas (se despliega
-        // desde la barra del recibo).
-        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
-        expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]').textContent).toContain('Ceviche');
+        // …y el resumen de la mesa agrega lo de todas las cuentas (S10b: se abre
+        // como "Resumen de mesa / Recibo" desde ⋯ Más, no vive en el cuerpo).
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mas"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-ver-resumen"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-resumen"]').textContent).toContain('Ceviche');
     });
 
     it('muestra el alias de cada cuenta para ubicarla y sumarle lo suyo', async () => {
@@ -109,11 +112,13 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        const tabs = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
-        expect(tabs.textContent).toContain('Juan');
-        expect(tabs.textContent).toContain('#12'); // la que no tiene alias cae al número
-        // La carta dice a quién le está agregando: se entra a la persona tocándola.
-        await click(sheet.querySelector('[data-testid="mesa-sheet-cuenta-11"]'));
+        // El alias de cada cuenta se lee en su tarjeta; la que no tiene alias cae
+        // al número de pedido.
+        const cardJuan = sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]');
+        const cardSinAlias = sheet.querySelector('[data-testid="mesa-sheet-pedido-12"]');
+        expect(cardJuan.textContent).toContain('Juan');
+        expect(cardSinAlias.textContent).toContain('#12');
+        // La carta dice a quién le está agregando (la cuenta activa al abrir).
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]').textContent).toContain('Agregar a Juan');
     });
 
@@ -131,9 +136,11 @@ describe('multi-cuenta en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-        // Ya no hay un botón de "abrir cuenta": el mozo sólo escribe el alias.
+        // Ya no hay un botón de "abrir cuenta": el mozo edita el nombre con el ✎
+        // de la tarjeta (S10: la franja de personas se fue).
         expect(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]')).toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-alias"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-renombrar-11"]')).not.toBeNull();
     });
 
     it('fusiona las demás cuentas dentro de la seleccionada', async () => {

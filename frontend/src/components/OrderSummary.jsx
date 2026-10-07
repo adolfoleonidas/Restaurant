@@ -3,7 +3,7 @@ import { Ban, ChevronDown, ChevronUp, Minus, Plus, Printer, Receipt } from 'luci
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
-import { QUICK_NOTES, itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
+import { itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
 
 const TONE_CLASS = {
     draft: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -26,50 +26,31 @@ function StateChip({ item, orderStatus, testIdPrefix }) {
 }
 
 /**
- * Observaciones rápidas: las que el mozo repite todo el día, a un toque.
+ * Lo que lleva la persona seleccionada.
  *
- * Van siempre a la vista en lo que sigue en borrador: si aparecieran recién al
- * enfocar el campo, el teclado del móvil las taparía justo cuando hacen falta.
- * Con más de una unidad la observación es de UNA unidad ("2 sopas, una sin
- * cebolla"), y de eso se encarga quien recibe el toque.
- */
-function QuickNotes({ item, onApply, testIdPrefix }) {
-    return (
-        <div className="scroll-x flex gap-1.5 pb-1" data-testid={`${testIdPrefix}-item-notas-rapidas-${item.id}`}>
-            {QUICK_NOTES.map((note) => (
-                <button
-                    key={note}
-                    type="button"
-                    onClick={() => onApply?.(item, note)}
-                    data-testid={`${testIdPrefix}-item-nota-rapida-${item.id}-${note}`}
-                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
-                >
-                    {note}
-                </button>
-            ))}
-        </div>
-    );
-}
-
-/**
- * Lo que lleva la persona seleccionada: sus productos, sus observaciones y sus
- * acciones. Lo que sigue en borrador se corrige libremente; lo que ya salió a
- * cocina se anula, no se borra.
+ * `mode="ticket"` (compositor): los borradores tienen stepper `− n +`, un
+ * botón 📝 Nota y la nota visible como texto chico; el input solo aparece al
+ * editar. Lo enviado conserva su tag de estado y su ✕ para anular.
+ *
+ * `mode="detail"` (detalle de mesa): lectura pura como el `.order` del mockup
+ * —`qty × nombre`, nota y precio—; de lo enviado queda solo el ✕ de anular.
+ * La edición de borradores vive únicamente en el ticket del compositor.
  */
 export function PersonOrderSummary({
     items = [],
     orderStatus,
     canEdit = false,
     saving = false,
+    mode = 'ticket',
     onChangeQty,
     onNotes,
-    onApplyNote,
     onVoid,
     testIdPrefix = 'mesa-sheet',
 }) {
     const [notesDraft, setNotesDraft] = useState({});
     const [voidingId, setVoidingId] = useState(null);
     const [voidReason, setVoidReason] = useState('');
+    const detailMode = mode === 'detail';
 
     // Se muestran todos, incluidos los anulados: el mozo tiene que poder ver que
     // existieron y por qué se anularon.
@@ -102,6 +83,8 @@ export function PersonOrderSummary({
                     const voided = state.key === 'anulado';
                     const editingNotes = Object.prototype.hasOwnProperty.call(notesDraft, item.id);
                     const notesValue = editingNotes ? notesDraft[item.id] : (item.notes || '');
+                    const editing = !detailMode && draft && editingNotes;
+                    const showControls = !detailMode && draft && canEdit;
                     return (
                         <div key={item.id} className="space-y-1.5 px-3 py-2" data-testid={`${testIdPrefix}-item-${item.id}`}>
                             <div className="flex items-center justify-between gap-2 text-sm">
@@ -109,40 +92,57 @@ export function PersonOrderSummary({
                                     {item.quantity}× {item.product_name}
                                 </span>
                                 <span className="flex shrink-0 items-center gap-1.5">
-                                    <StateChip item={item} orderStatus={orderStatus} testIdPrefix={testIdPrefix} />
+                                    {/* El mockup solo etiqueta lo enviado; el borrador no lleva chip. */}
+                                    {!draft && <StateChip item={item} orderStatus={orderStatus} testIdPrefix={testIdPrefix} />}
                                     <span className={`font-mono tabular-nums ${voided ? 'line-through opacity-60' : ''}`}>
                                         {fmtMoney(item.subtotal)}
                                     </span>
                                 </span>
                             </div>
-                            {!voided && (
-                                <div className={`flex items-center gap-1.5 ${!draft && !item.notes ? 'justify-end' : ''}`}>
-                                    {draft ? (
+                            {/* La nota viaja bajo el nombre, como el `— nota` del mockup. */}
+                            {!voided && !editing && item.notes ? (
+                                <p
+                                    className="text-xs font-medium text-[hsl(var(--warn))]"
+                                    data-testid={`${testIdPrefix}-item-notas-${item.id}`}
+                                >
+                                    {item.notes}
+                                </p>
+                            ) : null}
+                            {!voided && (editing || showControls || (!draft && canEdit && voidingId !== item.id)) && (
+                                <div className={`flex items-center gap-1.5 ${(!draft || detailMode) && !editing ? 'justify-end' : ''}`}>
+                                    {editing ? (
                                         <Input
                                             className="h-8 min-w-0 flex-1 text-xs"
                                             placeholder="Observaciones (sin ensalada, sin cebolla…)"
                                             value={notesValue}
+                                            autoFocus
                                             disabled={!canEdit}
                                             onChange={(e) => setNotesDraft((cur) => ({ ...cur, [item.id]: e.target.value }))}
                                             onBlur={() => commitNotes(item)}
-                                            onKeyDown={(e) => { if (e.key === 'Enter') commitNotes(item); }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') commitNotes(item);
+                                                if (e.key === 'Escape') {
+                                                    setNotesDraft((cur) => {
+                                                        const copy = { ...cur };
+                                                        delete copy[item.id];
+                                                        return copy;
+                                                    });
+                                                }
+                                            }}
                                             data-testid={`${testIdPrefix}-item-notas-${item.id}`}
                                         />
-                                    ) : (
-                                        // Lo que ya está en cocina no se edita en silencio: se
-                                        // muestra tal como viajó y se cambia anulando y repitiendo.
-                                        // Sin nota no se inventa un "Sin observaciones": el
-                                        // mockup solo muestra la nota cuando existe.
-                                        item.notes ? (
-                                            <span
-                                                className="min-w-0 flex-1 truncate text-xs font-medium text-[hsl(var(--warn))]"
-                                                data-testid={`${testIdPrefix}-item-notas-${item.id}`}
-                                            >
-                                                {item.notes}
-                                            </span>
-                                        ) : null
+                                    ) : null}
+                                    {showControls && !editing && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setNotesDraft((cur) => ({ ...cur, [item.id]: item.notes || '' }))}
+                                            data-testid={`${testIdPrefix}-item-nota-${item.id}`}
+                                            className="flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+                                        >
+                                            📝 {item.notes ? 'Editar nota' : 'Nota'}
+                                        </button>
                                     )}
-                                    {draft && canEdit && (
+                                    {showControls && (
                                         <>
                                             <button
                                                 type="button"
@@ -184,9 +184,6 @@ export function PersonOrderSummary({
                                         </button>
                                     )}
                                 </div>
-                            )}
-                            {draft && canEdit && (
-                                <QuickNotes item={item} onApply={onApplyNote} testIdPrefix={testIdPrefix} />
                             )}
                             {voidingId === item.id && (
                                 <div className="flex items-center gap-1.5" data-testid={`${testIdPrefix}-item-anular-panel-${item.id}`}>
@@ -285,6 +282,7 @@ export function TableSummary({
     pendiente = 0,
     people = [],
     canEdit = false,
+    showTotals = true,
     onMoveItem,
     onOpenReceipt,
     testIdPrefix = 'mesa-sheet',
@@ -305,7 +303,7 @@ export function TableSummary({
                 >
                     <span className="flex min-w-0 items-center gap-1.5">
                         <Receipt className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                        <span className="page-kicker">Resumen de mesa</span>
+                        <span className="page-kicker truncate">Resumen de mesa</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                         {!empty && (
@@ -329,14 +327,18 @@ export function TableSummary({
                 )}
             </div>
             {/* Consumido/Pagado/Pendiente siempre a la vista, como el resumen del
-                prototipo: el mozo los lee de reojo sin desplegar los platos. */}
-            <AccountTotals
-                testIdPrefix={testIdPrefix}
-                consumido={consumido}
-                pagado={pagado}
-                pendiente={pendiente}
-                className="space-y-0.5 border-t px-3 py-2"
-            />
+                prototipo: el mozo los lee de reojo sin desplegar los platos.
+                `showTotals={false}` evita duplicar los testids cuando el panel
+                del detalle ya los muestra (diálogo "Resumen de mesa"). */}
+            {showTotals && (
+                <AccountTotals
+                    testIdPrefix={testIdPrefix}
+                    consumido={consumido}
+                    pagado={pagado}
+                    pendiente={pendiente}
+                    className="space-y-0.5 border-t px-3 py-2"
+                />
+            )}
             {open && (
                 <div className="border-t px-3 py-2">
                     {empty ? (

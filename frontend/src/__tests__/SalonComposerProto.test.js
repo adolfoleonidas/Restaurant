@@ -167,6 +167,25 @@ describe('compositor · paridad posView (S8)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
     });
 
+    it('tras enviar vuelve al detalle con la cuenta y su tag', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
+        // El backend real marca los ítems como 'pendiente' al enviarlos.
+        const sent = { ...draft, status: 'enviado_cocina', items: [{ ...draft.items[0], status: 'pendiente' }] };
+        api.post.mockResolvedValue({ data: sent });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        // Está en el compositor (franja de persona + carta + ticket).
+        expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).not.toBeNull();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+
+        // S10: el envío cierra el compositor y vuelve al detalle, con la tarjeta
+        // de la cuenta enviada y su tag (no queda en la carta ni en el ticket).
+        expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).toBeNull();
+        const card = sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]');
+        expect(card).not.toBeNull();
+        expect(card.textContent).toContain('En cocina');
+    });
+
     it('sin borrador no hay FAB ni hoja', async () => {
         const sent = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([sent]));

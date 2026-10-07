@@ -23,7 +23,6 @@ export default function OrderTicket({
     showSend = false,
     onChangeQty,
     onNotes,
-    onApplyNote,
     onVoid,
     onSend,
     onClear,
@@ -40,7 +39,7 @@ export default function OrderTicket({
         >
             <header className="flex items-center justify-between gap-2">
                 <h3 className="font-display text-base font-semibold">
-                    Pedido nuevo{draftUnits > 0 ? ` · ${draftUnits} nuevo${draftUnits === 1 ? '' : 's'}` : ''}
+                    Pedido nuevo
                 </h3>
                 {onClose && (
                     <button
@@ -63,7 +62,6 @@ export default function OrderTicket({
                 saving={saving}
                 onChangeQty={onChangeQty}
                 onNotes={onNotes}
-                onApplyNote={onApplyNote}
                 onVoid={onVoid}
             />
 

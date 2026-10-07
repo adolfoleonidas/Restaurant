@@ -2,6 +2,7 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
@@ -74,10 +75,17 @@ async function openTableWith(accounts, tableExtra = {}, { select = null } = {}) 
     const rendered = await renderPage();
     await click(rendered.container.querySelector('[data-testid="mesa-card-1"]'));
     const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
-    // Abrir la mesa deja la pantalla lista para la siguiente persona: para entrar
-    // a una cuenta hay que tocar su píldora, como haría el mozo.
-    if (select) await click(sheet.querySelector(`[data-testid="mesa-sheet-cuenta-${select}"]`));
+    // S10: la franja de personas se fue; la cuenta se elige tocando su tarjeta
+    // en el detalle (el parámetro `select` es el número de pedido).
+    if (select) await click(sheet.querySelector(`[data-testid="mesa-sheet-pedido-${select}"]`));
     return { ...rendered, sheet };
+}
+
+/** S10b: el desglose (S/ recibo) vive en el diálogo "Resumen de mesa" de ⋯ Más. */
+async function openSummary() {
+    await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
+    await click(document.body.querySelector('[data-testid="mesa-sheet-ver-resumen"]'));
+    return document.body.querySelector('[data-testid="mesa-sheet-resumen"]');
 }
 
 describe('pedido por personas en el salón', () => {
@@ -102,18 +110,21 @@ describe('pedido por personas en el salón', () => {
         document.body.innerHTML = '';
     });
 
-    it('muestra las personas con su alias y la franja compacta', async () => {
+    it('muestra una tarjeta por persona con su alias y sin la franja vieja', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Ceviche', 1, 38, 'pendiente')], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Ceviche', 1, 38, 'pendiente')], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        const personas = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
-        expect(personas).not.toBeNull();
-        expect(personas.textContent).toContain('Juan');
-        expect(personas.textContent).toContain('María');
-        // Cada persona tiene su propia cuenta, con su número para ubicarla.
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-11"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]')).not.toBeNull();
+        // S10: las personas se leen y se eligen por sus tarjetas, como el mockup;
+        // la fila "Personas" ya no existe.
+        const cardJuan = sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]');
+        const cardMaria = sheet.querySelector('[data-testid="mesa-sheet-pedido-12"]');
+        expect(cardJuan.textContent).toContain('Juan');
+        expect(cardMaria.textContent).toContain('María');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
+        // Cada tarjeta conserva el ✎ para renombrar.
+        expect(cardJuan.querySelector('[data-testid="mesa-sheet-renombrar-11"]')).not.toBeNull();
+        expect(cardMaria.querySelector('[data-testid="mesa-sheet-renombrar-12"]')).not.toBeNull();
     });
 
     it('ofrece "Enviar a cocina" con el monto de lo nuevo y sólo manda lo nuevo', async () => {
@@ -151,6 +162,11 @@ describe('pedido por personas en el salón', () => {
         api.patch.mockResolvedValue({ data: account });
         ({ container, root, sheet } = await openTableWith([account]));
 
+        // S10: la nota se edita con el botón 📝 de la línea (el input fijo y los
+        // chips rápidos del mockup viejo ya no están).
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-nota-rapida-i1-Sin cebolla"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-notas-i1"]')).toBeNull();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-nota-i1"]'));
         const notes = sheet.querySelector('[data-testid="mesa-sheet-item-notas-i1"]');
         expect(notes).not.toBeNull();
         await type(notes, 'Sin ensalada');
@@ -177,39 +193,43 @@ describe('pedido por personas en el salón', () => {
         expect(api.delete).not.toHaveBeenCalled();
     });
 
-    it('el resumen de mesa vive arriba, trae el total a la vista y agrupa a todas las personas', async () => {
+    it('el resumen de mesa vive en ⋯ Más, trae el total a la vista y agrupa a todas las personas', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-sopa' })], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente', { product_id: 'prod-sopa' })], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        const summary = sheet.querySelector('[data-testid="mesa-sheet-resumen"]');
+        // S10b: el bloque plegable ya no está en el cuerpo del detalle (no está
+        // en el mockup); se abre como "Resumen de mesa / Recibo" desde ⋯ Más.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]')).toBeNull();
+        const summary = await openSummary();
         expect(summary).not.toBeNull();
         // Sin desplegar nada ya se lee el total y cuántos platos hay.
         expect(summary.textContent).toContain('Resumen de mesa');
         expect(summary.textContent).toContain('24.00');
         expect(summary.textContent).toContain('2 platos');
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
         expect(summary.textContent).toContain('2× Sopa');
         expect(summary.textContent).toContain('Juan');
         expect(summary.textContent).toContain('María');
     });
 
-    it('ordena el modal como trabaja el mozo: personas, alias y recién la carta', async () => {
+    it('ordena el compositor como trabaja el mozo: persona y recién la carta', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        // Con una sola cuenta no hay resumen de mesa: repetiría lo que ya dicen la
-        // lista de platos y el pie, y el modal tiene que ser simple.
+        // Con una sola cuenta el cuerpo del detalle no muestra el bloque de
+        // resumen: repetiría lo que ya dicen la lista de platos y el pie (S10b:
+        // el desglose agrupado sólo existe como diálogo de ⋯ Más).
         expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]')).toBeNull();
-        const sequence = ['mesa-sheet-cuentas', 'mesa-sheet-alias', 'mesa-sheet-pedido'];
-        const nodes = sequence.map((id) => sheet.querySelector(`[data-testid="${id}"]`));
-        nodes.forEach((node, index) => expect(node).not.toBeNull());
-        expect(sheet.querySelector('[data-testid="mesa-sheet-alias-row"]').open).toBe(false);
-        for (let i = 1; i < nodes.length; i += 1) {
-            // compareDocumentPosition: 4 = el segundo nodo va después del primero.
-            expect(nodes[i - 1].compareDocumentPosition(nodes[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        }
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        // S10: la identidad vive en la franja "Para {persona}" (ya no hay fila
+        // "Personas" ni bloque "Organizar pedido"), y va antes de la carta.
+        const persona = sheet.querySelector('[data-testid="mesa-sheet-persona"]');
+        const carta = sheet.querySelector('[data-testid="mesa-sheet-pedido"]');
+        expect(persona).not.toBeNull();
+        expect(carta).not.toBeNull();
+        expect(persona.compareDocumentPosition(carta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('la segunda persona se pide como cuenta de la misma visita, no como mesa libre', async () => {
@@ -224,8 +244,9 @@ describe('pedido por personas en el salón', () => {
         });
         ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
 
-        // Se pasa a la siguiente persona desde la cuenta que se está viendo.
-        await click(sheet.querySelector('[data-testid="mesa-sheet-alias-row"] summary'));
+        // S10: "otra persona" vive en ⋯ Más (el mockup no tiene la affordance
+        // porque su ticket es único; nuestra multi-cuenta la necesita).
+        await click(sheet.querySelector('[data-testid="mesa-sheet-mas"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
 
@@ -282,21 +303,20 @@ describe('pedido por personas en el salón', () => {
 
         // No hay "+" que abra cuentas: eso lo decide el sistema por dentro.
         expect(sheet.querySelector('[data-testid="mesa-sheet-nueva-cuenta"]')).toBeNull();
-        // Mientras todo es borrador, la cuenta todavía no figura como persona.
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]').textContent).not.toContain('Persona 1');
+        // S10: la franja de personas ya no existe; el borrador se lee en el ticket.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
 
         const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(enviar).not.toBeNull();
         await click(enviar);
 
-        // Confirma el envío y deja la pantalla limpia para la siguiente persona.
+        // Confirma el envío con el toast (el cartel fijo se fue) y deja la
+        // pantalla limpia para la siguiente persona.
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
-        const flash = sheet.querySelector('[data-testid="mesa-sheet-flash"]');
-        expect(flash.textContent).toContain('¿Siguiente persona?');
-        expect(flash.textContent).toContain('Pedro');
+        expect(toast.success).toHaveBeenCalledWith('Pedido de Pedro enviado. ¿Siguiente persona?');
     });
 
-    it('Compartido es un interruptor junto al alias, no una cuenta aparte', async () => {
+    it('Compartido es un interruptor dentro del editor del nombre', async () => {
         const borrador = {
             ...order('order-9', 13, 'nuevo', [item('i9', 'Fuente', 1, 45, 'borrador', { product_id: 'prod-n1' })]),
             customer_name: null,
@@ -306,9 +326,9 @@ describe('pedido por personas en el salón', () => {
         api.post.mockResolvedValue({ data: { ...borrador, shared: true, status: 'enviado_cocina' } });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        const organization = sheet.querySelector('[data-testid="mesa-sheet-alias-row"]');
-        expect(organization.open).toBe(false);
-        await click(organization.querySelector('summary'));
+        // La identidad se edita desde el ✎ de la franja "Para {persona}".
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-persona-renombrar"]'));
         const toggle = sheet.querySelector('[data-testid="mesa-sheet-compartido"]');
         expect(toggle).not.toBeNull();
         expect(toggle.getAttribute('aria-pressed')).toBe('false');
@@ -316,7 +336,7 @@ describe('pedido por personas en el salón', () => {
         expect(toggle.getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('las observaciones rápidas se aplican a una sola unidad', async () => {
+    it('la nota por producto se edita con 📝 y se guarda como la de siempre', async () => {
         const borrador = {
             ...order('order-9', 13, 'nuevo', [item('i9', 'Sopa', 2, 12, 'borrador', { product_id: 'prod-n1' })]),
             customer_name: null,
@@ -325,17 +345,17 @@ describe('pedido por personas en el salón', () => {
         api.patch.mockResolvedValue({ data: borrador });
         ({ container, root, sheet } = await openTableWith([borrador]));
 
-        // Los chips están a la vista sin tener que abrir nada.
-        const chip = sheet.querySelector('[data-testid="mesa-sheet-item-nota-rapida-i9-Sin cebolla"]');
-        expect(chip).not.toBeNull();
-        await click(chip);
+        // S10: sin chips rápidos ni input fijo; el botón 📝 abre el editor.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-nota-rapida-i9-Sin cebolla"]')).toBeNull();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-nota-i9"]'));
+        const input = sheet.querySelector('[data-testid="mesa-sheet-item-notas-i9"]');
+        expect(input).not.toBeNull();
+        await type(input, 'Sin cebolla');
+        await act(async () => {
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        });
 
-        // Primero agrega la unidad anotada y recién después descuenta del grupo:
-        // si algo falla, nunca se pierde comida.
-        expect(api.post).toHaveBeenCalledWith('/orders/order-9/items', [
-            { product_id: 'prod-n1', quantity: 1, notes: 'Sin cebolla' },
-        ]);
-        expect(api.patch).toHaveBeenCalledWith('/orders/order-9/items/i9', { quantity: 1 });
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-9/items/i9', { notes: 'Sin cebolla' });
     });
 
     it('mueve un producto de una persona a otra', async () => {
@@ -348,9 +368,10 @@ describe('pedido por personas en el salón', () => {
         api.post.mockResolvedValue({ data: maria });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
-        await click(sheet.querySelector('[data-testid^="mesa-sheet-resumen-abrir-"]'));
-        const selector = sheet.querySelector('[data-testid="mesa-sheet-mover-item-i1"]');
+        await openSummary();
+        await click(document.body.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
+        await click(document.body.querySelector('[data-testid^="mesa-sheet-resumen-abrir-"]'));
+        const selector = document.body.querySelector('[data-testid="mesa-sheet-mover-item-i1"]');
         expect(selector).not.toBeNull();
         await act(async () => {
             selector.value = 'order-2';
@@ -365,8 +386,9 @@ describe('pedido por personas en el salón', () => {
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Chicha', 1, 10, 'pendiente')], { customer_name: 'María' });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ver-recibo"]'));
-        const recibo = sheet.querySelector('[data-testid="mesa-sheet-recibo"]');
+        await openSummary();
+        await click(document.body.querySelector('[data-testid="mesa-sheet-ver-recibo"]'));
+        const recibo = document.body.querySelector('[data-testid="mesa-sheet-recibo"]');
         expect(recibo).not.toBeNull();
         expect(recibo.textContent).toContain('2× Sopa');
         expect(recibo.textContent).toContain('Por persona');

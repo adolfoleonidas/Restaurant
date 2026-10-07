@@ -9,7 +9,6 @@ import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import OrderTicket from '@/components/OrderTicket';
-import PersonChips from '@/components/PersonChips';
 import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
@@ -281,13 +280,17 @@ export default function Salon() {
     const [movingVisit, setMovingVisit] = useState(false);
     const [moveAccountId, setMoveAccountId] = useState(null);
     const [savingItem, setSavingItem] = useState(false);
+    // Bloquea el doble envío mientras el POST está en vuelo (el ticket se
+    // desmonta al volver al detalle, pero un doble toque no debe repetir).
+    const [sendingToKitchen, setSendingToKitchen] = useState(false);
     const [aliasDraft, setAliasDraft] = useState('');
-    // Mensaje de confirmación tras enviar: "✓ Pedido de Juan enviado.
-    // ¿Siguiente persona?" — la pantalla queda limpia para la siguiente.
-    const [flash, setFlash] = useState(null);
     // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
     const [sharedDraft, setSharedDraft] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
+    // El bloque "Resumen de mesa" (filas agrupadas + mover de persona + recibo)
+    // vive en un diálogo que se abre desde ⋯ Más: el mockup no lo muestra en el
+    // cuerpo del detalle.
+    const [summaryOpen, setSummaryOpen] = useState(false);
     // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
@@ -644,6 +647,8 @@ export default function Salon() {
         setOpenTable(null);
         setTicketOpen(false);
         setPersonNameEdit(false);
+        setSummaryOpen(false);
+        setReceiptOpen(false);
     };
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
@@ -744,8 +749,6 @@ export default function Salon() {
     const addProductToAccount = async (product) => {
         if (!canTake || savingItem) return;
         setSavingItem(true);
-        // Arrancó el pedido siguiente: el aviso del envío anterior ya cumplió.
-        setFlash(null);
         try {
             const orderId = await ensureAccount();
             if (!orderId) return;
@@ -838,28 +841,6 @@ export default function Salon() {
         await api.patch(`/orders/${orderId}/alias`, { alias: nextName || null, shared: sharedDraft });
     };
 
-    /**
-     * Observación rápida. Con más de una unidad la observación es de UNA unidad
-     * ("2 sopas, una sin cebolla"), así que primero se agrega la unidad anotada y
-     * recién después se descuenta del grupo: si algo falla, nunca se pierde comida.
-     */
-    const applyItemNote = async (item, note) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || !item) return;
-        try {
-            if (Number(item.quantity || 1) > 1) {
-                await api.post(`/orders/${orderId}/items`, [{ product_id: item.product_id, quantity: 1, notes: note }]);
-                await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: Number(item.quantity) - 1 });
-            } else {
-                await api.patch(`/orders/${orderId}/items/${item.id}`, { notes: note });
-            }
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
-        }
-    };
-
     // Corregir "quién pidió qué" sin borrar y volver a cargar el producto. El
     // origen sale de la propia línea: con la pantalla limpia no hay cuenta
     // seleccionada, pero el producto sí sabe de quién es.
@@ -888,21 +869,28 @@ export default function Salon() {
         // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake) return;
+        if (!targetId || !canTake || sendingToKitchen) return;
         const openId = openTable?.order?.id || openTable?.accountId;
+        // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso lleva el
+        // "¿Siguiente persona?" del prototipo en vez del conteo de adicionales.
+        const accountBefore = (openTable?.accounts || []).find((o) => o.id === targetId)
+            || (openTable?.order?.id === targetId ? openTable.order : null);
+        const firstSend = (accountBefore?.status || 'nuevo') === 'nuevo';
+        setSendingToKitchen(true);
         try {
             // El alias viaja con la comanda: se guarda acá, sin botón aparte.
             if (targetId === openId) await persistAlias(targetId);
             const { data } = await api.post(`/orders/${targetId}/send-to-kitchen`);
             const pending = draftCount(sendItemsFor(targetId), data?.status);
             const who = data?.customer_name || (data?.shared ? 'Compartido' : 'la persona');
-            toast.success(pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina');
+            // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
+            toast.success(firstSend
+                ? `Pedido de ${who} enviado. ¿Siguiente persona?`
+                : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
             await reloadCurrentOrder(targetId);
             if (targetId === openId) {
                 // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente, que es como el mozo trabaja de verdad. La carta se
-                // pliega y el "+ Pedido" del encabezado queda listo para el próximo.
-                setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
+                // la siguiente.
                 setComposerOpen(false);
                 setOpenTable((s) => (s ? {
                     ...s,
@@ -916,6 +904,8 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+        } finally {
+            setSendingToKitchen(false);
         }
     };
 
@@ -939,9 +929,9 @@ export default function Salon() {
     };
 
     /**
-     * Renombra una cuenta desde el ✎ de la franja de personas. Es el mismo
-     * PATCH de alias que usa "Organizar pedido", pero apuntado a la persona
-     * elegida y conservando el "Compartido" que la cuenta ya tenía.
+     * Renombra una cuenta desde el ✎ de su tarjeta (detalle) o de la franja
+     * "Para {persona}" (compositor). Mismo PATCH de alias que el input viejo,
+     * apuntado a la persona elegida y conservando el "Compartido" que ya tenía.
      */
     const renamePerson = async (orderId, alias) => {
         if (!canTake || !orderId) return;
@@ -994,7 +984,6 @@ export default function Salon() {
     // abre una cuenta nueva de la misma visita. No es "abrir cuenta" — eso lo
     // decide el sistema — sino pasar a la siguiente persona.
     const startAnotherPerson = () => {
-        setFlash(null);
         setOpenTable((s) => (s ? { ...s, order: null, accountId: null, loading: false } : s));
     };
 
@@ -1674,6 +1663,12 @@ export default function Salon() {
                                     disabled: !actionAccountId,
                                     onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
                                 },
+                                {
+                                    key: 'resumen-recibo',
+                                    label: 'Resumen de mesa / Recibo',
+                                    testId: 'mesa-sheet-ver-resumen',
+                                    onSelect: () => setSummaryOpen(true),
+                                },
                                 ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
                                     ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
                                         key: `dividir-${n}`,
@@ -1683,6 +1678,11 @@ export default function Salon() {
                                     }))]
                                     : []),
                                 ...(canTake ? [{
+                                    key: 'otra-persona',
+                                    label: 'Pedido de otra persona',
+                                    testId: 'mesa-sheet-otra-persona',
+                                    onSelect: () => { startAnotherPerson(); setComposerOpen(true); },
+                                }, {
                                     key: 'mover-pedido',
                                     label: 'Mover pedido a otra mesa',
                                     icon: MoveRight,
@@ -1707,6 +1707,7 @@ export default function Salon() {
                                 ] : []),
                             ] : [];
                         return (
+                            <>
                             <section
                                 data-testid="mesa-sheet"
                                 className={`space-y-4 ${hasAccount || canCompose || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
@@ -1729,10 +1730,7 @@ export default function Salon() {
                                             {composerOpen ? `Pedido · Mesa ${t.number}` : `Mesa ${t.number}`}
                                         </h2>
                                         {composerOpen ? null : (
-                                            <>
-                                                <p className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</p>
-                                                <p className="text-xs text-muted-foreground">Capacidad {t.capacity} personas</p>
-                                            </>
+                                            <p className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</p>
                                         )}
                                     </div>
                                     {t.active_order && loading && (
@@ -1746,48 +1744,25 @@ export default function Salon() {
                                 >
                                     {/* Columna de pedidos */}
                                     <div className="min-w-0 space-y-3">
-                                    {flash && (
-                                        <p
-                                            className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-medium text-primary"
-                                            role="status"
-                                            data-testid="mesa-sheet-flash"
-                                        >
-                                            {flash}
-                                        </p>
-                                    )}
-                                    {/* S9b: la franja de personas es ruido con una sola
-                                        cuenta (el mockup no la muestra); se conserva en el
-                                        DOM oculta para no romper contratos de testid. */}
-                                    {(canCompose || (accounts && accounts.length > 0)) && (
-                                        <div hidden={persons.length <= 1}>
-                                            <PersonChips
-                                                people={persons}
-                                                activeId={currentAccountId}
-                                                onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
-                                            />
-                                        </div>
-                                    )}
-                                    {canCompose && (
-                                        <details
-                                            className="rounded-xl border px-3 py-2"
-                                            data-testid="mesa-sheet-alias-row"
-                                        >
-                                            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                                                <span>Organizar pedido <span className="font-normal text-muted-foreground">(opcional)</span></span>
-                                                <span className="truncate text-xs font-normal text-muted-foreground">
-                                                    {aliasDraft.trim() || (sharedDraft ? 'Compartido' : 'Alias')}
-                                                </span>
-                                            </summary>
-                                            <div className="mt-2 space-y-2">
-                                                {/* La comanda normal no necesita alias ni reparto por persona. */}
-                                                <div className="flex items-center gap-1.5">
+                                    {/* Franja "Para {persona}" del prototipo: es la
+                                        identidad de la cuenta (nombre y Compartido se
+                                        editan acá; el alias viaja al enviar). */}
+                                    {canCompose && composerOpen && (
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
+                                            {personNameEdit ? (
+                                                <div className="flex w-full items-center gap-1.5">
                                                     <Input
-                                                        placeholder="Alias (opcional)"
+                                                        autoFocus
+                                                        className="h-9 min-w-0 flex-1"
+                                                        placeholder="Nombre"
                                                         value={aliasDraft}
                                                         onChange={(e) => setAliasDraft(e.target.value)}
-                                                        onBlur={() => { if (order) saveAlias(); }}
-                                                        onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
-                                                        data-testid="mesa-sheet-alias"
+                                                        onBlur={() => { setPersonNameEdit(false); saveAlias(); }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') { setPersonNameEdit(false); saveAlias(); }
+                                                            if (e.key === 'Escape') setPersonNameEdit(false);
+                                                        }}
+                                                        data-testid="mesa-sheet-persona-nombre"
                                                     />
                                                     <button
                                                         type="button"
@@ -1795,7 +1770,7 @@ export default function Salon() {
                                                         aria-pressed={sharedDraft}
                                                         title="Lo que pide la mesa entera"
                                                         data-testid="mesa-sheet-compartido"
-                                                        className={`flex h-11 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                                                        className={`flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
                                                             sharedDraft
                                                                 ? 'border-primary bg-primary text-primary-foreground'
                                                                 : 'border-border text-muted-foreground hover:border-primary'
@@ -1804,55 +1779,35 @@ export default function Salon() {
                                                         🍽️ Compartido
                                                     </button>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
-                                                    {persons.length > 0
-                                                        ? 'Escribí un alias o elegí una persona de la franja superior.'
-                                                        : 'Sin alias, el pedido queda como Persona 1.'}
-                                                </p>
-                                                {order && !isComposingDraft(order) && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={startAnotherPerson}
-                                                        data-testid="mesa-sheet-otra-persona"
-                                                        className="min-h-9 w-full rounded-lg border border-dashed border-border px-3 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
-                                                    >
-                                                        ＋ Pedido de otra persona
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </details>
-                                    )}
-                                    {/* Franja "Para {persona}" del prototipo: arriba de la
-                                        carta, con el ✎ que reusa el alias de la cuenta. */}
-                                    {canCompose && composerOpen && (
-                                        <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
-                                            <span className="min-w-0 truncate text-sm">
-                                                Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
-                                            </span>
-                                            {canTake && (personNameEdit ? (
-                                                <Input
-                                                    autoFocus
-                                                    className="h-9 w-36 shrink-0"
-                                                    placeholder="Nombre"
-                                                    value={aliasDraft}
-                                                    onChange={(e) => setAliasDraft(e.target.value)}
-                                                    onBlur={() => { setPersonNameEdit(false); saveAlias(); }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') { setPersonNameEdit(false); saveAlias(); }
-                                                        if (e.key === 'Escape') setPersonNameEdit(false);
-                                                    }}
-                                                    data-testid="mesa-sheet-persona-nombre"
-                                                />
                                             ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPersonNameEdit(true)}
-                                                    data-testid="mesa-sheet-persona-renombrar"
-                                                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
-                                                >
-                                                    ✎ Nombre
-                                                </button>
-                                            ))}
+                                                <>
+                                                    <span className="min-w-0 truncate text-sm">
+                                                        Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
+                                                    </span>
+                                                    {canTake && (
+                                                        <span className="flex shrink-0 items-center gap-1">
+                                                            {order && !isComposingDraft(order) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={startAnotherPerson}
+                                                                    data-testid="mesa-sheet-otra-persona"
+                                                                    className="flex h-9 items-center rounded-lg border border-dashed border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                                >
+                                                                    ＋ Persona
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPersonNameEdit(true)}
+                                                                data-testid="mesa-sheet-persona-renombrar"
+                                                                className="flex h-9 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                            >
+                                                                ✎ Nombre
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                     {/* La carta se queda montada al plegarse: así conserva
@@ -1888,11 +1843,15 @@ export default function Salon() {
                                         const kitchen = accountKitchenState(view.items || []);
                                         const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
                                         const cardKey = account.order_number ?? account.id;
+                                        // La cuenta activa conserva los testids base
+                                        // (`mesa-sheet-items`); las demás se namespacean
+                                        // para no duplicar localizadores.
+                                        const cardPrefix = isActive ? 'mesa-sheet' : `mesa-sheet-pedido-${cardKey}`;
                                         return (
                                             <article
                                                 key={account.id}
                                                 data-testid={`mesa-sheet-pedido-${cardKey}`}
-                                                onClick={() => { if (!isActive) { setReceiptOpen(false); setFlash(null); selectAccount(account.id); } }}
+                                                onClick={() => { if (!isActive) selectAccount(account.id); }}
                                                 className={`grid min-w-0 gap-2.5 rounded-xl border bg-card p-3.5 transition-colors ${isActive ? 'border-primary' : 'cursor-pointer hover:border-primary/50'}`}
                                             >
                                                 <header className="flex items-start justify-between gap-2.5">
@@ -1940,35 +1899,21 @@ export default function Salon() {
                                                         {kitchen.label}
                                                     </span>
                                                 </header>
-                                                {isActive ? (
-                                                    <>
-                                                        <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
-                                                            {view.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
-                                                        </p>
-                                                        <PersonOrderSummary
-                                                            items={view.items || []}
-                                                            orderStatus={view.status}
-                                                            canEdit={canCompose}
-                                                            saving={savingItem}
-                                                            onChangeQty={changeItemQty}
-                                                            onNotes={saveItemNotes}
-                                                            onApplyNote={applyItemNote}
-                                                            onVoid={voidProduct}
-                                                        />
-                                                    </>
-                                                ) : (
-                                                    <ul className="grid gap-1.5">
-                                                        {cardItems.map((it) => (
-                                                            <li key={it.id} className="flex justify-between gap-3 text-sm">
-                                                                <span className="min-w-0 break-words">
-                                                                    {it.quantity} × {it.product_name}
-                                                                    {it.notes && <em className="ml-1 text-xs font-bold not-italic text-[hsl(var(--warn))]">— {it.notes}</em>}
-                                                                </span>
-                                                                <strong className="shrink-0 font-mono tabular-nums">{fmtMoney(it.subtotal)}</strong>
-                                                            </li>
-                                                        ))}
-                                                        {cardItems.length === 0 && <li className="text-xs text-muted-foreground">Todavía no pidió nada.</li>}
-                                                    </ul>
+                                                {/* Tarjeta de LECTURA como el `.order` del
+                                                    mockup: la edición de borradores vive en el
+                                                    ticket del compositor. Del ítem enviado queda
+                                                    el ✕ discreto para anularlo. */}
+                                                <PersonOrderSummary
+                                                    items={view.items || []}
+                                                    orderStatus={view.status}
+                                                    mode="detail"
+                                                    testIdPrefix={cardPrefix}
+                                                    canEdit={isActive && canCompose}
+                                                    saving={savingItem}
+                                                    onVoid={voidProduct}
+                                                />
+                                                {cardItems.length === 0 && (
+                                                    <p className="text-xs text-muted-foreground">Todavía no pidió nada.</p>
                                                 )}
                                                 {view.notes && (
                                                     <p className="rounded-lg bg-[hsl(var(--warn)/0.12)] px-2 py-1.5 text-[13px] font-bold text-[hsl(var(--warn))]">
@@ -2002,9 +1947,6 @@ export default function Salon() {
                                         <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
                                             Cuenta de Mesa {accountTable.number}
                                         </p>
-                                    )}
-                                    {t.active_attention_id && order && (
-                                        <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalizala cuando el cobro y la entrega estén completos.</p>
                                     )}
                                     {group && (
                                         <div className="rounded-xl border p-3 space-y-2" data-testid="mesa-sheet-grupo">
@@ -2108,7 +2050,6 @@ export default function Salon() {
                                                 showSend={showSend}
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
-                                                onApplyNote={applyItemNote}
                                                 onVoid={voidProduct}
                                                 onSend={() => sendCurrentToKitchen()}
                                                 onClear={clearDraft}
@@ -2126,48 +2067,16 @@ export default function Salon() {
                                             <span className="text-muted-foreground">Pedidos</span>
                                             <strong data-testid="mesa-sheet-pedidos-count">{cards.length}</strong>
                                         </div>
-                                        {personAccounts.length > 1 && (
-                                            <TableSummary
-                                                rows={summaryRows}
-                                                accounts={personAccounts.length}
-                                                dishes={tableDishes}
-                                                total={tableTotal}
-                                                consumido={tableConsumido}
-                                                pagado={tablePagado}
-                                                pendiente={tablePendiente}
-                                                people={persons}
-                                                canEdit={canCompose && persons.length > 1}
-                                                onMoveItem={moveItemToPerson}
-                                                onOpenReceipt={() => setReceiptOpen(true)}
-                                            />
-                                        )}
-                                        {personAccounts.length === 1 && (
+                                        {/* Consumido/Pagado/Pendiente como el mockup; el
+                                            desglose por producto y el recibo viven en el
+                                            diálogo "Resumen de mesa" de ⋯ Más. */}
+                                        {personAccounts.length > 0 && (
                                             <AccountTotals
                                                 testIdPrefix="mesa-sheet"
                                                 consumido={tableConsumido}
                                                 pagado={tablePagado}
                                                 pendiente={tablePendiente}
                                             />
-                                        )}
-                                        {receiptOpen && (
-                                            <TableReceipt
-                                                table={t}
-                                                rows={summaryRows}
-                                                accounts={personAccounts.map((o, index) => {
-                                                    const detail = activeOrders[o.id] || o;
-                                                    return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
-                                                })}
-                                                total={tableTotal}
-                                                pending={pendingCount}
-                                            />
-                                        )}
-                                        {/* Contexto de la visita (atención/sucursal), el
-                                            único dato de la metadata vieja que se conserva:
-                                            una línea bajo el resumen, fuera de las tarjetas. */}
-                                        {actionOrder && (
-                                            <div className="text-xs text-muted-foreground" data-testid="mesa-sheet-atencion">
-                                                <AttentionReference order={actionOrder} branchNames={branchNames} />
-                                            </div>
                                         )}
                                         {moreActions.length > 0 && (
                                             <MoreActions
@@ -2299,7 +2208,6 @@ export default function Salon() {
                                                 showSend={showSend}
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
-                                                onApplyNote={applyItemNote}
                                                 onVoid={voidProduct}
                                                 onSend={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
                                                 onClear={clearDraft}
@@ -2310,6 +2218,49 @@ export default function Salon() {
                                     </div>
                                 )}
                             </section>
+
+                            {/* "Resumen de mesa" del prototipo es sólo Pedidos/
+                                Consumido/Pagado/Pendiente; el desglose por producto
+                                (con mover de persona) y el recibo viven acá,
+                                alcanzables desde ⋯ Más. */}
+                            <Dialog open={summaryOpen} onOpenChange={(open) => { setSummaryOpen(open); if (!open) setReceiptOpen(false); }}>
+                                <DialogContent className="sm:max-w-lg" data-testid="mesa-sheet-resumen-dialog">
+                                    <DialogHeader>
+                                        <DialogTitle className="font-display text-2xl">Resumen de mesa</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-3 max-h-[60dvh] overflow-y-auto pr-1" data-testid="mesa-sheet-resumen-contenido">
+                                        <TableSummary
+                                            rows={summaryRows}
+                                            accounts={personAccounts.length}
+                                            dishes={tableDishes}
+                                            total={tableTotal}
+                                            people={persons}
+                                            canEdit={canCompose && persons.length > 1}
+                                            showTotals={false}
+                                            onMoveItem={moveItemToPerson}
+                                            onOpenReceipt={() => setReceiptOpen(true)}
+                                        />
+                                        {receiptOpen && (
+                                            <TableReceipt
+                                                table={t}
+                                                rows={summaryRows}
+                                                accounts={personAccounts.map((o, index) => {
+                                                    const detail = activeOrders[o.id] || o;
+                                                    return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
+                                                })}
+                                                total={tableTotal}
+                                                pending={pendingCount}
+                                            />
+                                        )}
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => setSummaryOpen(false)} data-testid="mesa-sheet-resumen-cerrar">
+                                            Cerrar
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
+                            </>
                         );
                     })()}
 

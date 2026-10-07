@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { ChevronDown, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -66,13 +66,19 @@ export default function MoreActions({ testId, actions, label = 'Más opciones' }
         <div className="relative" ref={containerRef}>
             <Button
                 variant="ghost"
-                className="w-full h-11 text-muted-foreground"
+                className="w-full h-11 rounded-xl bg-secondary/60 px-3 text-sm font-medium text-muted-foreground hover:bg-secondary"
                 aria-haspopup="menu"
                 aria-expanded={open}
                 onClick={() => setOpen((value) => !value)}
                 data-testid={testId}
             >
-                <MoreHorizontal className="h-4 w-4 mr-1" /> {label}
+                <span className="flex w-full items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                        <MoreHorizontal className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{label}</span>
+                    </span>
+                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </span>
             </Button>
             {open && (
                 <div

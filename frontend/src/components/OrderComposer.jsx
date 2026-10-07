@@ -145,7 +145,7 @@ export default function OrderComposer({
     ].join(' ');
 
     return (
-        <div className="rounded-xl border" data-testid={`${testIdPrefix}-pedido`}>
+        <div className={showHeader ? 'rounded-xl border' : ''} data-testid={`${testIdPrefix}-pedido`}>
             {showHeader && (
             <div className="flex items-center justify-between gap-2 px-3 pt-3">
                 <span className="text-xs font-medium text-muted-foreground">{label}</span>
@@ -174,7 +174,7 @@ export default function OrderComposer({
                     <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                     <Input
                         className="pl-9"
-                        placeholder="Buscar plato"
+                        placeholder="Buscar plato o bebida…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         data-testid={`${testIdPrefix}-buscar-producto`}

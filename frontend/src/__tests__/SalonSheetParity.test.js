@@ -132,8 +132,9 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 2, 12, 'pendiente')], { customer_name: 'Juan', amount_paid: 12 });
         ({ container, root, sheet } = await openTableWith([juan]));
 
-        // El bloque plegable de resumen sigue siendo cosa de mesas con varias
-        // cuentas; el desglose de plata se ve siempre que la mesa tenga cuenta.
+        // S10b: el bloque plegable ya no vive en el cuerpo del detalle (no está
+        // en el mockup); el desglose de plata se ve siempre que la mesa tenga
+        // cuenta, y el agrupado se abre desde ⋯ Más como "Resumen de mesa".
         expect(sheet.querySelector('[data-testid="mesa-sheet-resumen"]')).toBeNull();
         const consumido = sheet.querySelector('[data-testid="mesa-sheet-consumido"]');
         const pagado = sheet.querySelector('[data-testid="mesa-sheet-pagado"]');
@@ -145,14 +146,12 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         expect(pendiente).not.toBeNull();
         expect(pendiente.textContent).toContain('12.00');
         // S7: con la vista del prototipo el desglose vive en el panel "Resumen"
-        // (columna sticky), no arriba de la franja de personas como en la hoja
-        // lateral anterior. La franja queda en la columna de pedidos.
+        // (columna sticky). S10: la franja de personas se fue (las cuentas se
+        // eligen por sus tarjetas).
         const summaryPanel = sheet.querySelector('[data-testid="mesa-sheet-resumen-panel"]');
         expect(summaryPanel).not.toBeNull();
         expect(summaryPanel.contains(consumido)).toBe(true);
-        const chips = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
-        expect(chips).not.toBeNull();
-        expect(summaryPanel.contains(chips)).toBe(false);
+        expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
     });
 
     it('S2-2 ofrece Cobrar con el pendiente de la cuenta activa y navega al pedido', async () => {
@@ -192,18 +191,20 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         });
 
-        // Mismo camino que el input de "Organizar pedido": PATCH del alias.
+        // Mismo camino que el alias de siempre: PATCH del alias.
         expect(api.patch).toHaveBeenCalledWith('/orders/order-2/alias', { alias: 'Pedro', shared: false });
-        // La franja refleja el nombre nuevo sin esperar a reabrir la hoja.
-        expect(sheet.querySelector('[data-testid="mesa-sheet-cuenta-12"]').textContent).toContain('Pedro');
+        // La tarjeta refleja el nombre nuevo sin esperar a reabrir la hoja.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido-12"]').textContent).toContain('Pedro');
     });
 
-    it('S2-3 mantiene el input de Organizar pedido junto al ✎', async () => {
+    it('S2-3 el ✎ de cada tarjeta convive con la franja de persona', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: null });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
-        expect(sheet.querySelector('[data-testid="mesa-sheet-alias"]')).not.toBeNull();
+        // S10: el input de "Organizar pedido" ya no existe; el alias se edita
+        // con el ✎ de la tarjeta o el ✎ Nombre de la franja (compositor).
+        expect(sheet.querySelector('[data-testid="mesa-sheet-alias"]')).toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-renombrar-11"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-renombrar-12"]')).not.toBeNull();
     });

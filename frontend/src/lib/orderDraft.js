@@ -14,20 +14,6 @@ import { fmtMoney } from './format';
 export const DRAFT = 'borrador';
 export const SHARED_ALIAS = 'Compartido';
 
-/**
- * Observaciones que el mozo repite todo el día. Un toque en vez de teclear, que
- * es donde se pierde el tiempo con el cliente delante.
- */
-export const QUICK_NOTES = [
-    'Sin ensalada',
-    'Sin cebolla',
-    'Sin ají',
-    'Poco picante',
-    'Término medio',
-    'Parte pierna',
-    'Parte pecho',
-];
-
 const CANCELLED = 'cancelado';
 const SENT = ['pendiente', 'en_preparacion', 'listo', 'entregado'];
 
