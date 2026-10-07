@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option. No open items.
+Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option + S7 table-detail presentation. No open items.
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -51,10 +51,14 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 ## Follow-ups (completed)
 - [x] S6 (2026-10-06): Prototype look as a theme option. New palette `restoflow` ("RestoFlow — Verde menta del prototipo · Sora + Manrope") added to the existing theme mechanism: `ThemeContext` themes list, selector in Configuración (4 options), new `public/themes/theme-restoflow.css` with light/dark HSL tokens, state colors, radius, shadows and `--font`/`--display` hooks; Google Fonts link now loads Manrope + Sora; `body`/`.font-display`/headings consume the pre-existing `--font`/`--display` vars (other three palettes unchanged); preview card added to `theme-preview.html`.
 
+- [x] S7 (2026-10-06): Table-selected experience rebuilt to the prototype presentation (user: "el modal es aburrido… debe ser como el html del prototipo"). The narrow right Sheet (`max-w-md`) is gone: selecting a table swaps the salón grid for the detail view — back control (`mesa-sheet-volver`, Escape also returns), desktop ≥820px two columns `minmax(0,1.4fr) minmax(280px,.65fr)` (orders left, sticky "Resumen" right), mobile single column with the action bar fixed above the bottom nav. Prototype-style order card per account (person + ✎, `#id · hora`, status tag, items with per-item notes, total, "✓ Entregado" `mesa-sheet-entregar-{n}` when ready), "Resumen" panel (Pedidos/Consumido/Pagado/Pendiente), "Más opciones" keeping every existing action, "+ Nuevo pedido" / "Cobrar S/ X" bar. Composer untouched; every e2e `data-testid` preserved (automated diff: 0 removed).
+
 ## Backlog (next slices)
 - Empty — all planned work delivered.
 
 ## Notes / deviations
+- S7: only the active account's items are editable in the detail (same mechanism as the person chips); the other account cards are read-only glances.
+- S7: per-card "✓ Entregado" (`mesa-sheet-entregar-{n}`) coexists with the bar's `mesa-sheet-entregar`; the `TableSummary` (2+ accounts) vs `AccountTotals` (1 account) split is preserved.
 - S5-2: all staff orders show "👤 Mozo" (llevar/recojo/delivery included); distinguishing QR-from-mostrador on staff orders needs a backend field (deferred).
 - S5-1: the red uses `text-destructive` including its dark-theme variant.
 - S6: dark `--destructive` keeps the system's `#dc2626` (button-fill contrast) instead of the prototype's `#f87171`; split a `--red` token later if the exact badge color is wanted.
@@ -106,6 +110,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - Follow-up test-first: badge RED (1 failing) then green **3/3**. Focused: **8 suites / 69 tests**; full frontend **57 suites / 355 tests**; Build compiled successfully; orchestrator re-ran `AppShellReadyBadge|AccountPaymentAudit`: **2 suites / 15 tests passed**.
 - S6 work-unit (this commit): new `frontend/public/themes/theme-restoflow.css`, new `frontend/src/__tests__/RestoflowTheme.test.js`; `frontend/src/contexts/ThemeContext.jsx`, `frontend/src/pages/Configuracion.jsx`, `frontend/src/index.css`, `frontend/public/index.html`, `frontend/public/theme-preview.html`, `frontend/src/__tests__/ThemeDarkMode.test.js`.
 - S6 test-first: 3 failures observed; focused `ThemeDarkMode|RestoflowTheme` -> **2 suites / 9 tests** (orchestrator re-ran: same); full frontend **58 suites / 358 tests**; Build compiled successfully (theme css copied and fonts link included).
+- S7 work-unit (this commit): `frontend/src/pages/Salon.jsx`; new `frontend/src/__tests__/SalonDetailView.test.js` (7 tests); presentation adjustments documented in `SalonSheetParity.test.js` and `SalonActiveOrderBar.test.js`.
+- S7 test-first: 5 failures observed before implementation; focused salón/sheet **14 suites / 91 tests**; full frontend **59 suites / 365 tests**; Build compiled (breakpoints verified in the compiled CSS); orchestrator re-ran `SalonDetailView|SalonSheetParity|SalonActiveOrderBar`: **3 suites / 16 tests passed**; testid diff 0 removed.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

@@ -94,7 +94,7 @@ describe('mini-reproductor del pedido activo', () => {
         expect(container.querySelector('[data-testid="salon-mini"]')).toBeNull();
 
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        await click(document.body.querySelector('[aria-label="Cerrar"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
 
         const mini = container.querySelector('[data-testid="salon-mini"]');
         expect(mini).not.toBeNull();
@@ -120,7 +120,7 @@ describe('mini-reproductor del pedido activo', () => {
 
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        await click(document.body.querySelector('[aria-label="Cerrar"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
 
         const accion = container.querySelector('[data-testid="salon-mini-accion"]');
         expect(accion.textContent).toBe('Servir');
@@ -158,3 +158,4 @@ describe('mini-reproductor del pedido activo', () => {
         expect(container.querySelector('[data-testid="mesa-card-2"]')).not.toBeNull();
     });
 });
+

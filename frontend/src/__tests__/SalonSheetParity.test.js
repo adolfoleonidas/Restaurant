@@ -144,10 +144,15 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         expect(pagado.textContent).toContain('12.00');
         expect(pendiente).not.toBeNull();
         expect(pendiente.textContent).toContain('12.00');
-        // Va arriba del cuerpo, antes de la franja de personas.
+        // S7: con la vista del prototipo el desglose vive en el panel "Resumen"
+        // (columna sticky), no arriba de la franja de personas como en la hoja
+        // lateral anterior. La franja queda en la columna de pedidos.
+        const summaryPanel = sheet.querySelector('[data-testid="mesa-sheet-resumen-panel"]');
+        expect(summaryPanel).not.toBeNull();
+        expect(summaryPanel.contains(consumido)).toBe(true);
         const chips = sheet.querySelector('[data-testid="mesa-sheet-cuentas"]');
         expect(chips).not.toBeNull();
-        expect(consumido.compareDocumentPosition(chips) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(summaryPanel.contains(chips)).toBe(false);
     });
 
     it('S2-2 ofrece Cobrar con el pendiente de la cuenta activa y navega al pedido', async () => {

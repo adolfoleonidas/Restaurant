@@ -4,16 +4,15 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import PersonChips from '@/components/PersonChips';
 import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown } from 'lucide-react';
+import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -187,6 +186,28 @@ function itemQty(items, predicate) {
 function accountDue(order) {
     return Math.max(0, Number(order?.total || 0) - Number(order?.amount_paid || 0));
 }
+
+/**
+ * Estado agregado de una cuenta para el tag de su tarjeta en el detalle:
+ * lo que reclama acción primero (listo > en cocina > por enviar > entregado),
+ * con los mismos tonos que los chips de estado del resumen de productos.
+ */
+function accountKitchenState(items = []) {
+    const visible = (items || []).filter((it) => it.status !== 'cancelado');
+    if (!visible.length) return { label: 'Sin platos', tone: 'draft' };
+    const pending = visible.filter((it) => (it.status || 'pendiente') !== 'entregado');
+    if (pending.some((it) => it.status === 'listo')) return { label: 'Listo', tone: 'ready' };
+    if (pending.some((it) => !['borrador', 'nuevo', ''].includes(it.status || ''))) return { label: 'En cocina', tone: 'kitchen' };
+    if (pending.length) return { label: 'Por enviar', tone: 'draft' };
+    return { label: 'Entregado', tone: 'done' };
+}
+
+const KITCHEN_TONE = {
+    ready: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    kitchen: 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-400',
+    draft: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+    done: 'border-border bg-secondary text-muted-foreground',
+};
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
 const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
@@ -1154,11 +1175,27 @@ export default function Salon() {
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
+    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Los diálogos
+    // y menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
+    useEffect(() => {
+        if (!openTable) return undefined;
+        const onKey = (event) => {
+            if (event.key !== 'Escape') return;
+            if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"]')) return;
+            setOpenTable(null);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [openTable]);
+
     return (
         <div
             className={`space-y-5 ${selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
             data-testid="salon-root"
         >
+            {/* La grilla vive debajo del detalle: se oculta (no se desmonta) para
+                que el polling y el estado del piso sigan intactos. */}
+            <div hidden={Boolean(openTable)} className="space-y-5">
             {/* Header + summary */}
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
@@ -1466,10 +1503,13 @@ export default function Salon() {
                 </details>
             )}
 
-            {/* Table detail sheet (secondary actions) */}
-            <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
-                <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" aria-describedby={undefined} data-testid="mesa-sheet">
-                    {openTable && (() => {
+            </div>
+
+            {/* Detalle de mesa: vista completa como el prototipo (reemplaza el
+                Sheet lateral). En ≥820px, pedidos a la izquierda y "Resumen"
+                sticky a la derecha; en móvil una columna con la barra de
+                acciones fija por encima de la navegación inferior. */}
+            {openTable && (() => {
                         const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
                         const group = openTable.group || t.group || null;
                         const members = group ? groupMembers(group, tables) : [];
@@ -1510,6 +1550,10 @@ export default function Salon() {
                                 draftCount: draftCount(detail.items || [], detail.status),
                             };
                         });
+                        // Tarjetas del detalle: todas las cuentas, incluida la que
+                        // se está armando (un borrador todavía no es una persona).
+                        const cards = [...allAccounts];
+                        if (order && !cards.some((o) => o.id === order.id)) cards.push(order);
                         const summaryRows = tableSummary(allAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
                             return { id: o.id, label: personLabel(detail, index), items: detail.items || [] };
@@ -1540,81 +1584,45 @@ export default function Salon() {
                         const closeable = canClose && canCloseAttention(t, actionOrder);
                         const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
                         return (
-                            <>
-                                {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
-                                <SheetTitle className="sr-only">Mesa {t.number}</SheetTitle>
-                                <div className="p-5 border-b" style={{ background: s.bg }}>
-                                    <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
-                                        <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
-                                    </div>
-                                    <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
-                                        <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
+                            <section
+                                data-testid="mesa-sheet"
+                                className={`space-y-4 ${hasAccount || canCompose || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
+                            >
+                                {/* Cabecera del detalle: volver a la grilla + estado. */}
+                                <div className="rounded-xl border p-4 sm:p-5" style={{ background: s.bg }}>
+                                    <div className="flex items-start gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={closeSheet}
+                                            aria-label="Volver al salón"
+                                            data-testid="mesa-sheet-volver"
+                                            className="grid h-11 w-11 shrink-0 place-items-center rounded-lg border bg-card/60 transition-colors hover:bg-card"
+                                            style={{ borderColor: s.border, color: s.fg }}
+                                        >
+                                            <ChevronLeft className="h-5 w-5" />
+                                        </button>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
+                                                <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
+                                            </div>
+                                            <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
+                                                <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
+                                            </div>
+                                        </div>
+                                        {t.active_order && loading && (
+                                            <span className="shrink-0 text-sm" style={{ color: s.fg, opacity: 0.8 }}>Cargando pedido…</span>
+                                        )}
                                     </div>
                                 </div>
-                                {/* "+ Pedido" arriba, donde el mozo ya está mirando: abre la
-                                    carta. La acción principal de cada momento (Enviar,
-                                    Entregar, Cuenta) vive abajo, en el pulgar. */}
-                                {canCompose && (
-                                    <div className="flex items-center justify-end gap-2 border-b px-5 py-2">
-                                        <Button
-                                            variant={composerOpen ? 'outline' : 'default'}
-                                            className="h-11"
-                                            onClick={() => setComposerOpen((open) => !open)}
-                                            aria-expanded={composerOpen}
-                                            data-testid="mesa-sheet-nuevo-pedido"
-                                        >
-                                            {composerOpen ? 'Ocultar carta' : '+ Pedido'}
-                                        </Button>
-                                    </div>
-                                )}
-                                <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                                    {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
-                                    {/* El resumen va arriba y plegado: el mozo lo lee de
-                                        reojo sin que le empuje la carta hacia abajo. */}
-                                    {/* El resumen sólo aparece cuando hay más de una cuenta:
-                                        ahí es donde sirve (organizar personas y ver el recibo).
-                                        Con una sola repetiría lo que ya dicen la lista y el pie,
-                                        y el modal tiene que ser simple. */}
-                                    {personAccounts.length > 1 && (
-                                    <TableSummary
-                                        rows={summaryRows}
-                                        accounts={personAccounts.length}
-                                        dishes={tableDishes}
-                                        total={tableTotal}
-                                        consumido={tableConsumido}
-                                        pagado={tablePagado}
-                                        pendiente={tablePendiente}
-                                        people={persons}
-                                        canEdit={canCompose && persons.length > 1}
-                                        onMoveItem={moveItemToPerson}
-                                        onOpenReceipt={() => setReceiptOpen(true)}
-                                    />
-                                    )}
-                                    {/* Con una sola cuenta no hay barra plegable (repetiría
-                                        la lista y el pie), pero el desglose de plata se ve
-                                        igual: es la lectura de la mesa del prototipo. */}
-                                    {personAccounts.length === 1 && (
-                                        <AccountTotals
-                                            testIdPrefix="mesa-sheet"
-                                            consumido={tableConsumido}
-                                            pagado={tablePagado}
-                                            pendiente={tablePendiente}
-                                        />
-                                    )}
-                                    {receiptOpen && (
-                                        <TableReceipt
-                                            table={t}
-                                            rows={summaryRows}
-                                            accounts={personAccounts.map((o, index) => {
-                                                const detail = activeOrders[o.id] || o;
-                                                return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
-                                            })}
-                                            total={tableTotal}
-                                            pending={pendingCount}
-                                        />
-                                    )}
+
+                                <div
+                                    data-testid="mesa-sheet-layout"
+                                    className="grid gap-4 min-[820px]:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.65fr)] min-[820px]:items-start"
+                                >
+                                    {/* Columna de pedidos */}
+                                    <div className="min-w-0 space-y-3">
                                     {flash && (
                                         <p
                                             className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-medium text-primary"
@@ -1705,34 +1713,100 @@ export default function Salon() {
                                             onSendToKitchen={sendCurrentToKitchen}
                                         />
                                     </div>
-                                    {order && (
-                                        <>
-                                            <div className="text-sm text-muted-foreground space-y-1">
-                                                <div>Pedido #{order.order_number} · {order.source === 'public' ? 'Carta web' : 'Salón'}</div>
-                                                <AttentionReference order={order} branchNames={branchNames} />
-                                                {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
-                                                <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
-                                            </div>
-                                            <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
-                                                {order.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
+                                    {/* Tarjetas por cuenta, como los `.order` del prototipo.
+                                        La cuenta activa conserva su lista editable; las demás
+                                        muestran los platos en modo lectura y al tocarlas pasan
+                                        a ser la cuenta activa. */}
+                                    {hasAccount ? cards.map((account, index) => {
+                                        const detail = activeOrders[account.id] || account;
+                                        const isActive = account.id === currentAccountId;
+                                        const view = isActive && order ? order : detail;
+                                        const draftAccount = isComposingDraft(view);
+                                        const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
+                                        const kitchen = accountKitchenState(view.items || []);
+                                        const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
+                                        return (
+                                            <article
+                                                key={account.id}
+                                                data-testid={`mesa-sheet-pedido-${account.order_number ?? account.id}`}
+                                                onClick={() => { if (!isActive) { setReceiptOpen(false); setFlash(null); selectAccount(account.id); } }}
+                                                className={`rounded-xl border bg-card p-3 space-y-2 transition-colors ${isActive ? 'border-primary/60 ring-1 ring-primary/20' : 'cursor-pointer hover:border-primary/40'}`}
+                                            >
+                                                <header className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <div className="truncate font-display text-lg font-semibold">
+                                                            {draftAccount ? 'Nuevo pedido' : personLabel(view, index)}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            #{view.order_number} · {fmtTime(view.created_at)}{view.shared ? ' · Compartido' : ''}
+                                                        </div>
+                                                    </div>
+                                                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-medium ${KITCHEN_TONE[kitchen.tone]}`}>
+                                                        {kitchen.label}
+                                                    </span>
+                                                </header>
+                                                {isActive ? (
+                                                    <>
+                                                        <div className="text-xs text-muted-foreground space-y-0.5">
+                                                            <div>Pedido #{view.order_number} · {view.source === 'public' ? 'Carta web' : 'Salón'}</div>
+                                                            <AttentionReference order={view} branchNames={branchNames} />
+                                                            {view.customer_name && <div>Cliente: <span className="text-foreground">{view.customer_name}</span></div>}
+                                                            <div>Hace {fmtElapsed(view.created_at)} · {ORDER_STATUS_LABELS[view.status] || view.status}</div>
+                                                        </div>
+                                                        <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
+                                                            {view.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
+                                                        </p>
+                                                        <PersonOrderSummary
+                                                            items={view.items || []}
+                                                            orderStatus={view.status}
+                                                            canEdit={canCompose}
+                                                            saving={savingItem}
+                                                            onChangeQty={changeItemQty}
+                                                            onNotes={saveItemNotes}
+                                                            onApplyNote={applyItemNote}
+                                                            onVoid={voidProduct}
+                                                        />
+                                                    </>
+                                                ) : (
+                                                    <ul className="divide-y text-sm">
+                                                        {cardItems.map((it) => (
+                                                            <li key={it.id} className="py-1">
+                                                                <div className="flex justify-between gap-2">
+                                                                    <span className="min-w-0 truncate">{it.quantity} × {it.product_name}</span>
+                                                                    <span className="shrink-0 font-mono text-xs text-muted-foreground">{fmtMoney(it.subtotal)}</span>
+                                                                </div>
+                                                                {it.notes && <div className="text-xs italic text-muted-foreground">{it.notes}</div>}
+                                                            </li>
+                                                        ))}
+                                                        {cardItems.length === 0 && <li className="py-1 text-xs text-muted-foreground">Todavía no pidió nada.</li>}
+                                                    </ul>
+                                                )}
+                                                {view.notes && <p className="text-sm text-primary dark:text-sky-300">📝 {view.notes}</p>}
+                                                <div className="flex items-center justify-between gap-2 border-t pt-2">
+                                                    <span className="font-display text-sm font-semibold">
+                                                        Total <span className="font-mono tabular-nums">{fmtMoney(cardTotal)}</span>
+                                                    </span>
+                                                    {kitchen.tone === 'ready' && canServe && (
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-9"
+                                                            onClick={(e) => { e.stopPropagation(); deliver(view.id); }}
+                                                            data-testid={`mesa-sheet-entregar-${view.order_number}`}
+                                                        >
+                                                            ✓ Entregado
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </article>
+                                        );
+                                    }) : (
+                                        <div className="rounded-xl border p-8 text-center space-y-1" data-testid="mesa-sheet-vacio">
+                                            <p className="font-display text-xl font-semibold">
+                                                {t.status === 'reservada' ? 'Mesa reservada' : 'Mesa libre'}
                                             </p>
-                                            <PersonOrderSummary
-                                                items={allItems}
-                                                orderStatus={order.status}
-                                                canEdit={canCompose}
-                                                saving={savingItem}
-                                                onChangeQty={changeItemQty}
-                                                onNotes={saveItemNotes}
-                                                onApplyNote={applyItemNote}
-                                                onVoid={voidProduct}
-                                            />
-                                            <div className="flex justify-between font-display text-lg font-bold">
-                                                <span>Total</span>
-                                                <span className="font-mono tabular-nums">{fmtMoney(order.total)}</span>
-                                            </div>
-                                        </>
+                                            <p className="text-sm text-muted-foreground">Toca «Nuevo pedido» para empezar.</p>
+                                        </div>
                                     )}
-                                    {!t.active_order && !canCompose && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
                                     {accountTable && order && (
                                         <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
                                             Cuenta de Mesa {accountTable.number}
@@ -1825,8 +1899,59 @@ export default function Salon() {
                                             </div>
                                         </div>
                                     )}
-                                </div>
-                                <div className="border-t p-4 space-y-2">
+                                    </div>
+
+                                    {/* Columna de resumen: sticky en escritorio; en móvil
+                                        la barra de acciones queda fija arriba de la nav. */}
+                                    <aside
+                                        data-testid="mesa-sheet-resumen-panel"
+                                        className="space-y-3 min-[820px]:sticky min-[820px]:top-4"
+                                    >
+                                        <p className="page-kicker">
+                                            Resumen · <span data-testid="mesa-sheet-pedidos-count">{cards.length}</span> {cards.length === 1 ? 'pedido' : 'pedidos'}
+                                        </p>
+                                        {personAccounts.length > 1 && (
+                                            <TableSummary
+                                                rows={summaryRows}
+                                                accounts={personAccounts.length}
+                                                dishes={tableDishes}
+                                                total={tableTotal}
+                                                consumido={tableConsumido}
+                                                pagado={tablePagado}
+                                                pendiente={tablePendiente}
+                                                people={persons}
+                                                canEdit={canCompose && persons.length > 1}
+                                                onMoveItem={moveItemToPerson}
+                                                onOpenReceipt={() => setReceiptOpen(true)}
+                                            />
+                                        )}
+                                        {personAccounts.length === 1 && (
+                                            <AccountTotals
+                                                testIdPrefix="mesa-sheet"
+                                                consumido={tableConsumido}
+                                                pagado={tablePagado}
+                                                pendiente={tablePendiente}
+                                            />
+                                        )}
+                                        {receiptOpen && (
+                                            <TableReceipt
+                                                table={t}
+                                                rows={summaryRows}
+                                                accounts={personAccounts.map((o, index) => {
+                                                    const detail = activeOrders[o.id] || o;
+                                                    return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
+                                                })}
+                                                total={tableTotal}
+                                                pending={pendingCount}
+                                            />
+                                        )}
+                                        {/* Una sola instancia de cada botón: en móvil esta
+                                            barra se fija abajo; en escritorio vive en el
+                                            resumen. Así no se duplican testids. */}
+                                        <div
+                                            data-testid="mesa-sheet-acciones"
+                                            className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 backdrop-blur min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3 min-[820px]:backdrop-blur-none"
+                                        >
                                     {/* La mesa no se "toma": la atención nace con el primer
                                         pedido, así que la carta es la acción y no hay botón
                                         que la reemplace. Los botones de tomar mesa que había
@@ -1835,6 +1960,16 @@ export default function Salon() {
                                         tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
                                         en el flujo de pago del pedido, que es quien exige el
                                         turno de caja abierto antes de registrar. */}
+                                    {canCompose && (
+                                        <Button
+                                            className="w-full h-12"
+                                            onClick={() => setComposerOpen((open) => !open)}
+                                            aria-expanded={composerOpen}
+                                            data-testid="mesa-sheet-nuevo-pedido"
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" /> {composerOpen ? 'Ocultar carta' : '+ Nuevo pedido'}
+                                        </Button>
+                                    )}
                                     {canCharge && actionDue > 0 && ((accountTable && order) || hasAccount) && (
                                         <Button
                                             className="w-full h-12"
@@ -1941,12 +2076,12 @@ export default function Salon() {
                                             Liberar mesa
                                         </Button>
                                     ) : null}
+                                        </div>
+                                    </aside>
                                 </div>
-                            </>
+                            </section>
                         );
                     })()}
-                </SheetContent>
-            </Sheet>
 
             {/* Nuevo pedido: un solo compositor para las cuatro áreas de venta */}
             <NewOrderSheet
