@@ -65,6 +65,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 
 - [x] S13 (2026-10-06): "Más opciones" became a compact ⋯ icon button in the detail header (right-aligned; desktop + mobile; hidden while composing). The action bar (mobile fixed + desktop aside) keeps EXACTLY two buttons: "+ Nuevo pedido" and "Cobrar S/ X". Moved into the ⋯ menu keeping testids/labels: Entregar, Finalizar mesa, Solicitar cuenta, Pedir para Mesa N, Liberar mesa. "Cuenta solicitada" is now a disabled notice in the summary (outside the action bar; e2e contract visible+disabled preserved). `mesa-sheet-mas` preserved on the new ⋯ trigger (e2e clicks it → `mesa-sheet-ver-pedido`).
 
+- [x] S14 (2026-10-06): "Enviar a cocina" + confirm step + useful mini (user request). Every send button in the taker says "Enviar a cocina": ticket keeps "Enviar a cocina · S/ X"; the floor mini action became "Enviar a cocina · N · S/ X". Sending (ticket, mobile sheet, or mini) now opens a **Confirm dialog** first ("Confirmar pedido"): lists only the drafts with steppers (reduce; 0 removes) reusing existing handlers, shows "Este envío S/ X", and offers "Agregar más" (back to the composer; from the mini, opens that account) + "Confirmar" (runs `sendCurrentToKitchen` → toast "Enviado a cocina · Mesa N"; disabled while sending). Bonus fix: `accountTally.drafts` now counts real drafts (`isDraft`), so the mini no longer offers a phantom "Enviar" on fully-sent accounts (shows En cocina / Servir / Agregar instead). New testids `mesa-sheet-confirmar-*`; `mesa-sheet-enviar-cocina`, `mesa-sheet-ticket-enviar-cocina`, `salon-mini*` preserved; e2e specs grep: 0 send/mini references.
+
 ## Backlog (next slices)
 - Empty — all planned work delivered.
 
@@ -136,6 +138,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S11 verification: full frontend **61 suites / 382 tests**, CI build compiled (SW artifact contains `skipWaiting` + `clientsClaim`; bundle contains `controllerchange`/`updateViaCache`); orchestrator re-ran `serviceWorker` (5/5); e2e specs grep — no references to the gated testids or the toast copy.
 - S12 work-unit (this commit): `OrderSummary.jsx`, `OrderTicket.jsx`, `lib/orderDraft.js`, `Salon.jsx`; test updates `SalonComposerProto`, `MesasPersonasPedido`; full frontend **61 suites / 384 tests**; CI build compiled; captures `s12-*` side-by-side; e2e `mesa-sheet-items` preserved (sent block + drafts).
 - S13 work-unit (this commit): `Salon.jsx`, `MoreActions.jsx`; `SalonDetailView.test.js` (+2); full frontend **61 suites / 386 tests**; CI build compiled; captures `s13-*` (desktop + mobile: ⋯ header + two-button bar, open menu); orchestrator re-ran `SalonDetailView` (9/9).
+- S14 work-unit (this commit): `Salon.jsx`; test updates `MesasPedidoInline`, `MesasPersonasPedido`, `SalonActiveOrderBar`, `SalonComposerProto` (+3 tests); full frontend **61 suites / 389 tests**; CI build compiled; captures `s14-*` (confirm dialog + mini label; 1440/390); orchestrator re-ran `MesasPersonasPedido|SalonComposerProto|SalonActiveOrderBar` (33 tests).
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

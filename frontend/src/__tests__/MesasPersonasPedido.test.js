@@ -142,6 +142,14 @@ describe('pedido por personas en el salón', () => {
         expect(button.textContent).toContain('S/ 38.00');
 
         await click(button);
+        // S14: el botón abre "Confirmar pedido"; recién ahí viaja el POST y sólo
+        // con los borradores (la línea ya enviada no se re-manda).
+        const dialogo = document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]');
+        expect(dialogo).not.toBeNull();
+        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i2"]')).not.toBeNull();
+        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i1"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
@@ -329,6 +337,8 @@ describe('pedido por personas en el salón', () => {
         const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(enviar).not.toBeNull();
         await click(enviar);
+        // S14: el paso de confirmación es ahora el que dispara el envío.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
 
         // Confirma el envío con el toast del mockup (S11: "Enviado a cocina ·
         // Mesa N"), no con el "¿Siguiente persona?" anterior.
