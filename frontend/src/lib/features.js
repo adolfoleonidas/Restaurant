@@ -28,6 +28,11 @@ export const FEATURE_DEFS = [
         label: 'Consultas al asistente',
         description: 'Responde preguntas como "¿qué pedidos faltan?" usando datos que ya podés ver.',
     },
+    {
+        key: 'item_void',
+        label: 'Cancelar productos individualmente',
+        description: 'Muestra el ✕ para anular productos enviados, ítem por ítem.',
+    },
 ];
 
 export const DEFAULT_FEATURES = FEATURE_DEFS.reduce(

@@ -16,6 +16,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
+import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { isDraft } from '@/lib/orderDraft';
 
 function itemOpen(it) {
@@ -28,6 +29,8 @@ export default function PedidoDetalle() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
+    // El ✕ de cancelar ítem por ítem es una flag apagada por defecto (Ajustes).
+    const features = useRestaurantFeatures();
 
     const { data: order, refetch } = usePolling(() => api.get(`/orders/${id}`).then((r) => r.data), 12000, [id, generation]);
     const { data: categories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
@@ -268,7 +271,7 @@ export default function PedidoDetalle() {
                             <div key={it.id} className="flex justify-between gap-3 text-sm">
                                 <span>{it.quantity}× {it.product_name} · {it.status === 'en_preparacion' ? 'en preparación' : 'pendiente'}</span>
                                 <span className="flex items-center gap-2 shrink-0">
-                                    {canEdit && it.status === 'pendiente' && (
+                                    {canEdit && features.item_void && it.status === 'pendiente' && (
                                         <button
                                             type="button"
                                             onClick={() => removeItem(it)}

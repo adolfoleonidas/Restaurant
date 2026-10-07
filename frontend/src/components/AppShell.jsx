@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
@@ -11,6 +11,7 @@ import { KitchenAlerts } from '@/components/KitchenAlerts';
 import { AssistantBar } from '@/components/AssistantBar';
 import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
+import useReadyDishes from '@/hooks/useReadyDishes';
 import {
     LayoutDashboard, Grid2X2, Receipt, ChefHat, Wallet, BarChart3,
     Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe, MoreHorizontal,
@@ -78,7 +79,23 @@ const RouteLoading = () => (
     </div>
 );
 
-const NavItems = ({ items, onNav }) => items.map((it) => (
+/**
+ * Contador del nav (platos listos): mismo lenguaje visual que las píldoras del
+ * salón y del pase. No se renderiza en 0.
+ */
+const ReadyBadge = ({ count = 0, testId, className = '' }) => {
+    if (!count) return null;
+    return (
+        <span
+            data-testid={testId}
+            className={`grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground ${className}`}
+        >
+            {count}
+        </span>
+    );
+};
+
+const NavItems = ({ items, onNav, readyCount = 0 }) => items.map((it) => (
     <NavLink
         key={`${it.to}-${it.label}`}
         to={it.to}
@@ -95,10 +112,12 @@ const NavItems = ({ items, onNav }) => items.map((it) => (
     >
         <it.icon className="h-[18px] w-[18px]" />
         <span>{it.label}</span>
+        {/* La métrica vive en Salón, como el #bReady del prototipo. */}
+        {it.to === '/salon' && <ReadyBadge count={readyCount} testId="nav-ready-badge" className="ml-auto" />}
     </NavLink>
 ));
 
-const SidebarContent = ({ user, onNav, restaurant }) => {
+const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
     const isOwner = user.role === 'admin' || hasFn(user, 'administracion');
     const items = navItemsFor(user);
     const main = items.filter((n) => n.group !== 'more');
@@ -109,11 +128,11 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
                 <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-                <NavItems items={main} onNav={onNav} />
+                <NavItems items={main} onNav={onNav} readyCount={readyCount} />
                 {more.length > 0 && (
                     <>
                         <div className="page-kicker px-3 pt-4 pb-1">Más</div>
-                        <NavItems items={more} onNav={onNav} />
+                        <NavItems items={more} onNav={onNav} readyCount={readyCount} />
                     </>
                 )}
                 {isOwner && (
@@ -148,7 +167,7 @@ const SidebarContent = ({ user, onNav, restaurant }) => {
  * un toque y, si el rol tiene más, "Más" abre la misma hoja lateral, así que no
  * se pierde ningún acceso.
  */
-const BottomNav = ({ items, showMore, onMore }) => (
+const BottomNav = ({ items, showMore, onMore, readyCount = 0 }) => (
     <nav
         className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-border bg-background/95 backdrop-blur md:hidden"
         aria-label="Navegación principal"
@@ -168,7 +187,18 @@ const BottomNav = ({ items, showMore, onMore }) => (
                     }`
                 }
             >
-                <it.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span className="relative">
+                    <it.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    {/* Mismo dato que el sidebar; testid propio para no duplicar
+                        localizadores estrictos entre las dos superficies. */}
+                    {it.to === '/salon' && (
+                        <ReadyBadge
+                            count={readyCount}
+                            testId="bottom-nav-ready-badge"
+                            className="absolute -right-2.5 -top-1.5"
+                        />
+                    )}
+                </span>
                 <span className="w-full truncate text-center leading-none">{it.label}</span>
             </NavLink>
         ))}
@@ -200,10 +230,13 @@ export const AppShell = () => {
     }, []);
     const [open, setOpen] = useState(false);
     const navigate = useNavigate();
+    const items = useMemo(() => (user ? navItemsFor(user) : []), [user]);
+    // El badge vive en Salón (como el #bReady del prototipo): se pollea sólo
+    // para quien tiene ese destino en su navegación.
+    const readyCount = useReadyDishes(items.some((n) => n.to === '/salon'));
 
     if (!user) return null;
 
-    const items = navItemsFor(user);
     const bottomItems = items.slice(0, BOTTOM_NAV_MAX);
     const hasMore = items.length > BOTTOM_NAV_MAX;
 
@@ -211,7 +244,7 @@ export const AppShell = () => {
         <NotifyProvider>
         <div className="min-h-dvh flex bg-background">
             <aside className="hidden md:flex w-64 shrink-0 border-r border-border">
-                <SidebarContent user={user} restaurant={restaurant} />
+                <SidebarContent user={user} restaurant={restaurant} readyCount={readyCount} />
             </aside>
 
             <div className="flex-1 flex flex-col min-w-0">
@@ -224,7 +257,7 @@ export const AppShell = () => {
                         </SheetTrigger>
                         <SheetContent side="left" className="p-0 w-[min(20rem,85vw)] border-border">
                             <SheetTitle className="sr-only">Navegación</SheetTitle>
-                            <SidebarContent user={user} restaurant={restaurant} onNav={() => setOpen(false)} />
+                            <SidebarContent user={user} restaurant={restaurant} onNav={() => setOpen(false)} readyCount={readyCount} />
                         </SheetContent>
                     </Sheet>
 
@@ -273,7 +306,7 @@ export const AppShell = () => {
                 </main>
             </div>
 
-            <BottomNav items={bottomItems} showMore={hasMore} onMore={() => setOpen(true)} />
+            <BottomNav items={bottomItems} showMore={hasMore} onMore={() => setOpen(true)} readyCount={readyCount} />
 
             {/* En móvil la barra inferior tapa los avisos si quedan pegados al
                 borde, así que se levantan por encima de ella. */}

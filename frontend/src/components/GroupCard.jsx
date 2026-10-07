@@ -21,6 +21,12 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
     const { floor, anchor, accounts, amount, elapsed, minutes, urgency, isLate, members } = unit;
     const s = FLOOR_STYLE[floor.key];
     const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
+    // Capacidad del grupo: la suma de sus mesas, y solo cuando todas la
+    // informan. Una mesa sin capacidad no se inventa: la línea no aparece.
+    const memberSeats = members.map((m) => Number(m.table.capacity ?? m.table.seats ?? 0) || 0);
+    const seats = memberSeats.length > 0 && memberSeats.every((n) => n > 0)
+        ? memberSeats.reduce((sum, n) => sum + n, 0)
+        : null;
 
     const cobrable = canCharge ? members.filter((m) => m.floor.key === 'cuenta' && m.serviceOrder) : [];
     const entregable = canServe ? members.filter((m) => m.floor.key === 'listo' && m.serviceOrder) : [];
@@ -78,6 +84,11 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                         </span>
                     )}
                 </div>
+                {seats != null && (
+                    <div className="text-xs text-muted-foreground" data-testid="mesa-grupo-asientos">
+                        {seats} asientos
+                    </div>
+                )}
                 {minutes > 0 && !['libre', 'pagada', 'inactiva'].includes(floor.key) && (
                     <div className={`flex items-center gap-1 text-xs ${urgency ? '' : 'opacity-75'}`}>
                         <Clock className="h-3 w-3" />

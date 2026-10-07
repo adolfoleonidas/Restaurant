@@ -9,23 +9,10 @@
  * Todo lo que sea agrupar, contar o etiquetar vive acá y no en el JSX, para que
  * la pantalla y los tests compartan exactamente la misma regla.
  */
+import { fmtMoney } from './format';
 
 export const DRAFT = 'borrador';
 export const SHARED_ALIAS = 'Compartido';
-
-/**
- * Observaciones que el mozo repite todo el día. Un toque en vez de teclear, que
- * es donde se pierde el tiempo con el cliente delante.
- */
-export const QUICK_NOTES = [
-    'Sin ensalada',
-    'Sin cebolla',
-    'Sin ají',
-    'Poco picante',
-    'Término medio',
-    'Parte pierna',
-    'Parte pecho',
-];
 
 const CANCELLED = 'cancelado';
 const SENT = ['pendiente', 'en_preparacion', 'listo', 'entregado'];
@@ -67,17 +54,21 @@ export function itemsTotal(items = []) {
 }
 
 /**
- * Etiqueta del botón de envío. En el primer envío manda toda la comanda; después
- * sólo los adicionales, y el número dice cuántos son.
+ * Etiqueta del botón de envío. El mockup del tomador siempre dice
+ * "Enviar a cocina · S/ X", tanto en el primer envío como en los adicionales;
+ * el monto sale de `itemsTotal` (la cuenta entera en el primer envío, sólo el
+ * borrador en los adicionales). `kind` y `count` se conservan para la lógica.
  */
 export function sendAction(items = [], order = null) {
     const status = order?.status;
-    const drafts = draftCount(items, status);
+    const drafts = editableItems(items, status);
     if (!order || status === 'nuevo') {
-        return { kind: 'first', count: drafts, label: '✈ Enviar a cocina' };
+        const amount = itemsTotal(items);
+        return { kind: 'first', count: drafts.length, amount, label: `Enviar a cocina · ${fmtMoney(amount)}` };
     }
-    if (drafts > 0) {
-        return { kind: 'extra', count: drafts, label: `✈ Enviar adicionales (${drafts})` };
+    if (drafts.length > 0) {
+        const amount = itemsTotal(drafts);
+        return { kind: 'extra', count: drafts.length, amount, label: `Enviar a cocina · ${fmtMoney(amount)}` };
     }
     return null;
 }

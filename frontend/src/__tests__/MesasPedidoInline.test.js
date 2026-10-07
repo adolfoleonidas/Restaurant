@@ -123,7 +123,9 @@ describe('pedido inline en el salón', () => {
         ));
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        // La mesa ya tiene visita: la cuenta siguiente se pide como tal.
+        // La mesa ya tiene visita: la cuenta siguiente se pide como tal desde
+        // ⋯ Más (S10: la fila de personas se fue).
+        await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
 
@@ -168,8 +170,9 @@ describe('pedido inline en el salón', () => {
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
-        await click(document.body.querySelector('[data-testid="mesa-sheet-alias-row"] summary'));
-        const input = document.body.querySelector('[data-testid="mesa-sheet-alias"]');
+        // S10: el alias se edita desde el ✎ de la franja "Para {persona}".
+        await click(document.body.querySelector('[data-testid="mesa-sheet-persona-renombrar"]'));
+        const input = document.body.querySelector('[data-testid="mesa-sheet-persona-nombre"]');
         expect(input).not.toBeNull();
         // No hay botón de guardar: el alias viaja con la comanda.
         expect(document.body.querySelector('[data-testid="mesa-sheet-alias-guardar"]')).toBeNull();
@@ -194,8 +197,7 @@ describe('pedido inline en el salón', () => {
         });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        // Abrir la mesa no elige persona: se entra a la cuenta tocándola.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-cuenta-11"]'));
+        // S10: sin franja de personas, la cuenta de la mesa ya es la activa.
 
         const badge = document.body.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-1"]');
         expect(badge).not.toBeNull();
@@ -217,9 +219,12 @@ describe('pedido inline en el salón', () => {
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
+        // S10b: el detalle agrupado se abre como "Resumen de mesa / Recibo" desde
+        // ⋯ Más; el cuerpo del detalle ya no muestra el bloque plegable.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-ver-resumen"]'));
         const summary = document.body.querySelector('[data-testid="mesa-sheet-resumen"]');
         expect(summary).not.toBeNull();
-        // La barra del recibo ya trae el total; el detalle agrupado se despliega.
         expect(summary.textContent).toContain('134.00');
         await click(document.body.querySelector('[data-testid="mesa-sheet-resumen-toggle"]'));
         expect(summary.textContent).toContain('3× Ceviche');

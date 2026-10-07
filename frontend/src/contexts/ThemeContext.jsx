@@ -5,6 +5,7 @@ const themes = [
   { id: 'fresco', name: 'Fresco', description: 'Azul/Blanco - Profesional y limpio' },
   { id: 'restaurante', name: 'Restaurante', description: 'Verde moderno - Estilo restaurante' },
   { id: 'calido', name: 'Cálido', description: 'Naranja/Marrón - Acogedor tradicional' },
+  { id: 'restoflow', name: 'RestoFlow', description: 'Verde menta del prototipo - Sora + Manrope' },
 ];
 
 // Carga bajo demanda la hoja del tema activo. Vive fuera del componente para

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RestoFlow — Rescate de caché</title>
+<style>
+body{font-family:system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f3f5f4;color:#10201a}
+main{max-width:420px;padding:24px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>RestoFlow</h1>
+<p id="msg">Limpiando la copia vieja de la app…</p>
+</main>
+<script>
+(async () => {
+  const msg = document.getElementById('msg');
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+    msg.textContent = 'Listo. Abriendo la versión nueva…';
+  } catch (e) {
+    msg.textContent = 'Listo (con avisos). Abriendo la versión nueva…';
+  }
+  setTimeout(() => { window.location.replace('/'); }, 600);
+})();
+</script>
+</body>
+</html>

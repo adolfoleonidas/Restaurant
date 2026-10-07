@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
-import { fmtMoney, fmtTime, fmtDateTime, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, Printer, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -683,6 +683,34 @@ function MovementCard({ register, onAdded, runMutation }) {
     );
 }
 
+/**
+ * KPIs del día (prototipo `cashView`).
+ *
+ * Son de lectura: ventas y cobros salen de los pagos de hoy (la misma fuente
+ * que el historial de pagos) y "Por cobrar" de las cuentas activas que la
+ * página ya tiene cargadas. No disparan ninguna operación.
+ */
+function CajaKpis({ ventas, cobros, porCobrar }) {
+    const rows = [
+        { key: 'ventas', label: 'Ventas de hoy', value: fmtMoney(ventas), testId: 'caja-kpi-ventas' },
+        { key: 'cobros', label: 'Cuentas cobradas', value: String(cobros), testId: 'caja-kpi-cobros' },
+        { key: 'promedio', label: 'Ticket promedio', value: fmtMoney(cobros > 0 ? ventas / cobros : 0), testId: 'caja-kpi-promedio' },
+        { key: 'por-cobrar', label: 'Por cobrar', value: fmtMoney(porCobrar), testId: 'caja-kpi-por-cobrar' },
+    ];
+    return (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="caja-kpis">
+            {rows.map((row) => (
+                <Card key={row.key}>
+                    <CardContent className="p-3">
+                        <div className="text-xs text-muted-foreground">{row.label}</div>
+                        <div className="font-display text-xl font-semibold tabular-nums" data-testid={row.testId}>{row.value}</div>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    );
+}
+
 function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams = {}, selectedBranchId = null, branches = [], canOpen = true, runMutation, onCollectionChange }) {
     const [params] = useSearchParams();
     const [pendingOrder, setPendingOrder] = useState(null);
@@ -709,6 +737,13 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
         [generation, contextKey]
     );
     const { data: tables } = usePolling(() => scopedGet('/tables').then((r) => r.data), 20000, [generation, contextKey]);
+    // Pagos de hoy: la misma fuente que el historial (`/payments?period=day`),
+    // sólo para los KPIs. El cobro anulado/devuelto no cuenta como venta.
+    const { data: dayPayments } = usePolling(
+        () => scopedGet('/payments', { period: 'day', limit: 200 }).then((r) => r.data),
+        12000,
+        [generation, contextKey]
+    );
 
     const selectOrder = useCallback((order) => {
         setPendingOrder(order);
@@ -741,6 +776,18 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
     const requestedBills = useMemo(() => cobrables.filter((o) => o.payment_requested || o.status === 'pendiente_pago'), [cobrables]);
     const otherBills = useMemo(() => cobrables.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago')), [cobrables]);
+
+    // KPIs del día: ventas/cobros de los pagos de hoy y saldo de las cuentas
+    // abiertas que la página ya lista. Un pago anulado o devuelto no es venta.
+    const todayPayments = useMemo(
+        () => (Array.isArray(dayPayments) ? dayPayments : []).filter((p) => (p.status || 'completed') === 'completed'),
+        [dayPayments]
+    );
+    const daySales = todayPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const openDue = cobrables.reduce(
+        (sum, o) => sum + Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0)),
+        0
+    );
 
     const matchQ = (o) => {
         const q = query.trim().toLowerCase();
@@ -785,6 +832,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
             <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+            <CajaKpis ventas={daySales} cobros={todayPayments.length} porCobrar={openDue} />
                 {ownerContext && scopeParams.legacy_only ? (
                     <p className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">No hay una caja histórica abierta</p>
                 ) : <OpenCajaCard onOpened={refetchReg} branchId={selectedBranchId} canOpen={canOpen} runMutation={runMutation} />}
@@ -828,6 +876,8 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                 </div>
             </div>
 
+            <CajaKpis ventas={daySales} cobros={todayPayments.length} porCobrar={openDue} />
+
             <Card><CardContent className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <div><div className="text-xs text-muted-foreground">Monto inicial</div><div className="font-display text-xl font-semibold tabular-nums">{fmtMoney(register.opening_amount)}</div></div>
                 <div><div className="text-xs text-muted-foreground">Caja</div><StateBadge status={register.status === 'open' ? 'disponible' : 'inactiva'} type="table" /></div>
@@ -863,10 +913,13 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
+                                    <Button asChild size="sm" variant="outline" className="mt-1 h-11">
+                                        <Link to={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</Link>
+                                    </Button>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>
@@ -888,10 +941,13 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
+                                    <Button asChild size="sm" variant="outline" className="mt-1 h-11">
+                                        <Link to={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</Link>
+                                    </Button>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
                                 </div>

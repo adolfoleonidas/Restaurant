@@ -16,7 +16,7 @@ import {
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-function Temas() {
+export function Temas() {
     const { theme, setTheme, clearThemeOverride, themes } = useTheme();
     const [restaurant, setRestaurant] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -63,7 +63,8 @@ function Temas() {
                     </Button>
                 )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Cuatro paletas: 2×2 en tablet, una fila en escritorio. */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {themes.map((t) => (
                     <button
                         key={t.id}

@@ -12,7 +12,10 @@ const register = { id: 'register-1', status: 'open', opening_amount: 100, expect
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
 jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
-jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams()] }));
+jest.mock('react-router-dom', () => ({
+    Link: ({ children, to, ...p }) => <a href={to} {...p}>{children}</a>,
+    useSearchParams: () => [new URLSearchParams()],
+}));
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {

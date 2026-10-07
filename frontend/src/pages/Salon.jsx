@@ -4,16 +4,15 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
-import PersonChips from '@/components/PersonChips';
-import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
+import OrderTicket from '@/components/OrderTicket';
+import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
-import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
+import { Search, Grid2X2, Plus, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft, Pencil } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -29,6 +28,7 @@ import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
 import GroupCard from '@/components/GroupCard';
 import useBranchNames from '@/hooks/useBranchNames';
+import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
@@ -79,6 +79,66 @@ const STATE_FILTER_FLOORS = {
     cuenta: ['cuenta'],
 };
 
+/**
+ * Orden del piso: "Número" es el de siempre (fijo por mesa de ancla, el piso no
+ * se rebaraja solo) y "Prioridad" es el del prototipo (lo que reclama acción
+ * primero). La preferencia se recuerda por usuario en localStorage, la misma
+ * convención que el alcance de sucursal: la elección de un dispositivo no
+ * cambia la del otro y el navegador puede negarse (modo privado).
+ */
+const SORT_STORAGE_PREFIX = 'salon-orden';
+const SORT_NUMERO = 'numero';
+const SORT_PRIORIDAD = 'prioridad';
+
+function sortStorageKey(userId) {
+    return `${SORT_STORAGE_PREFIX}:${userId || 'anon'}`;
+}
+
+function readSortMode(userId) {
+    try {
+        return window.localStorage.getItem(sortStorageKey(userId)) === SORT_PRIORIDAD
+            ? SORT_PRIORIDAD
+            : SORT_NUMERO;
+    } catch {
+        return SORT_NUMERO;
+    }
+}
+
+function rememberSortMode(userId, mode) {
+    try {
+        window.localStorage.setItem(sortStorageKey(userId), mode);
+    } catch {
+        /* sin memoria: el orden vale solo para esta sesión */
+    }
+}
+
+// Puntaje de prioridad del prototipo: el estado pesa más que la espera.
+// "Ocupada" agrupa los estados intermedios de una visita en curso.
+const FLOOR_PRIORITY = {
+    listo: 5000,
+    cuenta: 4000,
+    sentados: 3000,
+    preparando: 3000,
+    entregado: 3000,
+    atencion: 3000,
+    reservada: 1000,
+};
+
+function priorityScore(unit) {
+    return (FLOOR_PRIORITY[unit.floor.key] || 0) + elapsedMinutes(unit.createdAt);
+}
+
+/** Zona de una unidad: la del ancla; con filtro activo, la del miembro que coincide. */
+function unitZone(unit, activeArea) {
+    const entries = unit.type === 'group' ? unit.members : [unit.entry];
+    if (activeArea !== 'todas') {
+        const hit = entries.find((e) => e.table.area === activeArea);
+        if (hit) return hit.table.area;
+    }
+    const anchor = unit.type === 'group' ? unit.anchor : unit.entry;
+    return anchor.table.area || 'Sin zona';
+}
+
 function floorState(t) {
     const o = t.active_order;
     if (t.status === 'inactiva') return { key: 'inactiva' };
@@ -118,6 +178,37 @@ function groupFloorState(members) {
 function itemQty(items, predicate) {
     return (items || []).filter(predicate).reduce((s, it) => s + (it.quantity || 0), 0);
 }
+
+/**
+ * Saldo de una cuenta: la misma fuente que la tarjeta muestra como "Debe S/ X"
+ * (total menos lo ya pagado), sin volver a sumar los platos. La usan el piso,
+ * el resumen de la hoja y el botón de cobro para que digan siempre lo mismo.
+ */
+function accountDue(order) {
+    return Math.max(0, Number(order?.total || 0) - Number(order?.amount_paid || 0));
+}
+
+/**
+ * Estado agregado de una cuenta para el tag de su tarjeta en el detalle:
+ * lo que reclama acción primero (listo > en cocina > por enviar > entregado),
+ * con los mismos tonos que los chips de estado del resumen de productos.
+ */
+function accountKitchenState(items = []) {
+    const visible = (items || []).filter((it) => it.status !== 'cancelado');
+    if (!visible.length) return { label: 'Sin platos', tone: 'draft' };
+    const pending = visible.filter((it) => (it.status || 'pendiente') !== 'entregado');
+    if (pending.some((it) => it.status === 'listo')) return { label: 'Listo', tone: 'ready' };
+    if (pending.some((it) => !['borrador', 'nuevo', ''].includes(it.status || ''))) return { label: 'En cocina', tone: 'kitchen' };
+    if (pending.length) return { label: 'Por enviar', tone: 'draft' };
+    return { label: 'Entregado', tone: 'done' };
+}
+
+const KITCHEN_TONE = {
+    ready: 'bg-[hsl(var(--warn))] text-[hsl(var(--background))]',
+    kitchen: 'bg-[hsl(var(--chart-2))] text-[hsl(var(--background))]',
+    draft: 'bg-secondary text-muted-foreground',
+    done: 'bg-[hsl(var(--green))] text-[hsl(var(--background))]',
+};
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
 const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
@@ -175,10 +266,15 @@ export default function Salon() {
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const navigate = useNavigate();
     const { generation } = useNotify();
+    // Módulos del local (Ajustes). `item_void` apagada por defecto: el ✕ para
+    // anular productos enviados solo aparece con la flag activa.
+    const features = useRestaurantFeatures();
+    const canVoidItems = Boolean(features.item_void);
 
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
     const [stateFilter, setStateFilter] = useState('todas');
+    const [sortMode, setSortMode] = useState(() => readSortMode(user?.id));
     const [openTable, setOpenTable] = useState(null);
     const [showNewOrder, setShowNewOrder] = useState(false);
     const [closing, setClosing] = useState(null);
@@ -189,17 +285,29 @@ export default function Salon() {
     const [movingVisit, setMovingVisit] = useState(false);
     const [moveAccountId, setMoveAccountId] = useState(null);
     const [savingItem, setSavingItem] = useState(false);
+    // Bloquea el doble envío mientras el POST está en vuelo (el ticket se
+    // desmonta al volver al detalle, pero un doble toque no debe repetir).
+    const [sendingToKitchen, setSendingToKitchen] = useState(false);
     const [aliasDraft, setAliasDraft] = useState('');
-    // Mensaje de confirmación tras enviar: "✓ Pedido de Juan enviado.
-    // ¿Siguiente persona?" — la pantalla queda limpia para la siguiente.
-    const [flash, setFlash] = useState(null);
     // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
     const [sharedDraft, setSharedDraft] = useState(false);
     const [receiptOpen, setReceiptOpen] = useState(false);
+    // El bloque "Resumen de mesa" (filas agrupadas + mover de persona + recibo)
+    // vive en un diálogo que se abre desde ⋯ Más: el mockup no lo muestra en el
+    // cuerpo del detalle.
+    const [summaryOpen, setSummaryOpen] = useState(false);
     // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
     const [composerOpen, setComposerOpen] = useState(false);
+    // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
+    // persona, al estilo posView del prototipo.
+    const [ticketOpen, setTicketOpen] = useState(false);
+    const [personNameEdit, setPersonNameEdit] = useState(false);
+    // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
+    // editor que antes vivía en la franja de personas).
+    const [cardRenameId, setCardRenameId] = useState(null);
+    const [cardRenameDraft, setCardRenameDraft] = useState('');
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
@@ -315,9 +423,17 @@ export default function Salon() {
         10000,
         [openOrderId]
     );
-    const sheetOrder = openTable?.order && liveOrderData && liveOrderData.id === openTable.order.id
-        ? liveOrderData
-        : (openTable?.order || null);
+    // La hoja muestra el snapshot más fresco: el polling vivo puede ser anterior
+    // a una recarga puntual (alta de producto, alias), y con la versión vieja la
+    // línea recién agregada no aparecía hasta el próximo refresco.
+    const sheetOrder = (() => {
+        const open = openTable?.order || null;
+        if (!open) return null;
+        if (!liveOrderData || liveOrderData.id !== open.id) return open;
+        return String(liveOrderData.updated_at || '') >= String(open.updated_at || '')
+            ? liveOrderData
+            : open;
+    })();
 
     // ── Summary (former Servicio header) ───────────────────────────────────
     const summary = useMemo(() => {
@@ -328,7 +444,7 @@ export default function Salon() {
             const items = o.items || [];
             toPrep += itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
             toReady += itemQty(items, (it) => it.status === 'listo');
-            const due = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
+            const due = accountDue(o);
             if (due > 0) toPay += 1;
         }
         return { toPrep, toReady, toPay };
@@ -369,7 +485,7 @@ export default function Salon() {
             const ready = itemQty(items, (it) => it.status === 'listo');
             const pendingPrep = itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
             const due = serviceOrder && serviceOrder.status !== 'cancelado'
-                ? Math.max(0, Number(serviceOrder.total || 0) - Number(serviceOrder.amount_paid || 0))
+                ? accountDue(serviceOrder)
                 : 0;
             const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
             const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
@@ -426,10 +542,14 @@ export default function Salon() {
                 elapsed: maxCreated ? fmtElapsed(maxCreated) : null, minutes, urgency,
                 isLate: floor.key === 'cuenta' && urgency === 'bad',
                 anchorNumber: Number(anchor.table.number),
+                createdAt: maxCreated,
             };
         });
         return [
-            ...singles.map((entry) => ({ type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number) })),
+            ...singles.map((entry) => ({
+                type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number),
+                createdAt: entry.displayOrder?.created_at || entry.serviceOrder?.created_at || null,
+            })),
             ...groupUnits,
         ];
     }, [decorated, tables, activeOrders]);
@@ -458,11 +578,43 @@ export default function Salon() {
             if (search && !entries.some((e) => `${e.table.number} ${e.table.name}`.toLowerCase().includes(search.toLowerCase()))) return false;
             return true;
         });
-        // Fixed order by anchor number: the floor must not reshuffle on every
-        // state change (it disorients the waiter mid-service). Urgency is shown
-        // by colour, the state filters and the summary bar instead.
-        return list.slice().sort((a, b) => a.anchorNumber - b.anchorNumber);
-    }, [units, areaFilter, stateFilter, search]);
+        // Fixed order by anchor number keeps the floor stable on every state
+        // change (it disorients the waiter mid-service). Priority is an explicit
+        // choice: it puts what claims action first and breaks ties by anchor
+        // number, so two cards with the same state still have a stable order.
+        return list.slice().sort(sortMode === SORT_PRIORIDAD
+            ? (a, b) => (priorityScore(b) - priorityScore(a)) || (a.anchorNumber - b.anchorNumber)
+            : (a, b) => a.anchorNumber - b.anchorNumber);
+    }, [units, areaFilter, stateFilter, search, sortMode]);
+
+    const toggleSortMode = () => {
+        const next = sortMode === SORT_PRIORIDAD ? SORT_NUMERO : SORT_PRIORIDAD;
+        setSortMode(next);
+        rememberSortMode(user?.id, next);
+    };
+
+    // Consumo del piso: saldos pendientes de todas las unidades (el grupo suma
+    // las cuentas de sus mesas). No depende de los filtros: es el total del
+    // salón, como el "S/ X en mesas" del prototipo.
+    const floorDue = useMemo(() => units.reduce((sum, unit) => (
+        sum + (unit.type === 'group'
+            ? unit.members.reduce((s, m) => s + (m.due || 0), 0)
+            : (unit.entry.due || 0))
+    ), 0), [units]);
+
+    // Piso por zonas: una sección por zona con mesas visibles, en el orden en
+    // que la zona aparece en el piso. Sin mesas, la sección no existe.
+    const zoneSections = useMemo(() => {
+        const buckets = new Map();
+        for (const unit of filteredUnits) {
+            const area = unitZone(unit, areaFilter);
+            if (!buckets.has(area)) buckets.set(area, []);
+            buckets.get(area).push(unit);
+        }
+        const known = areas.filter((a) => a !== 'todas' && buckets.has(a));
+        const extra = [...buckets.keys()].filter((a) => !known.includes(a));
+        return [...known, ...extra].map((area) => ({ area, units: buckets.get(area) }));
+    }, [filteredUnits, areas, areaFilter]);
 
     // ── Actions ────────────────────────────────────────────────────────────
     const openSheet = async (t, preferredOrderId = null) => {
@@ -496,7 +648,13 @@ export default function Salon() {
         } catch { /* historial opcional */ }
     };
 
-    const closeSheet = () => setOpenTable(null);
+    const closeSheet = () => {
+        setOpenTable(null);
+        setTicketOpen(false);
+        setPersonNameEdit(false);
+        setSummaryOpen(false);
+        setReceiptOpen(false);
+    };
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
@@ -596,12 +754,27 @@ export default function Salon() {
     const addProductToAccount = async (product) => {
         if (!canTake || savingItem) return;
         setSavingItem(true);
-        // Arrancó el pedido siguiente: el aviso del envío anterior ya cumplió.
-        setFlash(null);
         try {
             const orderId = await ensureAccount();
             if (!orderId) return;
-            await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            // Como el mockup: si ya hay una línea EN BORRADOR de este producto
+            // (sin nota) en la cuenta activa, la unidad se suma ahí en vez de
+            // abrir otra línea. Se lee `openTable.order` (recién recargado tras
+            // cada alta) y no `sheetOrder`, que puede venir del polling anterior.
+            // Lo ya enviado no se toca: va como línea nueva.
+            const current = openTable?.order || sheetOrder;
+            const existing = (current?.items || []).find((it) => (
+                it.product_id === product.id
+                && isDraft(it, current?.status)
+                && !String(it.notes || '').trim()
+            ));
+            if (existing) {
+                await api.patch(`/orders/${orderId}/items/${existing.id}`, {
+                    quantity: Number(existing.quantity || 0) + 1,
+                });
+            } else {
+                await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            }
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
@@ -673,28 +846,6 @@ export default function Salon() {
         await api.patch(`/orders/${orderId}/alias`, { alias: nextName || null, shared: sharedDraft });
     };
 
-    /**
-     * Observación rápida. Con más de una unidad la observación es de UNA unidad
-     * ("2 sopas, una sin cebolla"), así que primero se agrega la unidad anotada y
-     * recién después se descuenta del grupo: si algo falla, nunca se pierde comida.
-     */
-    const applyItemNote = async (item, note) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || !item) return;
-        try {
-            if (Number(item.quantity || 1) > 1) {
-                await api.post(`/orders/${orderId}/items`, [{ product_id: item.product_id, quantity: 1, notes: note }]);
-                await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: Number(item.quantity) - 1 });
-            } else {
-                await api.patch(`/orders/${orderId}/items/${item.id}`, { notes: note });
-            }
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
-        }
-    };
-
     // Corregir "quién pidió qué" sin borrar y volver a cargar el producto. El
     // origen sale de la propia línea: con la pantalla limpia no hay cuenta
     // seleccionada, pero el producto sí sabe de quién es.
@@ -723,21 +874,28 @@ export default function Salon() {
         // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake) return;
+        if (!targetId || !canTake || sendingToKitchen) return;
         const openId = openTable?.order?.id || openTable?.accountId;
+        // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso es el
+        // del prototipo, "Enviado a cocina · Mesa N".
+        const accountBefore = (openTable?.accounts || []).find((o) => o.id === targetId)
+            || (openTable?.order?.id === targetId ? openTable.order : null);
+        const firstSend = (accountBefore?.status || 'nuevo') === 'nuevo';
+        setSendingToKitchen(true);
         try {
             // El alias viaja con la comanda: se guarda acá, sin botón aparte.
             if (targetId === openId) await persistAlias(targetId);
             const { data } = await api.post(`/orders/${targetId}/send-to-kitchen`);
             const pending = draftCount(sendItemsFor(targetId), data?.status);
-            const who = data?.customer_name || (data?.shared ? 'Compartido' : 'la persona');
-            toast.success(pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina');
+            const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
+            // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
+            toast.success(firstSend
+                ? (mesaNumber ? `Enviado a cocina · Mesa ${mesaNumber}` : 'Enviado a cocina')
+                : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
             await reloadCurrentOrder(targetId);
             if (targetId === openId) {
                 // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente, que es como el mozo trabaja de verdad. La carta se
-                // pliega y el "+ Pedido" del encabezado queda listo para el próximo.
-                setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
+                // la siguiente.
                 setComposerOpen(false);
                 setOpenTable((s) => (s ? {
                     ...s,
@@ -751,6 +909,8 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+        } finally {
+            setSendingToKitchen(false);
         }
     };
 
@@ -773,11 +933,62 @@ export default function Salon() {
         }
     };
 
+    /**
+     * Renombra una cuenta desde el ✎ de su tarjeta (detalle) o de la franja
+     * "Para {persona}" (compositor). Mismo PATCH de alias que el input viejo,
+     * apuntado a la persona elegida y conservando el "Compartido" que ya tenía.
+     */
+    const renamePerson = async (orderId, alias) => {
+        if (!canTake || !orderId) return;
+        const account = (openTable?.accounts || []).find((o) => o.id === orderId)
+            || (openTable?.order?.id === orderId ? openTable.order : null);
+        const nextName = alias || null;
+        try {
+            await api.patch(`/orders/${orderId}/alias`, { alias: nextName, shared: Boolean(account?.shared) });
+            // La franja lee las cuentas de la hoja: se actualiza en el acto para
+            // que el nombre no espere al próximo refresco del piso.
+            setOpenTable((s) => (s ? {
+                ...s,
+                accounts: (s.accounts || []).map((o) => (o.id === orderId ? { ...o, customer_name: nextName } : o)),
+                order: s.order?.id === orderId ? { ...s.order, customer_name: nextName } : s.order,
+            } : s));
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        }
+    };
+
+    // Cierra el editor del ✎ de una tarjeta guardando sólo si el alias cambió.
+    const commitCardRename = (view) => {
+        if (!view || cardRenameId !== view.id) return;
+        const next = cardRenameDraft.trim();
+        setCardRenameId(null);
+        if (next === String(view.customer_name || '').trim()) return;
+        renamePerson(view.id, next);
+    };
+
+    // "Vaciar" del ticket del prototipo: borra sólo lo que sigue en borrador,
+    // con la API existente (un DELETE por línea). Lo enviado no se toca.
+    const clearDraft = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake) return;
+        const current = sheetOrder;
+        const drafts = (current?.items || []).filter((it) => isDraft(it, current?.status));
+        if (!drafts.length) return;
+        try {
+            for (const it of drafts) await api.delete(`/orders/${orderId}/items/${it.id}`);
+            await reloadCurrentOrder(orderId);
+            refreshAll();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'No se pudo vaciar el pedido');
+        }
+    };
+
     // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
     // abre una cuenta nueva de la misma visita. No es "abrir cuenta" — eso lo
     // decide el sistema — sino pasar a la siguiente persona.
     const startAnotherPerson = () => {
-        setFlash(null);
         setOpenTable((s) => (s ? { ...s, order: null, accountId: null, loading: false } : s));
     };
 
@@ -1022,11 +1233,32 @@ export default function Salon() {
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
+    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Con la hoja
+    // del borrador abierta, el primer Escape la cierra a ella. Los diálogos y
+    // menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
+    useEffect(() => {
+        if (!openTable) return undefined;
+        const onKey = (event) => {
+            if (event.key !== 'Escape') return;
+            if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"]')) return;
+            if (ticketOpen) {
+                setTicketOpen(false);
+                return;
+            }
+            setOpenTable(null);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [openTable, ticketOpen]);
+
     return (
         <div
             className={`space-y-5 ${selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
             data-testid="salon-root"
         >
+            {/* La grilla vive debajo del detalle: se oculta (no se desmonta) para
+                que el polling y el estado del piso sigan intactos. */}
+            <div hidden={Boolean(openTable)} className="space-y-5">
             {/* Header + summary */}
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
                 <div>
@@ -1035,7 +1267,8 @@ export default function Salon() {
                         <Grid2X2 className="h-6 w-6 text-primary" /> Salón
                     </h1>
                     <p className="text-sm text-muted-foreground" data-testid="salon-resumen">
-                        En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
+                        En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay} ·{' '}
+                        <span data-testid="salon-total-en-mesas">{fmtMoney(floorDue)} en mesas</span>
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
@@ -1103,19 +1336,33 @@ export default function Salon() {
                 </div>
             )}
 
-            {/* State filter */}
-            <div className="scroll-x flex gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
-                {STATE_FILTERS.map((f) => (
-                    <button
-                        key={f.key}
-                        type="button"
-                        onClick={() => setStateFilter(f.key)}
-                        data-testid={`salon-filtro-${f.key}`}
-                        className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
-                    >
-                        {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
-                    </button>
-                ))}
+            {/* State filter + floor order. El orden vive al lado de los filtros
+                porque es la otra forma de mirar el mismo piso. */}
+            <div className="flex items-start gap-2">
+                <div className="scroll-x flex min-w-0 flex-1 gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
+                    {STATE_FILTERS.map((f) => (
+                        <button
+                            key={f.key}
+                            type="button"
+                            onClick={() => setStateFilter(f.key)}
+                            data-testid={`salon-filtro-${f.key}`}
+                            className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                        >
+                            {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
+                        </button>
+                    ))}
+                </div>
+                <button
+                    type="button"
+                    onClick={toggleSortMode}
+                    data-testid="salon-orden"
+                    aria-label="Cambiar el orden del piso"
+                    title="Alternar entre orden por número y por prioridad"
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-border bg-card hover:bg-secondary"
+                >
+                    <ArrowUpDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    Orden: {sortMode === SORT_PRIORIDAD ? 'Prioridad' : 'Número'}
+                </button>
             </div>
 
             {/* Zones as a segmented control: same behaviour and same testids as
@@ -1214,43 +1461,57 @@ export default function Salon() {
                     {tablesLoading && !tables ? 'Cargando mesas…' : 'No hay mesas con esos filtros.'}
                 </div>
             ) : (
-                <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-                    {/* The card shortcut for taking an order opens the same sales-area
-                        decision as the sheet, so no table is seated before the waiter
-                        picks mesa / llevar / recojo / delivery. */}
-                    {filteredUnits.map((unit) => (
-                        unit.type === 'group' ? (
-                            <GroupCard
-                                key={unit.group.id}
-                                unit={unit}
-                                canServe={canServe}
-                                canCharge={canCharge}
-                                selectMode={selectMode}
-                                onOpen={() => openSheet(unit.anchor.table)}
-                                onOpenMember={(table) => openSheet(table)}
-                                onDeliver={deliver}
-                                onCharge={openCharge}
-                            />
-                        ) : (
-                            <MesaCard
-                                key={unit.entry.table.id}
-                                item={unit.entry}
-                                branchNames={branchNames}
-                                canServe={canServe}
-                                canCharge={canCharge}
-                                canClose={canClose}
-                                canTake={canTake}
-                                closing={closing}
-                                selectMode={selectMode}
-                                picked={selected.includes(unit.entry.table.id)}
-                                onSelect={toggleSelected}
-                                onOpen={openSheet}
-                                onDeliver={deliver}
-                                onCharge={openCharge}
-                                onCloseAttention={closeAttention}
-                                onTake={takeOrderInline}
-                            />
-                        )
+                // El piso se lee por zonas, como el salón real: una sección por
+                // zona con mesas visibles después de búsqueda y filtros.
+                <div className="space-y-5" data-testid="salon-piso">
+                    {zoneSections.map(({ area, units: zoneUnits }) => (
+                        <section key={area} aria-label={area} data-testid={`salon-zona-${area}`}>
+                            <div className="mb-2 flex items-baseline justify-between gap-2">
+                                <h2 className="font-display text-lg font-semibold">{area}</h2>
+                                <span className="text-sm text-muted-foreground">
+                                    {zoneUnits.length} {zoneUnits.length === 1 ? 'mesa' : 'mesas'}
+                                </span>
+                            </div>
+                            <div className="grid gap-3 sm:gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                                {/* The card shortcut for taking an order opens the same sales-area
+                                    decision as the sheet, so no table is seated before the waiter
+                                    picks mesa / llevar / recojo / delivery. */}
+                                {zoneUnits.map((unit) => (
+                                    unit.type === 'group' ? (
+                                        <GroupCard
+                                            key={unit.group.id}
+                                            unit={unit}
+                                            canServe={canServe}
+                                            canCharge={canCharge}
+                                            selectMode={selectMode}
+                                            onOpen={() => openSheet(unit.anchor.table)}
+                                            onOpenMember={(table) => openSheet(table)}
+                                            onDeliver={deliver}
+                                            onCharge={openCharge}
+                                        />
+                                    ) : (
+                                        <MesaCard
+                                            key={unit.entry.table.id}
+                                            item={unit.entry}
+                                            branchNames={branchNames}
+                                            canServe={canServe}
+                                            canCharge={canCharge}
+                                            canClose={canClose}
+                                            canTake={canTake}
+                                            closing={closing}
+                                            selectMode={selectMode}
+                                            picked={selected.includes(unit.entry.table.id)}
+                                            onSelect={toggleSelected}
+                                            onOpen={openSheet}
+                                            onDeliver={deliver}
+                                            onCharge={openCharge}
+                                            onCloseAttention={closeAttention}
+                                            onTake={takeOrderInline}
+                                        />
+                                    )
+                                ))}
+                            </div>
+                        </section>
                     ))}
                 </div>
             )}
@@ -1305,10 +1566,13 @@ export default function Salon() {
                 </details>
             )}
 
-            {/* Table detail sheet (secondary actions) */}
-            <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
-                <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" aria-describedby={undefined} data-testid="mesa-sheet">
-                    {openTable && (() => {
+            </div>
+
+            {/* Detalle de mesa: vista completa como el prototipo (reemplaza el
+                Sheet lateral). En ≥820px, pedidos a la izquierda y "Resumen"
+                sticky a la derecha; en móvil una columna con la barra de
+                acciones fija por encima de la navegación inferior. */}
+            {openTable && (() => {
                         const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
                         const group = openTable.group || t.group || null;
                         const members = group ? groupMembers(group, tables) : [];
@@ -1342,10 +1606,17 @@ export default function Salon() {
                                 id: o.id,
                                 number: o.order_number,
                                 label: personLabel(detail, index),
+                                // Alias real de la cuenta: el ✎ lo edita tal cual, sin
+                                // arrancar con el "Persona N" de relleno.
+                                alias: String(detail.customer_name || '').trim(),
                                 shared: Boolean(detail.shared),
                                 draftCount: draftCount(detail.items || [], detail.status),
                             };
                         });
+                        // Tarjetas del detalle: todas las cuentas, incluida la que
+                        // se está armando (un borrador todavía no es una persona).
+                        const cards = [...allAccounts];
+                        if (order && !cards.some((o) => o.id === order.id)) cards.push(order);
                         const summaryRows = tableSummary(allAccounts.map((o, index) => {
                             const detail = activeOrders[o.id] || o;
                             return { id: o.id, label: personLabel(detail, index), items: detail.items || [] };
@@ -1354,117 +1625,149 @@ export default function Salon() {
                         // de la barra nunca contradice el detalle.
                         const tableDishes = summaryRows.reduce((sum, row) => sum + row.quantity, 0);
                         const tableTotal = summaryRows.reduce((sum, row) => sum + row.subtotal, 0);
+                        // Consumido/Pagado/Pendiente de la mesa: del total y el pago
+                        // parcial de cada cuenta —la misma fuente del "Debe S/ X" de
+                        // la tarjeta—, sin volver a sumar platos.
+                        const tableConsumido = allAccounts.reduce((sum, o) => sum + Number((activeOrders[o.id] || o).total || 0), 0);
+                        const tablePagado = allAccounts.reduce((sum, o) => sum + Number((activeOrders[o.id] || o).amount_paid || 0), 0);
+                        const tablePendiente = allAccounts.reduce((sum, o) => sum + accountDue(activeOrders[o.id] || o), 0);
                         // Lo que falta enviar de la cuenta que se está armando.
                         const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
+                        // Unidades en borrador de la cuenta activa: lo que el FAB
+                        // anuncia como "nuevos" (por unidad, como el prototipo).
+                        const draftUnits = orderItems
+                            .filter((it) => isDraft(it, order?.status))
+                            .reduce((sum, it) => sum + Number(it.quantity || 0), 0);
                         // Con la pantalla limpia para la siguiente persona, las acciones
                         // de la mesa siguen apuntando a una cuenta real.
                         const fallbackPerson = persons[0] || null;
                         const actionOrder = order
                             || (fallbackPerson ? (activeOrders[fallbackPerson.id] || allAccounts.find((o) => o.id === fallbackPerson.id)) : null);
                         const actionAccountId = currentAccountId || fallbackPerson?.id || null;
+                        // El botón de cobro cobra la cuenta que la hoja tiene activa:
+                        // el monto es su saldo, no el agregado de la mesa.
+                        const actionDue = accountDue(actionOrder);
                         // Con la pantalla limpia para la siguiente persona, las acciones
                         // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
                         const closeable = canClose && canCloseAttention(t, actionOrder);
                         const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
+                        // "Más opciones" del prototipo: todas las acciones
+                        // ocasionales en un solo menú, arriba de la barra principal.
+                        const moreActions = accountTable && order
+                            ? [{
+                                key: 'ver-pedido-grupo',
+                                label: `Ver pedido de Mesa ${accountTable.number}`,
+                                testId: 'mesa-sheet-ver-pedido-grupo',
+                                onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
+                            }]
+                            : hasAccount ? [
+                                {
+                                    key: 'ver-pedido',
+                                    label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
+                                    testId: 'mesa-sheet-ver-pedido',
+                                    disabled: !actionAccountId,
+                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
+                                },
+                                {
+                                    key: 'resumen-recibo',
+                                    label: 'Resumen de mesa / Recibo',
+                                    testId: 'mesa-sheet-ver-resumen',
+                                    onSelect: () => setSummaryOpen(true),
+                                },
+                                ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
+                                    ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
+                                        key: `dividir-${n}`,
+                                        label: `En ${n} cuentas`,
+                                        testId: `mesa-sheet-dividir-${n}`,
+                                        onSelect: () => splitAccount(n),
+                                    }))]
+                                    : []),
+                                ...(canTake ? [{
+                                    key: 'otra-persona',
+                                    label: 'Pedido de otra persona',
+                                    testId: 'mesa-sheet-otra-persona',
+                                    onSelect: () => { startAnotherPerson(); setComposerOpen(true); },
+                                }, {
+                                    key: 'mover-pedido',
+                                    label: 'Mover pedido a otra mesa',
+                                    icon: MoveRight,
+                                    testId: 'mesa-sheet-mover-pedido',
+                                    onSelect: () => openTransfer(t),
+                                }] : []),
+                                ...(accounts.length > 1 && canTake ? [
+                                    {
+                                        key: 'mover-cuenta',
+                                        label: 'Mover esta cuenta a otra mesa',
+                                        icon: MoveRight,
+                                        testId: 'mesa-sheet-mover-cuenta',
+                                        onSelect: () => setMoveAccountId(actionAccountId),
+                                    },
+                                    {
+                                        key: 'fusionar-cuentas',
+                                        label: 'Fusionar cuentas',
+                                        icon: Link2,
+                                        testId: 'mesa-sheet-fusionar-cuentas',
+                                        onSelect: mergeAccounts,
+                                    },
+                                ] : []),
+                            ] : [];
                         return (
                             <>
-                                {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
-                                <SheetTitle className="sr-only">Mesa {t.number}</SheetTitle>
-                                <div className="p-5 border-b" style={{ background: s.bg }}>
-                                    <p className="page-kicker" style={{ color: s.fg }}>Mesa {t.number} · {t.area}</p>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="h-3 w-3 rounded-full" style={{ background: s.dot }} />
-                                        <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
+                            <section
+                                data-testid="mesa-sheet"
+                                className={`space-y-4 ${hasAccount || canCompose || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
+                            >
+                                {/* Cabecera del detalle, como `detail-head`/`poshead` del
+                                    prototipo: ← + título grande y estado en color. */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={composerOpen ? () => setComposerOpen(false) : closeSheet}
+                                        aria-label={composerOpen ? 'Volver a la mesa' : 'Volver al salón'}
+                                        data-testid="mesa-sheet-volver"
+                                        className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border"
+                                        style={{ borderColor: s.border, color: s.fg, background: 'hsl(var(--card))' }}
+                                    >
+                                        <ChevronLeft className="h-5 w-5" />
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                        <h2 className="truncate font-display text-2xl font-bold">
+                                            {composerOpen ? `Pedido · Mesa ${t.number}` : `Mesa ${t.number}`}
+                                        </h2>
+                                        {composerOpen ? null : (
+                                            <p className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</p>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
-                                        <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
-                                    </div>
+                                    {t.active_order && loading && (
+                                        <span className="shrink-0 text-sm text-muted-foreground">Cargando pedido…</span>
+                                    )}
                                 </div>
-                                {/* "+ Pedido" arriba, donde el mozo ya está mirando: abre la
-                                    carta. La acción principal de cada momento (Enviar,
-                                    Entregar, Cuenta) vive abajo, en el pulgar. */}
-                                {canCompose && (
-                                    <div className="flex items-center justify-end gap-2 border-b px-5 py-2">
-                                        <Button
-                                            variant={composerOpen ? 'outline' : 'default'}
-                                            className="h-11"
-                                            onClick={() => setComposerOpen((open) => !open)}
-                                            aria-expanded={composerOpen}
-                                            data-testid="mesa-sheet-nuevo-pedido"
-                                        >
-                                            {composerOpen ? 'Ocultar carta' : '+ Pedido'}
-                                        </Button>
-                                    </div>
-                                )}
-                                <div className="flex-1 overflow-y-auto p-5 space-y-4">
-                                    {t.active_order && loading && <div className="text-sm text-muted-foreground">Cargando pedido…</div>}
-                                    {/* El resumen va arriba y plegado: el mozo lo lee de
-                                        reojo sin que le empuje la carta hacia abajo. */}
-                                    {/* El resumen sólo aparece cuando hay más de una cuenta:
-                                        ahí es donde sirve (organizar personas y ver el recibo).
-                                        Con una sola repetiría lo que ya dicen la lista y el pie,
-                                        y el modal tiene que ser simple. */}
-                                    {personAccounts.length > 1 && (
-                                    <TableSummary
-                                        rows={summaryRows}
-                                        accounts={personAccounts.length}
-                                        dishes={tableDishes}
-                                        total={tableTotal}
-                                        people={persons}
-                                        canEdit={canCompose && persons.length > 1}
-                                        onMoveItem={moveItemToPerson}
-                                        onOpenReceipt={() => setReceiptOpen(true)}
-                                    />
-                                    )}
-                                    {receiptOpen && (
-                                        <TableReceipt
-                                            table={t}
-                                            rows={summaryRows}
-                                            accounts={personAccounts.map((o, index) => {
-                                                const detail = activeOrders[o.id] || o;
-                                                return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
-                                            })}
-                                            total={tableTotal}
-                                            pending={pendingCount}
-                                        />
-                                    )}
-                                    {flash && (
-                                        <p
-                                            className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-medium text-primary"
-                                            role="status"
-                                            data-testid="mesa-sheet-flash"
-                                        >
-                                            {flash}
-                                        </p>
-                                    )}
-                                    {(canCompose || (accounts && accounts.length > 0)) && (
-                                        <PersonChips
-                                            people={persons}
-                                            activeId={currentAccountId}
-                                            onSelect={(id) => { setReceiptOpen(false); setFlash(null); selectAccount(id); }}
-                                        />
-                                    )}
-                                    {canCompose && (
-                                        <details
-                                            className="rounded-xl border px-3 py-2"
-                                            data-testid="mesa-sheet-alias-row"
-                                        >
-                                            <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                                                <span>Organizar pedido <span className="font-normal text-muted-foreground">(opcional)</span></span>
-                                                <span className="truncate text-xs font-normal text-muted-foreground">
-                                                    {aliasDraft.trim() || (sharedDraft ? 'Compartido' : 'Alias')}
-                                                </span>
-                                            </summary>
-                                            <div className="mt-2 space-y-2">
-                                                {/* La comanda normal no necesita alias ni reparto por persona. */}
-                                                <div className="flex items-center gap-1.5">
+
+                                <div
+                                    data-testid="mesa-sheet-layout"
+                                    className={`grid gap-4 min-[820px]:items-start ${composerOpen ? 'min-[820px]:grid-cols-[minmax(0,1fr)_380px]' : 'min-[820px]:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.65fr)]'}`}
+                                >
+                                    {/* Columna de pedidos */}
+                                    <div className="min-w-0 space-y-3">
+                                    {/* Franja "Para {persona}" del prototipo: es la
+                                        identidad de la cuenta (nombre y Compartido se
+                                        editan acá; el alias viaja al enviar). */}
+                                    {canCompose && composerOpen && (
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
+                                            {personNameEdit ? (
+                                                <div className="flex w-full items-center gap-1.5">
                                                     <Input
-                                                        placeholder="Alias (opcional)"
+                                                        autoFocus
+                                                        className="h-9 min-w-0 flex-1"
+                                                        placeholder="Nombre"
                                                         value={aliasDraft}
                                                         onChange={(e) => setAliasDraft(e.target.value)}
-                                                        onBlur={() => { if (order) saveAlias(); }}
-                                                        onKeyDown={(e) => { if (e.key === 'Enter') saveAlias(); }}
-                                                        data-testid="mesa-sheet-alias"
+                                                        onBlur={() => { setPersonNameEdit(false); saveAlias(); }}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') { setPersonNameEdit(false); saveAlias(); }
+                                                            if (e.key === 'Escape') setPersonNameEdit(false);
+                                                        }}
+                                                        data-testid="mesa-sheet-persona-nombre"
                                                     />
                                                     <button
                                                         type="button"
@@ -1472,7 +1775,7 @@ export default function Salon() {
                                                         aria-pressed={sharedDraft}
                                                         title="Lo que pide la mesa entera"
                                                         data-testid="mesa-sheet-compartido"
-                                                        className={`flex h-11 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                                                        className={`flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
                                                             sharedDraft
                                                                 ? 'border-primary bg-primary text-primary-foreground'
                                                                 : 'border-border text-muted-foreground hover:border-primary'
@@ -1481,23 +1784,36 @@ export default function Salon() {
                                                         🍽️ Compartido
                                                     </button>
                                                 </div>
-                                                <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
-                                                    {persons.length > 0
-                                                        ? 'Escribí un alias o elegí una persona de la franja superior.'
-                                                        : 'Sin alias, el pedido queda como Persona 1.'}
-                                                </p>
-                                                {order && !isComposingDraft(order) && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={startAnotherPerson}
-                                                        data-testid="mesa-sheet-otra-persona"
-                                                        className="min-h-9 w-full rounded-lg border border-dashed border-border px-3 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
-                                                    >
-                                                        ＋ Pedido de otra persona
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </details>
+                                            ) : (
+                                                <>
+                                                    <span className="min-w-0 truncate text-sm">
+                                                        Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
+                                                    </span>
+                                                    {canTake && (
+                                                        <span className="flex shrink-0 items-center gap-1">
+                                                            {order && !isComposingDraft(order) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={startAnotherPerson}
+                                                                    data-testid="mesa-sheet-otra-persona"
+                                                                    className="flex h-9 items-center rounded-lg border border-dashed border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                                >
+                                                                    ＋ Persona
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setPersonNameEdit(true)}
+                                                                data-testid="mesa-sheet-persona-renombrar"
+                                                                className="flex h-9 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                            >
+                                                                ✎ Nombre
+                                                            </button>
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
@@ -1515,43 +1831,128 @@ export default function Salon() {
                                             onAddProduct={addProductToAccount}
                                             onRemoveProduct={removeProductFromAccount}
                                             onSendToKitchen={sendCurrentToKitchen}
+                                            showActions={!composerOpen}
+                                            showHeader={!composerOpen}
                                         />
                                     </div>
-                                    {order && (
-                                        <>
-                                            <div className="text-sm text-muted-foreground space-y-1">
-                                                <div>Pedido #{order.order_number} · {order.source === 'public' ? 'Carta web' : 'Salón'}</div>
-                                                <AttentionReference order={order} branchNames={branchNames} />
-                                                {order.customer_name && <div>Cliente: <span className="text-foreground">{order.customer_name}</span></div>}
-                                                <div>Hace {fmtElapsed(order.created_at)} · {ORDER_STATUS_LABELS[order.status] || order.status}</div>
-                                            </div>
-                                            <p className="text-xs font-medium text-muted-foreground" data-testid="mesa-sheet-items-titulo">
-                                                {order.status === 'nuevo' ? 'Por enviar' : 'Lo de esta persona'}
+                                    {/* Tarjetas por cuenta, como los `.order` del
+                                        prototipo: persona + ✎, #id · hora, píldora de
+                                        estado, líneas y footer con total. La cuenta
+                                        activa conserva su lista editable. */}
+                                    {!composerOpen && (hasAccount ? cards.map((account, index) => {
+                                        const detail = activeOrders[account.id] || account;
+                                        const isActive = account.id === currentAccountId;
+                                        const view = isActive && order ? order : detail;
+                                        const draftAccount = isComposingDraft(view);
+                                        const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
+                                        const kitchen = accountKitchenState(view.items || []);
+                                        const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
+                                        const cardKey = account.order_number ?? account.id;
+                                        // La cuenta activa conserva los testids base
+                                        // (`mesa-sheet-items`); las demás se namespacean
+                                        // para no duplicar localizadores.
+                                        const cardPrefix = isActive ? 'mesa-sheet' : `mesa-sheet-pedido-${cardKey}`;
+                                        return (
+                                            <article
+                                                key={account.id}
+                                                data-testid={`mesa-sheet-pedido-${cardKey}`}
+                                                onClick={() => { if (!isActive) selectAccount(account.id); }}
+                                                className={`grid min-w-0 gap-2.5 rounded-xl border bg-card p-3.5 transition-colors ${isActive ? 'border-primary' : 'cursor-pointer hover:border-primary/50'}`}
+                                            >
+                                                <header className="flex items-start justify-between gap-2.5">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-1 font-extrabold">
+                                                            {cardRenameId === account.id ? (
+                                                                <input
+                                                                    autoFocus
+                                                                    value={cardRenameDraft}
+                                                                    onChange={(e) => setCardRenameDraft(e.target.value)}
+                                                                    onBlur={() => commitCardRename(view)}
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter') commitCardRename(view);
+                                                                        if (e.key === 'Escape') setCardRenameId(null);
+                                                                    }}
+                                                                    aria-label={`Editar nombre de ${personLabel(view, index)}`}
+                                                                    data-testid={`mesa-sheet-renombrar-input-${cardKey}`}
+                                                                    className="h-8 w-36 rounded-md border border-border bg-card px-2 text-sm text-foreground"
+                                                                />
+                                                            ) : (
+                                                                <>
+                                                                    <span className="min-w-0 truncate">{draftAccount ? 'Nuevo pedido' : personLabel(view, index)}</span>
+                                                                    {canTake && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setCardRenameId(account.id);
+                                                                                setCardRenameDraft(String(detail.customer_name || '').trim());
+                                                                            }}
+                                                                            aria-label={`Editar nombre de ${personLabel(view, index)}`}
+                                                                            data-testid={`mesa-sheet-renombrar-${cardKey}`}
+                                                                            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                                                                        >
+                                                                            <Pencil className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">#{view.order_number} · {fmtTime(view.created_at)}</div>
+                                                    </div>
+                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.tone]}`}>
+                                                        {kitchen.label}
+                                                    </span>
+                                                </header>
+                                                {/* Tarjeta de LECTURA como el `.order` del
+                                                    mockup: la edición de borradores vive en el
+                                                    ticket del compositor. Del ítem enviado queda
+                                                    el ✕ discreto para anularlo. */}
+                                                <PersonOrderSummary
+                                                    items={view.items || []}
+                                                    orderStatus={view.status}
+                                                    mode="detail"
+                                                    testIdPrefix={cardPrefix}
+                                                    canEdit={isActive && canCompose}
+                                                    canVoid={canVoidItems}
+                                                    saving={savingItem}
+                                                    onVoid={voidProduct}
+                                                />
+                                                {cardItems.length === 0 && (
+                                                    <p className="text-xs text-muted-foreground">Todavía no pidió nada.</p>
+                                                )}
+                                                {view.notes && (
+                                                    <p className="rounded-lg bg-[hsl(var(--warn)/0.12)] px-2 py-1.5 text-[13px] font-bold text-[hsl(var(--warn))]">
+                                                        📝 {view.notes}
+                                                    </p>
+                                                )}
+                                                <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
+                                                    <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
+                                                    {kitchen.tone === 'ready' && canServe && (
+                                                        <Button
+                                                            size="sm"
+                                                            className="h-9 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
+                                                            onClick={(e) => { e.stopPropagation(); deliver(view.id); }}
+                                                            data-testid={`mesa-sheet-entregar-${view.order_number}`}
+                                                        >
+                                                            ✓ Entregado
+                                                        </Button>
+                                                    )}
+                                                </footer>
+                                            </article>
+                                        );
+                                    }) : (
+                                        <div className="rounded-xl border p-8 text-center space-y-1" data-testid="mesa-sheet-vacio">
+                                            <p className="font-display text-xl font-semibold">
+                                                {t.status === 'reservada' ? 'Mesa reservada' : 'Mesa libre'}
                                             </p>
-                                            <PersonOrderSummary
-                                                items={allItems}
-                                                orderStatus={order.status}
-                                                canEdit={canCompose}
-                                                saving={savingItem}
-                                                onChangeQty={changeItemQty}
-                                                onNotes={saveItemNotes}
-                                                onApplyNote={applyItemNote}
-                                                onVoid={voidProduct}
-                                            />
-                                            <div className="flex justify-between font-display text-lg font-bold">
-                                                <span>Total</span>
-                                                <span className="font-mono tabular-nums">{fmtMoney(order.total)}</span>
-                                            </div>
-                                        </>
-                                    )}
-                                    {!t.active_order && !canCompose && <p className="text-sm text-muted-foreground">Sin pedido activo en esta mesa.</p>}
+                                            <p className="text-sm text-muted-foreground">Toca «Nuevo pedido» para empezar.</p>
+                                        </div>
+                                    ))}
                                     {accountTable && order && (
                                         <p className="text-sm font-medium" data-testid="mesa-sheet-cuenta-grupo">
                                             Cuenta de Mesa {accountTable.number}
                                         </p>
-                                    )}
-                                    {t.active_attention_id && order && (
-                                        <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalizala cuando el cobro y la entrega estén completos.</p>
                                     )}
                                     {group && (
                                         <div className="rounded-xl border p-3 space-y-2" data-testid="mesa-sheet-grupo">
@@ -1637,12 +2038,96 @@ export default function Salon() {
                                             </div>
                                         </div>
                                     )}
-                                </div>
-                                <div className="border-t p-4 space-y-2">
+                                    </div>
+
+                                    {composerOpen ? (
+                                        /* Ticket del borrador, como el `.ticket` del
+                                           prototipo: columna sticky en escritorio; en
+                                           móvil queda en flujo y el FAB abre la hoja. */
+                                        <div className="min-w-0 min-[820px]:sticky min-[820px]:top-4">
+                                            <OrderTicket
+                                                testIdPrefix="mesa-sheet"
+                                                order={order}
+                                                items={allItems}
+                                                canEdit={canCompose}
+                                                canVoid={canVoidItems}
+                                                saving={savingItem}
+                                                draftUnits={draftUnits}
+                                                sendLabel={sendState?.label}
+                                                showSend={showSend}
+                                                onChangeQty={changeItemQty}
+                                                onNotes={saveItemNotes}
+                                                onVoid={voidProduct}
+                                                onSend={() => sendCurrentToKitchen()}
+                                                onClear={clearDraft}
+                                            />
+                                        </div>
+                                    ) : (
+                                    /* Resumen del prototipo: Pedidos / Consumido /
+                                       Pagado / Pendiente y la barra de acciones. */
+                                    <aside
+                                        data-testid="mesa-sheet-resumen-panel"
+                                        className="grid content-start gap-3 min-[820px]:sticky min-[820px]:top-4"
+                                    >
+                                        <h3 className="font-display text-base font-semibold">Resumen</h3>
+                                        <div className="flex justify-between gap-2.5 text-sm">
+                                            <span className="text-muted-foreground">Pedidos</span>
+                                            <strong data-testid="mesa-sheet-pedidos-count">{cards.length}</strong>
+                                        </div>
+                                        {/* Consumido/Pagado/Pendiente como el mockup; el
+                                            desglose por producto y el recibo viven en el
+                                            diálogo "Resumen de mesa" de ⋯ Más. */}
+                                        {personAccounts.length > 0 && (
+                                            <AccountTotals
+                                                testIdPrefix="mesa-sheet"
+                                                consumido={tableConsumido}
+                                                pagado={tablePagado}
+                                                pendiente={tablePendiente}
+                                            />
+                                        )}
+                                        {moreActions.length > 0 && (
+                                            <MoreActions
+                                                testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
+                                                actions={moreActions}
+                                            />
+                                        )}
+                                        {/* Una sola instancia de cada botón: en móvil esta
+                                            barra se fija abajo; en escritorio vive en el
+                                            resumen. Así no se duplican testids. */}
+                                        <div
+                                            data-testid="mesa-sheet-acciones"
+                                            className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 backdrop-blur min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3 min-[820px]:backdrop-blur-none"
+                                        >
                                     {/* La mesa no se "toma": la atención nace con el primer
                                         pedido, así que la carta es la acción y no hay botón
                                         que la reemplace. Los botones de tomar mesa que había
                                         acá sólo repetían esa acción y parecían recargar. */}
+                                    {/* Cobrar directo con el mismo saldo que muestra la
+                                        tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
+                                        en el flujo de pago del pedido, que es quien exige el
+                                        turno de caja abierto antes de registrar. */}
+                                    {/* Acción principal del prototipo: carta clara; el
+                                        cobro va en naranja (token warn) como el mockup. */}
+                                    {canCompose && (
+                                        <Button
+                                            variant="outline"
+                                            className="w-full h-12"
+                                            onClick={() => setComposerOpen((open) => !open)}
+                                            aria-expanded={composerOpen}
+                                            data-testid="mesa-sheet-nuevo-pedido"
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" /> + Nuevo pedido
+                                        </Button>
+                                    )}
+                                    {canCharge && actionDue > 0 && ((accountTable && order) || hasAccount) && (
+                                        <Button
+                                            className="w-full h-12 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
+                                            onClick={() => openCharge(actionOrder)}
+                                            data-testid="mesa-sheet-cobrar"
+                                        >
+                                            Cobrar {fmtMoney(actionDue)}
+                                        </Button>
+                                    )}
                                     {accountTable && order ? (
                                         <>
                                             {canTake && (
@@ -1654,15 +2139,6 @@ export default function Salon() {
                                                     <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
                                                 </Button>
                                             )}
-                                            <MoreActions
-                                                testId="mesa-sheet-mas-grupo"
-                                                actions={[{
-                                                    key: 'ver-pedido-grupo',
-                                                    label: `Ver pedido de Mesa ${accountTable.number}`,
-                                                    testId: 'mesa-sheet-ver-pedido-grupo',
-                                                    onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
-                                                }]}
-                                            />
                                         </>
                                     ) : hasAccount ? (
                                         <>
@@ -1691,61 +2167,110 @@ export default function Salon() {
                                                     </Button>
                                                 )
                                             )}
-                                            <MoreActions
-                                                testId="mesa-sheet-mas"
-                                                actions={[
-                                                    {
-                                                        key: 'ver-pedido',
-                                                        label: floor.key === 'listo' ? 'Ver pedido' : 'Abrir pedido',
-                                                        testId: 'mesa-sheet-ver-pedido',
-                                                        disabled: !actionAccountId,
-                                                        onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
-                                                    },
-                                                    ...(canTake && actionOrder && (actionOrder.items || []).filter((i) => i.status !== 'cancelado').length >= 2
-                                                        ? [{ group: 'Dividir la cuenta' }, ...[2, 3, 4].map((n) => ({
-                                                            key: `dividir-${n}`,
-                                                            label: `En ${n} cuentas`,
-                                                            testId: `mesa-sheet-dividir-${n}`,
-                                                            onSelect: () => splitAccount(n),
-                                                        }))]
-                                                        : []),
-                                                    ...(canTake ? [{
-                                                        key: 'mover-pedido',
-                                                        label: 'Mover pedido a otra mesa',
-                                                        icon: MoveRight,
-                                                        testId: 'mesa-sheet-mover-pedido',
-                                                        onSelect: () => openTransfer(t),
-                                                    }] : []),
-                                                    ...(accounts.length > 1 && canTake ? [
-                                                        {
-                                                            key: 'mover-cuenta',
-                                                            label: 'Mover esta cuenta a otra mesa',
-                                                            icon: MoveRight,
-                                                            testId: 'mesa-sheet-mover-cuenta',
-                                                            onSelect: () => setMoveAccountId(actionAccountId),
-                                                        },
-                                                        {
-                                                            key: 'fusionar-cuentas',
-                                                            label: 'Fusionar cuentas',
-                                                            icon: Link2,
-                                                            testId: 'mesa-sheet-fusionar-cuentas',
-                                                            onSelect: mergeAccounts,
-                                                        },
-                                                    ] : []),
-                                                ]}
-                                            />
                                         </>
                                     ) : t.status === 'pagada' ? (
                                         <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
                                             Liberar mesa
                                         </Button>
                                     ) : null}
+                                        </div>
+                                    </aside>
+                                    )}
                                 </div>
+
+                                {/* FAB del borrador (solo móvil): abre la hoja con las
+                                    líneas y el envío, como el `.fab` del prototipo. */}
+                                {composerOpen && order && draftUnits > 0 && sendState && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setTicketOpen(true)}
+                                        data-testid="mesa-sheet-fab"
+                                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex min-h-[52px] items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_rgba(0,0,0,0.4)] min-[820px]:hidden"
+                                    >
+                                        <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
+                                        <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
+                                    </button>
+                                )}
+
+                                {/* Hoja inferior del borrador (móvil): el mismo
+                                    ticket del prototipo con otro prefijo de testids,
+                                    para no duplicar los del ticket en flujo. */}
+                                {ticketOpen && order && (
+                                    <div className="fixed inset-0 z-40 min-[820px]:hidden" data-testid="mesa-sheet-ticket-sheet">
+                                        <div
+                                            className="absolute inset-0 bg-black/45"
+                                            data-testid="mesa-sheet-ticket-scrim"
+                                            aria-hidden="true"
+                                            onClick={() => setTicketOpen(false)}
+                                        />
+                                        <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl pb-[var(--safe-bottom)]">
+                                            <OrderTicket
+                                                testIdPrefix="mesa-sheet-ticket"
+                                                order={order}
+                                                items={allItems}
+                                                canEdit={canCompose}
+                                                canVoid={canVoidItems}
+                                                saving={savingItem}
+                                                draftUnits={draftUnits}
+                                                sendLabel={sendState?.label}
+                                                showSend={showSend}
+                                                onChangeQty={changeItemQty}
+                                                onNotes={saveItemNotes}
+                                                onVoid={voidProduct}
+                                                onSend={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
+                                                onClear={clearDraft}
+                                                onClose={() => setTicketOpen(false)}
+                                                className="rounded-b-none border-x-0 border-b-0"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </section>
+
+                            {/* "Resumen de mesa" del prototipo es sólo Pedidos/
+                                Consumido/Pagado/Pendiente; el desglose por producto
+                                (con mover de persona) y el recibo viven acá,
+                                alcanzables desde ⋯ Más. */}
+                            <Dialog open={summaryOpen} onOpenChange={(open) => { setSummaryOpen(open); if (!open) setReceiptOpen(false); }}>
+                                <DialogContent className="sm:max-w-lg" data-testid="mesa-sheet-resumen-dialog">
+                                    <DialogHeader>
+                                        <DialogTitle className="font-display text-2xl">Resumen de mesa</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-3 max-h-[60dvh] overflow-y-auto pr-1" data-testid="mesa-sheet-resumen-contenido">
+                                        <TableSummary
+                                            rows={summaryRows}
+                                            accounts={personAccounts.length}
+                                            dishes={tableDishes}
+                                            total={tableTotal}
+                                            people={persons}
+                                            canEdit={canCompose && persons.length > 1}
+                                            showTotals={false}
+                                            onMoveItem={moveItemToPerson}
+                                            onOpenReceipt={() => setReceiptOpen(true)}
+                                        />
+                                        {receiptOpen && (
+                                            <TableReceipt
+                                                table={t}
+                                                rows={summaryRows}
+                                                accounts={personAccounts.map((o, index) => {
+                                                    const detail = activeOrders[o.id] || o;
+                                                    return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
+                                                })}
+                                                total={tableTotal}
+                                                pending={pendingCount}
+                                            />
+                                        )}
+                                    </div>
+                                    <DialogFooter>
+                                        <Button variant="outline" onClick={() => setSummaryOpen(false)} data-testid="mesa-sheet-resumen-cerrar">
+                                            Cerrar
+                                        </Button>
+                                    </DialogFooter>
+                                </DialogContent>
+                            </Dialog>
                             </>
                         );
                     })()}
-                </SheetContent>
-            </Sheet>
 
             {/* Nuevo pedido: un solo compositor para las cuatro áreas de venta */}
             <NewOrderSheet

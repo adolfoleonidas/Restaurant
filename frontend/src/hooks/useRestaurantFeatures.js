@@ -10,20 +10,31 @@ import { DEFAULT_FEATURES, mergeFeatures, subscribeFeatures } from '@/lib/featur
 export default function useRestaurantFeatures() {
     const { user } = useAuth();
     const [features, setFeatures] = useState(DEFAULT_FEATURES);
+    // Identidad estable: los contextos pueden recrear el objeto `user` en cada
+    // render y el efecto no debe re-descargar por eso.
+    const userId = user?.id;
+    const restaurantId = user?.restaurant_id;
 
     useEffect(() => {
-        if (!user) {
+        if (!userId) {
             setFeatures(DEFAULT_FEATURES);
             return undefined;
         }
         let active = true;
-        const load = () => api.get('/restaurants/current')
-            .then(({ data }) => { if (active) setFeatures(mergeFeatures(data?.features)); })
-            .catch(() => { /* keep the current flags */ });
+        const load = () => {
+            // Un mock o un api degradado pueden devolver algo que no es promesa:
+            // sin flags simplemente se mantienen los defaults (todo apagado).
+            let request;
+            try { request = api.get('/restaurants/current'); } catch { return; }
+            if (!request || typeof request.then !== 'function') return;
+            request
+                .then(({ data }) => { if (active) setFeatures(mergeFeatures(data?.features)); })
+                .catch(() => { /* keep the current flags */ });
+        };
         load();
         const unsubscribe = subscribeFeatures(load);
         return () => { active = false; unsubscribe(); };
-    }, [user]);
+    }, [userId, restaurantId]);
 
     return features;
 }

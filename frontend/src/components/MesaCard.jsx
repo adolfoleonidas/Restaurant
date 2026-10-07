@@ -74,6 +74,9 @@ export default function MesaCard({
 }) {
     const { table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva, group, groupBadge, groupNumbers } = item;
     const s = FLOOR_STYLE[floor.key];
+    // Mismo campo que la cabecera del sheet (Capacidad N personas); `seats` es
+    // el nombre del prototipo y queda como respaldo para datos antiguos.
+    const seats = Number(t.capacity ?? t.seats ?? 0) || 0;
     const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
     const elapsed = displayOrder?.created_at ? fmtElapsed(displayOrder.created_at) : null;
     // Urgencia por tiempo de permanencia: ámbar a partir de 30 min, rojo a los 45.
@@ -183,6 +186,11 @@ export default function MesaCard({
                         </span>
                     )}
                 </div>
+                {seats > 0 && (
+                    <div className="text-xs text-muted-foreground" data-testid={`mesa-card-asientos-${t.number}`}>
+                        {seats} asientos
+                    </div>
+                )}
                 <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
                     <span className="text-sm font-semibold">{s.label}</span>

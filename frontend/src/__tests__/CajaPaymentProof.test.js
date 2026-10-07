@@ -32,7 +32,10 @@ jest.mock('@/hooks/usePolling', () => ({
         return { data: null, refetch: jest.fn() };
     },
 }));
-jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams()] }));
+jest.mock('react-router-dom', () => ({
+    Link: ({ children, to, ...p }) => <a href={to} {...p}>{children}</a>,
+    useSearchParams: () => [new URLSearchParams()],
+}));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 const flush = async () => act(async () => {

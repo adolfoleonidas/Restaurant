@@ -32,9 +32,10 @@ function waveTime(order, items) {
 
 function timerClass(iso) {
     const m = elapsedMinutes(iso);
-    // En modo oscuro (--accent y --primary son demasiado oscuros sobre la tarjeta,
-    // 2,52:1 y 3,91:1) se usan variantes claras que llegan a 11,15:1 y 7,3:1.
-    if (m >= 15) return 'text-accent font-bold dark:text-amber-300';
+    // Alerta roja del prototipo (`late`) desde los 15 min. El aviso intermedio
+    // de los 10 sigue en azul. `--destructive` ya tiene su variante de modo
+    // oscuro, así que no hace falta un color suelto.
+    if (m >= 15) return 'text-destructive font-bold';
     if (m >= 10) return 'text-primary font-semibold dark:text-blue-300';
     return 'text-muted-foreground';
 }
@@ -95,7 +96,9 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                         <div className="font-display text-3xl font-bold leading-none">{place}</div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
                             #{order.order_number}
-                            {order.source === 'public' ? ' · carta web' : ''}
+                            {/* Origen del ticket, como el prototipo: staff vs web/QR.
+                                El alias por persona vive en el salón, no acá. */}
+                            {order.source === 'public' ? ' · carta web' : ' · 👤 Mozo'}
                             {order.order_type && order.order_type !== 'mesa' && (
                                 <span className={`ml-1 shrink-0 text-xs font-bold uppercase tracking-wide rounded-sm border px-2 py-0.5 ${AREA_BADGE[order.order_type] || 'bg-[#F2F2F2] text-[#3F3F46] border-[#D4D4D8]'}`} data-testid={`cocina-tipo-${order.order_number}`}>
                                     {ORDER_TYPE_LABELS[order.order_type] || order.order_type}

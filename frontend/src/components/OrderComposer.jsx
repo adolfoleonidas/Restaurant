@@ -2,9 +2,62 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
-import { isCancelled, isDraft } from '@/lib/orderDraft';
+import { isCancelled, isDraft, sendAction } from '@/lib/orderDraft';
+
+/**
+ * Nota general para cocina del pedido completo.
+ *
+ * Vive en el compositor y también en la hoja del borrador (móvil): mismo
+ * estado, mismo guardado (blur o Enter) y testid por prefijo. Si el PATCH
+ * falla, el campo vuelve a la última nota confirmada.
+ */
+export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
+    const [noteDraft, setNoteDraft] = useState(order?.notes || '');
+
+    // La nota sigue al pedido (cambio de cuenta o refresco del polling); el
+    // texto que se está escribiendo no se pisa porque las dependencias son los
+    // valores del servidor, no la identidad del objeto.
+    useEffect(() => {
+        setNoteDraft(order?.notes || '');
+    }, [order?.id, order?.notes]);
+
+    const saveNote = async () => {
+        if (!order?.id) return;
+        const next = noteDraft.trim();
+        if (next === String(order.notes || '').trim()) return;
+        try {
+            await api.patch(`/orders/${order.id}/notes`, { notes: next });
+        } catch (e) {
+            setNoteDraft(order.notes || '');
+            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
+        }
+    };
+
+    if (!order) return null;
+
+    return (
+        <Textarea
+            rows={2}
+            className="text-sm"
+            placeholder="Nota general para cocina (opcional)"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={saveNote}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    saveNote();
+                }
+            }}
+            data-testid={`${testIdPrefix}-nota-general`}
+        />
+    );
+}
 
 /**
  * Carta para componer un pedido sin salir del panel.
@@ -31,7 +84,12 @@ export default function OrderComposer({
     onAddProduct,
     onRemoveProduct,
     onSendToKitchen,
-    sendLabel = 'Enviar a cocina',
+    sendLabel = null,
+    // El tomador del prototipo pone nota y envío en el TICKET, no en la carta.
+    showActions = true,
+    // La carta del tomador no lleva el rótulo "Agregar a…": lo dice la franja
+    // "Para {persona}" del prototipo.
+    showHeader = true,
 }) {
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
@@ -57,6 +115,9 @@ export default function OrderComposer({
         ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
         : 'Agregar productos');
     const accountQty = lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0);
+    // El envío dice cuánto viaja. Si la pantalla no trae su propia etiqueta
+    // (Nuevo pedido), sale de las mismas reglas de `sendAction`.
+    const sendButtonLabel = sendLabel || sendAction(lines, order)?.label || 'Enviar a cocina';
 
     const flash = (productId) => {
         setPulse(productId);
@@ -84,7 +145,8 @@ export default function OrderComposer({
     ].join(' ');
 
     return (
-        <div className="rounded-xl border" data-testid={`${testIdPrefix}-pedido`}>
+        <div className={showHeader ? 'rounded-xl border' : ''} data-testid={`${testIdPrefix}-pedido`}>
+            {showHeader && (
             <div className="flex items-center justify-between gap-2 px-3 pt-3">
                 <span className="text-xs font-medium text-muted-foreground">{label}</span>
                 {/* El sonido es opcional y se recuerda: en un salón ruidoso el clic
@@ -105,13 +167,14 @@ export default function OrderComposer({
                     {sound ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                 </button>
             </div>
+            )}
 
             <div className="space-y-2 p-3">
                 <div className="relative">
                     <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                     <Input
                         className="pl-9"
-                        placeholder="Buscar plato"
+                        placeholder="Buscar plato o bebida…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         data-testid={`${testIdPrefix}-buscar-producto`}
@@ -131,7 +194,12 @@ export default function OrderComposer({
                     </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 max-h-[42dvh] overflow-y-auto" data-testid={`${testIdPrefix}-productos`}>
+                {/* Grilla del prototipo: 2 col en móvil, 3 desde 600px y
+                    auto-fill (4+ a 1440) desde 960px. */}
+                <div
+                    className="grid grid-cols-2 gap-2.5 max-h-[42dvh] overflow-y-auto min-[600px]:grid-cols-3 min-[960px]:grid-cols-[repeat(auto-fill,minmax(150px,1fr))]"
+                    data-testid={`${testIdPrefix}-productos`}
+                >
                     {visible.map((p) => {
                         const out = !p.is_available || (p.is_combo && p.components_available === false);
                         const mine = lines.filter((i) => i.product_id === p.id);
@@ -145,19 +213,35 @@ export default function OrderComposer({
                             <div
                                 key={p.id}
                                 data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-                                className={`flex flex-col rounded-xl border bg-card p-2.5 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
+                                className={`relative flex min-h-[84px] flex-col rounded-xl border bg-card p-3 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
                             >
+                                {/* Badge del prototipo (`.q`): indicador persistente
+                                    arriba a la derecha, solo cuando hay unidades. */}
+                                {qty > 0 && (
+                                    <span
+                                        aria-hidden="true"
+                                        data-testid={`${testIdPrefix}-producto-badge-${p.id}`}
+                                        className="pointer-events-none absolute right-2 top-2 grid h-6 min-w-6 place-items-center rounded-full bg-primary px-1 text-[13px] font-extrabold leading-none text-primary-foreground"
+                                    >
+                                        {qty}
+                                    </span>
+                                )}
+                                {/* La tarjeta entera agrega, como el `.p` del mockup:
+                                    nombre a dos líneas y precio debajo. */}
                                 <button
                                     type="button"
                                     disabled={busy}
                                     onClick={() => add(p)}
                                     data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
-                                    className="flex min-w-0 flex-col text-left"
+                                    className="flex w-full flex-1 min-w-0 flex-col justify-between gap-1.5 text-left"
                                 >
-                                    <span className="w-full truncate text-sm font-semibold">{p.name}</span>
+                                    <span className="line-clamp-2 pr-6 text-sm font-semibold leading-snug">{p.name}</span>
                                     <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
                                 </button>
-                                <div className="mt-2 flex items-center justify-between">
+                                {/* El stepper del mockup no vive en la tarjeta: la resta
+                                    está en el ticket. Se conserva oculto para no romper
+                                    los contratos de testid existentes. */}
+                                <div className="hidden mt-2 items-center justify-between">
                                     <button
                                         type="button"
                                         disabled={busy || qty === 0 || !target}
@@ -194,10 +278,17 @@ export default function OrderComposer({
                 </div>
             </div>
 
+            {/* Nota general para cocina del pedido entero, no de un producto. */}
+            {order && showActions && (
+                <div className="px-3 pb-2">
+                    <OrderNote order={order} testIdPrefix={testIdPrefix} />
+                </div>
+            )}
+
             {/* Pie: lo que se lleva la cuenta y la acción de enviar, juntos y siempre
                 a la vista. Antes el envío vivía arriba y el mozo tenía que subir a
                 buscarlo después de agregar. */}
-            {order && (
+            {order && showActions && (
                 <div
                     className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-3 py-2 backdrop-blur"
                     data-testid={`${testIdPrefix}-pedido-resumen`}
@@ -209,8 +300,8 @@ export default function OrderComposer({
                         <div className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(order.total)}</div>
                     </div>
                     {showKitchen && (
-                        <Button onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
-                            {sendLabel}
+                        <Button className="h-12 shrink-0" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
+                            {sendButtonLabel}
                         </Button>
                     )}
                 </div>

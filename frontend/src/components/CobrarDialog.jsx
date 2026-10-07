@@ -254,6 +254,14 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             ? `Parte ${part + 1} de ${people}`
             : '';
 
+    // Presets de efectivo del prototipo: el importe justo y redondeos hacia
+    // arriba (10/50/100/200), sin repetir, nunca por debajo del total y como
+    // máximo 4. "Exacto" queda aparte porque el e2e móvil lo usa.
+    const roundUp = (step) => Math.ceil(chargeAmount / step) * step;
+    const quickCash = [...new Set(
+        [chargeAmount, roundUp(10), roundUp(50), 100, 200].filter((value) => value >= chargeAmount)
+    )].slice(0, 4);
+
     // Mixed payment helpers
     const mixedData = () => {
         const due = chargeAmount;
@@ -460,8 +468,8 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     // Preset cash
     const handlePreset = (val) => {
-        if (val === 'exact') setReceived(chargeAmount.toFixed(2));
-        else setReceived((val / 100).toFixed(2));
+        if (val === 'exact') { setReceived(chargeAmount.toFixed(2)); return; }
+        setReceived(Number(val).toFixed(2));
     };
 
     // On-screen keypad for coarse pointers (phones/tablets without keyboard)
@@ -844,10 +852,12 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                                     </div>
                                 )}
                                 <div className="preset-cash">
-                                    <button onClick={() => handlePreset('exact')}>Exacto</button>
-                                    <button onClick={() => handlePreset(2000)}>S/ 20</button>
-                                    <button onClick={() => handlePreset(5000)}>S/ 50</button>
-                                    <button onClick={() => handlePreset(10000)}>S/ 100</button>
+                                    <button onClick={() => handlePreset('exact')} data-testid="caja-preset-exacto">Exacto</button>
+                                    {quickCash.map((value, index) => (
+                                        <button key={`${value}-${index}`} onClick={() => handlePreset(value)} data-testid={`caja-preset-${index}`}>
+                                            {fmtMoney(value)}
+                                        </button>
+                                    ))}
                                 </div>
                                 <div className="change-row">
                                     <span>Vuelto</span>

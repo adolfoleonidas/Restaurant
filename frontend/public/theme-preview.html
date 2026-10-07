@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Vista previa — Temas de diseño</title>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; }
   body {
@@ -123,7 +123,45 @@
 </head>
 <body>
   <h1>Vista previa de temas</h1>
-  <p class="sub">Tres paletas listas para el design system. Cada una cambia solo las variables de color (tokens semánticos) — el resto del código es idéntico. Cambias el tema y todo el app cambia.</p>
+  <p class="sub">Cuatro paletas listas para el design system. Cada una cambia solo las variables de color (tokens semánticos) — el resto del código es idéntico. Cambias el tema y todo el app cambia.</p>
+
+  <!-- ============ RESTOFLOW (prototipo) ============ -->
+  <section class="theme-card" style="
+    --background: hsl(150 9% 96%);
+    --foreground: hsl(158 33% 9%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(158 33% 9%);
+    --primary: hsl(160 85% 29%);
+    --primary-foreground: hsl(0 0% 100%);
+    --secondary: hsl(150 13% 94%);
+    --secondary-foreground: hsl(158 33% 9%);
+    --border: hsl(144 9% 90%);
+    --input: hsl(144 9% 90%);
+    --ring: hsl(160 85% 29%);
+    --radius: 0.625rem;
+  ">
+    <div class="theme-name">🌿 RestoFlow (Verde prototipo)</div>
+    <div class="theme-desc">El look del prototipo final: verde menta sobre papel, Sora + Manrope.</div>
+    <div class="preview" style="font-family: 'Manrope', system-ui, sans-serif;">
+      <h3 style="font-family: 'Sora', sans-serif;">Mesas del restaurante</h3>
+      <div class="card">
+        <div class="row" style="justify-content: space-between">
+          <strong>Mesa 3 · 4 lugares</strong>
+          <span class="badge">Ocupada</span>
+        </div>
+        <div class="row" style="margin-top: 12px; gap: 8px">
+          <button>Abrir pedido</button>
+          <button class="secondary">Transferir</button>
+          <button class="outline">Liberar</button>
+        </div>
+      </div>
+      <div class="row" style="gap: 8px">
+        <span class="badge">Nuevo</span>
+        <span class="badge secondary">En cocina</span>
+      </div>
+      <input placeholder="Buscar mesa o cliente..." />
+    </div>
+  </section>
 
   <!-- ============ CAJA (default) ============ -->
   <section class="theme-card" style="

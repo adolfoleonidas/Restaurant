@@ -7,14 +7,16 @@ jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), patch: jest.fn() } }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
 function Probe() {
-    const { darkMode, kitchenDark, toggle, theme, setTheme, setActivePath } = useTheme();
+    const { darkMode, kitchenDark, toggle, theme, setTheme, setActivePath, themes } = useTheme();
     return (
         <div>
             <span data-testid="dm">{String(darkMode)}</span>
             <span data-testid="kitchen">{String(kitchenDark)}</span>
             <span data-testid="th">{theme}</span>
+            <span data-testid="theme-ids">{themes.map((t) => t.id).join(',')}</span>
             <button type="button" data-testid="toggle" onClick={toggle}>toggle</button>
             <button type="button" data-testid="set-calido" onClick={() => setTheme('calido')}>calido</button>
+            <button type="button" data-testid="set-restoflow" onClick={() => setTheme('restoflow')}>restoflow</button>
             <button type="button" data-testid="ir-cocina" onClick={() => setActivePath('/cocina')}>cocina</button>
         </div>
     );
@@ -69,6 +71,20 @@ describe('tema y modo oscuro', () => {
         const link = document.head.querySelector('#theme-css');
         expect(link).not.toBeNull();
         expect(link.getAttribute('href')).toBe('/themes/theme-calido.css');
+    });
+
+    it('suma la paleta RestoFlow: aparece en la lista, carga su hoja y persiste', async () => {
+        await render();
+        expect(container.querySelector('[data-testid="theme-ids"]').textContent).toContain('restoflow');
+
+        await act(async () => container.querySelector('[data-testid="set-restoflow"]').click());
+
+        expect(document.body.classList.contains('theme-restoflow')).toBe(true);
+        expect(document.body.classList.contains('theme-fresco')).toBe(false);
+        const link = document.head.querySelector('#theme-css');
+        expect(link).not.toBeNull();
+        expect(link.getAttribute('href')).toBe('/themes/theme-restoflow.css');
+        expect(localStorage.getItem('restaurant-theme')).toBe('restoflow');
     });
 
     it('la cocina ya no se pone oscura por su cuenta', async () => {

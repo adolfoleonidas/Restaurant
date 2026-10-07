@@ -51,10 +51,12 @@ describe('estados del producto', () => {
 describe('botón de envío', () => {
     it('el primer envío manda la comanda entera', () => {
         const order = { status: 'nuevo' };
-        expect(sendAction([item('i1', 'p1', 'Sopa', 1)], order).label).toBe('✈ Enviar a cocina');
+        // S9b: el mockup del tomador no usa el ✈ ni "adicionales (N)": el botón
+        // dice siempre "Enviar a cocina · S/ X".
+        expect(sendAction([item('i1', 'p1', 'Sopa', 1)], order).label).toBe('Enviar a cocina · S/ 10.00');
     });
 
-    it('después sólo ofrece los adicionales, con su número', () => {
+    it('después sólo ofrece los adicionales, con su monto', () => {
         const order = { status: 'en_preparacion' };
         const items = [
             item('i1', 'p1', 'Sopa', 1, { status: 'pendiente' }),
@@ -62,7 +64,8 @@ describe('botón de envío', () => {
         ];
         const action = sendAction(items, order);
         expect(action.kind).toBe('extra');
-        expect(action.label).toBe('✈ Enviar adicionales (1)');
+        expect(action.amount).toBe(10);
+        expect(action.label).toBe('Enviar a cocina · S/ 10.00');
         expect(draftCount(items, order.status)).toBe(1);
     });
 
