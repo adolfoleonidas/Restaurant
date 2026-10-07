@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Slices 1–5 + S3-3 endpoint complete (2026-10-06); remaining deferred items under Notes / deviations
+Status: Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link complete (2026-10-06); only the global theme decision remains open.
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -27,7 +27,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - [x] S1-2: Capacity line "N asientos" on `MesaCard` (`mesa-card-asientos-{n}`, `t.capacity` with `seats` fallback); `GroupCard` sums member capacity (`mesa-grupo-asientos`) only when every member reports it.
 - [x] S1-3: "S/ X en mesas" in `salon-resumen` (`salon-total-en-mesas`): pending balance across floor units (groups sum their bills, no double counting), `fmtMoney`, independent from filters.
 - [x] S1-4: "Orden: Número/Prioridad" toggle (`salon-orden`): default Número (unchanged behavior); priority listo > por cobrar > ocupada > reservada + elapsed minutes, tiebreak by anchor number; persisted per user (`salon-orden:<userId>`, `salon-branch-scope` convention).
-- [ ] S1-5 (deferred): ready-dishes badge on the nav — needs a shell-level data source decision.
+- [x] S1-5 (closed 2026-10-06): ready-dishes badge on the nav. New `useReadyDishes` hook + AppShell wiring (`GET /orders?active_only=true` via `usePolling`, 25s, mounted once, disabled for roles without Salón in nav). Metric: item quantities with `status === 'listo'` (mirrors Salon's `summary.toReady`). Badges `nav-ready-badge` (sidebar) and `bottom-nav-ready-badge` (bottom nav), hidden at 0.
 
 ## Tasks — Slice 2 (Detalle de mesa)
 - [x] S2-1: Consumido/Pagado/Pendiente rows (`AccountTotals` exported from `OrderSummary.jsx`): inside `TableSummary` (2+ accounts) and standalone for a single account (`mesa-sheet-consumido/-pagado/-pendiente`), placed before the people strip. Source: per-account `total − amount_paid` (same as `MesaCard` "Debe S/ X"), reused via `accountDue(order)` in `Salon.jsx`.
@@ -54,7 +54,9 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 ## Notes / deviations
 - S5-2: all staff orders show "👤 Mozo" (llevar/recojo/delivery included); distinguishing QR-from-mostrador on staff orders needs a backend field (deferred).
 - S5-1: the red uses `text-destructive` including its dark-theme variant.
-- S4-2: "Ver" is a real anchor (full page load) so the out-of-scope `AccountPaymentAudit.test.jsx` mock stays untouched; it can migrate to SPA `Link` when that mock is extended.
+- S4-2 (closed 2026-10-06): "Ver" migrated to SPA `Link`; router mocks updated in `AccountPaymentAudit.test.jsx` and `CajaPaymentProof.test.js`.
+- S1-5: badge counts plates (units) like Salon's `toReady` (the prototype counted orders). The shell now has two lightweight polls of the same endpoint (`RoleInbox` 20s + badge 25s) — unify later if desired.
+- S1-5: badge refreshes by poll (≤25s); instant SSE updates would need moving the call inside `NotifyProvider` (small refactor, not done).
 - S4-1: KPIs render with or without an open shift (prototype parity).
 - S3-1: badge coexists with the stepper (deliberate redundancy; the stepper's center number remains the interaction/test contract).
 - S3-2: the send label now carries the amount in both composers (sheet + new order).
@@ -95,6 +97,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S3-3 work-unit (this commit): `backend/models.py` (+10), `backend/routes/orders.py` (+18), new `tests/test_order_notes.py` (6 tests); `frontend/src/components/OrderComposer.jsx` (+49), `frontend/src/__tests__/OrderComposerParity.test.js` (+4 tests).
 - S3-3 test-first: backend 6 and frontend 4 assertions observed failing first.
 - S3-3 verification: backend focused `tests/test_order_notes.py` -> **6 passed** (orchestrator re-ran: 6 passed); backend hermetic `pytest tests -m "not integration" -q` -> **466 passed, 49 deselected**. Frontend composer consumers **10 suites / 73 tests**; full frontend **56 suites / 352 tests**; Build `$env:CI='true'; npm run build` -> compiled successfully; orchestrator re-ran `OrderComposerParity`: **8/8**.
+- S1-5 + S4-2 follow-up work-unit (this commit): new `frontend/src/hooks/useReadyDishes.js`; `frontend/src/components/AppShell.jsx` (+55), `frontend/src/pages/Caja.jsx`, `frontend/src/components/AccountPaymentAudit.test.jsx`, `frontend/src/__tests__/CajaPaymentProof.test.js`; new `frontend/src/__tests__/AppShellReadyBadge.test.js` (3 tests).
+- Follow-up test-first: badge RED (1 failing) then green **3/3**. Focused: **8 suites / 69 tests**; full frontend **57 suites / 355 tests**; Build compiled successfully; orchestrator re-ran `AppShellReadyBadge|AccountPaymentAudit`: **2 suites / 15 tests passed**.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

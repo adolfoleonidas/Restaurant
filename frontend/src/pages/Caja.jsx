@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -917,11 +917,8 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {/* Anchor real, con los estilos del Button: no usa
-                                        Link/useNavigate para no depender del mock de
-                                        router de las pruebas de la página. */}
                                     <Button asChild size="sm" variant="outline" className="mt-1 h-11">
-                                        <a href={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</a>
+                                        <Link to={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</Link>
                                     </Button>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
@@ -948,11 +945,8 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
-                                    {/* Anchor real, con los estilos del Button: no usa
-                                        Link/useNavigate para no depender del mock de
-                                        router de las pruebas de la página. */}
                                     <Button asChild size="sm" variant="outline" className="mt-1 h-11">
-                                        <a href={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</a>
+                                        <Link to={`/pedidos/${o.id}`} data-testid={`caja-ver-${o.order_number}`}>Ver</Link>
                                     </Button>
                                     {o.payment_status === 'pagado' ? <div className="text-xs text-primary mt-1">Pagado · sigue en cocina</div> : <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-cobrar-${o.order_number}`}><DollarSign className="h-4 w-4 mr-1" />Cobrar</Button>}
                                     <AccountPaymentAudit order={o} scopeParams={scopeParams} />
