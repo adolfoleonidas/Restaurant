@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option + S7 table-detail presentation. No open items.
+Status: Complete (2026-10-06) — Slices 1–5 + S3-3 endpoint + S1-5 badge + S4-2 Link + S6 theme option + S7 table-detail presentation + S8 composer presentation. No open items.
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -53,10 +53,14 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 
 - [x] S7 (2026-10-06): Table-selected experience rebuilt to the prototype presentation (user: "el modal es aburrido… debe ser como el html del prototipo"). The narrow right Sheet (`max-w-md`) is gone: selecting a table swaps the salón grid for the detail view — back control (`mesa-sheet-volver`, Escape also returns), desktop ≥820px two columns `minmax(0,1.4fr) minmax(280px,.65fr)` (orders left, sticky "Resumen" right), mobile single column with the action bar fixed above the bottom nav. Prototype-style order card per account (person + ✎, `#id · hora`, status tag, items with per-item notes, total, "✓ Entregado" `mesa-sheet-entregar-{n}` when ready), "Resumen" panel (Pedidos/Consumido/Pagado/Pendiente), "Más opciones" keeping every existing action, "+ Nuevo pedido" / "Cobrar S/ X" bar. Composer untouched; every e2e `data-testid` preserved (automated diff: 0 removed).
 
+- [x] S8 (2026-10-06): Order-taking (composer) aligned to the prototype's `posView()`: person strip "Para {nombre} · nombre opcional" + inline ✎ rename (`mesa-sheet-persona`), and on mobile a FAB "Ver pedido · N nuevo(s) · S/ X" (`mesa-sheet-fab`, <820px) opening a bottom sheet (`mesa-sheet-ticket-sheet`, scrim, reusing `PersonOrderSummary`/`OrderNote` with `mesa-sheet-ticket-*` testids + `mesa-sheet-ticket-enviar`). Inline content stays visible (e2e contract) — the sheet is an additional surface. Desktop keeps the draft in the active account card + sticky footer; the send button is now `h-12` with the amount. E2E inventory checked: `mesa-sheet-nuevo-pedido`, `mesa-sheet-producto-*`, `mesa-sheet-items` preserved in both specs.
+
 ## Backlog (next slices)
 - Empty — all planned work delivered.
 
 ## Notes / deviations
+- S8: on mobile the draft exists twice by design (inline for the e2e contract + bottom sheet for thumbs); both reuse the same components/handlers with different prefixes.
+- S8: `OrderNote` was extracted as an export of `OrderComposer` to reuse the general note between the catalog and the sheet (internal refactor only).
 - S7: only the active account's items are editable in the detail (same mechanism as the person chips); the other account cards are read-only glances.
 - S7: per-card "✓ Entregado" (`mesa-sheet-entregar-{n}`) coexists with the bar's `mesa-sheet-entregar`; the `TableSummary` (2+ accounts) vs `AccountTotals` (1 account) split is preserved.
 - S5-2: all staff orders show "👤 Mozo" (llevar/recojo/delivery included); distinguishing QR-from-mostrador on staff orders needs a backend field (deferred).
@@ -112,6 +116,8 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S6 test-first: 3 failures observed; focused `ThemeDarkMode|RestoflowTheme` -> **2 suites / 9 tests** (orchestrator re-ran: same); full frontend **58 suites / 358 tests**; Build compiled successfully (theme css copied and fonts link included).
 - S7 work-unit (this commit): `frontend/src/pages/Salon.jsx`; new `frontend/src/__tests__/SalonDetailView.test.js` (7 tests); presentation adjustments documented in `SalonSheetParity.test.js` and `SalonActiveOrderBar.test.js`.
 - S7 test-first: 5 failures observed before implementation; focused salón/sheet **14 suites / 91 tests**; full frontend **59 suites / 365 tests**; Build compiled (breakpoints verified in the compiled CSS); orchestrator re-ran `SalonDetailView|SalonSheetParity|SalonActiveOrderBar`: **3 suites / 16 tests passed**; testid diff 0 removed.
+- S8 work-unit (this commit): `frontend/src/pages/Salon.jsx` (+128), `frontend/src/components/OrderComposer.jsx` (internal refactor); new `frontend/src/__tests__/SalonComposerProto.test.js` (4 tests).
+- S8 test-first: 3 failures observed; focused salón/compositor **11 suites / 78 tests**; full frontend **60 suites / 369 tests**; Build compiled; orchestrator re-ran `SalonComposerProto|SalonDetailView`: **2 suites / 11 tests passed**; testid diff 0 removed.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.

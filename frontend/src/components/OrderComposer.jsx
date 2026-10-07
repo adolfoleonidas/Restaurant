@@ -10,6 +10,56 @@ import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
 import { isCancelled, isDraft, sendAction } from '@/lib/orderDraft';
 
 /**
+ * Nota general para cocina del pedido completo.
+ *
+ * Vive en el compositor y también en la hoja del borrador (móvil): mismo
+ * estado, mismo guardado (blur o Enter) y testid por prefijo. Si el PATCH
+ * falla, el campo vuelve a la última nota confirmada.
+ */
+export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
+    const [noteDraft, setNoteDraft] = useState(order?.notes || '');
+
+    // La nota sigue al pedido (cambio de cuenta o refresco del polling); el
+    // texto que se está escribiendo no se pisa porque las dependencias son los
+    // valores del servidor, no la identidad del objeto.
+    useEffect(() => {
+        setNoteDraft(order?.notes || '');
+    }, [order?.id, order?.notes]);
+
+    const saveNote = async () => {
+        if (!order?.id) return;
+        const next = noteDraft.trim();
+        if (next === String(order.notes || '').trim()) return;
+        try {
+            await api.patch(`/orders/${order.id}/notes`, { notes: next });
+        } catch (e) {
+            setNoteDraft(order.notes || '');
+            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
+        }
+    };
+
+    if (!order) return null;
+
+    return (
+        <Textarea
+            rows={2}
+            className="text-sm"
+            placeholder="Nota general para cocina (opcional)"
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={saveNote}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    saveNote();
+                }
+            }}
+            data-testid={`${testIdPrefix}-nota-general`}
+        />
+    );
+}
+
+/**
  * Carta para componer un pedido sin salir del panel.
  *
  * La disposición sigue la del prototipo de referencia: buscador, categorías como
@@ -40,30 +90,7 @@ export default function OrderComposer({
     const [categoryId, setCategoryId] = useState('all');
     const [sound, setSound] = useState(soundEnabled);
     const [pulse, setPulse] = useState(null);
-    const [noteDraft, setNoteDraft] = useState(order?.notes || '');
     const pulseTimer = useRef(null);
-
-    // La nota sigue al pedido (cambio de cuenta o refresco del polling); el
-    // texto que se está escribiendo no se pisa porque las dependencias son los
-    // valores del servidor, no la identidad del objeto.
-    useEffect(() => {
-        setNoteDraft(order?.notes || '');
-    }, [order?.id, order?.notes]);
-
-    // Guarda al salir del campo o con Enter (Shift+Enter hace salto de línea).
-    // El texto ya se ve mientras se escribe: eso es la parte optimista; si el
-    // PATCH falla, el campo vuelve a la última nota confirmada.
-    const saveNote = async () => {
-        if (!order?.id) return;
-        const next = noteDraft.trim();
-        if (next === String(order.notes || '').trim()) return;
-        try {
-            await api.patch(`/orders/${order.id}/notes`, { notes: next });
-        } catch (e) {
-            setNoteDraft(order.notes || '');
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
-        }
-    };
 
     const lines = (items || (order?.items || [])).filter((i) => !isCancelled(i));
 
@@ -235,26 +262,10 @@ export default function OrderComposer({
                 </div>
             </div>
 
-            {/* Nota general para cocina del pedido entero, no de un producto.
-                Se guarda sola: al salir del campo o con Enter (Shift hace
-                salto de línea). */}
+            {/* Nota general para cocina del pedido entero, no de un producto. */}
             {order && (
                 <div className="px-3 pb-2">
-                    <Textarea
-                        rows={2}
-                        className="text-sm"
-                        placeholder="Nota general para cocina (opcional)"
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        onBlur={saveNote}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                saveNote();
-                            }
-                        }}
-                        data-testid={`${testIdPrefix}-nota-general`}
-                    />
+                    <OrderNote order={order} testIdPrefix={testIdPrefix} />
                 </div>
             )}
 
@@ -273,7 +284,7 @@ export default function OrderComposer({
                         <div className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(order.total)}</div>
                     </div>
                     {showKitchen && (
-                        <Button onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
+                        <Button className="h-12 shrink-0" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>
                             {sendButtonLabel}
                         </Button>
                     )}

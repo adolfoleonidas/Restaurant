@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
-import OrderComposer from '@/components/OrderComposer';
+import OrderComposer, { OrderNote } from '@/components/OrderComposer';
 import PersonChips from '@/components/PersonChips';
 import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
 import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
@@ -291,6 +291,10 @@ export default function Salon() {
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
     const [composerOpen, setComposerOpen] = useState(false);
+    // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
+    // persona, al estilo posView del prototipo.
+    const [ticketOpen, setTicketOpen] = useState(false);
+    const [personNameEdit, setPersonNameEdit] = useState(false);
     // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
     // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
     // hoja sin depender de que la mesa siga en el listado del polling.
@@ -623,7 +627,11 @@ export default function Salon() {
         } catch { /* historial opcional */ }
     };
 
-    const closeSheet = () => setOpenTable(null);
+    const closeSheet = () => {
+        setOpenTable(null);
+        setTicketOpen(false);
+        setPersonNameEdit(false);
+    };
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
@@ -1175,18 +1183,23 @@ export default function Salon() {
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
-    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Los diálogos
-    // y menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
+    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Con la hoja
+    // del borrador abierta, el primer Escape la cierra a ella. Los diálogos y
+    // menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
     useEffect(() => {
         if (!openTable) return undefined;
         const onKey = (event) => {
             if (event.key !== 'Escape') return;
             if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"]')) return;
+            if (ticketOpen) {
+                setTicketOpen(false);
+                return;
+            }
             setOpenTable(null);
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [openTable]);
+    }, [openTable, ticketOpen]);
 
     return (
         <div
@@ -1570,6 +1583,11 @@ export default function Salon() {
                         const tablePendiente = allAccounts.reduce((sum, o) => sum + accountDue(activeOrders[o.id] || o), 0);
                         // Lo que falta enviar de la cuenta que se está armando.
                         const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
+                        // Unidades en borrador de la cuenta activa: lo que el FAB
+                        // anuncia como "nuevos" (por unidad, como el prototipo).
+                        const draftUnits = orderItems
+                            .filter((it) => isDraft(it, order?.status))
+                            .reduce((sum, it) => sum + Number(it.quantity || 0), 0);
                         // Con la pantalla limpia para la siguiente persona, las acciones
                         // de la mesa siguen apuntando a una cuenta real.
                         const fallbackPerson = persons[0] || null;
@@ -1694,6 +1712,40 @@ export default function Salon() {
                                                 )}
                                             </div>
                                         </details>
+                                    )}
+                                    {/* Franja "Para {persona}" del prototipo: arriba de la
+                                        carta, con el ✎ que reusa el alias de la cuenta. */}
+                                    {canCompose && composerOpen && (
+                                        <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
+                                            <span className="min-w-0 truncate text-sm">
+                                                Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
+                                                {!aliasDraft.trim() && <span className="text-muted-foreground"> · nombre opcional</span>}
+                                            </span>
+                                            {canTake && (personNameEdit ? (
+                                                <Input
+                                                    autoFocus
+                                                    className="h-9 w-36 shrink-0"
+                                                    placeholder="Nombre"
+                                                    value={aliasDraft}
+                                                    onChange={(e) => setAliasDraft(e.target.value)}
+                                                    onBlur={() => { setPersonNameEdit(false); saveAlias(); }}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') { setPersonNameEdit(false); saveAlias(); }
+                                                        if (e.key === 'Escape') setPersonNameEdit(false);
+                                                    }}
+                                                    data-testid="mesa-sheet-persona-nombre"
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPersonNameEdit(true)}
+                                                    data-testid="mesa-sheet-persona-renombrar"
+                                                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+                                                >
+                                                    ✎ Nombre
+                                                </button>
+                                            ))}
+                                        </div>
                                     )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
@@ -1960,6 +2012,20 @@ export default function Salon() {
                                         tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
                                         en el flujo de pago del pedido, que es quien exige el
                                         turno de caja abierto antes de registrar. */}
+                                    {/* FAB del borrador (solo móvil): abre la hoja con
+                                        las líneas y el envío. Va arriba de los botones
+                                        de la barra de acciones. */}
+                                    {composerOpen && order && draftUnits > 0 && sendState && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setTicketOpen(true)}
+                                            data-testid="mesa-sheet-fab"
+                                            className="flex min-h-12 w-full items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground min-[820px]:hidden"
+                                        >
+                                            <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
+                                            <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
+                                        </button>
+                                    )}
                                     {canCompose && (
                                         <Button
                                             className="w-full h-12"
@@ -2079,6 +2145,58 @@ export default function Salon() {
                                         </div>
                                     </aside>
                                 </div>
+
+                                {/* Hoja inferior del borrador (móvil, patrón FAB del
+                                    prototipo): líneas con stepper y nota, nota general
+                                    y envío. El detalle inline sigue montado, así el
+                                    contrato del e2e no queda oculto tras el FAB. */}
+                                {ticketOpen && order && (
+                                    <div className="fixed inset-0 z-40 min-[820px]:hidden" data-testid="mesa-sheet-ticket-sheet">
+                                        <div
+                                            className="absolute inset-0 bg-black/40"
+                                            data-testid="mesa-sheet-ticket-scrim"
+                                            aria-hidden="true"
+                                            onClick={() => setTicketOpen(false)}
+                                        />
+                                        <div className="absolute inset-x-0 bottom-0 max-h-[85dvh] space-y-3 overflow-y-auto rounded-t-2xl border-t bg-card p-4 pb-[calc(1rem+var(--safe-bottom))]">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="page-kicker">
+                                                    Pedido nuevo{draftUnits > 0 ? ` · ${draftUnits} por enviar` : ''}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTicketOpen(false)}
+                                                    aria-label="Cerrar pedido"
+                                                    data-testid="mesa-sheet-ticket-cerrar"
+                                                    className="grid h-9 w-9 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-foreground"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                            <PersonOrderSummary
+                                                testIdPrefix="mesa-sheet-ticket"
+                                                items={allItems}
+                                                orderStatus={order.status}
+                                                canEdit={canCompose}
+                                                saving={savingItem}
+                                                onChangeQty={changeItemQty}
+                                                onNotes={saveItemNotes}
+                                                onApplyNote={applyItemNote}
+                                                onVoid={voidProduct}
+                                            />
+                                            <OrderNote order={order} testIdPrefix="mesa-sheet-ticket" />
+                                            {showSend && (
+                                                <Button
+                                                    className="w-full h-12"
+                                                    onClick={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
+                                                    data-testid="mesa-sheet-ticket-enviar"
+                                                >
+                                                    {sendState?.label}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </section>
                         );
                     })()}
