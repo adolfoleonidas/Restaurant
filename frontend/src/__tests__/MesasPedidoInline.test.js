@@ -152,6 +152,9 @@ describe('pedido inline en el salón', () => {
         const button = document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(button).not.toBeNull();
         await click(button);
+        // S14: el envío pasa por el paso de confirmación (no envía directo).
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
@@ -182,6 +185,8 @@ describe('pedido inline en el salón', () => {
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
         await click(document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        // S14: el alias viaja recién al confirmar el envío.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan', shared: false });
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });

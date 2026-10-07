@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 /**
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
  * Existe para que la barra de una pantalla no acumule botones: lo que se hace en
  * cada ronda queda visible y lo excepcional vive acá. Ver la jerarquía de
  * acciones en `docs/spec/especificacion-ui-ux-pantallas-v0.1.md`.
+ *
+ * S13: el trigger es un botón compacto de tres puntitos — cabe en una cabecera,
+ * al lado del título, y deja la zona de acciones con sus dos botones. El popup
+ * se abre debajo, alineado a la derecha del botón.
  *
  * Se implementa a mano en vez de usar el menú de Radix por dos razones concretas:
  * esta pieza vive dentro de una hoja (diálogo modal) y el portal de Radix pelea
@@ -63,22 +67,19 @@ export default function MoreActions({ testId, actions, label = 'Más opciones' }
     if (actions.length === 0) return null;
 
     return (
-        <div className="relative" ref={containerRef}>
+        <div className="relative shrink-0" ref={containerRef}>
             <Button
-                variant="ghost"
-                className="w-full h-11 rounded-xl bg-secondary/60 px-3 text-sm font-medium text-muted-foreground hover:bg-secondary"
+                variant="outline"
+                size="icon"
+                className="h-11 w-11 rounded-xl"
                 aria-haspopup="menu"
                 aria-expanded={open}
+                aria-label={label}
+                title={label}
                 onClick={() => setOpen((value) => !value)}
                 data-testid={testId}
             >
-                <span className="flex w-full items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                        <MoreHorizontal className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{label}</span>
-                    </span>
-                    <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-                </span>
+                <MoreHorizontal className="h-5 w-5" />
             </Button>
             {open && (
                 <div
@@ -86,7 +87,7 @@ export default function MoreActions({ testId, actions, label = 'Más opciones' }
                     role="menu"
                     aria-label={label}
                     data-testid={`${testId}-menu`}
-                    className="absolute bottom-full left-0 right-0 z-50 mb-2 rounded-md border bg-popover p-1 shadow-lg"
+                    className="absolute right-0 top-full z-50 mt-2 w-64 rounded-md border bg-popover p-1 text-left shadow-lg"
                 >
                     {actions.map((action) => (
                         action.group ? (

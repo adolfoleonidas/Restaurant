@@ -80,7 +80,9 @@ describe('mini-reproductor del pedido activo', () => {
     });
 
     it('mantiene a la vista la cuenta abierta y la reabre al tocarla', async () => {
-        const o1 = order();
+        // S14: la acción solo ofrece "Enviar a cocina" cuando hay borradores
+        // reales; con lo ya enviado muestra el estado y ofrece "Agregar".
+        const o1 = order({ items: [item('i1', 'Ceviche', 1, 30, 'borrador')] });
         mockTables.splice(0, mockTables.length, table({ active_order: { id: 'order-1', status: 'en_preparacion' } }));
         mockOrders.splice(0, mockOrders.length, o1);
         api.get.mockImplementation((url) => {
@@ -94,6 +96,9 @@ describe('mini-reproductor del pedido activo', () => {
         expect(container.querySelector('[data-testid="salon-mini"]')).toBeNull();
 
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        // Con un borrador la carta se abre sola: el primer ← cierra el
+        // compositor y el segundo vuelve al salón (donde vive el mini).
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
 
         const mini = container.querySelector('[data-testid="salon-mini"]');
@@ -101,9 +106,41 @@ describe('mini-reproductor del pedido activo', () => {
         expect(mini.textContent).toContain('Mesa 1');
         expect(mini.textContent).toContain('S/ 30.00');
         // En borrador la acción contextual es enviar, no cobrar.
-        expect(mini.querySelector('[data-testid="salon-mini-accion"]').textContent).toContain('Enviar');
+        expect(mini.querySelector('[data-testid="salon-mini-accion"]').textContent).toContain('Enviar a cocina');
 
         await click(mini.querySelector('button'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+    });
+
+    it('S14: la acción del mini dice "Enviar a cocina" y pasa por Confirmar pedido', async () => {
+        const o1 = order({ items: [item('i1', 'Ceviche', 2, 60, 'borrador')], total: 60 });
+        mockTables.splice(0, mockTables.length, table({ active_order: { id: 'order-1', status: 'en_preparacion' } }));
+        mockOrders.splice(0, mockOrders.length, o1);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url.startsWith('/orders/')) return Promise.resolve({ data: o1 });
+            return Promise.resolve({ data: [o1] });
+        });
+        api.post.mockResolvedValue({ data: o1 });
+
+        ({ container, root } = await renderPage());
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+
+        const accion = container.querySelector('[data-testid="salon-mini-accion"]');
+        // Label decidido en S14: "Enviar a cocina · unidades · monto".
+        expect(accion.textContent).toContain('Enviar a cocina');
+        expect(accion.textContent).toContain('2');
+        expect(accion.textContent).toContain('S/ 60.00');
+
+        await click(accion);
+        // No envía directo: abre el paso de confirmación (mismo que el ticket).
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).not.toBeNull();
+
+        // "Agregar más" desde el mini abre la hoja de esa cuenta.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-agregar"]'));
         expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
     });
 

@@ -142,6 +142,14 @@ describe('pedido por personas en el salón', () => {
         expect(button.textContent).toContain('S/ 38.00');
 
         await click(button);
+        // S14: el botón abre "Confirmar pedido"; recién ahí viaja el POST y sólo
+        // con los borradores (la línea ya enviada no se re-manda).
+        const dialogo = document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]');
+        expect(dialogo).not.toBeNull();
+        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i2"]')).not.toBeNull();
+        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i1"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
 
@@ -184,6 +192,17 @@ describe('pedido por personas en el salón', () => {
 
         // S11: anular productos individualmente es una flag apagada por defecto.
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]')).toBeNull();
+    });
+
+    it('S12: el estado va en el tag del pedido y las líneas de la tarjeta van peladas', async () => {
+        const account = order('order-1', 11, 'en_preparacion', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
+        ({ container, root, sheet } = await openTableWith([account], {}, { select: 11 }));
+
+        // El tag del pedido vive en la cabecera de la tarjeta…
+        const card = sheet.querySelector('[data-testid="mesa-sheet-pedido-11"]');
+        expect(card.textContent).toContain('En cocina');
+        // …y ninguna línea lleva chip de estado por ítem (cambio pedido: es por pedido).
+        expect(card.querySelector('[data-testid="mesa-sheet-item-estado-i1"]')).toBeNull();
     });
 
     it('anula un producto ya enviado pidiendo el motivo', async () => {
@@ -318,6 +337,8 @@ describe('pedido por personas en el salón', () => {
         const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(enviar).not.toBeNull();
         await click(enviar);
+        // S14: el paso de confirmación es ahora el que dispara el envío.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
 
         // Confirma el envío con el toast del mockup (S11: "Enviado a cocina ·
         // Mesa N"), no con el "¿Siguiente persona?" anterior.

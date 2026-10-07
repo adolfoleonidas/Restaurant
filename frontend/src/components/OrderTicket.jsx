@@ -62,6 +62,9 @@ export default function OrderTicket({
                 canEdit={canEdit}
                 canVoid={canVoid}
                 saving={saving}
+                // S12: lo enviado va en su bloque `.sent` (`#id · hh:mm` + tag);
+                // las líneas van peladas, sin chip por ítem.
+                sentMeta={{ number: order.order_number, at: order.created_at }}
                 onChangeQty={onChangeQty}
                 onNotes={onNotes}
                 onVoid={onVoid}

@@ -9,8 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import OrderTicket from '@/components/OrderTicket';
-import { AccountTotals, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
-import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
+import { AccountTotals, KITCHEN_TONE, PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
+import { draftCount, editableItems, isDraft, orderStateTag, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, ShoppingCart, Link2, Unlink, MoveRight, ArrowUpDown, ChevronLeft, Pencil } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
@@ -189,26 +189,14 @@ function accountDue(order) {
 }
 
 /**
- * Estado agregado de una cuenta para el tag de su tarjeta en el detalle:
- * lo que reclama acción primero (listo > en cocina > por enviar > entregado),
- * con los mismos tonos que los chips de estado del resumen de productos.
+ * Estado agregado de una cuenta para el tag de su tarjeta en el detalle
+ * (S12: el estado es POR PEDIDO, no por ítem). Delega en `orderStateTag` para
+ * que la tarjeta y el bloque enviado del ticket compartan exactamente la misma
+ * regla; los tonos viven en `KITCHEN_TONE` (OrderSummary).
  */
-function accountKitchenState(items = []) {
-    const visible = (items || []).filter((it) => it.status !== 'cancelado');
-    if (!visible.length) return { label: 'Sin platos', tone: 'draft' };
-    const pending = visible.filter((it) => (it.status || 'pendiente') !== 'entregado');
-    if (pending.some((it) => it.status === 'listo')) return { label: 'Listo', tone: 'ready' };
-    if (pending.some((it) => !['borrador', 'nuevo', ''].includes(it.status || ''))) return { label: 'En cocina', tone: 'kitchen' };
-    if (pending.length) return { label: 'Por enviar', tone: 'draft' };
-    return { label: 'Entregado', tone: 'done' };
+function accountKitchenState(items = [], orderStatus) {
+    return orderStateTag(items, orderStatus);
 }
-
-const KITCHEN_TONE = {
-    ready: 'bg-[hsl(var(--warn))] text-[hsl(var(--background))]',
-    kitchen: 'bg-[hsl(var(--chart-2))] text-[hsl(var(--background))]',
-    draft: 'bg-secondary text-muted-foreground',
-    done: 'bg-[hsl(var(--green))] text-[hsl(var(--background))]',
-};
 
 /** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
 const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
@@ -222,7 +210,9 @@ function accountTally(order) {
     const items = (order?.items || []).filter((it) => it.status !== 'cancelado');
     return {
         ready: itemQty(items, (it) => it.status === 'listo'),
-        drafts: itemQty(items, itemPending),
+        // S14: "por enviar" son solo los borradores reales. Antes contaba también
+        // lo ya enviado y el mini ofrecía "Enviar" sin nada que enviar.
+        drafts: itemQty(items, (it) => isDraft(it, order?.status)),
         kitchen: itemQty(items, (it) => ['pendiente', 'enviado_cocina', 'en_preparacion'].includes(it.status)),
         served: itemQty(items, (it) => it.status === 'entregado'),
     };
@@ -296,6 +286,9 @@ export default function Salon() {
     // vive en un diálogo que se abre desde ⋯ Más: el mockup no lo muestra en el
     // cuerpo del detalle.
     const [summaryOpen, setSummaryOpen] = useState(false);
+    // S14: "Enviar a cocina" ya no dispara el envío directo; abre este paso de
+    // confirmación (con los borradores, su stepper y el total) antes del POST.
+    const [confirmSendId, setConfirmSendId] = useState(null);
     // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
@@ -654,6 +647,7 @@ export default function Salon() {
         setPersonNameEdit(false);
         setSummaryOpen(false);
         setReceiptOpen(false);
+        setConfirmSendId(null);
     };
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
@@ -786,6 +780,12 @@ export default function Salon() {
 
     const changeItemQty = async (item, delta) => {
         const orderId = openTable?.order?.id || openTable?.accountId;
+        return changeItemQtyFor(orderId, item, delta);
+    };
+
+    // S14: el paso de confirmación puede operar sobre OTRA cuenta (el
+    // mini-reproductor no abre la hoja), así que el destino es explícito.
+    const changeItemQtyFor = async (orderId, item, delta) => {
         if (!orderId || !canTake) return;
         const next = Number(item.quantity || 1) + delta;
         try {
@@ -809,6 +809,10 @@ export default function Salon() {
     // no de la cuenta ni de la mesa.
     const saveItemNotes = async (item, notes) => {
         const orderId = openTable?.order?.id || openTable?.accountId;
+        return saveItemNotesFor(orderId, item, notes);
+    };
+
+    const saveItemNotesFor = async (orderId, item, notes) => {
         if (!orderId || !canTake) return;
         try {
             await api.patch(`/orders/${orderId}/items/${item.id}`, { notes });
@@ -912,6 +916,46 @@ export default function Salon() {
         } finally {
             setSendingToKitchen(false);
         }
+    };
+
+    /**
+     * S14 — Paso de confirmación antes de enviar.
+     *
+     * "Enviar a cocina" (ticket, barra de la carta o mini-reproductor) abre el
+     * diálogo con los borradores de esa cuenta: el mozo puede reducir cantidades,
+     * sumar más cosas (vuelve al compositor) o confirmar el envío real.
+     */
+    const requestSend = (orderId = null) => {
+        const requested = typeof orderId === 'string' ? orderId : null;
+        const targetId = requested || openTable?.order?.id || openTable?.accountId;
+        if (!targetId || !canTake) return;
+        setConfirmSendId(targetId);
+    };
+
+    const confirmSend = async () => {
+        const targetId = confirmSendId;
+        if (!targetId) return;
+        await sendCurrentToKitchen(targetId);
+        setConfirmSendId(null);
+    };
+
+    // "Agregar más": cierra el diálogo y deja al mozo en el compositor de esa
+    // cuenta (desde el mini, abre su hoja primero).
+    const confirmAddMore = async () => {
+        const targetId = confirmSendId;
+        setConfirmSendId(null);
+        if (!targetId) return;
+        const openId = openTable?.order?.id || openTable?.accountId;
+        if (openTable && targetId === openId) {
+            setComposerOpen(true);
+            return;
+        }
+        const target = (orders || []).find((o) => o.id === targetId)
+            || (lastOpened?.account?.id === targetId ? lastOpened.account : null);
+        const table = (tables || []).find((x) => x.id === target?.table_id) || lastOpened?.table;
+        if (!table) return;
+        await openSheet(table, targetId);
+        setComposerOpen(true);
     };
 
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
@@ -1232,6 +1276,26 @@ export default function Salon() {
 
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
+
+    // ── Paso "Confirmar pedido" (S14) ──────────────────────────────────────
+    // La cuenta destino puede ser la de la hoja abierta o la del
+    // mini-reproductor; los borradores salen de la versión más fresca que
+    // tengamos a mano.
+    const confirmOpenId = openTable?.order?.id || openTable?.accountId || null;
+    const confirmOrderData = confirmSendId
+        ? (confirmSendId === confirmOpenId
+            ? (sheetOrder || (openTable?.accounts || []).find((o) => o.id === confirmSendId) || null)
+            : (orders.find((o) => o.id === confirmSendId)
+                || (lastOpened?.account?.id === confirmSendId ? lastOpened.account : null)))
+        : null;
+    const confirmDraftItems = confirmOrderData
+        ? editableItems(confirmOrderData.items || [], confirmOrderData.status)
+        : [];
+    const confirmTable = (() => {
+        if (!confirmOrderData) return openTable?.table || lastOpened?.table || null;
+        if (openTable?.table?.id === confirmOrderData.table_id) return openTable.table;
+        return (tables || []).find((x) => x.id === confirmOrderData.table_id) || lastOpened?.table || null;
+    })();
 
     // Escape vuelve a la grilla, como el cierre del Sheet anterior. Con la hoja
     // del borrador abierta, el primer Escape la cierra a ella. Los diálogos y
@@ -1652,14 +1716,21 @@ export default function Salon() {
                         const closeable = canClose && canCloseAttention(t, actionOrder);
                         const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
                         // "Más opciones" del prototipo: todas las acciones
-                        // ocasionales en un solo menú, arriba de la barra principal.
+                        // ocasionales en un solo menú, disparado por el botón de
+                        // tres puntitos de la cabecera (S13). La zona de acciones
+                        // queda con dos botones: "+ Nuevo pedido" y "Cobrar".
                         const moreActions = accountTable && order
                             ? [{
                                 key: 'ver-pedido-grupo',
                                 label: `Ver pedido de Mesa ${accountTable.number}`,
                                 testId: 'mesa-sheet-ver-pedido-grupo',
                                 onSelect: () => { closeSheet(); navigate(`/pedidos/${order.id}`); },
-                            }]
+                            }, ...(canTake ? [{
+                                key: 'pedir-grupo',
+                                label: `Pedir para Mesa ${t.number} (cuenta aparte)`,
+                                testId: 'mesa-sheet-pedir-grupo',
+                                onSelect: () => takeOrderInline(t),
+                            }] : [])]
                             : hasAccount ? [
                                 {
                                     key: 'ver-pedido',
@@ -1668,6 +1739,29 @@ export default function Salon() {
                                     disabled: !actionAccountId,
                                     onSelect: () => { closeSheet(); navigate(`/pedidos/${actionAccountId}`); },
                                 },
+                                // S13: lo que antes vivía en la barra (entregar,
+                                // cerrar, solicitar cuenta) ahora es una opción del
+                                // menú; mismos testids para las suites.
+                                ...(floor.key === 'listo' && canServe ? [{
+                                    key: 'entregar',
+                                    label: 'Entregar',
+                                    testId: 'mesa-sheet-entregar',
+                                    onSelect: () => deliver(actionAccountId),
+                                }] : []),
+                                ...(closeable ? [{
+                                    key: 'cerrar',
+                                    label: closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa',
+                                    testId: `servicio-cerrar-sheet-${t.number}`,
+                                    disabled: closing === actionOrder?.id,
+                                    onSelect: () => closeAttention(actionOrder),
+                                }] : []),
+                                ...(!closeable && !billRequested
+                                    && ['listo', 'entregado'].includes(actionOrder?.status) && canTake ? [{
+                                    key: 'solicitar-cuenta',
+                                    label: 'Solicitar cuenta',
+                                    testId: 'mesa-sheet-solicitar-cuenta',
+                                    onSelect: () => requestBill(actionOrder),
+                                }] : []),
                                 {
                                     key: 'resumen-recibo',
                                     label: 'Resumen de mesa / Recibo',
@@ -1710,7 +1804,15 @@ export default function Salon() {
                                         onSelect: mergeAccounts,
                                     },
                                 ] : []),
-                            ] : [];
+                            ] : t.status === 'pagada' ? [{
+                                // La mesa ya está pagada: liberarla es la única
+                                // acción y vive en ⋯, no en la barra (S13).
+                                key: 'liberar',
+                                label: 'Liberar mesa',
+                                testId: 'mesa-sheet-liberar',
+                                disabled: !canTake,
+                                onSelect: () => releaseTable(t),
+                            }] : [];
                         return (
                             <>
                             <section
@@ -1740,6 +1842,16 @@ export default function Salon() {
                                     </div>
                                     {t.active_order && loading && (
                                         <span className="shrink-0 text-sm text-muted-foreground">Cargando pedido…</span>
+                                    )}
+                                    {/* S13: las acciones ocasionales viven en este
+                                        botón de tres puntitos, alineado a la derecha
+                                        de la cabecera; la barra baja queda para las
+                                        dos acciones del día a día. */}
+                                    {!composerOpen && moreActions.length > 0 && (
+                                        <MoreActions
+                                            testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
+                                            actions={moreActions}
+                                        />
                                     )}
                                 </div>
 
@@ -1830,7 +1942,7 @@ export default function Salon() {
                                             sendLabel={sendState?.label}
                                             onAddProduct={addProductToAccount}
                                             onRemoveProduct={removeProductFromAccount}
-                                            onSendToKitchen={sendCurrentToKitchen}
+                                            onSendToKitchen={() => requestSend()}
                                             showActions={!composerOpen}
                                             showHeader={!composerOpen}
                                         />
@@ -1845,7 +1957,7 @@ export default function Salon() {
                                         const view = isActive && order ? order : detail;
                                         const draftAccount = isComposingDraft(view);
                                         const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
-                                        const kitchen = accountKitchenState(view.items || []);
+                                        const kitchen = accountKitchenState(view.items || [], view.status);
                                         const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
                                         const cardKey = account.order_number ?? account.id;
                                         // La cuenta activa conserva los testids base
@@ -1900,7 +2012,7 @@ export default function Salon() {
                                                         </div>
                                                         <div className="text-xs text-muted-foreground">#{view.order_number} · {fmtTime(view.created_at)}</div>
                                                     </div>
-                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.tone]}`}>
+                                                    <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-extrabold ${KITCHEN_TONE[kitchen.key]}`}>
                                                         {kitchen.label}
                                                     </span>
                                                 </header>
@@ -1928,7 +2040,7 @@ export default function Salon() {
                                                 )}
                                                 <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
                                                     <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
-                                                    {kitchen.tone === 'ready' && canServe && (
+                                                    {kitchen.key === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
                                                             className="h-9 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
@@ -2058,7 +2170,7 @@ export default function Salon() {
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
                                                 onVoid={voidProduct}
-                                                onSend={() => sendCurrentToKitchen()}
+                                                onSend={() => requestSend()}
                                                 onClear={clearDraft}
                                             />
                                         </div>
@@ -2085,11 +2197,19 @@ export default function Salon() {
                                                 pendiente={tablePendiente}
                                             />
                                         )}
-                                        {moreActions.length > 0 && (
-                                            <MoreActions
-                                                testId={accountTable && order ? 'mesa-sheet-mas-grupo' : 'mesa-sheet-mas'}
-                                                actions={moreActions}
-                                            />
+                                        {/* El estado "cuenta solicitada" es información,
+                                            no una tercera acción: vive como aviso en el
+                                            resumen y la barra queda con sus dos botones. */}
+                                        {hasAccount && billRequested && !closeable && (
+                                            <button
+                                                type="button"
+                                                disabled
+                                                aria-disabled="true"
+                                                data-testid="mesa-sheet-cuenta-solicitada"
+                                                className="w-full h-12 rounded-xl border border-dashed text-sm font-semibold text-muted-foreground"
+                                            >
+                                                Cuenta solicitada
+                                            </button>
                                         )}
                                         {/* Una sola instancia de cada botón: en móvil esta
                                             barra se fija abajo; en escritorio vive en el
@@ -2098,16 +2218,9 @@ export default function Salon() {
                                             data-testid="mesa-sheet-acciones"
                                             className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 backdrop-blur min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3 min-[820px]:backdrop-blur-none"
                                         >
-                                    {/* La mesa no se "toma": la atención nace con el primer
-                                        pedido, así que la carta es la acción y no hay botón
-                                        que la reemplace. Los botones de tomar mesa que había
-                                        acá sólo repetían esa acción y parecían recargar. */}
-                                    {/* Cobrar directo con el mismo saldo que muestra la
-                                        tarjeta ("Debe S/ X"). El cobro en sí sigue viviendo
-                                        en el flujo de pago del pedido, que es quien exige el
-                                        turno de caja abierto antes de registrar. */}
-                                    {/* Acción principal del prototipo: carta clara; el
-                                        cobro va en naranja (token warn) como el mockup. */}
+                                    {/* S13: exactamente dos botones. Entregar,
+                                        finalizar/solicitar cuenta y liberar viven
+                                        ahora en el menú ⋯ de la cabecera. */}
                                     {canCompose && (
                                         <Button
                                             variant="outline"
@@ -2128,51 +2241,6 @@ export default function Salon() {
                                             Cobrar {fmtMoney(actionDue)}
                                         </Button>
                                     )}
-                                    {accountTable && order ? (
-                                        <>
-                                            {canTake && (
-                                                <Button
-                                                    className="w-full h-12"
-                                                    onClick={() => takeOrderInline(t)}
-                                                    data-testid="mesa-sheet-pedir-grupo"
-                                                >
-                                                    <Plus className="h-4 w-4 mr-1" /> Pedir para Mesa {t.number} (cuenta aparte)
-                                                </Button>
-                                            )}
-                                        </>
-                                    ) : hasAccount ? (
-                                        <>
-                                            {/* La barra tiene un lugar por tipo de acción:
-                                                operar (Entregar), cerrar (Cuenta) y el resto
-                                                en ⋯ Más. Así el cuerpo del modal queda para
-                                                tomar pedidos, que es lo que más se hace. */}
-                                            {floor.key === 'listo' && canServe && (
-                                                <Button className="w-full h-12" onClick={() => deliver(actionAccountId)} data-testid="mesa-sheet-entregar">Entregar</Button>
-                                            )}
-                                            {/* Un solo lugar para cerrar: la etiqueta cambia
-                                                con el momento de la visita en vez de sumar un
-                                                botón por cada paso del cobro. */}
-                                            {closeable ? (
-                                                <Button variant="outline" className="w-full h-12" onClick={() => closeAttention(actionOrder)} disabled={closing === actionOrder?.id} data-testid={`servicio-cerrar-sheet-${t.number}`}>
-                                                    {closing === actionOrder?.id ? 'Cerrando…' : 'Finalizar mesa'}
-                                                </Button>
-                                            ) : billRequested ? (
-                                                <Button disabled variant="outline" className="w-full h-12" data-testid="mesa-sheet-cuenta-solicitada">
-                                                    Cuenta solicitada
-                                                </Button>
-                                            ) : (
-                                                ['listo', 'entregado'].includes(actionOrder?.status) && canTake && (
-                                                    <Button variant="outline" className="w-full h-12" onClick={() => requestBill(actionOrder)} data-testid="mesa-sheet-solicitar-cuenta">
-                                                        Solicitar cuenta
-                                                    </Button>
-                                                )
-                                            )}
-                                        </>
-                                    ) : t.status === 'pagada' ? (
-                                        <Button className="w-full h-12" variant="outline" onClick={() => releaseTable(t)} disabled={!canTake} data-testid="mesa-sheet-liberar">
-                                            Liberar mesa
-                                        </Button>
-                                    ) : null}
                                         </div>
                                     </aside>
                                     )}
@@ -2217,7 +2285,7 @@ export default function Salon() {
                                                 onChangeQty={changeItemQty}
                                                 onNotes={saveItemNotes}
                                                 onVoid={voidProduct}
-                                                onSend={() => { sendCurrentToKitchen(); setTicketOpen(false); }}
+                                                onSend={() => requestSend()}
                                                 onClear={clearDraft}
                                                 onClose={() => setTicketOpen(false)}
                                                 className="rounded-b-none border-x-0 border-b-0"
@@ -2368,6 +2436,55 @@ export default function Salon() {
                 </DialogContent>
             </Dialog>
 
+            {/* S14: "Confirmar pedido" — lo que se va a enviar, con stepper para
+                reducir y la salida "Agregar más"; recién el Confirmar dispara el
+                POST real (sendCurrentToKitchen). */}
+            <Dialog open={Boolean(confirmSendId)} onOpenChange={(open) => { if (!open) setConfirmSendId(null); }}>
+                <DialogContent className="sm:max-w-md" data-testid="mesa-sheet-confirmar-dialog">
+                    <DialogHeader>
+                        <DialogTitle className="font-display text-2xl">Confirmar pedido</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-confirmar-meta">
+                        {confirmTable ? `Mesa ${confirmTable.number}` : 'La mesa'}
+                        {confirmOrderData ? ` · ${personLabel(confirmOrderData, 0)}` : ''}
+                    </p>
+                    {confirmDraftItems.length > 0 ? (
+                        <PersonOrderSummary
+                            testIdPrefix="mesa-sheet-confirmar"
+                            items={confirmDraftItems}
+                            orderStatus={confirmOrderData?.status}
+                            canEdit={canTake}
+                            saving={savingItem}
+                            onChangeQty={(item, delta) => changeItemQtyFor(confirmSendId, item, delta)}
+                            onNotes={(item, notes) => saveItemNotesFor(confirmSendId, item, notes)}
+                        />
+                    ) : (
+                        <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-confirmar-vacio">
+                            No queda nada por enviar.
+                        </p>
+                    )}
+                    <div
+                        className="flex items-center justify-between gap-2 border-t border-dashed pt-2.5 text-sm font-semibold"
+                        data-testid="mesa-sheet-confirmar-total"
+                    >
+                        <span className="text-muted-foreground">Este envío</span>
+                        <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(confirmDraftItems))}</span>
+                    </div>
+                    <DialogFooter className="gap-2 sm:justify-between">
+                        <Button variant="outline" onClick={confirmAddMore} data-testid="mesa-sheet-confirmar-agregar">
+                            Agregar más
+                        </Button>
+                        <Button
+                            onClick={confirmSend}
+                            disabled={sendingToKitchen || confirmDraftItems.length === 0}
+                            data-testid="mesa-sheet-confirmar-enviar"
+                        >
+                            {sendingToKitchen ? 'Enviando…' : 'Confirmar'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Mini-reproductor del pedido activo: mantiene a la vista la última
                 cuenta abierta mientras el mozo se mueve por el salón, con una
                 sola acción contextual (servir lo listo, enviar los borradores o
@@ -2378,10 +2495,17 @@ export default function Salon() {
                 const tally = accountTally(order);
                 const total = order.total != null ? fmtMoney(order.total) : '—';
                 const statusSummary = `${tallyLabel(tally)} · ${total}`;
-                const actionVerb = tally.ready > 0 ? 'Servir' : tally.drafts > 0 ? `Enviar · ${tally.drafts}` : 'Agregar';
+                const draftsAmount = itemsTotal(editableItems(order.items || [], order.status));
+                // S14: la acción de borradores dice "Enviar a cocina" (con unidades
+                // y monto) y pasa por el paso de confirmación, igual que el ticket.
+                const actionVerb = tally.ready > 0
+                    ? 'Servir'
+                    : tally.drafts > 0
+                        ? `Enviar a cocina · ${tally.drafts} · ${fmtMoney(draftsAmount)}`
+                        : 'Agregar';
                 const runAction = () => {
                     if (tally.ready > 0) return deliver(order.id);
-                    if (tally.drafts > 0) return sendCurrentToKitchen(order.id);
+                    if (tally.drafts > 0) return requestSend(order.id);
                     return openTrackedSheet();
                 };
                 return (

@@ -91,6 +91,32 @@ export function itemState(item, orderStatus) {
     return { key: 'enviado', label: 'Enviado a cocina', tone: 'kitchen' };
 }
 
+/**
+ * Etiqueta de estado del PEDIDO, no de cada línea (S12: "deben ser por pedido y
+ * no individual"). El tag vive una sola vez en la cabecera de la tarjeta/bloque
+ * y las líneas van peladas, como el mockup.
+ *
+ * Regla: se mira sólo lo enviado, por etapa menos avanzada ("min stage"):
+ *   - sin nada enviado (todo borrador)          → "Por enviar"
+ *   - algún enviado que no está listo/entregado → "En cocina"
+ *   - en otro caso, algún listo                 → "Listo"
+ *   - todo lo enviado entregado                 → "Entregado"
+ * Mixtos: "en cocina" manda sobre "listo" (todavía se está preparando algo);
+ * "listo" manda sobre "entregado" (falta servir). El borrador no rebaja el tag:
+ * lo enviado ya viajó a cocina y eso es lo que describe la etiqueta.
+ */
+export function orderStateTag(items = [], orderStatus) {
+    const visible = (items || []).filter((it) => !isCancelled(it));
+    if (!visible.length) return { key: 'empty', label: 'Sin platos' };
+    const sent = visible.filter((it) => isSent(it, orderStatus));
+    if (!sent.length) return { key: 'draft', label: 'Por enviar' };
+    if (sent.some((it) => !['listo', 'entregado'].includes(it.status || ''))) {
+        return { key: 'kitchen', label: 'En cocina' };
+    }
+    if (sent.some((it) => it.status === 'listo')) return { key: 'ready', label: 'Listo' };
+    return { key: 'done', label: 'Entregado' };
+}
+
 function notesKey(notes) {
     return String(notes || '').trim().toLowerCase();
 }
