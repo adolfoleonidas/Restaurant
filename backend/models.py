@@ -441,6 +441,16 @@ class OrderAlias(BaseModel):
     shared: Optional[bool] = None
 
 
+class OrderNotes(BaseModel):
+    """Nota general para cocina del pedido (no la observación de un producto).
+
+    Vacía limpia la nota; 500 caracteres es el mismo orden de largo que una
+    instrucción de cocina y evita que un pegado accidental infle el documento.
+    """
+
+    notes: Optional[str] = Field(default=None, max_length=500)
+
+
 class OrderItemMove(BaseModel):
     """Mueve un producto de una persona a otra de la misma mesa."""
 

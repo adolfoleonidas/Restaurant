@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid, OrderItemMove
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderNotes, OrderItemVoid, OrderItemMove
 from billing import BillError, assert_can_cancel, guarded_totals
 from order_flow import (
     DRAFT_STATUS,
@@ -703,6 +703,22 @@ async def set_order_alias(order_id: str, data: OrderAlias, user: dict = Depends(
     if data.shared is not None:
         patch["shared"] = bool(data.shared)
     await _save_order(order, patch)
+    return await _current_order_response(order_id, user)
+
+
+@router.patch("/{order_id}/notes")
+async def set_order_notes(order_id: str, data: OrderNotes, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Nota general para cocina del pedido. Vacía = limpiar.
+
+    Mismos guardas que el alias: sólo pedidos abiertos, con el alcance de
+    sucursal del usuario. Cocina la lee del propio pedido (`order.notes`).
+    """
+    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    await _save_order(order, {"notes": (data.notes or "").strip() or None, "updated_at": _now()})
     return await _current_order_response(order_id, user)
 
 

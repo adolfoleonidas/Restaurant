@@ -2,6 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
 import { isCancelled, isDraft, sendAction } from '@/lib/orderDraft';
@@ -37,7 +40,30 @@ export default function OrderComposer({
     const [categoryId, setCategoryId] = useState('all');
     const [sound, setSound] = useState(soundEnabled);
     const [pulse, setPulse] = useState(null);
+    const [noteDraft, setNoteDraft] = useState(order?.notes || '');
     const pulseTimer = useRef(null);
+
+    // La nota sigue al pedido (cambio de cuenta o refresco del polling); el
+    // texto que se está escribiendo no se pisa porque las dependencias son los
+    // valores del servidor, no la identidad del objeto.
+    useEffect(() => {
+        setNoteDraft(order?.notes || '');
+    }, [order?.id, order?.notes]);
+
+    // Guarda al salir del campo o con Enter (Shift+Enter hace salto de línea).
+    // El texto ya se ve mientras se escribe: eso es la parte optimista; si el
+    // PATCH falla, el campo vuelve a la última nota confirmada.
+    const saveNote = async () => {
+        if (!order?.id) return;
+        const next = noteDraft.trim();
+        if (next === String(order.notes || '').trim()) return;
+        try {
+            await api.patch(`/orders/${order.id}/notes`, { notes: next });
+        } catch (e) {
+            setNoteDraft(order.notes || '');
+            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
+        }
+    };
 
     const lines = (items || (order?.items || [])).filter((i) => !isCancelled(i));
 
@@ -208,6 +234,29 @@ export default function OrderComposer({
                     )}
                 </div>
             </div>
+
+            {/* Nota general para cocina del pedido entero, no de un producto.
+                Se guarda sola: al salir del campo o con Enter (Shift hace
+                salto de línea). */}
+            {order && (
+                <div className="px-3 pb-2">
+                    <Textarea
+                        rows={2}
+                        className="text-sm"
+                        placeholder="Nota general para cocina (opcional)"
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        onBlur={saveNote}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                saveNote();
+                            }
+                        }}
+                        data-testid={`${testIdPrefix}-nota-general`}
+                    />
+                </div>
+            )}
 
             {/* Pie: lo que se lleva la cuenta y la acción de enviar, juntos y siempre
                 a la vista. Antes el envío vivía arriba y el mozo tenía que subir a

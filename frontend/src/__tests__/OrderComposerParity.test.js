@@ -1,7 +1,9 @@
 /**
- * Paridad del compositor de carta con el prototipo final (Slice 3):
+ * Paridad del compositor de carta con el prototipo final (Slice 3) y nota
+ * general para cocina (S3-3):
  * - S3-1: badge de cantidad en la esquina superior de la tarjeta de producto.
  * - S3-2: el botón de envío lleva el total de lo que se manda.
+ * - S3-3: textarea de nota general, guardada con el PATCH del pedido.
  *
  * El compositor es compartido (Salón y Nuevo pedido): se monta solo, con el
  * prefijo de cada pantalla, para cubrir ambos contratos de testids.
@@ -9,6 +11,11 @@
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import OrderComposer from '@/components/OrderComposer';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
+
+jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -98,5 +105,105 @@ describe('compositor · paridad del prototipo (Slice 3)', () => {
         expect(send.textContent).toContain('Enviar adicionales (1)');
         expect(send.textContent).toContain('S/ 10.00');
         expect(send.textContent).not.toContain('S/ 86.00');
+    });
+});
+
+describe('compositor · nota general para cocina (S3-3)', () => {
+    let host;
+    let root;
+
+    beforeEach(() => {
+        api.patch.mockReset().mockResolvedValue({ data: {} });
+    });
+
+    afterEach(async () => {
+        if (root) await act(async () => root.unmount());
+        root = null;
+        document.body.innerHTML = '';
+    });
+
+    const baseOrder = (extra = {}) => ({ id: 'o1', order_number: 9, status: 'nuevo', total: 38, notes: null, ...extra });
+
+    const setValue = async (field, value) => {
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+            setter.call(field, value);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    };
+
+    it('prefila la nota del pedido y la guarda al salir del campo', async () => {
+        ({ host, root } = await mountComposer({
+            order: baseOrder({ notes: 'Sin sal' }), items: [], products: [], showKitchen: true, testIdPrefix: 'mesa-sheet',
+        }));
+
+        const field = host.querySelector('[data-testid="mesa-sheet-nota-general"]');
+        expect(field).not.toBeNull();
+        expect(field.value).toBe('Sin sal');
+
+        await setValue(field, 'Con hielo');
+        await act(async () => {
+            field.focus();
+            field.blur();
+        });
+        expect(api.patch).toHaveBeenCalledWith('/orders/o1/notes', { notes: 'Con hielo' });
+    });
+
+    it('guarda con Enter sin Shift y respeta el salto de línea con Shift', async () => {
+        ({ host, root } = await mountComposer({
+            order: baseOrder(), items: [], products: [], showKitchen: true, testIdPrefix: 'nuevo-pedido',
+        }));
+
+        const field = host.querySelector('[data-testid="nuevo-pedido-nota-general"]');
+        await setValue(field, 'Mesa junto a la ventana');
+
+        await act(async () => {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+        });
+        expect(api.patch).not.toHaveBeenCalled();
+
+        await act(async () => {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        });
+        expect(api.patch).toHaveBeenCalledWith('/orders/o1/notes', { notes: 'Mesa junto a la ventana' });
+    });
+
+    it('limpiar el campo borra la nota y no guarda si nada cambió', async () => {
+        ({ host, root } = await mountComposer({
+            order: baseOrder({ notes: 'Vieja' }), items: [], products: [], showKitchen: true, testIdPrefix: 'mesa-sheet',
+        }));
+
+        const field = host.querySelector('[data-testid="mesa-sheet-nota-general"]');
+        // Sin cambios: salir del campo no dispara ninguna llamada.
+        await act(async () => {
+            field.focus();
+            field.blur();
+        });
+        expect(api.patch).not.toHaveBeenCalled();
+
+        await setValue(field, '   ');
+        await act(async () => {
+            field.focus();
+            field.blur();
+        });
+        expect(api.patch).toHaveBeenCalledWith('/orders/o1/notes', { notes: '' });
+    });
+
+    it('revierte el texto si el guardado falla', async () => {
+        api.patch.mockRejectedValueOnce({ response: { data: { detail: 'Pedido cerrado' } } });
+        ({ host, root } = await mountComposer({
+            order: baseOrder({ notes: 'Previa' }), items: [], products: [], showKitchen: true, testIdPrefix: 'mesa-sheet',
+        }));
+
+        const field = host.querySelector('[data-testid="mesa-sheet-nota-general"]');
+        await setValue(field, 'Nueva');
+        await act(async () => {
+            field.focus();
+            field.blur();
+        });
+
+        expect(api.patch).toHaveBeenCalledWith('/orders/o1/notes', { notes: 'Nueva' });
+        expect(field.value).toBe('Previa');
+        expect(toast.error).toHaveBeenCalledWith('Pedido cerrado');
     });
 });

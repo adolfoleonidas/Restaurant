@@ -1,6 +1,6 @@
 # Prototype UI parity (final RestoFlow prototype → real frontend)
 
-Status: Slices 1–5 complete (2026-10-06); deferred items under Notes / deviations
+Status: Slices 1–5 + S3-3 endpoint complete (2026-10-06); remaining deferred items under Notes / deviations
 Branch: feat/salon-opciones-plegadas
 Base commit: b808dc3
 Reference: `restoflow.html` (repo root) — approved final prototype (mobile-first; desktop ≥820px).
@@ -37,7 +37,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 ## Tasks — Slice 3 (Composer)
 - [x] S3-1: Quantity badge on product cards (`{prefix}-producto-badge-{id}`, top-right, only when qty > 0; `pointer-events-none` + `aria-hidden` so taps fall through to the card button and SR announces once). Stepper and every existing testid kept — the badge is a deliberate one-digit glance indicator (the stepper's center number stays the test contract).
 - [x] S3-2: Amount inside the send button: `sendAction` returns `amount` and labels `✈ Enviar a cocina · S/ X` / `✈ Enviar adicionales (N) · S/ X`, reusing `itemsTotal` (first send = full billable order; extras = editable drafts). `OrderComposer` falls back to the computed label, so the NewOrderSheet composer shows the amount too without touching that file.
-- [ ] S3-3 (deferred): general order note. The field exists (`orders.notes`, accepted by `POST /orders`, rendered by Cocina) but there is no update path: no `PATCH /orders/{id}`, `PATCH /orders/{id}/status` only takes status/reason, and `send-to-kitchen` accepts no body. Wiring the composer textarea needs a new backend endpoint (out of authorized scope).
+- [x] S3-3 (authorized 2026-10-06, backend endpoint included): general kitchen note. Backend: `PATCH /orders/{id}/notes` (body `{notes}`, max 500, empty clears to null; `admin`/`mozo`; branch scope and closed-order guard mirror `PATCH /alias`; no audit/push — alias has none either). Frontend: `{prefix}-nota-general` textarea in the composer (prefill, blur/Enter save, optimistic with revert), inherited by Salón and Nuevo pedido without touching those files.
 
 ## Tasks — Slice 4 (Caja / Cobro)
 - [x] S4-1: Day KPIs row (`caja-kpi-ventas/-cobros/-promedio/-por-cobrar`) rendered always (open or closed shift, prototype parity): sales = sum of completed payments (same criteria as the method totals), payments count, average, and "Por cobrar" from the page's already-listed open accounts. Reuses the `/payments?period=day` source PaymentHistory already polls.
@@ -58,7 +58,7 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - S4-1: KPIs render with or without an open shift (prototype parity).
 - S3-1: badge coexists with the stepper (deliberate redundancy; the stepper's center number remains the interaction/test contract).
 - S3-2: the send label now carries the amount in both composers (sheet + new order).
-- S3-3: deferred until a supported note-update path exists; requires a backend endpoint.
+- S3-3: note saves via PATCH without realtime push (alias has none either; Cocina picks it up via polling). Max length 500 chosen (no prior limit existed).
 - S2-2: cobro from the sheet navigates to the order's collection screen (PedidoDetalle → CobrarDialog); the cash-shift gate stays where it already lives. Inline checkout in the Salón was rejected to avoid duplicating payment rules.
 - S2-1: the three rows show for every table with at least one account; the full `TableSummary` (dishes/receipt/people) still renders only with 2+ accounts (previous rule untouched).
 - S2-1: `Pagado` always renders (S/ 0.00 with no payments) for deterministic labels/testids, unlike the prototype which hides it at zero.
@@ -92,6 +92,9 @@ User asked to "implementarlo en nuestro sistema tal cual" and confirmed starting
 - Slice 5 focused: **1 suite / 6 tests passed**; orchestrator re-ran `Cocina` as a spot check: **6/6 passed**.
 - Slice 5 full suite: **56 suites / 348 tests passed**; Build: `$env:CI='true'; npm run build` -> compiled successfully.
 - Parity effort complete: five slices green, build clean, every floor/sheet/composer/caja/kitchen `data-testid` contract preserved.
+- S3-3 work-unit (this commit): `backend/models.py` (+10), `backend/routes/orders.py` (+18), new `tests/test_order_notes.py` (6 tests); `frontend/src/components/OrderComposer.jsx` (+49), `frontend/src/__tests__/OrderComposerParity.test.js` (+4 tests).
+- S3-3 test-first: backend 6 and frontend 4 assertions observed failing first.
+- S3-3 verification: backend focused `tests/test_order_notes.py` -> **6 passed** (orchestrator re-ran: 6 passed); backend hermetic `pytest tests -m "not integration" -q` -> **466 passed, 49 deselected**. Frontend composer consumers **10 suites / 73 tests**; full frontend **56 suites / 352 tests**; Build `$env:CI='true'; npm run build` -> compiled successfully; orchestrator re-ran `OrderComposerParity`: **8/8**.
 
 ## Rollback
 Revert the Slice 1 work-unit commit (frontend files + this doc update). No API or business-rule changes involved.
