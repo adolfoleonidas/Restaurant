@@ -163,10 +163,6 @@ describe('compositor · paridad posView (S8)', () => {
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
-        // S14: el envío directo ya no existe: abre el paso de confirmación.
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
-
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
     });
@@ -181,9 +177,6 @@ describe('compositor · paridad posView (S8)', () => {
         // Está en el compositor (franja de persona + carta + ticket).
         expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).not.toBeNull();
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
-        // S14: el botón del ticket abre "Confirmar pedido"; se confirma ahí.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
-
         // S10: el envío cierra el compositor y vuelve al detalle, con la tarjeta
         // de la cuenta enviada y su tag (no queda en la carta ni en el ticket).
         expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).toBeNull();
@@ -250,56 +243,54 @@ describe('compositor · paridad posView (S8)', () => {
         // La tarjeta ya no edita acá: el ticket se abre con "+ Nuevo pedido".
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
 
-        const block = sheet.querySelector('[data-testid="mesa-sheet-enviados"]');
-        expect(block).not.toBeNull();
-        // Cabecera `#id · hh:mm` + tag de estado del PEDIDO, una sola vez.
-        expect(block.textContent).toContain('#11');
-        expect(block.querySelector('[data-testid="mesa-sheet-enviados-estado"]').textContent).toBe('En cocina');
-        expect(block.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
-        // El borrador vive fuera del bloque (conserva su stepper).
-        expect(block.querySelector('[data-testid="mesa-sheet-item-i2"]')).toBeNull();
-        const items = sheet.querySelector('[data-testid="mesa-sheet-items"]');
-        expect(items.contains(block)).toBe(true);
-        expect(items.querySelector('[data-testid="mesa-sheet-item-menos-i2"]')).not.toBeNull();
+        const ticket = sheet.querySelector('[data-testid="mesa-sheet-ticket"]');
+        expect(ticket).not.toBeNull();
+        expect(ticket.querySelector('[data-testid="mesa-sheet-item-i1"]')).toBeNull();
+        expect(ticket.querySelector('[data-testid="mesa-sheet-item-i2"]')).not.toBeNull();
+        expect(ticket.querySelector('[data-testid="mesa-sheet-enviados"]')).toBeNull();
+        expect(ticket.querySelectorAll('[data-testid$="-enviar-cocina"]')).toHaveLength(1);
+        expect(sheet.querySelectorAll('[data-testid="mesa-sheet-persona-renombrar"]')).toHaveLength(1);
+        // Sent history remains available in the table detail after closing the composer.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i2"]')).not.toBeNull();
         // S12: sin chips de estado por línea (el estado es por pedido).
         expect(sheet.querySelector('[data-testid^="mesa-sheet-item-estado-"]')).toBeNull();
     });
 
-    it('S14: "Enviar a cocina" abre Confirmar pedido con los borradores y su stepper', async () => {
+    it('oculta productos no disponibles en la carta del salón', async () => {
+        mockProducts.push({ id: 'prod-out', name: 'Producto agotado', price: 9, is_available: false, category_id: 'c1' });
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        expect(sheet.querySelector('[data-testid="mesa-sheet-producto-fila-prod-out"]')).toBeNull();
+    });
+
+    it('envía directamente desde la carta y conserva el borrador mientras el request está en curso', async () => {
         const draft = order('order-1', 11, 'nuevo', [
             item('i1', 'Sopa', 2, 12, 'borrador', { product_id: 'prod-sopa' }),
             item('i2', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1' }),
         ], { customer_name: 'Juan' });
-        api.delete.mockResolvedValue({ data: {} });
+        let resolveSend;
+        api.post.mockReturnValue(new Promise((resolve) => { resolveSend = resolve; }));
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
-        const dialogo = document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]');
-        expect(dialogo).not.toBeNull();
-        expect(dialogo.textContent).toContain('Confirmar pedido');
-        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-meta"]').textContent).toContain('Mesa 1');
-        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i1"]')).not.toBeNull();
-        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-total"]').textContent).toContain('29.00');
-
-        // Reducir reutiliza el handler de cantidad y NO envía todavía: a 0 borra.
-        await click(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-menos-i2"]'));
-        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/i2');
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-
-        // "Agregar más" cierra el diálogo y deja seguir en el compositor.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-agregar"]'));
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        expect(api.post).toHaveBeenCalledTimes(1);
+        resolveSend({ data: { ...draft, status: 'enviado_cocina' } });
+        await act(async () => {});
     });
 
-    it('S14: Confirmar envía a cocina, avisa con el toast del mockup y cierra el paso', async () => {
+    it('envía a cocina y avisa con el toast del mockup sin una pantalla de confirmación', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
         const sent = { ...draft, status: 'enviado_cocina', items: [{ ...draft.items[0], status: 'pendiente' }] };
         api.post.mockResolvedValue({ data: sent });
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
