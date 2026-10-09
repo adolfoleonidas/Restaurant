@@ -255,6 +255,7 @@ describe('compositor · paridad posView (S8)', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(toast.error).toHaveBeenCalledWith('Error de cocina');
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-item-draft-1"]')).not.toBeNull();
@@ -267,6 +268,7 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
         await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
 
         expect(window.confirm).not.toHaveBeenCalled();
@@ -317,6 +319,7 @@ describe('compositor · paridad posView (S8)', () => {
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
     });
@@ -331,6 +334,7 @@ describe('compositor · paridad posView (S8)', () => {
         // Está en el compositor (franja de persona + carta + ticket).
         expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).not.toBeNull();
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         // S10: el envío cierra el compositor y vuelve al detalle, con la tarjeta
         // de la cuenta enviada y su tag (no queda en la carta ni en el ticket).
         expect(sheet.querySelector('[data-testid="mesa-sheet-persona"]')).toBeNull();
@@ -435,12 +439,83 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(sheet.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         expect(api.post).toHaveBeenCalledTimes(1);
         resolveSend({ data: { ...draft, status: 'enviado_cocina' } });
         await act(async () => {});
+    });
+
+    it('revisa el borrador antes del envío y solo confirma al aceptar', async () => {
+        const draft = order('order-1', 11, 'nuevo', [
+            item('i1', 'Sopa', 2, 12, 'borrador', { notes: 'Sin cebolla' }),
+        ], { customer_name: 'Juan' });
+        api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
+        expect(review).not.toBeNull();
+        expect(review.textContent).toContain('Juan');
+        expect(review.textContent).toContain('Sopa');
+        expect(review.textContent).toContain('2');
+        expect(review.textContent).toContain('Sin cebolla');
+        expect(review.textContent).toContain('S/ 24.00');
+
+        await click(review.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+    });
+
+    it('la revisión usa el snapshot actualizado, no la cuenta histórica del listado', async () => {
+        const initial = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
+        const current = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 3, 12, 'borrador')], { customer_name: 'Juan' });
+        api.patch.mockResolvedValue({ data: {} });
+        ({ container, root, sheet } = await openTableWith([initial]));
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: current });
+            return Promise.resolve({ data: [initial] });
+        });
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
+
+        expect(review.textContent).toContain('3× Sopa');
+        expect(review.textContent).toContain('S/ 36.00');
+        expect(review.textContent).not.toContain('1× Sopa');
+    });
+
+    it('bloquea la confirmación si el borrador deja de ser enviable durante la revisión', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
+        ({ container, root, sheet } = await openTableWith([draft]));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+
+        draft.items[0].status = 'cancelado';
+        await type(container.querySelector('[data-testid="salon-search-input"]'), 'Mesa');
+
+        const confirm = document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]');
+        expect(confirm.disabled).toBe(true);
+        await click(confirm);
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+    });
+
+    it('volver a editar cierra la revisión sin perder el borrador', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
+        await click(review.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
     });
 
     it('envía a cocina y avisa con el toast del mockup sin una pantalla de confirmación', async () => {
@@ -450,10 +525,11 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
     });
 });
 

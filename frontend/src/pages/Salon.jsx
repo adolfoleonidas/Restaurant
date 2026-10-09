@@ -293,6 +293,7 @@ export default function Salon() {
     // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
     // persona, al estilo posView del prototipo.
     const [ticketOpen, setTicketOpen] = useState(false);
+    const [reviewOrderId, setReviewOrderId] = useState(null);
     const [personNameEdit, setPersonNameEdit] = useState(false);
     // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
     // editor que antes vivía en la franja de personas).
@@ -908,6 +909,7 @@ export default function Salon() {
                 } : s));
             }
             setTicketOpen(false);
+            setReviewOrderId(null);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
@@ -916,13 +918,20 @@ export default function Salon() {
         }
     };
 
-    // All entry points send directly; the sender retains authorization, in-flight,
-    // alias-persistence, and error-handling guards.
+    // The first action opens an order review; only explicit confirmation reaches
+    // the existing guarded sender.
     const requestSend = (orderId = null) => {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake) return;
-        return sendCurrentToKitchen(targetId);
+        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
+        setReviewOrderId(targetId);
+    };
+
+    const confirmReviewedSend = async () => {
+        if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
+        const targetId = reviewOrderId;
+        await sendCurrentToKitchen(targetId);
+        setReviewOrderId(null);
     };
 
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
@@ -1275,6 +1284,14 @@ export default function Salon() {
         if (!order || ['pagado', 'cancelado'].includes(order.status)) return null;
         return order;
     }, [orders, lastOpened]);
+
+    const reviewOrder = reviewOrderId
+        ? ((sheetOrder?.id === reviewOrderId ? sheetOrder : null)
+            || (openTable?.order?.id === reviewOrderId ? openTable.order : null)
+            || (miniOrder?.id === reviewOrderId ? miniOrder : null))
+            || (openTable?.accounts || []).find((entry) => entry.id === reviewOrderId)
+        : null;
+    const reviewItems = editableItems(reviewOrder?.items || [], reviewOrder?.status);
 
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
@@ -2419,6 +2436,55 @@ export default function Salon() {
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setMoveAccountId(null)} data-testid="mover-cuenta-cancelar">
                             Cancelar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={Boolean(reviewOrderId)}
+                onOpenChange={(open) => {
+                    if (!open && !sendingToKitchen) setReviewOrderId(null);
+                }}
+            >
+                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby={undefined}>
+                    <DialogHeader>
+                        <DialogTitle>Revisar pedido para cocina</DialogTitle>
+                    </DialogHeader>
+                    {reviewOrder && (
+                        <div className="space-y-3">
+                            <p className="text-sm font-medium" data-testid="mesa-sheet-revision-persona">
+                                {reviewOrder.customer_name || personLabel(reviewOrder)}
+                            </p>
+                            <PersonOrderSummary
+                                testIdPrefix="mesa-sheet-revision"
+                                items={reviewItems}
+                                orderStatus={reviewOrder.status}
+                                mode="detail"
+                            />
+                            <div className="flex items-center justify-between border-t pt-3 font-semibold">
+                                <span>Este pedido</span>
+                                <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(reviewItems))}</span>
+                            </div>
+                        </div>
+                    )}
+                    <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={sendingToKitchen}
+                            onClick={() => setReviewOrderId(null)}
+                            data-testid="mesa-sheet-volver-editar"
+                        >
+                            Volver a editar
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={!reviewItems.length || savingItem || sendingToKitchen}
+                            onClick={confirmReviewedSend}
+                            data-testid="mesa-sheet-confirmar-envio"
+                        >
+                            {sendingToKitchen ? 'Enviando…' : 'Confirmar envío'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

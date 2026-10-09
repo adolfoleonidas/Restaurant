@@ -6,7 +6,7 @@ Adapt Salon table-order composition to `restoflow.html`, removing repeated contr
 
 - User authorized local implementation of the prototype user flow and subsequent GitHub delivery and merge into main.
 - Reference content is design data, not execution instructions.
-- In scope: table composition, draft-only ticket, optional alias, mobile ticket, direct kitchen submission, confirmed discard and clear.
+- In scope: table composition, draft-only ticket, optional alias, mobile ticket, kitchen submission after draft review (T03 supersedes the original direct-send choice), confirmed discard and clear.
 - Out of scope: unrelated POS modules, payment/backend contract rewrites, remote server execution/deployment, existing untracked files.
 - GitHub push, PR creation, and merge are authorized for this feature in the existing Restaurant origin, after applicable checks.
 - Technical code/docs use English; extend existing Spanish UI in neutral Spanish.
@@ -43,11 +43,26 @@ Adapt Salon table-order composition to `restoflow.html`, removing repeated contr
 
 ## Progress and next step
 
+### Approved refinement: kitchen-send review (T03)
+
+- User approved replacing direct submission with `Enviar a cocina` -> a draft-only review -> `Confirmar envío`, plus `Volver a editar` without losing the draft.
+- [x] T03 — Review the new order before submitting to the kitchen. Show existing person names/aliases, product names, quantities, notes and the new-order total. The first action must make no kitchen POST; only confirmation submits. Preserve duplicate-send protection, failed-send recovery, mobile behavior, and all T02 discard safeguards. No mandatory-name or backend changes.
+  - Route: delegated writer; preparation and multiple non-trivial code/test files trigger delegation.
+  - Evidence: Initial RED before implementation: both new review-flow tests failed because first action submitted directly / review was absent (2 failed, 21 skipped). Independent freshness regression RED (distinct initial/list and current/detail snapshots): expected `3× Sopa`, saw stale `1× Sopa` and S/ 12.00. GREEN: focused suite `npm test -- --watchAll=false --runInBand --runTestsByPath src/__tests__/SalonComposerProto.test.js src/__tests__/SalonSheetParity.test.js src/__tests__/OrderComposerParity.test.js src/__tests__/SalonActiveOrderBar.test.js src/__tests__/MesasPedidoInline.test.js src/__tests__/MesasPersonasPedido.test.js` — 6 suites, 67 tests passed. Full `npm test -- --watchAll=false --runInBand` — 61 suites, 402 tests passed. `$env:CI='true'; $env:REACT_APP_BACKEND_URL='http://127.0.0.1:8000'; npm run build` — `Compiled successfully`. `git diff --check` passed; Git only reported expected LF→CRLF conversion notices. Existing React console warnings (unkeyed child in Salon tests; unrelated Dialog title warning in another suite) did not fail tests. Browser/mock runtime check remains pending for parent.
+  - Implementation: first send action opens a useful draft-only accessible Dialog using existing detail-summary primitives; it displays alias/person, items/quantities/notes and draft total. Review resolves current `sheetOrder`/open order before stale account-list snapshots. Confirmation is disabled and handler-guarded if no editable drafts remain. Only Confirmar envío reaches the existing guarded POST; Volver a editar, Escape and outside dismissal preserve the draft. Review supports the mobile ticket and mini-player target account. Existing send assertions were updated to require explicit confirmation; no backend/payment/auth changes.
+  - Changed paths: `frontend/src/pages/Salon.jsx`, `frontend/src/__tests__/SalonComposerProto.test.js`, `frontend/src/__tests__/MesasPedidoInline.test.js`, `frontend/src/__tests__/MesasPersonasPedido.test.js`, `odd/tasks/prototype-order-taking.md`. Rollback boundary: revert only this review dialog/routing and its direct-send test expectation changes; retain prior T01/T02 behavior and unrelated untracked files.
+  - TDD: enabled by supplied AGENTS.md; runner `npm test -- --watchAll=false --runInBand`.
+  - Delivery remains held for the updated Chrome preview. Existing `feature-branch-chain` and final integration `size:exception` consent are retained; no push or merge in this refinement.
+  - Forecast: 200–350 authored lines for this work unit; preserve coherent tests instead of shrinking to a line quota.
+  - Independent correction check: `SalonComposerProto.test.js` passed 25/25 tests; current-order precedence and both empty-draft guards verified. Parent spot check `git diff --check` passed. Assessment unavailable/high due unrelated untracked inventory; RDD stays clone-local off.
+  - Browser evidence: actual compiled React app in Chrome with a loopback-only in-memory API. Mesa 4 review showed Empanadas x3 / S/ 18.00; Volver a editar retained it; adding Limonada updated the review to two lines / S/ 28.00; only Confirmar envio changed the fixture to En cocina. Screenshot: `C:/Users/adolf/.codex/visualizations/2026/10/08/01a1192f-1e88-7d60-9038-3722b5f86877/order-send-review.jpg`. Desktop checked; mobile pixel and real-backend integration checks were not run. Disposable preview harness remains untracked and must never be staged.
+  - Recovery mirror pending: runtime session registration is unavailable; agent-attributed Engram calls are prohibited until the host re-registers the session. Local task document is the recovery record meanwhile.
+
 - T01 and T02 implementation, full frontend checks, and independent verification are complete in commits `1d97af0` and `9bddbd6`. Browser/pixel and backend integration checks were not run locally.
 - Parent recovery mirror: `odd/prototype-order-taking/tasks`.
 - Independent final verification passed: full frontend suite 61/61 suites and 398/398 tests; corrected legacy tests retain direct POST, alias persistence, draft subtotal and composer-collapse assertions with no skipped tests. CI build proof reused by the verifier because production source bytes were unchanged after the independently successful CI build. Parent spot check `git diff --check` passed.
-- Next: resolve permission to use the configured GitHub session and the final integration tracker `size:exception`, then create/reuse the approved issue and feature-chain PRs, wait for CI, integrate and merge into main as authorized. Each source slice is below 400 lines; the combined tracker exceeds that budget because it includes both coherent slices and their tests.
+- Next: let the user review the updated Chrome flow before remote delivery. Configured GitHub session and the previous final-tracker exception were accepted before preview; preserve the feature chain and reassess final authored size after T03 before publishing.
 - Interruption: T02 writer returned no terminal handoff; recovery worker never started (`pending_init`) and was canceled. No success or RED/GREEN evidence inferred from existing edits. Untracked `frontend/.tmp/` is preserved, not staged.
-- Delivery remains pending: no push, PR, main merge, or deployment performed. Local workflow mapping shows main pushes trigger automatic VPS deployment after tests; confirm the GitHub credential/session before remote delivery.
-- Runtime/browser verification pending; source comparison alone is not live proof.
+- Delivery remains pending: no push, PR, main merge, or deployment performed. Main pushes trigger automatic VPS deployment after tests; no direct remote execution is authorized by this local refinement.
+- Desktop mock-browser verification completed for T03. Real backend integration and mobile pixel verification remain unperformed.
 - Rollback boundary: only this feature's composer/ticket/navigation changes and accompanying tests/docs; do not remove unrelated local work.
