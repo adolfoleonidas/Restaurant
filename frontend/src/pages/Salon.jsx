@@ -616,15 +616,21 @@ export default function Salon() {
         const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
         const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
+        let loadedOrder = null;
         setComposerOpen(false);
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
-                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                if (data?.id === targetOrderId) {
+                    loadedOrder = data;
+                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                } else {
+                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+                }
                 // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
                 // abre sola, sin obligar a buscar el botón.
-                if (isComposingDraft(data)) setComposerOpen(true);
+                if (loadedOrder && isComposingDraft(loadedOrder)) setComposerOpen(true);
             } catch {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
@@ -638,6 +644,7 @@ export default function Salon() {
             // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
             if (!targetOrderId && active.length) await selectAccount(active[0].id);
         } catch { /* historial opcional */ }
+        return loadedOrder;
     };
 
     const closeSheet = () => leaveComposer({ closeTable: true });
@@ -648,9 +655,19 @@ export default function Salon() {
         setOpenTable((s) => (s ? { ...s, accountId: orderId, loading: true } : s));
         try {
             const { data } = await api.get(`/orders/${orderId}`);
+            if (data?.id !== orderId) {
+                setOpenTable((s) => (s && s.accountId === orderId
+                    ? { ...s, accountId: s.order?.id || null, loading: false }
+                    : s));
+                return null;
+            }
             setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
+            return data;
         } catch {
-            setOpenTable((s) => (s ? { ...s, loading: false } : s));
+            setOpenTable((s) => (s && s.accountId === orderId
+                ? { ...s, accountId: s.order?.id || null, loading: false }
+                : s));
+            return null;
         }
     };
 
@@ -1275,6 +1292,16 @@ export default function Salon() {
         void openSheet(lastOpened.table, lastOpened.accountId);
     };
 
+    const editAccountDrafts = async (account) => {
+        if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
+        setReviewOrderId(null);
+        setTicketOpen(false);
+        const latest = await selectAccount(account.id);
+        if (latest?.id !== account.id || ['pagado', 'cancelado'].includes(latest.status)
+            || !draftCount(latest.items || [], latest.status)) return;
+        setComposerOpen(true);
+    };
+
     // La cuenta puede haberse cerrado, cobrado o movido desde el último vistazo:
     // el mini solo vive mientras el pedido siga abierto en la lista viva.
     const miniOrder = useMemo(() => {
@@ -1292,6 +1319,35 @@ export default function Salon() {
             || (openTable?.accounts || []).find((entry) => entry.id === reviewOrderId)
         : null;
     const reviewItems = editableItems(reviewOrder?.items || [], reviewOrder?.status);
+
+    const returnToEdit = async () => {
+        if (sendingToKitchen) return;
+        const orderId = reviewOrderId;
+        if (!orderId) return;
+        if (openTable?.order?.id === orderId || openTable?.accountId === orderId) {
+            setReviewOrderId(null);
+            setTicketOpen(false);
+            setComposerOpen(false);
+            const latest = await selectAccount(orderId);
+            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+                || !draftCount(latest.items || [], latest.status)) return;
+            setComposerOpen(true);
+            return;
+        }
+        if (miniOrder?.id === orderId && lastOpened) {
+            const target = lastOpened;
+            setReviewOrderId(null);
+            setComposerOpen(false);
+            const latest = await openSheet(target.table, orderId);
+            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+                || !draftCount(latest.items || [], latest.status)) {
+                setComposerOpen(false);
+                return;
+            }
+            setComposerOpen(true);
+            setTicketOpen(false);
+        }
+    };
 
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
@@ -2043,6 +2099,19 @@ export default function Salon() {
                                                 )}
                                                 <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
                                                     <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
+                                                    {canTake && !['pagado', 'cancelado'].includes(view.status)
+                                                        && draftCount(view.items || [], view.status) > 0 && (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={savingItem || sendingToKitchen}
+                                                                onClick={(event) => { event.stopPropagation(); void editAccountDrafts(view); }}
+                                                                data-testid="mesa-sheet-editar-pedido"
+                                                            >
+                                                                Editar pedido
+                                                            </Button>
+                                                        )}
                                                     {kitchen.key === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
@@ -2453,6 +2522,9 @@ export default function Salon() {
                     </DialogHeader>
                     {reviewOrder && (
                         <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-aviso-edicion">
+                                Después de confirmar, los productos enviados no se pueden editar.
+                            </p>
                             <p className="text-sm font-medium" data-testid="mesa-sheet-revision-persona">
                                 {reviewOrder.customer_name || personLabel(reviewOrder)}
                             </p>
@@ -2473,7 +2545,7 @@ export default function Salon() {
                             type="button"
                             variant="outline"
                             disabled={sendingToKitchen}
-                            onClick={() => setReviewOrderId(null)}
+                            onClick={returnToEdit}
                             data-testid="mesa-sheet-volver-editar"
                         >
                             Volver a editar
