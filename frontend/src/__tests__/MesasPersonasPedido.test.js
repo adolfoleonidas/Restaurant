@@ -161,6 +161,25 @@ describe('pedido por personas en el salón', () => {
         expect(button.textContent).not.toContain('adicionales');
     });
 
+    it('el envío móvil abre directamente la revisión sin enviar antes de confirmar', async () => {
+        const previousWidth = window.innerWidth;
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+        const account = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 2, 38, 'borrador')], { customer_name: 'Juan' });
+        api.post.mockResolvedValue({ data: account });
+        ({ container, root, sheet } = await openTableWith([account]));
+
+        const send = sheet.querySelector('[data-testid="mesa-sheet-fab"]');
+        expect(send.textContent).toContain('Enviar a cocina');
+        await click(send);
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]').textContent).toContain('S/ 76.00');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
+    });
+
     it('guarda la observación de un producto concreto', async () => {
         const account = order('order-1', 11, 'nuevo', [
             item('i1', 'Pollo', 1, 20, 'borrador'),

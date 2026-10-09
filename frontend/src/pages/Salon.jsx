@@ -1985,6 +1985,18 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
+                                    {canTake && canCompose && composerOpen && order && draftUnits > 0 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full min-[820px]:hidden"
+                                            onClick={() => setTicketOpen(true)}
+                                            data-testid="mesa-sheet-abrir-ticket"
+                                        >
+                                            Editar ticket
+                                        </Button>
+                                    )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
                                         la vuelve a abrir para el pedido siguiente. */}
@@ -2319,16 +2331,16 @@ export default function Salon() {
                                     )}
                                 </div>
 
-                                {/* FAB del borrador (solo móvil): abre la hoja con las
-                                    líneas y el envío, como el `.fab` del prototipo. */}
-                                {composerOpen && order && draftUnits > 0 && sendState && (
+                                {/* Mobile's primary draft action goes straight to the final review. */}
+                                {canTake && composerOpen && order && draftUnits > 0 && showSend && sendState && (
                                     <button
                                         type="button"
-                                        onClick={() => setTicketOpen(true)}
+                                        disabled={savingItem || sendingToKitchen}
+                                        onClick={() => requestSend()}
                                         data-testid="mesa-sheet-fab"
                                         className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex min-h-[52px] items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_rgba(0,0,0,0.4)] min-[820px]:hidden"
                                     >
-                                        <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
+                                        <span>Enviar a cocina · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
                                         <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
                                     </button>
                                 )}
