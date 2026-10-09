@@ -19,6 +19,7 @@ jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
+const originalConfirm = window.confirm;
 
 const mockTables = [];
 const mockOrders = [];
@@ -93,6 +94,7 @@ describe('compositor · paridad posView (S8)', () => {
     let sheet;
 
     beforeEach(() => {
+        window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
         api.post.mockReset();
         api.patch.mockReset();
@@ -106,6 +108,7 @@ describe('compositor · paridad posView (S8)', () => {
 
     afterEach(async () => {
         if (root) await act(async () => root.unmount());
+        window.confirm = originalConfirm;
         root = null;
         container = null;
         sheet = null;
@@ -131,9 +134,151 @@ describe('compositor · paridad posView (S8)', () => {
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Pedro', shared: false });
     });
 
+    it('confirma Vaciar, cancela sin borrar y al aceptar elimina solo borradores', async () => {
+        const sent = item('sent-1', 'Sopa', 1, 12, 'pendiente');
+        const draftItem = item('draft-1', 'Agua', 1, 5, 'borrador');
+        const account = order('order-1', 11, 'en_preparacion', [sent, draftItem]);
+        ({ container, root, sheet } = await openTableWith([account]));
+        window.confirm = jest.fn().mockReturnValue(false);
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        expect(window.confirm).toHaveBeenCalled();
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
+
+        window.confirm.mockReturnValue(true);
+        api.delete.mockImplementation(async () => {
+            account.items = account.items.filter((entry) => entry.id !== 'draft-1');
+            return { data: {} };
+        });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        expect(api.delete).toHaveBeenCalledTimes(1);
+        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
+        expect(api.delete).not.toHaveBeenCalledWith('/orders/order-1/items/sent-1');
+        expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/vaciado|eliminado/i));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-sent-1"]')).not.toBeNull();
+    });
+
+    it('confirma salir del compositor; cancelar conserva borradores y aceptar vuelve al detalle', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        window.confirm = jest.fn().mockReturnValue(false);
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(window.confirm).toHaveBeenCalled();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
+
+        window.confirm.mockReturnValue(true);
+        api.delete.mockImplementation(async () => {
+            draft.items = [];
+            return { data: {} };
+        });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]').getAttribute('aria-expanded')).toBe('false');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-resumen-panel"]')).not.toBeNull();
+    });
+
+    it('confirma cerrar la mesa desde el detalle y conserva sent items al aceptar', async () => {
+        const sent = item('sent-1', 'Sopa', 1, 12, 'pendiente');
+        const draftItem = item('draft-1', 'Agua', 1, 5, 'borrador');
+        const account = order('order-1', 11, 'en_preparacion', [sent, draftItem]);
+        ({ container, root, sheet } = await openTableWith([account]));
+        window.confirm.mockReturnValue(false);
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(window.confirm).toHaveBeenCalled();
+        expect(container.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
+
+        window.confirm.mockReturnValue(true);
+        api.delete.mockImplementation(async () => {
+            account.items = account.items.filter((entry) => entry.id !== 'draft-1');
+            return { data: {} };
+        });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
+        expect(container.querySelector('[data-testid="mesa-sheet"]')).toBeNull();
+        expect(account.items.map((entry) => entry.id)).toEqual(['sent-1']);
+    });
+
+    it('si falla el descarte, conserva compositor y borradores y reporta el error', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        window.confirm = jest.fn().mockReturnValue(true);
+        api.delete.mockRejectedValue({ response: { data: { detail: 'No autorizado' } } });
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
+        expect(toast.error).toHaveBeenCalledWith('No autorizado');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+    });
+
+    it('si falla Vaciar, mantiene el ticket y no afirma que se vació', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        window.confirm = jest.fn().mockReturnValue(true);
+        api.delete.mockRejectedValue({ response: { data: { detail: 'No autorizado' } } });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+
+        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
+        expect(toast.error).toHaveBeenCalledWith('No autorizado');
+        expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/vaciado|eliminado/i));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-item-draft-1"]')).not.toBeNull();
+    });
+
+    it('Escape oculta primero el ticket y luego protege la salida del compositor', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        window.confirm = jest.fn().mockReturnValue(false);
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        expect(window.confirm).not.toHaveBeenCalled();
+        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+        expect(window.confirm).toHaveBeenCalledTimes(1);
+        expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
+    });
+
+    it('si falla el envío desde el ticket móvil, mantiene el ticket para recuperar el borrador', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        api.post.mockRejectedValue({ response: { data: { detail: 'Error de cocina' } } });
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        expect(toast.error).toHaveBeenCalledWith('Error de cocina');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-item-draft-1"]')).not.toBeNull();
+    });
+
+    it('no permite vaciar borradores mientras enviar cocina está en curso', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
+        let resolveSend;
+        api.post.mockReturnValue(new Promise((resolve) => { resolveSend = resolve; }));
+        ({ container, root, sheet } = await openTableWith([draft]));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(api.delete).not.toHaveBeenCalled();
+        resolveSend({ data: { ...draft, status: 'enviado_cocina' } });
+        await act(async () => {});
+    });
+
     it('móvil: FAB con los nuevos y monto, y hoja del borrador con scrim', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([draft]));
+        window.confirm = jest.fn().mockReturnValue(false);
 
         const fab = sheet.querySelector('[data-testid="mesa-sheet-fab"]');
         expect(fab).not.toBeNull();
@@ -145,7 +290,7 @@ describe('compositor · paridad posView (S8)', () => {
         // El contrato del e2e móvil sigue a la vista sin abrir la hoja.
         expect(sheet.querySelector('[data-testid="mesa-sheet-items"]')).not.toBeNull();
 
-        await click(fab);
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
         const ticket = sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]');
         expect(ticket).not.toBeNull();
         expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-items"]')).not.toBeNull();
@@ -154,6 +299,15 @@ describe('compositor · paridad posView (S8)', () => {
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-scrim"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]')).not.toBeNull();
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-ticket-cerrar"]'));
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(window.confirm).not.toHaveBeenCalled();
     });
 
     it('envía a cocina desde la hoja del borrador y la cierra', async () => {
@@ -239,6 +393,11 @@ describe('compositor · paridad posView (S8)', () => {
         const draft = item('i2', 'Agua', 1, 5, 'borrador', { product_id: 'prod-n1' });
         const account = order('order-1', 11, 'en_preparacion', [sent, draft], { customer_name: 'Juan' });
         ({ container, root, sheet } = await openTableWith([account]));
+        window.confirm.mockReturnValue(true);
+        api.delete.mockImplementation(async () => {
+            account.items = account.items.filter((entry) => entry.id !== 'i2');
+            return { data: {} };
+        });
 
         // La tarjeta ya no edita acá: el ticket se abre con "+ Nuevo pedido".
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
@@ -253,7 +412,7 @@ describe('compositor · paridad posView (S8)', () => {
         // Sent history remains available in the table detail after closing the composer.
         await click(sheet.querySelector('[data-testid="mesa-sheet-volver"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i2"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i2"]')).toBeNull();
         // S12: sin chips de estado por línea (el estado es por pedido).
         expect(sheet.querySelector('[data-testid^="mesa-sheet-item-estado-"]')).toBeNull();
     });

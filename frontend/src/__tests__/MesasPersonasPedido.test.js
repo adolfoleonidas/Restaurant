@@ -141,16 +141,11 @@ describe('pedido por personas en el salón', () => {
         expect(button.textContent).toContain('Enviar a cocina');
         expect(button.textContent).toContain('S/ 38.00');
 
-        await click(button);
-        // S14: el botón abre "Confirmar pedido"; recién ahí viaja el POST y sólo
-        // con los borradores (la línea ya enviada no se re-manda).
-        const dialogo = document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]');
-        expect(dialogo).not.toBeNull();
-        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i2"]')).not.toBeNull();
-        expect(dialogo.querySelector('[data-testid="mesa-sheet-confirmar-item-i1"]')).toBeNull();
+        // The button shows only the unsent amount, then submits directly.
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
+        await click(button);
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
     });
 
     it('un pedido nuevo ofrece la comanda completa', async () => {
@@ -336,14 +331,13 @@ describe('pedido por personas en el salón', () => {
 
         const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(enviar).not.toBeNull();
-        await click(enviar);
-        // S14: el paso de confirmación es ahora el que dispara el envío.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-enviar"]'));
-
         // Confirma el envío con el toast del mockup (S11: "Enviado a cocina ·
         // Mesa N"), no con el "¿Siguiente persona?" anterior.
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
+        await click(enviar);
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]').getAttribute('aria-expanded')).toBe('false');
     });
 
     it('Compartido es un interruptor dentro del editor del nombre', async () => {

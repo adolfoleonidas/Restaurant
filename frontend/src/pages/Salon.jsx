@@ -307,6 +307,7 @@ export default function Salon() {
     const [branchCatalog, setBranchCatalog] = useState({ loading: false, error: false, branches: [], resolved: false });
     const [scope, setScope] = useState(null);
     const searchRef = useRef(null);
+    const escapeActionsRef = useRef(null);
 
     const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
 
@@ -638,13 +639,7 @@ export default function Salon() {
         } catch { /* historial opcional */ }
     };
 
-    const closeSheet = () => {
-        setOpenTable(null);
-        setTicketOpen(false);
-        setPersonNameEdit(false);
-        setSummaryOpen(false);
-        setReceiptOpen(false);
-    };
+    const closeSheet = () => leaveComposer({ closeTable: true });
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
@@ -742,7 +737,7 @@ export default function Salon() {
     };
 
     const addProductToAccount = async (product) => {
-        if (!canTake || savingItem) return;
+        if (!canTake || savingItem || sendingToKitchen) return;
         setSavingItem(true);
         try {
             const orderId = await ensureAccount();
@@ -782,8 +777,9 @@ export default function Salon() {
     // S14: el paso de confirmación puede operar sobre OTRA cuenta (el
     // mini-reproductor no abre la hoja), así que el destino es explícito.
     const changeItemQtyFor = async (orderId, item, delta) => {
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
         const next = Number(item.quantity || 1) + delta;
+        setSavingItem(true);
         try {
             if (next <= 0) await api.delete(`/orders/${orderId}/items/${item.id}`);
             else await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: next });
@@ -791,6 +787,8 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -809,12 +807,15 @@ export default function Salon() {
     };
 
     const saveItemNotesFor = async (orderId, item, notes) => {
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        setSavingItem(true);
         try {
             await api.patch(`/orders/${orderId}/items/${item.id}`, { notes });
             await reloadCurrentOrder(orderId);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -874,7 +875,7 @@ export default function Salon() {
         // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake || sendingToKitchen) return;
+        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
         const openId = openTable?.order?.id || openTable?.accountId;
         // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso es el
         // del prototipo, "Enviado a cocina · Mesa N".
@@ -906,6 +907,7 @@ export default function Salon() {
                         : [...(s.accounts || []), data].filter(Boolean),
                 } : s));
             }
+            setTicketOpen(false);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
@@ -920,7 +922,6 @@ export default function Salon() {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
         if (!targetId || !canTake) return;
-        setTicketOpen(false);
         return sendCurrentToKitchen(targetId);
     };
 
@@ -933,13 +934,16 @@ export default function Salon() {
     // El alias también se puede fijar sin enviar (al salir del campo).
     const saveAlias = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        setSavingItem(true);
         try {
             await persistAlias(orderId);
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -978,21 +982,53 @@ export default function Salon() {
         renamePerson(view.id, next);
     };
 
-    // "Vaciar" del ticket del prototipo: borra sólo lo que sigue en borrador,
-    // con la API existente (un DELETE por línea). Lo enviado no se toca.
-    const clearDraft = async () => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        const current = sheetOrder;
+    const discardDraftItems = async (orderId) => {
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return false;
+        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
         const drafts = (current?.items || []).filter((it) => isDraft(it, current?.status));
-        if (!drafts.length) return;
+        if (!drafts.length) return true;
+        setSavingItem(true);
         try {
             for (const it of drafts) await api.delete(`/orders/${orderId}/items/${it.id}`);
             await reloadCurrentOrder(orderId);
             refreshAll();
+            return true;
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo vaciar el pedido');
+            await reloadCurrentOrder(orderId);
+            toast.error(e.response?.data?.detail || 'No se pudo descartar el pedido');
+            return false;
+        } finally {
+            setSavingItem(false);
         }
+    };
+
+    const leaveComposer = async ({ closeTable = false } = {}) => {
+        if (savingItem || sendingToKitchen) return;
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
+        const hasDrafts = (current?.items || []).some((it) => isDraft(it, current?.status));
+        if (hasDrafts) {
+            if (!canTake || savingItem || sendingToKitchen) return;
+            if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
+            if (!await discardDraftItems(orderId)) return;
+        }
+        setTicketOpen(false);
+        if (closeTable) {
+            setOpenTable(null);
+            setPersonNameEdit(false);
+            setSummaryOpen(false);
+            setReceiptOpen(false);
+        } else {
+            setComposerOpen(false);
+        }
+    };
+
+    // The ticket clear action confirms before deleting draft items only.
+    const clearDraft = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!window.confirm('¿Vaciar los productos sin enviar? Los productos enviados se conservarán.')) return;
+        await discardDraftItems(orderId);
     };
 
     // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
@@ -1243,10 +1279,11 @@ export default function Salon() {
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
+    // Keep the Escape listener bound to the latest draft and in-flight guards
+    // without rebuilding it every render for locally declared handlers.
+    escapeActionsRef.current = { leaveComposer, closeSheet };
 
-    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Con la hoja
-    // del borrador abierta, el primer Escape la cierra a ella. Los diálogos y
-    // menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
+    // Escape first hides the mobile ticket; leaving its composer goes through discard confirmation.
     useEffect(() => {
         if (!openTable) return undefined;
         const onKey = (event) => {
@@ -1256,11 +1293,12 @@ export default function Salon() {
                 setTicketOpen(false);
                 return;
             }
-            setOpenTable(null);
+            if (composerOpen) void escapeActionsRef.current.leaveComposer();
+            else void escapeActionsRef.current.closeSheet();
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [openTable, ticketOpen]);
+    }, [openTable, ticketOpen, composerOpen]);
 
     return (
         <div
@@ -1771,7 +1809,7 @@ export default function Salon() {
                                 <div className="flex items-center gap-2">
                                     <button
                                         type="button"
-                                        onClick={composerOpen ? () => setComposerOpen(false) : closeSheet}
+                                        onClick={composerOpen ? () => leaveComposer() : closeSheet}
                                         aria-label={composerOpen ? 'Volver a la mesa' : 'Volver al salón'}
                                         data-testid="mesa-sheet-volver"
                                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border"
