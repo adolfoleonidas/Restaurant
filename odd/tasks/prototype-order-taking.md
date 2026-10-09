@@ -56,6 +56,7 @@ Adapt Salon table-order composition to `restoflow.html`, removing repeated contr
   - Independent final verification: six focused suites / 76 tests passed; source confirms the mobile primary button calls guarded review rather than ticket opening, desktop submission unchanged. Parent final diff check passed. Risk assessment unavailable/high due unrelated untracked inventory; RDD stays clone-local off, no native review started.
   - Runtime proof: Chrome at 497 x 898 mobile viewport, compiled React with loopback mock. Mesa 4 primary action displayed `Enviar a cocina` with one draft / S/ 18.00, opened final review directly without a ticket sheet; return preserved draft; confirmation alone changed it to En cocina. Temporary viewport restored. Screenshots: `C:/Users/adolf/.codex/visualizations/2026/10/08/01a1192f-1e88-7d60-9038-3722b5f86877/mobile-send-two-steps.jpg` and `mobile-send-confirmation.jpg` in the same directory. Real backend integration remains unperformed; preview harness is not committed app code.
   - Rollback: revert only mobile primary-action routing/label, optional ticket-entry control and corresponding regressions; retain T01–T04 and backend protections. No push, PR, main merge or deployment yet.
+  - Work-unit commit: `184dc604e4d69f83323b470663ec5ff7b31a0ad5` on `codex/prototype-order-taking-mobile-send`, 66 additions / 15 deletions (81 authored lines), T05 slice follows the T04 draft-edit branch. Delivery remains local pending user review.
 
 ### Approved refinement: edit unsent orders (T04)
 
