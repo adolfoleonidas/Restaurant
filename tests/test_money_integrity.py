@@ -48,22 +48,29 @@ def _match(doc, filt):
             if not all(_match(doc, clause) for clause in expected):
                 return False
             continue
+        value = doc
+        missing = False
+        for segment in key.split("."):
+            if not isinstance(value, dict) or segment not in value:
+                value = None
+                missing = True
+                break
+            value = value[segment]
         if isinstance(expected, dict):
             if "$nin" in expected:
                 if doc.get(key) in expected["$nin"]:
                     return False
                 continue
             if "$exists" in expected:
-                if (key in doc) != bool(expected["$exists"]):
+                if (not missing) != bool(expected["$exists"]):
                     return False
                 continue
             if "$in" in expected:
-                if doc.get(key) not in expected["$in"]:
+                if value not in expected["$in"]:
                     return False
                 continue
             bounds = ("$gte", "$gt", "$lte", "$lt")
             if any(op in expected for op in bounds):
-                value = doc.get(key)
                 if value is None:
                     return False
                 if "$gte" in expected and value < expected["$gte"]:
@@ -75,7 +82,7 @@ def _match(doc, filt):
                 if "$lt" in expected and value >= expected["$lt"]:
                     return False
                 continue
-        if doc.get(key) != expected:
+        if value != expected:
             return False
     return True
 
@@ -752,6 +759,435 @@ def test_merge_rejects_a_source_with_collected_money():
         with pytest.raises(HTTPException) as exc:
             await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
         assert exc.value.status_code == 400
+
+    asyncio.run(run())
+
+
+def test_merge_retry_recovers_after_target_copy_crash_without_duplicate_items():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+                   items=[_table_item("i1", "prod-1", "Lomo", 20.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+                   items=[_table_item("i2", "prod-2", "Agua", 10.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_target_copy(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and filt.get("id") == "order-1" and "items" in (update.get("$set") or {}):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after target write")
+            return result
+
+        db.orders.update_one = crash_after_target_copy
+        with pytest.raises(KeyboardInterrupt):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    active_item_ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(active_item_ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    assert next(o for o in db.orders.docs if o["id"] == "order-2")["status"] == "cancelado"
+
+
+def test_merge_retry_recovers_after_source_cancel_before_marker_release():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", total=10.0, subtotal=10.0,
+                   items=[_table_item("i1", "p1", "One", 10.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", total=20.0, subtotal=20.0,
+                   items=[_table_item("i2", "p2", "Two", 20.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_source_cancel(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and filt.get("id") == "order-2" and (update.get("$set") or {}).get("status") == "cancelado":
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after merge source cancellation")
+            return result
+
+        db.orders.update_one = crash_after_source_cancel
+        with pytest.raises(KeyboardInterrupt):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        db.orders.update_one = update_one
+        await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    target = next(order for order in db.orders.docs if order["id"] == "order-1")
+    source = next(order for order in db.orders.docs if order["id"] == "order-2")
+    assert [item["id"] for item in target["items"]] == ["i1", "i2"]
+    assert target["total"] == 30.0
+    assert source["status"] == "cancelado"
+    assert "account_operation" not in target
+    assert "account_operation_ref" not in source
+
+
+def test_split_retry_recovers_after_original_reduction_with_stable_children():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 99
+
+        db = _DB()
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=30.0, total=30.0,
+            items=[_table_item("i1", "prod-1", "Lomo", 10.0), _table_item("i2", "prod-2", "Agua", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_original_reduction(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            fields = update.get("$set") or {}
+            if not crashed and filt.get("id") == "order-1" and len(fields.get("items", [])) == 1:
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after original write")
+            return result
+
+        db.orders.update_one = crash_after_original_reduction
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    active_item_ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(active_item_ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    children = [o for o in active if o["id"] != "order-1"]
+    assert len(children) == 1
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", children[0]["id"]}
+
+
+def test_split_retry_recovers_after_child_insert_crash_without_duplicate_accounts():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 100
+
+        db = _DB()
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            attention_id="att-1", total=60.0, subtotal=60.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        insert_one = db.orders.insert_one
+        crashed = False
+
+        async def crash_after_child_insert(document):
+            nonlocal crashed
+            await insert_one(document)
+            if not crashed and document.get("account_operation_id"):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after child insert")
+
+        db.orders.insert_one = crash_after_child_insert
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.orders.insert_one = insert_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    assert len([o for o in active if o["id"] != "order-1"]) == 1
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", *(o["id"] for o in active if o["id"] != "order-1")}
+
+
+def test_split_retry_recovers_after_nth_child_insert_crash():
+    async def run():
+        from models import OrderSplit
+
+        counter = iter((201, 202))
+        async def order_number(_restaurant_id):
+            return next(counter)
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            total=60.0, subtotal=60.0,
+            items=[_table_item(f"i{n}", f"p{n}", f"Item {n}", n * 10.0) for n in (1, 2, 3)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        insert_one = db.orders.insert_one
+        inserted = 0
+
+        async def crash_after_second_insert(document):
+            nonlocal inserted
+            await insert_one(document)
+            if document.get("account_operation_id"):
+                inserted += 1
+                if inserted == 2:
+                    raise KeyboardInterrupt("simulated process termination after second child insert")
+
+        db.orders.insert_one = crash_after_second_insert
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.insert_one = insert_one
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sorted(order["total"] for order in active) == [10.0, 20.0, 30.0]
+    assert len(active) == 3
+
+
+def test_split_retry_recovers_after_attention_membership_write_crash():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 301
+
+        db = _DB()
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            attention_id="att-1", total=30.0, subtotal=30.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.attentions.update_one
+        crashed = False
+
+        async def crash_after_membership(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and update.get("$addToSet", {}).get("order_ids"):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after attention membership write")
+            return result
+
+        db.attentions.update_one = crash_after_membership
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.attentions.update_one = update_one
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2"]
+    assert len(db.attentions.docs[0]["order_ids"]) == 2
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", *(order["id"] for order in active if order["id"] != "order-1")}
+
+
+@pytest.mark.parametrize("crash_boundary", ["intent", "commit", "finalize"])
+def test_split_retry_recovers_when_parent_operation_write_succeeds_then_process_crashes(crash_boundary):
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        from models import OrderSplit
+
+        numbers = iter((401, 402))
+
+        async def order_number(_restaurant_id):
+            return next(numbers)
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            total=60.0, subtotal=60.0,
+            items=[_table_item(f"i{n}", f"p{n}", f"Item {n}", n * 10.0) for n in (1, 2, 3)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_parent_write(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if crashed:
+                return result
+            sets = update.get("$set") or {}
+            unsets = update.get("$unset") or {}
+            is_intent = filt.get("account_operation") == {"$exists": False} and sets.get("account_operation", {}).get("kind") == "split"
+            is_commit = sets.get("account_operation", {}).get("phase") == "committed"
+            is_finalize = "account_operation" in unsets and "last_account_operation" in sets
+            if {"intent": is_intent, "commit": is_commit, "finalize": is_finalize}[crash_boundary]:
+                crashed = True
+                raise SimulatedProcessCrash(f"simulated process termination after {crash_boundary} write")
+            return result
+
+        db.orders.update_one = crash_after_parent_write
+        with pytest.raises(SimulatedProcessCrash):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sorted(order["total"] for order in active) == [10.0, 20.0, 30.0]
+    assert len(active) == 3
+    assert "account_operation" not in next(order for order in active if order["id"] == "order-1")
+
+
+def test_pending_account_operation_blocks_payment_and_is_hidden_from_order_response():
+    async def run():
+        db = _DB()
+        order = _order(id="order-1", status="entregado", account_operation={"id": "op-1", "kind": "split"})
+        db.orders.docs.append(order)
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await create_payment(_payment_body(), _cashier())
+        assert exc.value.status_code == 409
+        with pytest.raises(HTTPException) as exc:
+            await order_routes._save_order(order, {"notes": "concurrent edit", "updated_at": STAMP})
+        assert exc.value.status_code == 409
+        safe = order_routes._order_for_user(order, _cashier())
+        assert "account_operation" not in safe
+        assert db.payments.docs == []
+        assert order["amount_paid"] == 0.0
+
+    asyncio.run(run())
+
+
+def test_split_child_cannot_be_charged_after_partial_unlock_until_parent_recovery():
+    async def run():
+        from models import OrderSplit
+
+        order_sequence = iter((101, 102))
+
+        async def order_number(_restaurant_id):
+            return next(order_sequence)
+
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="entregado", table_id="table-1",
+            attention_id="att-1", total=30.0, subtotal=30.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0),
+                   _table_item("i3", "p3", "Three", 30.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        unlocked_count = 0
+
+        async def crash_after_child_unlock(filt, update):
+            nonlocal unlocked_count
+            result = await update_one(filt, update)
+            if filt.get("account_operation_id") and "account_operation_id" in (update.get("$unset") or {}):
+                unlocked_count += 1
+                if unlocked_count == 2:
+                    raise KeyboardInterrupt("simulated process termination after second child unlock")
+            return result
+
+        db.orders.update_one = crash_after_child_unlock
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.update_one = update_one
+        assert next(o for o in db.orders.docs if o["id"] == "order-1")["account_operation"]["phase"] == "committed"
+        child = [order for order in db.orders.docs if order["id"] != "order-1"][1]
+        payment = await create_payment(PaymentCreate(
+            order_id=child["id"], method="efectivo", amount=child["total"],
+            received_amount=child["total"], idempotency_key="split-child-charge",
+        ), _cashier())
+        assert payment["amount"] == child["total"]
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    assert len(db.payments.docs) == 1
+    children = [o for o in db.orders.docs if o["id"] != "order-1"]
+    assert children[1]["amount_paid"] == 30
+    assert not next(o for o in db.orders.docs if o["id"] == "order-1").get("account_operation")
+    assert sorted(item["id"] for order in db.orders.docs for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sum(order["total"] for order in db.orders.docs if order["status"] != "cancelado") == 60
+
+
+def test_merge_aborts_before_copy_when_source_changes_after_intent_claim():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+                   items=[_table_item("i1", "p1", "One", 20.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+                   items=[_table_item("i2", "p2", "Two", 10.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        changed_source = False
+
+        async def edit_source_after_intent(filt, update):
+            nonlocal changed_source
+            result = await update_one(filt, update)
+            if not changed_source and filt.get("id") == "order-1" and "account_operation" in (update.get("$set") or {}):
+                changed_source = True
+                await update_one({"id": "order-2", "restaurant_id": RID}, {"$set": {"updated_at": "concurrent-version"}})
+            return result
+
+        db.orders.update_one = edit_source_after_intent
+        with pytest.raises(HTTPException) as exc:
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        assert exc.value.status_code == 409
+        db.orders.update_one = update_one
+        target = next(o for o in db.orders.docs if o["id"] == "order-1")
+        source = next(o for o in db.orders.docs if o["id"] == "order-2")
+        assert [item["id"] for item in target["items"]] == ["i1"]
+        assert source["updated_at"] == "concurrent-version"
+        assert "account_operation" not in target
 
     asyncio.run(run())
 
