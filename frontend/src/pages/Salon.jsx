@@ -286,9 +286,6 @@ export default function Salon() {
     // vive en un diálogo que se abre desde ⋯ Más: el mockup no lo muestra en el
     // cuerpo del detalle.
     const [summaryOpen, setSummaryOpen] = useState(false);
-    // S14: "Enviar a cocina" ya no dispara el envío directo; abre este paso de
-    // confirmación (con los borradores, su stepper y el total) antes del POST.
-    const [confirmSendId, setConfirmSendId] = useState(null);
     // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
@@ -296,6 +293,7 @@ export default function Salon() {
     // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
     // persona, al estilo posView del prototipo.
     const [ticketOpen, setTicketOpen] = useState(false);
+    const [reviewOrderId, setReviewOrderId] = useState(null);
     const [personNameEdit, setPersonNameEdit] = useState(false);
     // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
     // editor que antes vivía en la franja de personas).
@@ -310,6 +308,7 @@ export default function Salon() {
     const [branchCatalog, setBranchCatalog] = useState({ loading: false, error: false, branches: [], resolved: false });
     const [scope, setScope] = useState(null);
     const searchRef = useRef(null);
+    const escapeActionsRef = useRef(null);
 
     const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
 
@@ -617,15 +616,21 @@ export default function Salon() {
         const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
         const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
+        let loadedOrder = null;
         setComposerOpen(false);
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
-                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                if (data?.id === targetOrderId) {
+                    loadedOrder = data;
+                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
+                } else {
+                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+                }
                 // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
                 // abre sola, sin obligar a buscar el botón.
-                if (isComposingDraft(data)) setComposerOpen(true);
+                if (loadedOrder && isComposingDraft(loadedOrder)) setComposerOpen(true);
             } catch {
                 setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
             }
@@ -639,16 +644,10 @@ export default function Salon() {
             // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
             if (!targetOrderId && active.length) await selectAccount(active[0].id);
         } catch { /* historial opcional */ }
+        return loadedOrder;
     };
 
-    const closeSheet = () => {
-        setOpenTable(null);
-        setTicketOpen(false);
-        setPersonNameEdit(false);
-        setSummaryOpen(false);
-        setReceiptOpen(false);
-        setConfirmSendId(null);
-    };
+    const closeSheet = () => leaveComposer({ closeTable: true });
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
@@ -656,9 +655,19 @@ export default function Salon() {
         setOpenTable((s) => (s ? { ...s, accountId: orderId, loading: true } : s));
         try {
             const { data } = await api.get(`/orders/${orderId}`);
+            if (data?.id !== orderId) {
+                setOpenTable((s) => (s && s.accountId === orderId
+                    ? { ...s, accountId: s.order?.id || null, loading: false }
+                    : s));
+                return null;
+            }
             setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
+            return data;
         } catch {
-            setOpenTable((s) => (s ? { ...s, loading: false } : s));
+            setOpenTable((s) => (s && s.accountId === orderId
+                ? { ...s, accountId: s.order?.id || null, loading: false }
+                : s));
+            return null;
         }
     };
 
@@ -746,7 +755,7 @@ export default function Salon() {
     };
 
     const addProductToAccount = async (product) => {
-        if (!canTake || savingItem) return;
+        if (!canTake || savingItem || sendingToKitchen) return;
         setSavingItem(true);
         try {
             const orderId = await ensureAccount();
@@ -786,8 +795,9 @@ export default function Salon() {
     // S14: el paso de confirmación puede operar sobre OTRA cuenta (el
     // mini-reproductor no abre la hoja), así que el destino es explícito.
     const changeItemQtyFor = async (orderId, item, delta) => {
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
         const next = Number(item.quantity || 1) + delta;
+        setSavingItem(true);
         try {
             if (next <= 0) await api.delete(`/orders/${orderId}/items/${item.id}`);
             else await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: next });
@@ -795,6 +805,8 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -813,12 +825,15 @@ export default function Salon() {
     };
 
     const saveItemNotesFor = async (orderId, item, notes) => {
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        setSavingItem(true);
         try {
             await api.patch(`/orders/${orderId}/items/${item.id}`, { notes });
             await reloadCurrentOrder(orderId);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -878,7 +893,7 @@ export default function Salon() {
         // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake || sendingToKitchen) return;
+        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
         const openId = openTable?.order?.id || openTable?.accountId;
         // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso es el
         // del prototipo, "Enviado a cocina · Mesa N".
@@ -910,6 +925,8 @@ export default function Salon() {
                         : [...(s.accounts || []), data].filter(Boolean),
                 } : s));
             }
+            setTicketOpen(false);
+            setReviewOrderId(null);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
@@ -918,44 +935,20 @@ export default function Salon() {
         }
     };
 
-    /**
-     * S14 — Paso de confirmación antes de enviar.
-     *
-     * "Enviar a cocina" (ticket, barra de la carta o mini-reproductor) abre el
-     * diálogo con los borradores de esa cuenta: el mozo puede reducir cantidades,
-     * sumar más cosas (vuelve al compositor) o confirmar el envío real.
-     */
+    // The first action opens an order review; only explicit confirmation reaches
+    // the existing guarded sender.
     const requestSend = (orderId = null) => {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake) return;
-        setConfirmSendId(targetId);
+        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
+        setReviewOrderId(targetId);
     };
 
-    const confirmSend = async () => {
-        const targetId = confirmSendId;
-        if (!targetId) return;
+    const confirmReviewedSend = async () => {
+        if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
+        const targetId = reviewOrderId;
         await sendCurrentToKitchen(targetId);
-        setConfirmSendId(null);
-    };
-
-    // "Agregar más": cierra el diálogo y deja al mozo en el compositor de esa
-    // cuenta (desde el mini, abre su hoja primero).
-    const confirmAddMore = async () => {
-        const targetId = confirmSendId;
-        setConfirmSendId(null);
-        if (!targetId) return;
-        const openId = openTable?.order?.id || openTable?.accountId;
-        if (openTable && targetId === openId) {
-            setComposerOpen(true);
-            return;
-        }
-        const target = (orders || []).find((o) => o.id === targetId)
-            || (lastOpened?.account?.id === targetId ? lastOpened.account : null);
-        const table = (tables || []).find((x) => x.id === target?.table_id) || lastOpened?.table;
-        if (!table) return;
-        await openSheet(table, targetId);
-        setComposerOpen(true);
+        setReviewOrderId(null);
     };
 
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
@@ -967,13 +960,16 @@ export default function Salon() {
     // El alias también se puede fijar sin enviar (al salir del campo).
     const saveAlias = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        setSavingItem(true);
         try {
             await persistAlias(orderId);
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -1012,21 +1008,53 @@ export default function Salon() {
         renamePerson(view.id, next);
     };
 
-    // "Vaciar" del ticket del prototipo: borra sólo lo que sigue en borrador,
-    // con la API existente (un DELETE por línea). Lo enviado no se toca.
-    const clearDraft = async () => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        const current = sheetOrder;
+    const discardDraftItems = async (orderId) => {
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return false;
+        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
         const drafts = (current?.items || []).filter((it) => isDraft(it, current?.status));
-        if (!drafts.length) return;
+        if (!drafts.length) return true;
+        setSavingItem(true);
         try {
             for (const it of drafts) await api.delete(`/orders/${orderId}/items/${it.id}`);
             await reloadCurrentOrder(orderId);
             refreshAll();
+            return true;
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo vaciar el pedido');
+            await reloadCurrentOrder(orderId);
+            toast.error(e.response?.data?.detail || 'No se pudo descartar el pedido');
+            return false;
+        } finally {
+            setSavingItem(false);
         }
+    };
+
+    const leaveComposer = async ({ closeTable = false } = {}) => {
+        if (savingItem || sendingToKitchen) return;
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
+        const hasDrafts = (current?.items || []).some((it) => isDraft(it, current?.status));
+        if (hasDrafts) {
+            if (!canTake || savingItem || sendingToKitchen) return;
+            if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
+            if (!await discardDraftItems(orderId)) return;
+        }
+        setTicketOpen(false);
+        if (closeTable) {
+            setOpenTable(null);
+            setPersonNameEdit(false);
+            setSummaryOpen(false);
+            setReceiptOpen(false);
+        } else {
+            setComposerOpen(false);
+        }
+    };
+
+    // The ticket clear action confirms before deleting draft items only.
+    const clearDraft = async () => {
+        const orderId = openTable?.order?.id || openTable?.accountId;
+        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!window.confirm('¿Vaciar los productos sin enviar? Los productos enviados se conservarán.')) return;
+        await discardDraftItems(orderId);
     };
 
     // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
@@ -1264,6 +1292,16 @@ export default function Salon() {
         void openSheet(lastOpened.table, lastOpened.accountId);
     };
 
+    const editAccountDrafts = async (account) => {
+        if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
+        setReviewOrderId(null);
+        setTicketOpen(false);
+        const latest = await selectAccount(account.id);
+        if (latest?.id !== account.id || ['pagado', 'cancelado'].includes(latest.status)
+            || !draftCount(latest.items || [], latest.status)) return;
+        setComposerOpen(true);
+    };
+
     // La cuenta puede haberse cerrado, cobrado o movido desde el último vistazo:
     // el mini solo vive mientras el pedido siga abierto en la lista viva.
     const miniOrder = useMemo(() => {
@@ -1274,32 +1312,51 @@ export default function Salon() {
         return order;
     }, [orders, lastOpened]);
 
+    const reviewOrder = reviewOrderId
+        ? ((sheetOrder?.id === reviewOrderId ? sheetOrder : null)
+            || (openTable?.order?.id === reviewOrderId ? openTable.order : null)
+            || (miniOrder?.id === reviewOrderId ? miniOrder : null))
+            || (openTable?.accounts || []).find((entry) => entry.id === reviewOrderId)
+        : null;
+    const reviewItems = editableItems(reviewOrder?.items || [], reviewOrder?.status);
+
+    const returnToEdit = async () => {
+        if (sendingToKitchen) return;
+        const orderId = reviewOrderId;
+        if (!orderId) return;
+        if (openTable?.order?.id === orderId || openTable?.accountId === orderId) {
+            setReviewOrderId(null);
+            setTicketOpen(false);
+            setComposerOpen(false);
+            const latest = await selectAccount(orderId);
+            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+                || !draftCount(latest.items || [], latest.status)) return;
+            setComposerOpen(true);
+            return;
+        }
+        if (miniOrder?.id === orderId && lastOpened) {
+            const target = lastOpened;
+            setReviewOrderId(null);
+            setComposerOpen(false);
+            const latest = await openSheet(target.table, orderId);
+            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+                || !draftCount(latest.items || [], latest.status)) {
+                setComposerOpen(false);
+                return;
+            }
+            setComposerOpen(true);
+            setTicketOpen(false);
+        }
+    };
+
     const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
         && !moveAccountId && !selectMode;
 
-    // ── Paso "Confirmar pedido" (S14) ──────────────────────────────────────
-    // La cuenta destino puede ser la de la hoja abierta o la del
-    // mini-reproductor; los borradores salen de la versión más fresca que
-    // tengamos a mano.
-    const confirmOpenId = openTable?.order?.id || openTable?.accountId || null;
-    const confirmOrderData = confirmSendId
-        ? (confirmSendId === confirmOpenId
-            ? (sheetOrder || (openTable?.accounts || []).find((o) => o.id === confirmSendId) || null)
-            : (orders.find((o) => o.id === confirmSendId)
-                || (lastOpened?.account?.id === confirmSendId ? lastOpened.account : null)))
-        : null;
-    const confirmDraftItems = confirmOrderData
-        ? editableItems(confirmOrderData.items || [], confirmOrderData.status)
-        : [];
-    const confirmTable = (() => {
-        if (!confirmOrderData) return openTable?.table || lastOpened?.table || null;
-        if (openTable?.table?.id === confirmOrderData.table_id) return openTable.table;
-        return (tables || []).find((x) => x.id === confirmOrderData.table_id) || lastOpened?.table || null;
-    })();
+    // Keep the Escape listener bound to the latest draft and in-flight guards
+    // without rebuilding it every render for locally declared handlers.
+    escapeActionsRef.current = { leaveComposer, closeSheet };
 
-    // Escape vuelve a la grilla, como el cierre del Sheet anterior. Con la hoja
-    // del borrador abierta, el primer Escape la cierra a ella. Los diálogos y
-    // menús abiertos (Radix) manejan su propio Escape y no deben cerrar la vista.
+    // Escape first hides the mobile ticket; leaving its composer goes through discard confirmation.
     useEffect(() => {
         if (!openTable) return undefined;
         const onKey = (event) => {
@@ -1309,11 +1366,12 @@ export default function Salon() {
                 setTicketOpen(false);
                 return;
             }
-            setOpenTable(null);
+            if (composerOpen) void escapeActionsRef.current.leaveComposer();
+            else void escapeActionsRef.current.closeSheet();
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [openTable, ticketOpen]);
+    }, [openTable, ticketOpen, composerOpen]);
 
     return (
         <div
@@ -1824,7 +1882,7 @@ export default function Salon() {
                                 <div className="flex items-center gap-2">
                                     <button
                                         type="button"
-                                        onClick={composerOpen ? () => setComposerOpen(false) : closeSheet}
+                                        onClick={composerOpen ? () => leaveComposer() : closeSheet}
                                         aria-label={composerOpen ? 'Volver a la mesa' : 'Volver al salón'}
                                         data-testid="mesa-sheet-volver"
                                         className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border"
@@ -1927,6 +1985,18 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
+                                    {canTake && canCompose && composerOpen && order && draftUnits > 0 && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full min-[820px]:hidden"
+                                            onClick={() => setTicketOpen(true)}
+                                            data-testid="mesa-sheet-abrir-ticket"
+                                        >
+                                            Editar ticket
+                                        </Button>
+                                    )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
                                         la vuelve a abrir para el pedido siguiente. */}
@@ -1945,6 +2015,7 @@ export default function Salon() {
                                             onSendToKitchen={() => requestSend()}
                                             showActions={!composerOpen}
                                             showHeader={!composerOpen}
+                                            hideUnavailable
                                         />
                                     </div>
                                     {/* Tarjetas por cuenta, como los `.order` del
@@ -2040,6 +2111,19 @@ export default function Salon() {
                                                 )}
                                                 <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
                                                     <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
+                                                    {canTake && !['pagado', 'cancelado'].includes(view.status)
+                                                        && draftCount(view.items || [], view.status) > 0 && (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={savingItem || sendingToKitchen}
+                                                                onClick={(event) => { event.stopPropagation(); void editAccountDrafts(view); }}
+                                                                data-testid="mesa-sheet-editar-pedido"
+                                                            >
+                                                                Editar pedido
+                                                            </Button>
+                                                        )}
                                                     {kitchen.key === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
@@ -2161,6 +2245,7 @@ export default function Salon() {
                                                 testIdPrefix="mesa-sheet"
                                                 order={order}
                                                 items={allItems}
+                                                draftOnly
                                                 canEdit={canCompose}
                                                 canVoid={canVoidItems}
                                                 saving={savingItem}
@@ -2246,16 +2331,16 @@ export default function Salon() {
                                     )}
                                 </div>
 
-                                {/* FAB del borrador (solo móvil): abre la hoja con las
-                                    líneas y el envío, como el `.fab` del prototipo. */}
-                                {composerOpen && order && draftUnits > 0 && sendState && (
+                                {/* Mobile's primary draft action goes straight to the final review. */}
+                                {canTake && composerOpen && order && draftUnits > 0 && showSend && sendState && (
                                     <button
                                         type="button"
-                                        onClick={() => setTicketOpen(true)}
+                                        disabled={savingItem || sendingToKitchen}
+                                        onClick={() => requestSend()}
                                         data-testid="mesa-sheet-fab"
                                         className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex min-h-[52px] items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_rgba(0,0,0,0.4)] min-[820px]:hidden"
                                     >
-                                        <span>Ver pedido · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
+                                        <span>Enviar a cocina · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
                                         <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
                                     </button>
                                 )}
@@ -2276,6 +2361,7 @@ export default function Salon() {
                                                 testIdPrefix="mesa-sheet-ticket"
                                                 order={order}
                                                 items={allItems}
+                                                draftOnly
                                                 canEdit={canCompose}
                                                 canVoid={canVoidItems}
                                                 saving={savingItem}
@@ -2436,50 +2522,53 @@ export default function Salon() {
                 </DialogContent>
             </Dialog>
 
-            {/* S14: "Confirmar pedido" — lo que se va a enviar, con stepper para
-                reducir y la salida "Agregar más"; recién el Confirmar dispara el
-                POST real (sendCurrentToKitchen). */}
-            <Dialog open={Boolean(confirmSendId)} onOpenChange={(open) => { if (!open) setConfirmSendId(null); }}>
-                <DialogContent className="sm:max-w-md" data-testid="mesa-sheet-confirmar-dialog">
+            <Dialog
+                open={Boolean(reviewOrderId)}
+                onOpenChange={(open) => {
+                    if (!open && !sendingToKitchen) setReviewOrderId(null);
+                }}
+            >
+                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby={undefined}>
                     <DialogHeader>
-                        <DialogTitle className="font-display text-2xl">Confirmar pedido</DialogTitle>
+                        <DialogTitle>Revisar pedido para cocina</DialogTitle>
                     </DialogHeader>
-                    <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-confirmar-meta">
-                        {confirmTable ? `Mesa ${confirmTable.number}` : 'La mesa'}
-                        {confirmOrderData ? ` · ${personLabel(confirmOrderData, 0)}` : ''}
-                    </p>
-                    {confirmDraftItems.length > 0 ? (
-                        <PersonOrderSummary
-                            testIdPrefix="mesa-sheet-confirmar"
-                            items={confirmDraftItems}
-                            orderStatus={confirmOrderData?.status}
-                            canEdit={canTake}
-                            saving={savingItem}
-                            onChangeQty={(item, delta) => changeItemQtyFor(confirmSendId, item, delta)}
-                            onNotes={(item, notes) => saveItemNotesFor(confirmSendId, item, notes)}
-                        />
-                    ) : (
-                        <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-confirmar-vacio">
-                            No queda nada por enviar.
-                        </p>
+                    {reviewOrder && (
+                        <div className="space-y-3">
+                            <p className="text-sm text-muted-foreground" data-testid="mesa-sheet-aviso-edicion">
+                                Después de confirmar, los productos enviados no se pueden editar.
+                            </p>
+                            <p className="text-sm font-medium" data-testid="mesa-sheet-revision-persona">
+                                {reviewOrder.customer_name || personLabel(reviewOrder)}
+                            </p>
+                            <PersonOrderSummary
+                                testIdPrefix="mesa-sheet-revision"
+                                items={reviewItems}
+                                orderStatus={reviewOrder.status}
+                                mode="detail"
+                            />
+                            <div className="flex items-center justify-between border-t pt-3 font-semibold">
+                                <span>Este pedido</span>
+                                <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(reviewItems))}</span>
+                            </div>
+                        </div>
                     )}
-                    <div
-                        className="flex items-center justify-between gap-2 border-t border-dashed pt-2.5 text-sm font-semibold"
-                        data-testid="mesa-sheet-confirmar-total"
-                    >
-                        <span className="text-muted-foreground">Este envío</span>
-                        <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(confirmDraftItems))}</span>
-                    </div>
-                    <DialogFooter className="gap-2 sm:justify-between">
-                        <Button variant="outline" onClick={confirmAddMore} data-testid="mesa-sheet-confirmar-agregar">
-                            Agregar más
+                    <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={sendingToKitchen}
+                            onClick={returnToEdit}
+                            data-testid="mesa-sheet-volver-editar"
+                        >
+                            Volver a editar
                         </Button>
                         <Button
-                            onClick={confirmSend}
-                            disabled={sendingToKitchen || confirmDraftItems.length === 0}
-                            data-testid="mesa-sheet-confirmar-enviar"
+                            type="button"
+                            disabled={!reviewItems.length || savingItem || sendingToKitchen}
+                            onClick={confirmReviewedSend}
+                            data-testid="mesa-sheet-confirmar-envio"
                         >
-                            {sendingToKitchen ? 'Enviando…' : 'Confirmar'}
+                            {sendingToKitchen ? 'Enviando…' : 'Confirmar envío'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

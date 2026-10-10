@@ -66,6 +66,7 @@ describe('mini-reproductor del pedido activo', () => {
     let container; let root;
 
     beforeEach(() => {
+        window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
         api.post.mockReset();
         api.delete.mockReset();
@@ -79,7 +80,7 @@ describe('mini-reproductor del pedido activo', () => {
         document.body.innerHTML = '';
     });
 
-    it('mantiene a la vista la cuenta abierta y la reabre al tocarla', async () => {
+    it('cancelar la salida del compositor conserva los borradores y no crea una acción mini', async () => {
         // S14: la acción solo ofrece "Enviar a cocina" cuando hay borradores
         // reales; con lo ya enviado muestra el estado y ofrece "Agregar".
         const o1 = order({ items: [item('i1', 'Ceviche', 1, 30, 'borrador')] });
@@ -96,23 +97,15 @@ describe('mini-reproductor del pedido activo', () => {
         expect(container.querySelector('[data-testid="salon-mini"]')).toBeNull();
 
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        // Con un borrador la carta se abre sola: el primer ← cierra el
-        // compositor y el segundo vuelve al salón (donde vive el mini).
+        // Exiting the composer is blocked until the draft is explicitly discarded.
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
-
-        const mini = container.querySelector('[data-testid="salon-mini"]');
-        expect(mini).not.toBeNull();
-        expect(mini.textContent).toContain('Mesa 1');
-        expect(mini.textContent).toContain('S/ 30.00');
-        // En borrador la acción contextual es enviar, no cobrar.
-        expect(mini.querySelector('[data-testid="salon-mini-accion"]').textContent).toContain('Enviar a cocina');
-
-        await click(mini.querySelector('button'));
-        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+        expect(window.confirm).toHaveBeenCalled();
+        expect(container.querySelector('[data-testid="salon-mini"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+        expect(api.delete).not.toHaveBeenCalled();
     });
 
-    it('S14: la acción del mini dice "Enviar a cocina" y pasa por Confirmar pedido', async () => {
+    it('no habilita el mini con borradores sin descartar', async () => {
         const o1 = order({ items: [item('i1', 'Ceviche', 2, 60, 'borrador')], total: 60 });
         mockTables.splice(0, mockTables.length, table({ active_order: { id: 'order-1', status: 'en_preparacion' } }));
         mockOrders.splice(0, mockOrders.length, o1);
@@ -121,27 +114,12 @@ describe('mini-reproductor del pedido activo', () => {
             if (url.startsWith('/orders/')) return Promise.resolve({ data: o1 });
             return Promise.resolve({ data: [o1] });
         });
-        api.post.mockResolvedValue({ data: o1 });
-
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
-
-        const accion = container.querySelector('[data-testid="salon-mini-accion"]');
-        // Label decidido en S14: "Enviar a cocina · unidades · monto".
-        expect(accion.textContent).toContain('Enviar a cocina');
-        expect(accion.textContent).toContain('2');
-        expect(accion.textContent).toContain('S/ 60.00');
-
-        await click(accion);
-        // No envía directo: abre el paso de confirmación (mismo que el ticket).
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).not.toBeNull();
-
-        // "Agregar más" desde el mini abre la hoja de esa cuenta.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-agregar"]'));
-        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="salon-mini"]')).toBeNull();
+        expect(window.confirm).toHaveBeenCalled();
+        expect(api.delete).not.toHaveBeenCalled();
     });
 
     it('sirve desde la barra cuando hay platos listos', async () => {

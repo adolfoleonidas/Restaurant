@@ -90,6 +90,7 @@ export default function OrderComposer({
     // La carta del tomador no lleva el rótulo "Agregar a…": lo dice la franja
     // "Para {persona}" del prototipo.
     showHeader = true,
+    hideUnavailable = false,
 }) {
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
@@ -103,11 +104,12 @@ export default function OrderComposer({
     // de la mesa vive en el resumen de arriba, así que acá no se mezclan personas.
     const visible = useMemo(() => (products || [])
         .filter((p) => {
+            if (hideUnavailable && (!p.is_available || (p.is_combo && p.components_available === false))) return false;
             if (categoryId !== 'all' && p.category_id !== categoryId) return false;
             if (search && !String(p.name || '').toLowerCase().includes(search.toLowerCase())) return false;
             return true;
         })
-        .sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1))), [products, categoryId, search]);
+        .sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1))), [products, categoryId, search, hideUnavailable]);
 
     useEffect(() => () => clearTimeout(pulseTimer.current), []);
 

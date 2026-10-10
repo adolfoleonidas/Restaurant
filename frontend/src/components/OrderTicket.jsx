@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { fmtMoney } from '@/lib/format';
 import { PersonOrderSummary } from '@/components/OrderSummary';
 import { OrderNote } from '@/components/OrderComposer';
+import { isDraft, itemsTotal } from '@/lib/orderDraft';
 
 /**
  * Ticket del borrador, como el `.ticket` del prototipo: líneas con stepper y
@@ -29,9 +30,11 @@ export default function OrderTicket({
     onClear,
     onClose = null,
     className = '',
+    draftOnly = false,
 }) {
     if (!order) return null;
-    const total = order.total != null ? Number(order.total) : 0;
+    const ticketItems = draftOnly ? items.filter((item) => isDraft(item, order.status)) : items;
+    const total = draftOnly ? itemsTotal(ticketItems) : (order.total != null ? Number(order.total) : 0);
 
     return (
         <section
@@ -57,14 +60,14 @@ export default function OrderTicket({
 
             <PersonOrderSummary
                 testIdPrefix={testIdPrefix}
-                items={items}
+                items={ticketItems}
                 orderStatus={order.status}
                 canEdit={canEdit}
                 canVoid={canVoid}
                 saving={saving}
                 // S12: lo enviado va en su bloque `.sent` (`#id · hh:mm` + tag);
                 // las líneas van peladas, sin chip por ítem.
-                sentMeta={{ number: order.order_number, at: order.created_at }}
+                sentMeta={draftOnly ? null : { number: order.order_number, at: order.created_at }}
                 onChangeQty={onChangeQty}
                 onNotes={onNotes}
                 onVoid={onVoid}
