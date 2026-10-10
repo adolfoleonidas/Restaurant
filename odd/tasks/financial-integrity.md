@@ -46,6 +46,7 @@ Fix the audited payment, account merge/split, and cash reconciliation defects wi
 ## Progress and recovery
 
 - FI-01 independently verified: money suite 49 passed (56 non-failing warnings), isolated deploy preflight 8 passed (10 non-failing warnings), and parent spot-check `git diff --check` passed. A read-only in-memory endpoint repro confirmed sub-cent splits now return HTTP 400 with zero payment rows and unchanged order balance. The actual shared accounting computation is checked before writes, not merely raw split sums. Initial and corrective RED/GREEN evidence is recorded with the work unit. RDD assessment was unavailable/high because of unrelated untracked inventory; clone-local RDD remained off, and independent functional verification was used instead.
-- Next: close the FI-01 work-unit commit, then implement FI-02. No live database or backend E2E verification has been performed.
+- FI-01 work-unit commit: `8bb8865103d7f692b3ddf30d0a581ac512f67ca9` (`fix(payments): reconcile mixed cash change before charging`), 175 additions / 1 deletion including the initial recovery document. Source/test portion: 124 additions / 1 deletion. Planned first chain boundary is this verified work unit plus its bookkeeping; no remote delivery was performed.
+- Next: implement FI-02. No live database or backend E2E verification has been performed.
 - Record observed RED/GREEN commands, independent checks, commit identities and actual slice counts per task. Check off only proven outcomes.
 - Engram mirror `odd/financial-integrity/tasks` is pending: the runtime has not supplied an authoritative registered session identity. Agent-attributed Engram calls are prohibited; this local document is the recovery record until registration is restored.
