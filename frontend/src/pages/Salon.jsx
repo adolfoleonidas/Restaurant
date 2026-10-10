@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
@@ -290,9 +290,6 @@ export default function Salon() {
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
     const [composerOpen, setComposerOpen] = useState(false);
-    // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
-    // persona, al estilo posView del prototipo.
-    const [ticketOpen, setTicketOpen] = useState(false);
     const [reviewOrderId, setReviewOrderId] = useState(null);
     const [personNameEdit, setPersonNameEdit] = useState(false);
     // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
@@ -925,11 +922,12 @@ export default function Salon() {
                         : [...(s.accounts || []), data].filter(Boolean),
                 } : s));
             }
-            setTicketOpen(false);
             setReviewOrderId(null);
             refreshAll();
+            return true;
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            return false;
         } finally {
             setSendingToKitchen(false);
         }
@@ -947,8 +945,8 @@ export default function Salon() {
     const confirmReviewedSend = async () => {
         if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
         const targetId = reviewOrderId;
-        await sendCurrentToKitchen(targetId);
-        setReviewOrderId(null);
+        const sent = await sendCurrentToKitchen(targetId);
+        if (sent) setReviewOrderId(null);
     };
 
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
@@ -1038,7 +1036,6 @@ export default function Salon() {
             if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
             if (!await discardDraftItems(orderId)) return;
         }
-        setTicketOpen(false);
         if (closeTable) {
             setOpenTable(null);
             setPersonNameEdit(false);
@@ -1295,7 +1292,6 @@ export default function Salon() {
     const editAccountDrafts = async (account) => {
         if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
         setReviewOrderId(null);
-        setTicketOpen(false);
         const latest = await selectAccount(account.id);
         if (latest?.id !== account.id || ['pagado', 'cancelado'].includes(latest.status)
             || !draftCount(latest.items || [], latest.status)) return;
@@ -1326,7 +1322,6 @@ export default function Salon() {
         if (!orderId) return;
         if (openTable?.order?.id === orderId || openTable?.accountId === orderId) {
             setReviewOrderId(null);
-            setTicketOpen(false);
             setComposerOpen(false);
             const latest = await selectAccount(orderId);
             if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
@@ -1345,7 +1340,6 @@ export default function Salon() {
                 return;
             }
             setComposerOpen(true);
-            setTicketOpen(false);
         }
     };
 
@@ -1356,22 +1350,17 @@ export default function Salon() {
     // without rebuilding it every render for locally declared handlers.
     escapeActionsRef.current = { leaveComposer, closeSheet };
 
-    // Escape first hides the mobile ticket; leaving its composer goes through discard confirmation.
     useEffect(() => {
         if (!openTable) return undefined;
         const onKey = (event) => {
             if (event.key !== 'Escape') return;
             if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"]')) return;
-            if (ticketOpen) {
-                setTicketOpen(false);
-                return;
-            }
             if (composerOpen) void escapeActionsRef.current.leaveComposer();
             else void escapeActionsRef.current.closeSheet();
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [openTable, ticketOpen, composerOpen]);
+    }, [openTable, composerOpen]);
 
     return (
         <div
@@ -1835,11 +1824,6 @@ export default function Salon() {
                                     }))]
                                     : []),
                                 ...(canTake ? [{
-                                    key: 'otra-persona',
-                                    label: 'Pedido de otra persona',
-                                    testId: 'mesa-sheet-otra-persona',
-                                    onSelect: () => { startAnotherPerson(); setComposerOpen(true); },
-                                }, {
                                     key: 'mover-pedido',
                                     label: 'Mover pedido a otra mesa',
                                     icon: MoveRight,
@@ -1961,14 +1945,14 @@ export default function Salon() {
                                                     </span>
                                                     {canTake && (
                                                         <span className="flex shrink-0 items-center gap-1">
-                                                            {order && !isComposingDraft(order) && (
+                                                            {hasAccount && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={startAnotherPerson}
-                                                                    data-testid="mesa-sheet-otra-persona"
+                                                                    data-testid="mesa-sheet-agregar-persona"
                                                                     className="flex h-9 items-center rounded-lg border border-dashed border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
                                                                 >
-                                                                    ＋ Persona
+                                                                    ＋ Agregar persona
                                                                 </button>
                                                             )}
                                                             <button
@@ -1984,18 +1968,6 @@ export default function Salon() {
                                                 </>
                                             )}
                                         </div>
-                                    )}
-                                    {canTake && canCompose && composerOpen && order && draftUnits > 0 && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full min-[820px]:hidden"
-                                            onClick={() => setTicketOpen(true)}
-                                            data-testid="mesa-sheet-abrir-ticket"
-                                        >
-                                            Editar ticket
-                                        </Button>
                                     )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
@@ -2018,6 +1990,17 @@ export default function Salon() {
                                             hideUnavailable
                                         />
                                     </div>
+                                    {!composerOpen && hasAccount && canCompose && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="w-full justify-start"
+                                            onClick={() => { startAnotherPerson(); setComposerOpen(true); }}
+                                            data-testid="mesa-sheet-agregar-persona"
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" /> Agregar persona
+                                        </Button>
+                                    )}
                                     {/* Tarjetas por cuenta, como los `.order` del
                                         prototipo: persona + ✎, #id · hora, píldora de
                                         estado, líneas y footer con total. La cuenta
@@ -2345,40 +2328,6 @@ export default function Salon() {
                                     </button>
                                 )}
 
-                                {/* Hoja inferior del borrador (móvil): el mismo
-                                    ticket del prototipo con otro prefijo de testids,
-                                    para no duplicar los del ticket en flujo. */}
-                                {ticketOpen && order && (
-                                    <div className="fixed inset-0 z-40 min-[820px]:hidden" data-testid="mesa-sheet-ticket-sheet">
-                                        <div
-                                            className="absolute inset-0 bg-black/45"
-                                            data-testid="mesa-sheet-ticket-scrim"
-                                            aria-hidden="true"
-                                            onClick={() => setTicketOpen(false)}
-                                        />
-                                        <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl pb-[var(--safe-bottom)]">
-                                            <OrderTicket
-                                                testIdPrefix="mesa-sheet-ticket"
-                                                order={order}
-                                                items={allItems}
-                                                draftOnly
-                                                canEdit={canCompose}
-                                                canVoid={canVoidItems}
-                                                saving={savingItem}
-                                                draftUnits={draftUnits}
-                                                sendLabel={sendState?.label}
-                                                showSend={showSend}
-                                                onChangeQty={changeItemQty}
-                                                onNotes={saveItemNotes}
-                                                onVoid={voidProduct}
-                                                onSend={() => requestSend()}
-                                                onClear={clearDraft}
-                                                onClose={() => setTicketOpen(false)}
-                                                className="rounded-b-none border-x-0 border-b-0"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
                             </section>
 
                             {/* "Resumen de mesa" del prototipo es sólo Pedidos/
@@ -2528,9 +2477,12 @@ export default function Salon() {
                     if (!open && !sendingToKitchen) setReviewOrderId(null);
                 }}
             >
-                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby={undefined}>
+                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby="mesa-sheet-revision-descripcion">
                     <DialogHeader>
                         <DialogTitle>Revisar pedido para cocina</DialogTitle>
+                        <DialogDescription id="mesa-sheet-revision-descripcion" data-testid="mesa-sheet-revision-descripcion">
+                            Revisa los borradores y sus cantidades antes de confirmar el envío a cocina.
+                        </DialogDescription>
                     </DialogHeader>
                     {reviewOrder && (
                         <div className="space-y-3">
@@ -2551,6 +2503,11 @@ export default function Salon() {
                                 <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(reviewItems))}</span>
                             </div>
                         </div>
+                    )}
+                    {reviewOrder && !reviewItems.length && (
+                        <p role="status" className="text-sm text-muted-foreground" data-testid="mesa-sheet-revision-vacia">
+                            No hay borradores para enviar. Puede que se hayan enviado o actualizado desde que abriste esta revisión. Actualiza el pedido antes de confirmar.
+                        </p>
                     )}
                     <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
                         <Button
