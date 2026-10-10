@@ -12,7 +12,7 @@ from database import db
 from auth import get_current_user, require_roles
 from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
-from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
+from billing import account_total, build_sold_lines, cash_portion, method_amounts, reversal_is_inside_open_shift
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
@@ -383,12 +383,27 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if data.method == "mixto":
         if not data.splits or len(data.splits) < 2:
             raise HTTPException(status_code=400, detail="Pago mixto requiere al menos 2 métodos")
+        if any(round(split.amount, 2) != split.amount for split in data.splits):
+            raise HTTPException(status_code=400, detail="Cada parte del pago debe tener como máximo dos decimales")
         sum_splits = round(sum(s.amount for s in data.splits), 2)
         amount = min(sum_splits, remaining)
         received = sum_splits
         change = max(0.0, round(sum_splits - remaining, 2)) if sum_splits >= remaining else 0.0
         if amount <= 0:
             raise HTTPException(status_code=400, detail="Monto inválido")
+        cash_tender = round(sum(s.amount for s in data.splits if s.method == "efectivo"), 2)
+        if change > cash_tender:
+            raise HTTPException(status_code=400, detail="El vuelto no puede superar el efectivo recibido")
+        if round(sum_splits - change, 2) != amount:
+            raise HTTPException(status_code=400, detail="El desglose no coincide con el importe cobrado")
+        attributed_amount = sum(method_amounts({
+            "method": data.method,
+            "amount": amount,
+            "splits": [split.model_dump() for split in data.splits],
+            "change_amount": change,
+        }).values())
+        if round(attributed_amount, 2) != amount:
+            raise HTTPException(status_code=400, detail="El desglose no coincide con el importe cobrado")
     elif data.method == "efectivo":
         received = data.received_amount if data.received_amount is not None else data.amount
         amount = min(float(data.amount or remaining), remaining)
