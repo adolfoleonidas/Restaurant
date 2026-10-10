@@ -670,6 +670,51 @@ def test_shift_totals_ignore_other_registers():
     assert totals["cash_sales"] == 10
 
 
+def _shift_totals_with_ledger_sizes(payment_count, movement_count):
+    async def run():
+        db = _DB()
+        reg = _open_register("reg-large")
+        db.cash_registers.docs.append(reg)
+        db.payments.docs.extend(
+            {
+                "id": f"payment-{index}",
+                "restaurant_id": RID,
+                "cash_register_id": reg["id"],
+                "status": "completed",
+                "method": "efectivo",
+                "amount": 0.01,
+                "created_at": STAMP,
+            }
+            for index in range(payment_count)
+        )
+        db.cash_movements.docs.extend(
+            {
+                "id": f"movement-{index}",
+                "cash_register_id": reg["id"],
+                "type": "ingreso",
+                "amount": 0.01,
+                "created_at": STAMP,
+            }
+            for index in range(movement_count)
+        )
+        _bind(db)
+        return await _shift_totals(reg)
+
+    return asyncio.run(run())
+
+
+def test_shift_payment_totals_include_rows_beyond_old_limit():
+    totals = _shift_totals_with_ledger_sizes(payment_count=5001, movement_count=0)
+    assert totals["total_sales"] == 50.01
+    assert totals["cash_sales"] == 50.01
+
+
+def test_shift_movement_totals_include_rows_beyond_old_limit():
+    totals = _shift_totals_with_ledger_sizes(payment_count=0, movement_count=1001)
+    assert totals["income"] == 10.01
+    assert len(totals["movements"]) == 1000
+
+
 def test_refund_after_close_does_not_rewrite_the_closed_shift():
     async def run():
         db = _DB()
