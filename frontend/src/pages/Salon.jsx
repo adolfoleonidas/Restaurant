@@ -1837,11 +1837,6 @@ export default function Salon() {
                                     }))]
                                     : []),
                                 ...(canTake ? [{
-                                    key: 'otra-persona',
-                                    label: 'Pedido de otra persona',
-                                    testId: 'mesa-sheet-otra-persona',
-                                    onSelect: () => { startAnotherPerson(); setComposerOpen(true); },
-                                }, {
                                     key: 'mover-pedido',
                                     label: 'Mover pedido a otra mesa',
                                     icon: MoveRight,
@@ -1963,14 +1958,14 @@ export default function Salon() {
                                                     </span>
                                                     {canTake && (
                                                         <span className="flex shrink-0 items-center gap-1">
-                                                            {order && !isComposingDraft(order) && (
+                                                            {hasAccount && (
                                                                 <button
                                                                     type="button"
                                                                     onClick={startAnotherPerson}
-                                                                    data-testid="mesa-sheet-otra-persona"
+                                                                    data-testid="mesa-sheet-agregar-persona"
                                                                     className="flex h-9 items-center rounded-lg border border-dashed border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
                                                                 >
-                                                                    ＋ Persona
+                                                                    ＋ Agregar persona
                                                                 </button>
                                                             )}
                                                             <button
@@ -2020,6 +2015,17 @@ export default function Salon() {
                                             hideUnavailable
                                         />
                                     </div>
+                                    {!composerOpen && hasAccount && canCompose && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="w-full justify-start"
+                                            onClick={() => { startAnotherPerson(); setComposerOpen(true); }}
+                                            data-testid="mesa-sheet-agregar-persona"
+                                        >
+                                            <Plus className="h-4 w-4 mr-1" /> Agregar persona
+                                        </Button>
+                                    )}
                                     {/* Tarjetas por cuenta, como los `.order` del
                                         prototipo: persona + ✎, #id · hora, píldora de
                                         estado, líneas y footer con total. La cuenta

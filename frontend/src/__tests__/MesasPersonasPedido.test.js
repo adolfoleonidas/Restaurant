@@ -289,10 +289,8 @@ describe('pedido por personas en el salón', () => {
         });
         ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
 
-        // S10: "otra persona" vive en ⋯ Más (el mockup no tiene la affordance
-        // porque su ticket es único; nuestra multi-cuenta la necesita).
-        await click(sheet.querySelector('[data-testid="mesa-sheet-mas"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
+        // La acción para agregar a otra persona queda visible junto a las cuentas.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders', {

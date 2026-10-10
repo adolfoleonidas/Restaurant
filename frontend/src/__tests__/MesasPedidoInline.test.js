@@ -123,10 +123,9 @@ describe('pedido inline en el salón', () => {
         ));
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        // La mesa ya tiene visita: la cuenta siguiente se pide como tal desde
-        // ⋯ Más (S10: la fila de personas se fue).
-        await click(document.body.querySelector('[data-testid="mesa-sheet-mas"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-otra-persona"]'));
+        // La mesa ya tiene visita: la siguiente cuenta se inicia desde el área
+        // visible de cuentas/personas.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-agregar-persona"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders', {

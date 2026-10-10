@@ -95,6 +95,7 @@ describe('compositor · paridad posView (S8)', () => {
     let sheet;
 
     beforeEach(() => {
+        mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
         api.post.mockReset();
@@ -133,6 +134,59 @@ describe('compositor · paridad posView (S8)', () => {
             input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         });
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Pedro', shared: false });
+    });
+
+    it('inicia otra persona desde el área de cuentas sin perder el borrador anterior', async () => {
+        const firstAccount = order('order-1', 11, 'enviado_cocina', [
+            item('sent-1', 'Sopa', 1, 12, 'pendiente'),
+            item('draft-1', 'Agua', 1, 5, 'borrador', { notes: 'Sin hielo' }),
+        ], { customer_name: 'Juan' });
+        const nextAccount = order('order-2', 12, 'nuevo', []);
+        api.post.mockImplementation((url) => {
+            if (url === '/orders') return Promise.resolve({ data: nextAccount });
+            if (url === '/orders/order-2/items') return Promise.resolve({ data: nextAccount });
+            return Promise.resolve({ data: {} });
+        });
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-1') return Promise.resolve({ data: firstAccount });
+            if (url === '/orders/order-2') return Promise.resolve({ data: nextAccount });
+            return Promise.resolve({ data: [firstAccount] });
+        });
+        ({ container, root, sheet } = await openTableWith([firstAccount]));
+
+        const addPerson = sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]');
+        expect(addPerson).not.toBeNull();
+        expect(addPerson.textContent).toMatch(/agregar persona/i);
+        await click(addPerson);
+        expect(sheet.querySelectorAll('[data-testid="mesa-sheet-agregar-persona"]')).toHaveLength(1);
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
+        expect(api.post).toHaveBeenCalledWith('/orders/order-2/items', [expect.objectContaining({ product_id: 'prod-n1' })]);
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/items', expect.anything());
+        expect(firstAccount.customer_name).toBe('Juan');
+        expect(firstAccount.items.find((entry) => entry.id === 'draft-1')).toEqual(
+            expect.objectContaining({ status: 'borrador', notes: 'Sin hielo' })
+        );
+    });
+
+    it('no ofrece agregar persona a roles que no pueden tomar pedidos', async () => {
+        mockRole = 'cajero';
+        const sent = order('order-1', 11, 'enviado_cocina', [item('i1', 'Sopa', 1, 12, 'pendiente')]);
+        ({ container, root, sheet } = await openTableWith([sent]));
+
+        expect(sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
+    });
+
+    it('no ofrece agregar persona cuando la mesa pagada no permite componer', async () => {
+        const paid = order('order-1', 11, 'pagado', [item('i1', 'Sopa', 1, 12, 'entregado')]);
+        ({ container, root, sheet } = await openTableWith([paid], { status: 'pagada' }));
+
+        expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
     });
 
     it('confirma Vaciar, cancela sin borrar y al aceptar elimina solo borradores', async () => {
