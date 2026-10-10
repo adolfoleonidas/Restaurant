@@ -48,7 +48,7 @@ def _method_amounts(payment: dict) -> dict:
 
 
 async def _shift_totals(reg: dict) -> dict:
-    payments = await db.payments.find(shift_payment_filter(reg), {"_id": 0}).to_list(5000)
+    payments = await db.payments.find(shift_payment_filter(reg), {"_id": 0}).to_list(None)
     by_method = {m: 0.0 for m in DRAWER_METHODS}
     total_sales = 0.0
     for payment in payments:
@@ -59,7 +59,7 @@ async def _shift_totals(reg: dict) -> dict:
             by_method[method] = round(by_method[method] + value, 2)
     movements = await db.cash_movements.find(
         {"cash_register_id": reg["id"]}, {"_id": 0}
-    ).sort("created_at", 1).to_list(1000)
+    ).sort("created_at", 1).to_list(None)
     income = round(sum(m["amount"] for m in movements if m["type"] == "ingreso"), 2)
     expense = round(sum(m["amount"] for m in movements if m["type"] == "egreso"), 2)
     cash_sales = by_method["efectivo"]
@@ -71,7 +71,7 @@ async def _shift_totals(reg: dict) -> dict:
         "income": income,
         "expense": expense,
         "expected_amount": expected,
-        "movements": movements,
+        "movements": movements[:1000],
     }
 
 
