@@ -45,7 +45,7 @@ _KITCHEN_HIDE = {"discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_pro
 
 
 def _order_projection(user: dict) -> dict:
-    proj = {"_id": 0}
+    proj = {"_id": 0, "payment_operation": 0}
     if user.get("role") == "cocina":
         proj.update(_KITCHEN_HIDE)
     if not {"cobro", "administracion"}.intersection(user_functions(user)):
@@ -68,9 +68,12 @@ async def _order_lookup_scope(order_id: str, user: dict) -> dict:
 
 
 def _order_for_user(order: dict | None, user: dict) -> dict | None:
-    if not order or {"cobro", "administracion"}.intersection(user_functions(user)):
+    if not order:
         return order
     safe = dict(order)
+    safe.pop("payment_operation", None)
+    if {"cobro", "administracion"}.intersection(user_functions(user)):
+        return safe
     for field in (
         "payment_proof_url", "payment_proof_method", "payment_proof_sha256",
         "payment_proof_uploaded_by", "payment_proof_uploaded_at",
@@ -229,7 +232,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     """Orders relevant for kitchen board (no payment info)."""
     # Solo exclusiones: el ticket no expone importes ni el comprobante, pero sí
     # necesita saber cómo está el cobro para imprimir su etiqueta.
-    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0,
+    projection = {"_id": 0, "payment_operation": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0,
                   "payment_proof_url": 0, "payment_proof_method": 0, "payment_proof_sha256": 0,
                   "payment_proof_uploaded_by": 0, "payment_proof_uploaded_at": 0,
                   "amount_paid": 0, "request_fingerprint": 0}

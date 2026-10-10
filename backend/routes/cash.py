@@ -237,6 +237,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
         {"payment_status": {"$in": ["comprobante_subido", "confirmado"]}},
         {"payment_proof_status": "pendiente"},
         {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
+        {"payment_operation": {"$exists": True}},
     ]
     unresolved_query = {"restaurant_id": user["restaurant_id"], "$or": unresolved_status}
     if reg.get("branch_id"):

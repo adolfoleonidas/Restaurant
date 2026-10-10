@@ -115,6 +115,8 @@ class _Collection:
     async def insert_one(self, doc):
         await asyncio.sleep(0)
         async with self._lock:
+            if doc.get("_id") is not None and any(d.get("_id") == doc.get("_id") for d in self.docs):
+                raise DuplicateKeyError("duplicate _id")
             if doc.get("event_id") and any(d.get("event_id") == doc.get("event_id") for d in self.docs):
                 raise DuplicateKeyError("duplicate audit event id")
             if doc.get("request_id") and any(
@@ -321,6 +323,217 @@ def test_same_idempotency_key_returns_the_original_payment():
     assert stored["status"] == "pagado"
 
 
+def test_retry_recovers_payment_after_process_crash_between_order_and_ledger_writes():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        body = _payment_body(idempotency_key="crash-before-ledger")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        after_crash = await db.orders.find_one({"id": "order-1"})
+        assert after_crash["amount_paid"] == 20
+        assert after_crash.get("payment_operation")
+        assert db.payments.docs == []
+        with pytest.raises(HTTPException) as close_error:
+            await close_register(CashClose(closing_amount=100, branch_id="branch-1"), _cashier())
+        assert close_error.value.status_code == 400
+
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return recovered, stored, db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
+def test_retry_finishes_audit_after_process_crash_during_ledger_insert():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="crash-after-ledger")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        assert len(db.payments.docs) == 1
+        assert db.audit_logs.docs == []
+
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return recovered, stored, db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert len([row for row in db.audit_logs.docs if row.get("action") == "payment_create"]) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
+def test_void_is_rejected_while_payment_creation_recovery_is_pending():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="void-race")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        payment_id = db.payments.docs[0]["id"]
+        with pytest.raises(HTTPException) as void_error:
+            await apply_void_payment(payment_id, _cashier(), "void while pending", "void")
+        recovered = await create_payment(body, _cashier())
+        order = await db.orders.find_one({"id": "order-1"})
+        payment = await db.payments.find_one({"id": payment_id})
+        return void_error.value, order, recovered, payment
+
+    void_error, order, recovered, payment = asyncio.run(run())
+    assert void_error.status_code == 409
+    assert order["amount_paid"] == 20
+    assert recovered["id"] == payment["id"]
+    assert payment["status"] == "completed"
+    assert order.get("payment_operation") is None
+
+
+def test_pending_same_key_retry_must_match_original_request_fingerprint():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        original = _payment_body(amount=8, received_amount=8, idempotency_key="same-key-different-charge")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(original, _cashier())
+        db.payments.insert_one = insert_payment
+        changed_retry = _payment_body(amount=12, received_amount=12, idempotency_key="same-key-different-charge")
+        with pytest.raises(HTTPException) as mismatch:
+            await create_payment(changed_retry, _cashier())
+        return mismatch.value, db
+
+    mismatch, db = asyncio.run(run())
+    assert mismatch.status_code == 409
+    assert db.orders.docs[0]["amount_paid"] == 8
+    assert len(db.payments.docs) == 1
+    assert db.payments.docs[0]["amount"] == 8
+    assert db.orders.docs[0]["amount_paid"] == 8
+    assert "payment_operation" not in db.orders.docs[0]
+
+
+def test_retry_refuses_to_return_completed_payload_for_noncompleted_ledger_row():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="changed-ledger-state")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        db.payments.docs[0]["status"] = "voided"
+        with pytest.raises(HTTPException) as stale_response:
+            await create_payment(body, _cashier())
+        return stale_response.value, db
+
+    stale_response, db = asyncio.run(run())
+    assert stale_response.status_code == 409
+    assert db.payments.docs[0]["status"] == "voided"
+    assert db.orders.docs[0].get("payment_operation")
+
+
+def test_order_projection_never_exposes_internal_payment_operation():
+    order = {"id": "order-1", "payment_operation": {"payment": {"amount": 20}}}
+    user = {"role": "mozo", "branch_id": "branch-1"}
+    projected = order_routes._order_projection(user)
+    safe = order_routes._order_for_user(order, user)
+    assert projected.get("payment_operation") == 0
+    assert "payment_operation" not in safe
+
+
+def test_retry_recovers_keyless_payment_after_crash_without_requiring_new_api_field():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        body = _payment_body(idempotency_key=None)
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(_payment_body(idempotency_key=None), _cashier())
+        return recovered, await db.orders.find_one({"id": "order-1"}), db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
 def test_two_cashiers_cannot_charge_the_same_balance():
     async def run():
         db = _DB()
@@ -342,6 +555,30 @@ def test_two_cashiers_cannot_charge_the_same_balance():
     assert len(payments) == 1
     assert stored["amount_paid"] == 20
     assert stored["status"] == "pagado"
+
+
+def test_concurrent_same_idempotency_key_resumes_one_payment_operation():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body_a = _payment_body(amount=20, received_amount=20, idempotency_key="same-concurrent-key")
+        body_b = _payment_body(amount=20, received_amount=20, idempotency_key="same-concurrent-key")
+        results = await asyncio.gather(
+            create_payment(body_a, _cashier()),
+            create_payment(body_b, _cashier()),
+            return_exceptions=True,
+        )
+        order = await db.orders.find_one({"id": "order-1"})
+        return results, order, db
+
+    results, order, db = asyncio.run(run())
+    assert all(not isinstance(result, Exception) for result in results)
+    assert results[0]["id"] == results[1]["id"]
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
 
 
 def test_second_partial_payment_still_closes_the_bill():
