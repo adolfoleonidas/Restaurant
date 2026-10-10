@@ -1280,3 +1280,111 @@ def test_a_mixed_payment_with_a_disabled_method_is_rejected():
     assert error.status_code == 400
     assert "plin" in error.detail
     assert payments == []
+
+
+def test_mixed_payment_rejects_change_greater_than_cash_tender_before_writes():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=40.0, total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=40,
+            idempotency_key="mixed-overchange",
+            splits=[
+                PaymentSplit(method="yape", amount=50),
+                PaymentSplit(method="efectivo", amount=10),
+            ],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db, await db.orders.find_one({"id": "order-1"})
+
+    error, db, order = asyncio.run(run())
+    assert error.status_code == 400
+    assert db.payments.docs == []
+    assert order["amount_paid"] == 0
+
+
+def test_mixed_payment_cash_change_attributes_charge_and_replay_idempotently():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=100.0, total=100.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=100,
+            idempotency_key="mixed-valid-change",
+            splits=[
+                PaymentSplit(method="efectivo", amount=60),
+                PaymentSplit(method="yape", amount=50),
+            ],
+        )
+        first = await create_payment(body, _cashier())
+        replay = await create_payment(body, _cashier())
+        return first, replay, db
+
+    first, replay, db = asyncio.run(run())
+    assert first["amount"] == 100
+    assert first["change_amount"] == 10
+    assert method_amounts(first) == {"efectivo": 50, "yape": 50}
+    assert sum(method_amounts(first).values()) == first["amount"]
+    assert replay["id"] == first["id"]
+    assert len(db.payments.docs) == 1
+
+
+def test_mixed_payment_rejects_subcent_splits_that_round_above_charge_before_writes():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=0.01, total=0.01))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=0.01,
+            idempotency_key="mixed-subcent-overcharge",
+            splits=[
+                PaymentSplit(method="yape", amount=0.005),
+                PaymentSplit(method="plin", amount=0.005),
+            ],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db, await db.orders.find_one({"id": "order-1"})
+
+    error, db, order = asyncio.run(run())
+    assert error.status_code == 400
+    assert "dos decimales" in error.detail
+    assert db.payments.docs == []
+    assert order["amount_paid"] == 0
+
+
+def test_mixed_payment_accepts_normal_cent_precision_and_attributes_exact_charge():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=0.03, total=0.03))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(
+            PaymentCreate(
+                order_id="order-1",
+                method="mixto",
+                amount=0.03,
+                splits=[
+                    PaymentSplit(method="efectivo", amount=0.01),
+                    PaymentSplit(method="yape", amount=0.02),
+                ],
+            ),
+            _cashier(),
+        )
+        return paid
+
+    paid = asyncio.run(run())
+    assert paid["amount"] == 0.03
+    assert method_amounts(paid) == {"efectivo": 0.01, "yape": 0.02}
+    assert sum(method_amounts(paid).values()) == paid["amount"]
