@@ -43,6 +43,29 @@ Adapt Salon table-order composition to `restoflow.html`, removing repeated contr
 
 ## Progress and next step
 
+### Authorized GitHub delivery (T06)
+
+- On 2026-10-09 the maintainer explicitly approved the final integration `size:exception` for the 1,022-line accumulated feature and merge after passing checks. Earlier authorization covers the configured GitHub session, `adolfoleonidas/Restaurant`, feature-branch-chain delivery and main's existing automatic deployment workflow.
+- [ ] T06 — Publish the five work-unit PRs against their immediate parent branches, integrate the verified feature into a draft tracker, then merge that tracker to main only after its CI passes. Link an approved feature issue and attach every created PR to this task. Preserve source bytes and exclude all mocks/temp/unrelated untracked files.
+  - Route: delegated delivery worker; multi-PR preparation and review-facing artifacts require bounded delegation. Parent performs final CI/merge readback.
+  - Checks: clean source diff boundaries, each child within 400 authored lines, final tracker carries `size:exception`, full configured GitHub Tests pass for the final candidate. Child-target branches do not have a configured PR CI trigger; record this rather than inventing runs. Development status and remaining real-backend end-to-end coverage are explicit limitations, not a claim of final product readiness.
+  - Engram mirror remains pending until authoritative runtime session registration is restored. No agent-attributed memory calls permitted meanwhile.
+
+### Approved refinement: two-step mobile send (T05)
+
+- User reported the mobile `Ver pedido` bar still introduces a third step. Approved behavior: mobile primary action `Enviar a cocina` opens the existing final review directly, then `Confirmar envio` submits; no mandatory ticket-sheet opening in between.
+- [x] T05 — Route the mobile primary draft action directly to review and label it `Enviar a cocina`. Keep draft quantities/total, editing before send, final lock notice, duplicate-send/saving guards, cancellation and failed-send recovery. Desktop flow and backend contracts remain unchanged; optional ticket editing stays available through a separate secondary action.
+  - Route: delegated writer; preparation plus non-trivial source/test changes trigger delegation.
+  - Acceptance: mobile primary tap opens review (not ticket sheet), no kitchen POST before final confirmation, return-to-edit retains draft, sent history is excluded from review and total, in-flight action is blocked, sent-only/read-only account has no send action. User sees two send actions rather than three.
+  - TDD: supplied AGENTS.md Strict TDD enabled; `npm test -- --watchAll=false --runInBand --runTestsByPath src/__tests__/MesasPersonasPedido.test.js` first produced a meaningful RED: tapping the mobile primary action did not open `mesa-sheet-revision-envio` (received null), and no kitchen POST occurred. An initial Jest startup failure at Node `realpath` EPERM was resolved by running the same test with the approved `require_escalated` execution.
+  - Verification: focused command from the Verification contract — 6 suites / 76 tests passed; full `npm test -- --watchAll=false --runInBand` — 61 suites / 411 tests passed; `$env:CI='true'; $env:REACT_APP_BACKEND_URL='http://127.0.0.1:8000'; npm run build` — compiled successfully; `git diff --check` passed. Existing missing-key React console warning in `MesasPersonasPedido.test.js` remains non-failing. Parent independent verification, final diff spot-check, and Chrome mobile-viewport mock inspection remain pending. No real-data backend mutation or remote delivery.
+  - Changed paths: `frontend/src/pages/Salon.jsx`, `frontend/src/__tests__/SalonComposerProto.test.js`, `frontend/src/__tests__/MesasPersonasPedido.test.js`, and this task document. T05 adds the direct mobile review route and a separate optional `Editar ticket` action; tests retain discard, Escape, send-failure recovery, and in-flight clear safeguards.
+  - Forecast: approximately 70 authored lines, advisory only. T05 follows T04 in the already-approved feature chain. Mirror pending while runtime session registration remains unavailable; no agent-attributed Engram calls.
+  - Independent final verification: six focused suites / 76 tests passed; source confirms the mobile primary button calls guarded review rather than ticket opening, desktop submission unchanged. Parent final diff check passed. Risk assessment unavailable/high due unrelated untracked inventory; RDD stays clone-local off, no native review started.
+  - Runtime proof: Chrome at 497 x 898 mobile viewport, compiled React with loopback mock. Mesa 4 primary action displayed `Enviar a cocina` with one draft / S/ 18.00, opened final review directly without a ticket sheet; return preserved draft; confirmation alone changed it to En cocina. Temporary viewport restored. Screenshots: `C:/Users/adolf/.codex/visualizations/2026/10/08/01a1192f-1e88-7d60-9038-3722b5f86877/mobile-send-two-steps.jpg` and `mobile-send-confirmation.jpg` in the same directory. Real backend integration remains unperformed; preview harness is not committed app code.
+  - Rollback: revert only mobile primary-action routing/label, optional ticket-entry control and corresponding regressions; retain T01–T04 and backend protections. No push, PR, main merge or deployment yet.
+  - Work-unit commit: `184dc604e4d69f83323b470663ec5ff7b31a0ad5` on `codex/prototype-order-taking-mobile-send`, 66 additions / 15 deletions (81 authored lines), T05 slice follows the T04 draft-edit branch. Delivery remains local pending user review.
+
 ### Approved refinement: edit unsent orders (T04)
 
 - User accepted draft-only editing: editing remains available before kitchen submission, and confirmation warns that sent products cannot be edited. Do not enable edits while preparation is underway or change backend lifecycle rules.

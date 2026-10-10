@@ -142,7 +142,7 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([account]));
         window.confirm = jest.fn().mockReturnValue(false);
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
         expect(window.confirm).toHaveBeenCalled();
@@ -223,7 +223,7 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(true);
         api.delete.mockRejectedValue({ response: { data: { detail: 'No autorizado' } } });
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
 
@@ -238,7 +238,7 @@ describe('compositor · paridad posView (S8)', () => {
         const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(false);
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
 
         await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
@@ -253,7 +253,7 @@ describe('compositor · paridad posView (S8)', () => {
         const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         api.post.mockRejectedValue({ response: { data: { detail: 'Error de cocina' } } });
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
@@ -267,7 +267,7 @@ describe('compositor · paridad posView (S8)', () => {
         let resolveSend;
         api.post.mockReturnValue(new Promise((resolve) => { resolveSend = resolve; }));
         ({ container, root, sheet } = await openTableWith([draft]));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
@@ -285,7 +285,7 @@ describe('compositor · paridad posView (S8)', () => {
 
         const fab = sheet.querySelector('[data-testid="mesa-sheet-fab"]');
         expect(fab).not.toBeNull();
-        expect(fab.textContent).toContain('Ver pedido');
+        expect(fab.textContent).toContain('Enviar a cocina');
         expect(fab.textContent).toContain('2 nuevos');
         expect(fab.textContent).toContain('S/ 24.00');
         expect(fab.className).toContain('min-[820px]:hidden');
@@ -293,7 +293,13 @@ describe('compositor · paridad posView (S8)', () => {
         // El contrato del e2e móvil sigue a la vista sin abrir la hoja.
         expect(sheet.querySelector('[data-testid="mesa-sheet-items"]')).not.toBeNull();
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(fab);
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
         const ticket = sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]');
         expect(ticket).not.toBeNull();
         expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-items"]')).not.toBeNull();
@@ -306,7 +312,7 @@ describe('compositor · paridad posView (S8)', () => {
         expect(window.confirm).not.toHaveBeenCalled();
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]')).not.toBeNull();
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-ticket-cerrar"]'));
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
         expect(api.delete).not.toHaveBeenCalled();
@@ -318,7 +324,7 @@ describe('compositor · paridad posView (S8)', () => {
         api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
         ({ container, root, sheet } = await openTableWith([draft]));
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
@@ -621,7 +627,7 @@ describe('edición explícita de borradores (T04)', () => {
         ({ container, root } = await openTableWith(accounts));
         await click(container.querySelector('[data-testid="mesa-sheet-pedido-32"]'));
         await click(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]'));
-        await click(container.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(container.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
         expect(document.body.textContent).toContain('Después de confirmar, los productos enviados no se pueden editar.');
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
