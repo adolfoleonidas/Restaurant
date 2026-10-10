@@ -14,7 +14,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: mockRole } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
@@ -24,6 +24,7 @@ const originalConfirm = window.confirm;
 const mockTables = [];
 const mockOrders = [];
 const mockProducts = [];
+let mockRole = 'admin';
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
@@ -530,6 +531,163 @@ describe('compositor · paridad posView (S8)', () => {
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
+    });
+});
+
+describe('edición explícita de borradores (T04)', () => {
+    let root;
+    let container;
+
+    beforeEach(() => { mockRole = 'admin'; });
+    afterEach(async () => {
+        if (root) await act(async () => root.unmount());
+        root = null;
+        container = null;
+        document.body.innerHTML = '';
+    });
+
+    it('permite editar solo la cuenta pulsada en una mesa con varias cuentas', async () => {
+        const sentOnly = order('order-sent', 21, 'en_preparacion', [item('s1', 'Sopa', 1, 12, 'pendiente')]);
+        const mixed = order('order-mixed', 22, 'en_preparacion', [
+            item('s2', 'Arroz', 1, 10, 'pendiente'), item('d2', 'Agua', 1, 5, 'borrador'),
+        ]);
+        const accounts = [sentOnly, mixed];
+        ({ container, root } = await openTableWith(accounts));
+        const mixedCard = container.querySelector('[data-testid="mesa-sheet-pedido-22"]');
+        const edit = mixedCard.querySelector('[data-testid="mesa-sheet-editar-pedido"]');
+        expect(edit).not.toBeNull();
+        await click(edit);
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).toBeNull();
+        expect(container.textContent).toContain('Agua');
+        expect(container.querySelector('[data-testid="mesa-sheet-ticket-item-s2"]')).toBeNull();
+        expect(api.post).not.toHaveBeenCalledWith(expect.stringMatching(/\/kitchen|\/send/), expect.anything());
+    });
+
+    it('no ofrece edición para cuenta solo enviada ni para cajero', async () => {
+        const sent = order('order-sent', 21, 'en_preparacion', [item('s1', 'Sopa', 1, 12, 'pendiente')]);
+        ({ container, root } = await openTableWith([sent]));
+        expect(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]')).toBeNull();
+        await act(async () => root.unmount());
+        root = null;
+        document.body.innerHTML = '';
+
+        mockRole = 'cajero';
+        const draft = order('order-draft', 23, 'nuevo', [item('d1', 'Agua', 1, 5, 'borrador')]);
+        ({ container, root } = await openTableWith([draft]));
+        expect(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]')).toBeNull();
+    });
+
+    it('no abre otra cuenta si falla su carga antes de editarla', async () => {
+        const first = order('order-first', 41, 'en_preparacion', [item('f1', 'Sopa', 1, 12, 'pendiente')]);
+        const second = order('order-second', 42, 'en_preparacion', [item('d2', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [first, second];
+        ({ container, root } = await openTableWith(accounts));
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-second') return Promise.reject(new Error('offline'));
+            const match = accounts.find((entry) => url === `/orders/${entry.id}`);
+            return Promise.resolve({ data: match || accounts });
+        });
+
+        await click(container.querySelector('[data-testid="mesa-sheet-pedido-42"] [data-testid="mesa-sheet-editar-pedido"]'));
+
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).not.toBeNull();
+        expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('revalida borradores tras cargar y no abre el compositor si ya se enviaron', async () => {
+        const first = order('order-first', 51, 'en_preparacion', [item('f1', 'Sopa', 1, 12, 'pendiente')]);
+        const stale = order('order-stale', 52, 'en_preparacion', [item('d2', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [first, stale];
+        ({ container, root } = await openTableWith(accounts));
+        const sent = order('order-stale', 52, 'en_preparacion', [item('d2', 'Agua', 1, 5, 'pendiente')]);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-stale') return Promise.resolve({ data: sent });
+            const match = accounts.find((entry) => url === `/orders/${entry.id}`);
+            return Promise.resolve({ data: match || accounts });
+        });
+
+        await click(container.querySelector('[data-testid="mesa-sheet-pedido-52"] [data-testid="mesa-sheet-editar-pedido"]'));
+
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]')).toBeNull();
+    });
+
+    it('vuelve desde revisión a editar la cuenta correcta y avisa del bloqueo tras envío', async () => {
+        const first = order('order-first', 31, 'en_preparacion', [item('s1', 'Sopa', 1, 12, 'pendiente')]);
+        const draft = order('order-draft', 32, 'en_preparacion', [item('d1', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [first, draft];
+        ({ container, root } = await openTableWith(accounts));
+        await click(container.querySelector('[data-testid="mesa-sheet-pedido-32"]'));
+        await click(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]'));
+        await click(container.querySelector('[data-testid="mesa-sheet-fab"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        expect(document.body.textContent).toContain('Después de confirmar, los productos enviados no se pueden editar.');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).toBeNull();
+        expect(container.textContent).toContain('Agua');
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-draft/send', expect.anything());
+    });
+
+    it('vuelve desde revisión del mini al compositor de la cuenta cargada', async () => {
+        const draft = order('order-mini', 61, 'en_preparacion', [item('d1', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [draft];
+        ({ container, root } = await openTableWith(accounts));
+        window.confirm = jest.fn().mockReturnValue(true);
+        api.delete.mockResolvedValue({ data: {} });
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(container.querySelector('[data-testid="salon-mini-accion"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+
+        expect(container.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
+        expect(container.textContent).toContain('Agua');
+    });
+
+    it('no abre el compositor desde revisión del mini si la cuenta ya no se puede cargar', async () => {
+        const draft = order('order-mini', 62, 'en_preparacion', [item('d1', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [draft];
+        ({ container, root } = await openTableWith(accounts));
+        window.confirm = jest.fn().mockReturnValue(true);
+        api.delete.mockResolvedValue({ data: {} });
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(container.querySelector('[data-testid="salon-mini-accion"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-mini') return Promise.reject(new Error('offline'));
+            return Promise.resolve({ data: accounts });
+        });
+
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).not.toBeNull();
+    });
+
+    it('no abre el compositor desde revisión del mini si la cuenta cargada ya no tiene borradores', async () => {
+        const draft = order('order-mini', 63, 'en_preparacion', [item('d1', 'Agua', 1, 5, 'borrador')]);
+        const accounts = [draft];
+        ({ container, root } = await openTableWith(accounts));
+        window.confirm = jest.fn().mockReturnValue(true);
+        api.delete.mockResolvedValue({ data: {} });
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
+        await click(container.querySelector('[data-testid="salon-mini-accion"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        const emptyOrder = order('order-mini', 63, 'en_preparacion', []);
+        api.get.mockImplementation((url) => {
+            if (url === '/branches') return Promise.resolve({ data: [] });
+            if (url === '/orders/order-mini') return Promise.resolve({ data: emptyOrder });
+            return Promise.resolve({ data: accounts });
+        });
+
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+
+        expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).not.toBeNull();
     });
 });
 
