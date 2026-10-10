@@ -8,7 +8,7 @@ Fix the audited payment, account merge/split, and cash reconciliation defects wi
 - Feature branch: `codex/financial-integrity`.
 - Scope: mixed payment change, complete shift totals, crash-recoverable payment creation and merge/split operations, regression tests and this recovery record.
 - Excluded: unrelated security/UI refactors, real database access, server execution, deployment, existing untracked audit/mock/document files.
-- Current authorization covers local development and work-unit commits. GitHub publishing/main delivery remains a separate action after verified implementation.
+- Maintainer explicitly authorized GitHub publication with the current gh session, cohesive size exceptions, and feature-branch-chain integration followed by final main merge after passing CI. No manual SSH or live database access was authorized.
 - Artifacts use English; extend existing Spanish API/UI copy in neutral Spanish.
 
 ## Implementation and delivery
@@ -71,3 +71,14 @@ Fix the audited payment, account merge/split, and cash reconciliation defects wi
 - Next: obtain the outstanding PR size approval before GitHub publication, then run final-main CI before any authorized merge. No live database or backend E2E verification has been performed; financial mock verification alone does not establish production readiness.
 - Record observed RED/GREEN commands, independent checks, commit identities and actual slice counts per task. Check off only proven outcomes.
 - Engram mirror `odd/financial-integrity/tasks` is pending: the runtime has not supplied an authoritative registered session identity. Agent-attributed Engram calls are prohibited; this local document is the recovery record until registration is restored.
+
+## Delivery closure — 2026-10-09 America/Lima
+
+- Approved issue: https://github.com/adolfoleonidas/Restaurant/issues/72 (closed by final merge).
+- Child PRs: #74 mixed payments (128 lines after documentation-only tracker seed), #75 complete shift totals (60), #76 payment recovery (525), #77 merge/split recovery (704). All four were integrated in order into the tracker, not independently into main. Oversized children and final tracker carry the maintainer-approved size exception. No child CI exists for non-main PR bases; local functional evidence was disclosed.
+- Final tracker: https://github.com/adolfoleonidas/Restaurant/pull/73, 1,444 changed lines. Head 86550d1a78ee20b673bab21736f48b2af1ad3199. Parent independently checked source/tests against verified e3765d3: git diff exit 0; only the feature recovery document differed.
+- Final tracker CI: run 38021525944 succeeded on the exact tracker head; Backend tests, Frontend tests and Frontend build all succeeded. Deploy was skipped for the PR event.
+- Final main merge: 643890117b8760e2fe6519aac1431701f6ce40a8, confirmed MERGED at 2026-10-10T03:48:06Z (2026-10-09 22:48 Peru). This finishes publication and the requested main merge before the target deadline, not the complete production-readiness program.
+- Automatic main workflow: run 38021836246 was in progress at the last read. Do not infer deployed success before a terminal result. No manual server access was performed.
+- Workspace retains original financial source branch and unrelated untracked assets; the main checkout in another worktree was not touched.
+- Next user priority: improve UI/UX while preserving existing backend-integrated behavior. Establish the next screen/flow scope before implementation. Live Mongo concurrency, backend E2E, and the remaining security/operations launch gates remain pending.
