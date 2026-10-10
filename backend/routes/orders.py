@@ -45,7 +45,7 @@ _KITCHEN_HIDE = {"discount": 0, "tip": 0, "total": 0, "paid_at": 0, "payment_pro
 
 
 def _order_projection(user: dict) -> dict:
-    proj = {"_id": 0}
+    proj = {"_id": 0, "payment_operation": 0}
     if user.get("role") == "cocina":
         proj.update(_KITCHEN_HIDE)
     if not {"cobro", "administracion"}.intersection(user_functions(user)):
@@ -68,9 +68,16 @@ async def _order_lookup_scope(order_id: str, user: dict) -> dict:
 
 
 def _order_for_user(order: dict | None, user: dict) -> dict | None:
-    if not order or {"cobro", "administracion"}.intersection(user_functions(user)):
+    if not order:
         return order
     safe = dict(order)
+    safe.pop("payment_operation", None)
+    safe.pop("account_operation", None)
+    safe.pop("account_operation_ref", None)
+    safe.pop("account_operation_id", None)
+    safe.pop("last_account_operation", None)
+    if {"cobro", "administracion"}.intersection(user_functions(user)):
+        return safe
     for field in (
         "payment_proof_url", "payment_proof_method", "payment_proof_sha256",
         "payment_proof_uploaded_by", "payment_proof_uploaded_at",
@@ -229,7 +236,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
     """Orders relevant for kitchen board (no payment info)."""
     # Solo exclusiones: el ticket no expone importes ni el comprobante, pero sí
     # necesita saber cómo está el cobro para imprimir su etiqueta.
-    projection = {"_id": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0,
+    projection = {"_id": 0, "payment_operation": 0, "discount": 0, "tip": 0, "total": 0, "paid_at": 0,
                   "payment_proof_url": 0, "payment_proof_method": 0, "payment_proof_sha256": 0,
                   "payment_proof_uploaded_by": 0, "payment_proof_uploaded_at": 0,
                   "amount_paid": 0, "request_fingerprint": 0}
@@ -498,38 +505,77 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     return await _current_order_response(order_id, user)
 
 
+async def _resume_merge_operation(operation: dict, user: dict) -> None:
+    target_filter = {"id": operation["target_id"], "restaurant_id": operation["restaurant_id"], "account_operation.id": operation["id"]}
+    if operation.get("branch_id") is not None:
+        target_filter["branch_id"] = operation["branch_id"]
+    source_filter = {"id": operation["source_id"], "restaurant_id": operation["restaurant_id"]}
+    if operation.get("source_branch_id") is not None:
+        source_filter["branch_id"] = operation["source_branch_id"]
+    source = await db.orders.find_one(source_filter, {"_id": 0})
+    if not source:
+        raise HTTPException(status_code=409, detail="No se pudo recuperar la operación de cuenta")
+    if source.get("account_operation_ref") != operation["id"]:
+        if source.get("status") == "cancelado" and source.get("cancellation_reason") == operation["source_patch"].get("cancellation_reason"):
+            await db.orders.update_one(target_filter, {"$unset": {"account_operation": ""}})
+            return
+        if source.get("account_operation_ref"):
+            raise HTTPException(status_code=409, detail="La cuenta está cambiando; volvé a cargarla")
+        claim = {**source_filter, "updated_at": operation.get("source_updated_at"), "account_operation_ref": {"$exists": False}, "account_operation": {"$exists": False}, "payment_operation": {"$exists": False}}
+        result = await db.orders.update_one(claim, {"$set": {"account_operation_ref": operation["id"]}})
+        if getattr(result, "matched_count", 0) != 1:
+            await db.orders.update_one(target_filter, {"$unset": {"account_operation": ""}})
+            raise HTTPException(status_code=409, detail="La cuenta cambió mientras se preparaba la operación")
+    await db.orders.update_one(target_filter, {"$set": operation["target_patch"]})
+    await db.orders.update_one({**source_filter, "account_operation_ref": operation["id"]}, {"$set": operation["source_patch"]})
+    await db.orders.update_one({**source_filter, "account_operation_ref": operation["id"]}, {"$unset": {"account_operation_ref": ""}})
+    await db.orders.update_one(target_filter, {"$unset": {"account_operation": ""}})
+
+
 @router.post("/{order_id}/merge")
 async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    """Fusiona la cuenta `source_order_id` dentro de `order_id` (misma mesa y visita)."""
-    target = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    """Merge an unpaid account with a fixed, resumable operation."""
+    target_filter = await _order_lookup_scope(order_id, user)
+    target = await db.orders.find_one(target_filter, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if target.get("account_operation"):
+        operation = target["account_operation"]
+        if operation.get("kind") != "merge" or operation.get("source_id") != data.source_order_id:
+            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        await _resume_merge_operation(operation, user)
+        return await _current_order_response(order_id, user)
     source = await db.orders.find_one(await _order_lookup_scope(data.source_order_id, user), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
     if source["id"] == target["id"]:
         raise HTTPException(status_code=400, detail="Elegí cuentas distintas")
+    if source.get("status") == "cancelado" and source.get("cancellation_reason") == f"Fusionada con #{target.get('order_number')}":
+        return await _current_order_response(order_id, user)
     if target["status"] in ("pagado", "cancelado") or source["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="Solo se pueden fusionar cuentas abiertas")
-    if target.get("table_id") != source.get("table_id"):
-        raise HTTPException(status_code=400, detail="Las cuentas deben estar en la misma mesa")
-    if target.get("attention_id") != source.get("attention_id"):
-        raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma visita")
-    if (source.get("amount_paid") or 0) > 0.009:
-        raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anulalos antes de fusionar")
+    if target.get("table_id") != source.get("table_id") or target.get("attention_id") != source.get("attention_id"):
+        raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma mesa y visita")
+    if (source.get("amount_paid") or 0) > 0.009 or (target.get("amount_paid") or 0) > 0.009:
+        raise HTTPException(status_code=400, detail="Las cuentas ya tienen cobros; anulalos antes de fusionar")
     combined = (target.get("items") or []) + (source.get("items") or [])
     subtotal, total = _apply_bill(target, combined)
     new_status = _derive_kitchen_status(combined, target["status"])
     if target["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
-    patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
-    patch.update(ticket_fields(target, new_status, target.get("amount_paid"), total))
-    await _save_order(target, patch)
-    await _save_order(source, {
-        "status": "cancelado",
-        "cancellation_reason": f"Fusionada con #{target.get('order_number')}",
-        "updated_at": _now(),
-    })
+    target_patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
+    target_patch.update(ticket_fields(target, new_status, target.get("amount_paid"), total))
+    operation = {"id": str(uuid.uuid4()), "kind": "merge", "restaurant_id": target["restaurant_id"],
+                 "branch_id": target.get("branch_id"), "target_id": target["id"], "source_id": source["id"],
+                 "source_branch_id": source.get("branch_id"), "source_updated_at": source.get("updated_at"),
+                 "target_patch": target_patch, "result_status": new_status,
+                 "source_patch": {"status": "cancelado", "cancellation_reason": f"Fusionada con #{target.get('order_number')}", "updated_at": _now()}}
+    claim = {**target_filter, "updated_at": target.get("updated_at"), "account_operation": {"$exists": False},
+             "account_operation_ref": {"$exists": False}, "payment_operation": {"$exists": False}}
+    result = await db.orders.update_one(claim, {"$set": {"account_operation": operation}})
+    if getattr(result, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La cuenta cambió mientras la revisabas")
+    await _resume_merge_operation(operation, user)
     emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"))
     return await _current_order_response(order_id, user)
 
@@ -540,6 +586,8 @@ async def move_order(order_id: str, data: OrderMove, user: dict = Depends(requir
     order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     if not order.get("table_id"):
         raise HTTPException(status_code=400, detail="La cuenta no está en una mesa")
     if order["status"] in ("pagado", "cancelado"):
@@ -615,76 +663,106 @@ async def move_order(order_id: str, data: OrderMove, user: dict = Depends(requir
     return await _current_order_response(order_id, user)
 
 
+async def _resume_split_operation(order: dict, operation: dict) -> None:
+    scope = {"id": order["id"], "restaurant_id": operation["restaurant_id"], "account_operation.id": operation["id"]}
+    if operation.get("branch_id") is not None:
+        scope["branch_id"] = operation["branch_id"]
+    if operation.get("phase") != "committed":
+        await db.orders.update_one(scope, {"$set": operation["original_patch"]})
+        for child in operation["children"]:
+            child_filter = {"id": child["id"], "restaurant_id": operation["restaurant_id"]}
+            existing = await db.orders.find_one(child_filter, {"_id": 0})
+            if existing:
+                expected = {key: value for key, value in child.items() if key != "account_operation_id"}
+                actual = {key: value for key, value in existing.items() if key not in ("_id", "account_operation_id")}
+                if existing.get("account_operation_id") != operation["id"] or any(actual.get(key) != value for key, value in expected.items()):
+                    raise HTTPException(status_code=409, detail="Una cuenta hija existente no coincide con la operación")
+            else:
+                try:
+                    await db.orders.insert_one(child)
+                except DuplicateKeyError:
+                    existing = await db.orders.find_one(child_filter, {"_id": 0})
+                    if not existing or existing.get("account_operation_id") != operation["id"]:
+                        raise HTTPException(status_code=409, detail="Una cuenta hija existente no coincide con la operación")
+        if operation.get("attention_id"):
+            for child in operation["children"]:
+                await db.attentions.update_one({"id": operation["attention_id"], "restaurant_id": operation["restaurant_id"]}, {"$addToSet": {"order_ids": child["id"]}})
+        committed = {**operation, "phase": "committed"}
+        result = await db.orders.update_one(scope, {"$set": {"account_operation": committed}})
+        if getattr(result, "matched_count", 0) != 1:
+            raise HTTPException(status_code=409, detail="No se pudo confirmar la división de cuentas")
+        operation = committed
+    for child in operation["children"]:
+        await db.orders.update_one({"id": child["id"], "restaurant_id": operation["restaurant_id"], "account_operation_id": operation["id"]}, {"$unset": {"account_operation_id": ""}})
+    await db.orders.update_one(scope, {"$set": {"last_account_operation": {
+        "id": operation["id"], "kind": "split", "parts": operation["parts"],
+        "child_ids": [child["id"] for child in operation["children"]],
+        "updated_at": operation["original_patch"].get("updated_at"),
+    }}, "$unset": {"account_operation": ""}})
+
+
 @router.post("/{order_id}/split")
 async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    """Reparte los productos de una cuenta en `parts` cuentas (misma mesa y visita)."""
+    """Split an unpaid account using fixed child identities and resumable intent."""
     order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    operation = order.get("account_operation")
+    last_operation = order.get("last_account_operation") or {}
+    if (not operation and last_operation.get("kind") == "split" and last_operation.get("parts") == data.parts
+            and order.get("updated_at") == last_operation.get("updated_at")):
+        return await _current_order_response(order_id, user)
+    if operation:
+        if operation.get("kind") != "split" or operation.get("parts") != data.parts:
+            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        await _resume_split_operation(order, operation)
+        return await _current_order_response(order_id, user)
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede dividir una cuenta cerrada")
     if (order.get("amount_paid") or 0) > 0.009:
         raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anulalos antes de dividir")
     items = order.get("items") or []
     parts = data.parts
-    if parts < 2:
-        raise HTTPException(status_code=400, detail="Elegí 2 o más partes")
     if parts > len(items):
         raise HTTPException(status_code=400, detail="No hay suficientes productos para dividir en tantas partes")
-
-    # Reparto round-robin de los productos en `parts` grupos.
     groups = [[] for _ in range(parts)]
-    for idx, it in enumerate(items):
-        groups[idx % parts].append(it)
-
+    for idx, item in enumerate(items):
+        groups[idx % parts].append(item)
     def _split_total(group):
-        subtotal = round(sum(float(i.get("subtotal") or 0) for i in group), 2)
+        subtotal = round(sum(float(item.get("subtotal") or 0) for item in group), 2)
         return subtotal, subtotal
-
-    # La cuenta original conserva el primer grupo (sin descuento ni propina).
     subtotal0, total0 = _split_total(groups[0])
-    await _save_order(order, {
-        "items": groups[0], "subtotal": subtotal0, "total": total0,
-        "discount": 0.0, "tip": 0.0, "updated_at": _now(),
-        **ticket_fields(order, order.get("fulfillment_status") or order.get("status"), order.get("amount_paid"), total0),
-    })
-
-    # Las cuentas nuevas heredan mesa, visita y estado de la original.
-    created = []
+    original_patch = {"items": groups[0], "subtotal": subtotal0, "total": total0, "discount": 0.0, "tip": 0.0,
+                      "updated_at": _now(), **ticket_fields(order, order.get("fulfillment_status") or order.get("status"), order.get("amount_paid"), total0)}
+    operation_id = str(uuid.uuid4())
+    children = []
     for group in groups[1:]:
         subtotal_g, total_g = _split_total(group)
-        new_id = str(uuid.uuid4())
-        order_no = await _next_order_number(user["restaurant_id"])
-        new_order = {
-            "id": new_id, "order_number": order_no, "restaurant_id": order["restaurant_id"],
-            "table_id": order.get("table_id"), "created_by": user["id"], "created_by_name": user.get("full_name"),
-            "status": order["status"], "order_type": order.get("order_type") or "mesa", "items": group,
-            "subtotal": subtotal_g, "discount": 0.0, "tip": 0.0, "total": total_g,
-            "notes": None, "cancellation_reason": None, "sent_to_kitchen_at": None,
-            "ready_at": None, "paid_at": None, "created_at": _now(), "updated_at": _now(),
-            "attention_id": order.get("attention_id"),
-            "attention_state": order.get("attention_state") or "open",
-            "attention_open": True,
-        }
+        child = {"id": str(uuid.uuid4()), "order_number": await _next_order_number(user["restaurant_id"]),
+                 "restaurant_id": order["restaurant_id"], "table_id": order.get("table_id"),
+                 "created_by": user["id"], "created_by_name": user.get("full_name"), "status": order["status"],
+                 "order_type": order.get("order_type") or "mesa", "items": group, "subtotal": subtotal_g,
+                 "discount": 0.0, "tip": 0.0, "total": total_g, "notes": None, "cancellation_reason": None,
+                 "sent_to_kitchen_at": None, "ready_at": None, "paid_at": None, "created_at": _now(), "updated_at": _now(),
+                 "attention_id": order.get("attention_id"), "attention_state": order.get("attention_state") or "open",
+                 "attention_open": True, "account_operation_id": operation_id}
         if order.get("branch_id") is not None:
-            new_order["branch_id"] = order["branch_id"]
-        await db.orders.insert_one(new_order)
-        created.append(new_id)
-
-    # Registra las cuentas nuevas en la visita compartida.
-    if order.get("attention_id"):
-        att = await db.attentions.find_one({"id": order["attention_id"], "restaurant_id": order["restaurant_id"]}, {"_id": 0})
-        if att:
-            ids = list(att.get("order_ids") or [])
-            for c in created:
-                if c not in ids:
-                    ids.append(c)
-            await db.attentions.update_one(
-                {"id": order["attention_id"], "restaurant_id": order["restaurant_id"]},
-                {"$set": {"order_ids": ids}},
-            )
-
-    emit_order(user["restaurant_id"], order_id, order["status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
+            child["branch_id"] = order["branch_id"]
+        children.append(child)
+    operation = {"id": operation_id, "kind": "split", "parts": parts, "restaurant_id": order["restaurant_id"],
+                 "branch_id": order.get("branch_id"), "attention_id": order.get("attention_id"),
+                 "original_patch": original_patch, "children": children,
+                 "result_status": original_patch.get("status", order["status"])}
+    claim = {"id": order["id"], "restaurant_id": order["restaurant_id"], "updated_at": order.get("updated_at"),
+             "account_operation": {"$exists": False}, "account_operation_ref": {"$exists": False},
+             "payment_operation": {"$exists": False}}
+    if order.get("branch_id") is not None:
+        claim["branch_id"] = order["branch_id"]
+    result = await db.orders.update_one(claim, {"$set": {"account_operation": operation}})
+    if getattr(result, "matched_count", 0) != 1:
+        raise HTTPException(status_code=409, detail="La cuenta cambió mientras la revisabas")
+    await _resume_split_operation(order, operation)
+    emit_order(user["restaurant_id"], order_id, operation["result_status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
     return await _current_order_response(order_id, user)
 
 
@@ -789,11 +867,15 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     source = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if source.get("account_operation") or source.get("account_operation_ref") or source.get("account_operation_id"):
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     if source["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
     target = await db.orders.find_one(await _order_lookup_scope(data.target_order_id, user), {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
+    if target.get("account_operation") or target.get("account_operation_ref") or target.get("account_operation_id"):
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     if target["id"] == source["id"]:
         raise HTTPException(status_code=400, detail="Elegí otra persona")
     if target["status"] in ("pagado", "cancelado"):

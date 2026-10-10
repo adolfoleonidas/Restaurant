@@ -12,7 +12,7 @@ os.environ.setdefault("MONGO_URL", "mongodb://127.0.0.1:27017")
 os.environ.setdefault("DB_NAME", "restaurant_db_unit")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from models import PublicOrderCreate, OrderItemInput  # noqa: E402
+from models import PaymentCreate, PublicOrderCreate, OrderItemInput  # noqa: E402
 from attention import AttentionBlocked, close_table_attention, open_table_attention  # noqa: E402
 from order_flow import VersionError, claim_order  # noqa: E402
 
@@ -329,7 +329,6 @@ def test_claim_order_rejects_mutations_after_attention_close_claim():
 def test_payment_route_cannot_change_order_after_close_claim():
     async def run():
         from fastapi import HTTPException
-        from types import SimpleNamespace
         import routes.payments as payment_routes
 
         db = _ready_db(_order(
@@ -340,7 +339,7 @@ def test_payment_route_cannot_change_order_after_close_claim():
         db.cash_movements = _Collection(db, "cash_movements")
         db.cash_registers.docs.append({"id": "register-1", "restaurant_id": "restaurant-1", "branch_id": "branch-1", "status": "open"})
         payment_routes.db = db
-        data = SimpleNamespace(order_id="order-1", idempotency_key=None)
+        data = PaymentCreate(order_id="order-1", method="efectivo", amount=25, received_amount=25)
         with pytest.raises(HTTPException) as exc:
             await payment_routes.create_payment(data, _user())
         assert exc.value.status_code in (400, 409)

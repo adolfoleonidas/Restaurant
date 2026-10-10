@@ -48,22 +48,29 @@ def _match(doc, filt):
             if not all(_match(doc, clause) for clause in expected):
                 return False
             continue
+        value = doc
+        missing = False
+        for segment in key.split("."):
+            if not isinstance(value, dict) or segment not in value:
+                value = None
+                missing = True
+                break
+            value = value[segment]
         if isinstance(expected, dict):
             if "$nin" in expected:
                 if doc.get(key) in expected["$nin"]:
                     return False
                 continue
             if "$exists" in expected:
-                if (key in doc) != bool(expected["$exists"]):
+                if (not missing) != bool(expected["$exists"]):
                     return False
                 continue
             if "$in" in expected:
-                if doc.get(key) not in expected["$in"]:
+                if value not in expected["$in"]:
                     return False
                 continue
             bounds = ("$gte", "$gt", "$lte", "$lt")
             if any(op in expected for op in bounds):
-                value = doc.get(key)
                 if value is None:
                     return False
                 if "$gte" in expected and value < expected["$gte"]:
@@ -75,7 +82,7 @@ def _match(doc, filt):
                 if "$lt" in expected and value >= expected["$lt"]:
                     return False
                 continue
-        if doc.get(key) != expected:
+        if value != expected:
             return False
     return True
 
@@ -115,6 +122,8 @@ class _Collection:
     async def insert_one(self, doc):
         await asyncio.sleep(0)
         async with self._lock:
+            if doc.get("_id") is not None and any(d.get("_id") == doc.get("_id") for d in self.docs):
+                raise DuplicateKeyError("duplicate _id")
             if doc.get("event_id") and any(d.get("event_id") == doc.get("event_id") for d in self.docs):
                 raise DuplicateKeyError("duplicate audit event id")
             if doc.get("request_id") and any(
@@ -321,6 +330,217 @@ def test_same_idempotency_key_returns_the_original_payment():
     assert stored["status"] == "pagado"
 
 
+def test_retry_recovers_payment_after_process_crash_between_order_and_ledger_writes():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        body = _payment_body(idempotency_key="crash-before-ledger")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        after_crash = await db.orders.find_one({"id": "order-1"})
+        assert after_crash["amount_paid"] == 20
+        assert after_crash.get("payment_operation")
+        assert db.payments.docs == []
+        with pytest.raises(HTTPException) as close_error:
+            await close_register(CashClose(closing_amount=100, branch_id="branch-1"), _cashier())
+        assert close_error.value.status_code == 400
+
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return recovered, stored, db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
+def test_retry_finishes_audit_after_process_crash_during_ledger_insert():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="crash-after-ledger")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        assert len(db.payments.docs) == 1
+        assert db.audit_logs.docs == []
+
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(body, _cashier())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return recovered, stored, db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert len([row for row in db.audit_logs.docs if row.get("action") == "payment_create"]) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
+def test_void_is_rejected_while_payment_creation_recovery_is_pending():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="void-race")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        payment_id = db.payments.docs[0]["id"]
+        with pytest.raises(HTTPException) as void_error:
+            await apply_void_payment(payment_id, _cashier(), "void while pending", "void")
+        recovered = await create_payment(body, _cashier())
+        order = await db.orders.find_one({"id": "order-1"})
+        payment = await db.payments.find_one({"id": payment_id})
+        return void_error.value, order, recovered, payment
+
+    void_error, order, recovered, payment = asyncio.run(run())
+    assert void_error.status_code == 409
+    assert order["amount_paid"] == 20
+    assert recovered["id"] == payment["id"]
+    assert payment["status"] == "completed"
+    assert order.get("payment_operation") is None
+
+
+def test_pending_same_key_retry_must_match_original_request_fingerprint():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        original = _payment_body(amount=8, received_amount=8, idempotency_key="same-key-different-charge")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(original, _cashier())
+        db.payments.insert_one = insert_payment
+        changed_retry = _payment_body(amount=12, received_amount=12, idempotency_key="same-key-different-charge")
+        with pytest.raises(HTTPException) as mismatch:
+            await create_payment(changed_retry, _cashier())
+        return mismatch.value, db
+
+    mismatch, db = asyncio.run(run())
+    assert mismatch.status_code == 409
+    assert db.orders.docs[0]["amount_paid"] == 8
+    assert len(db.payments.docs) == 1
+    assert db.payments.docs[0]["amount"] == 8
+    assert db.orders.docs[0]["amount_paid"] == 8
+    assert "payment_operation" not in db.orders.docs[0]
+
+
+def test_retry_refuses_to_return_completed_payload_for_noncompleted_ledger_row():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def insert_then_crash(payment):
+            await insert_payment(payment)
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = insert_then_crash
+        body = _payment_body(idempotency_key="changed-ledger-state")
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        db.payments.docs[0]["status"] = "voided"
+        with pytest.raises(HTTPException) as stale_response:
+            await create_payment(body, _cashier())
+        return stale_response.value, db
+
+    stale_response, db = asyncio.run(run())
+    assert stale_response.status_code == 409
+    assert db.payments.docs[0]["status"] == "voided"
+    assert db.orders.docs[0].get("payment_operation")
+
+
+def test_order_projection_never_exposes_internal_payment_operation():
+    order = {"id": "order-1", "payment_operation": {"payment": {"amount": 20}}}
+    user = {"role": "mozo", "branch_id": "branch-1"}
+    projected = order_routes._order_projection(user)
+    safe = order_routes._order_for_user(order, user)
+    assert projected.get("payment_operation") == 0
+    assert "payment_operation" not in safe
+
+
+def test_retry_recovers_keyless_payment_after_crash_without_requiring_new_api_field():
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order())
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        insert_payment = db.payments.insert_one
+
+        async def crash_before_ledger(payment):
+            raise SimulatedProcessCrash()
+
+        db.payments.insert_one = crash_before_ledger
+        body = _payment_body(idempotency_key=None)
+        with pytest.raises(SimulatedProcessCrash):
+            await create_payment(body, _cashier())
+        db.payments.insert_one = insert_payment
+        recovered = await create_payment(_payment_body(idempotency_key=None), _cashier())
+        return recovered, await db.orders.find_one({"id": "order-1"}), db
+
+    recovered, order, db = asyncio.run(run())
+    assert recovered["amount"] == 20
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
+
+
 def test_two_cashiers_cannot_charge_the_same_balance():
     async def run():
         db = _DB()
@@ -342,6 +562,30 @@ def test_two_cashiers_cannot_charge_the_same_balance():
     assert len(payments) == 1
     assert stored["amount_paid"] == 20
     assert stored["status"] == "pagado"
+
+
+def test_concurrent_same_idempotency_key_resumes_one_payment_operation():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body_a = _payment_body(amount=20, received_amount=20, idempotency_key="same-concurrent-key")
+        body_b = _payment_body(amount=20, received_amount=20, idempotency_key="same-concurrent-key")
+        results = await asyncio.gather(
+            create_payment(body_a, _cashier()),
+            create_payment(body_b, _cashier()),
+            return_exceptions=True,
+        )
+        order = await db.orders.find_one({"id": "order-1"})
+        return results, order, db
+
+    results, order, db = asyncio.run(run())
+    assert all(not isinstance(result, Exception) for result in results)
+    assert results[0]["id"] == results[1]["id"]
+    assert len(db.payments.docs) == 1
+    assert order["amount_paid"] == 20
+    assert "payment_operation" not in order
 
 
 def test_second_partial_payment_still_closes_the_bill():
@@ -519,6 +763,435 @@ def test_merge_rejects_a_source_with_collected_money():
     asyncio.run(run())
 
 
+def test_merge_retry_recovers_after_target_copy_crash_without_duplicate_items():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+                   items=[_table_item("i1", "prod-1", "Lomo", 20.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+                   items=[_table_item("i2", "prod-2", "Agua", 10.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_target_copy(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and filt.get("id") == "order-1" and "items" in (update.get("$set") or {}):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after target write")
+            return result
+
+        db.orders.update_one = crash_after_target_copy
+        with pytest.raises(KeyboardInterrupt):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    active_item_ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(active_item_ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    assert next(o for o in db.orders.docs if o["id"] == "order-2")["status"] == "cancelado"
+
+
+def test_merge_retry_recovers_after_source_cancel_before_marker_release():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", total=10.0, subtotal=10.0,
+                   items=[_table_item("i1", "p1", "One", 10.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", total=20.0, subtotal=20.0,
+                   items=[_table_item("i2", "p2", "Two", 20.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_source_cancel(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and filt.get("id") == "order-2" and (update.get("$set") or {}).get("status") == "cancelado":
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after merge source cancellation")
+            return result
+
+        db.orders.update_one = crash_after_source_cancel
+        with pytest.raises(KeyboardInterrupt):
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        db.orders.update_one = update_one
+        await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    target = next(order for order in db.orders.docs if order["id"] == "order-1")
+    source = next(order for order in db.orders.docs if order["id"] == "order-2")
+    assert [item["id"] for item in target["items"]] == ["i1", "i2"]
+    assert target["total"] == 30.0
+    assert source["status"] == "cancelado"
+    assert "account_operation" not in target
+    assert "account_operation_ref" not in source
+
+
+def test_split_retry_recovers_after_original_reduction_with_stable_children():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 99
+
+        db = _DB()
+        db.attentions.docs.append({
+            "id": "att-1", "restaurant_id": RID, "branch_id": "branch-1",
+            "table_id": "table-1", "order_id": "order-1", "order_ids": ["order-1"], "status": "open",
+        })
+        db.orders.docs.append(_order(
+            id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+            table_id="table-1", attention_id="att-1", subtotal=30.0, total=30.0,
+            items=[_table_item("i1", "prod-1", "Lomo", 10.0), _table_item("i2", "prod-2", "Agua", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_original_reduction(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            fields = update.get("$set") or {}
+            if not crashed and filt.get("id") == "order-1" and len(fields.get("items", [])) == 1:
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after original write")
+            return result
+
+        db.orders.update_one = crash_after_original_reduction
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    active_item_ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(active_item_ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    children = [o for o in active if o["id"] != "order-1"]
+    assert len(children) == 1
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", children[0]["id"]}
+
+
+def test_split_retry_recovers_after_child_insert_crash_without_duplicate_accounts():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 100
+
+        db = _DB()
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            attention_id="att-1", total=60.0, subtotal=60.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        insert_one = db.orders.insert_one
+        crashed = False
+
+        async def crash_after_child_insert(document):
+            nonlocal crashed
+            await insert_one(document)
+            if not crashed and document.get("account_operation_id"):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after child insert")
+
+        db.orders.insert_one = crash_after_child_insert
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.orders.insert_one = insert_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [o for o in db.orders.docs if o["status"] != "cancelado"]
+    ids = [item["id"] for order in active for item in order.get("items", [])]
+    assert sorted(ids) == ["i1", "i2"]
+    assert sum(order["total"] for order in active) == 30.0
+    assert len([o for o in active if o["id"] != "order-1"]) == 1
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", *(o["id"] for o in active if o["id"] != "order-1")}
+
+
+def test_split_retry_recovers_after_nth_child_insert_crash():
+    async def run():
+        from models import OrderSplit
+
+        counter = iter((201, 202))
+        async def order_number(_restaurant_id):
+            return next(counter)
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            total=60.0, subtotal=60.0,
+            items=[_table_item(f"i{n}", f"p{n}", f"Item {n}", n * 10.0) for n in (1, 2, 3)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        insert_one = db.orders.insert_one
+        inserted = 0
+
+        async def crash_after_second_insert(document):
+            nonlocal inserted
+            await insert_one(document)
+            if document.get("account_operation_id"):
+                inserted += 1
+                if inserted == 2:
+                    raise KeyboardInterrupt("simulated process termination after second child insert")
+
+        db.orders.insert_one = crash_after_second_insert
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.insert_one = insert_one
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sorted(order["total"] for order in active) == [10.0, 20.0, 30.0]
+    assert len(active) == 3
+
+
+def test_split_retry_recovers_after_attention_membership_write_crash():
+    async def run():
+        from models import OrderSplit
+
+        async def order_number(_restaurant_id):
+            return 301
+
+        db = _DB()
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            attention_id="att-1", total=30.0, subtotal=30.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.attentions.update_one
+        crashed = False
+
+        async def crash_after_membership(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if not crashed and update.get("$addToSet", {}).get("order_ids"):
+                crashed = True
+                raise KeyboardInterrupt("simulated process termination after attention membership write")
+            return result
+
+        db.attentions.update_one = crash_after_membership
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=2), _mozo())
+        db.attentions.update_one = update_one
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        await split_order("order-1", OrderSplit(parts=2), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2"]
+    assert len(db.attentions.docs[0]["order_ids"]) == 2
+    assert set(db.attentions.docs[0]["order_ids"]) == {"order-1", *(order["id"] for order in active if order["id"] != "order-1")}
+
+
+@pytest.mark.parametrize("crash_boundary", ["intent", "commit", "finalize"])
+def test_split_retry_recovers_when_parent_operation_write_succeeds_then_process_crashes(crash_boundary):
+    class SimulatedProcessCrash(BaseException):
+        pass
+
+    async def run():
+        from models import OrderSplit
+
+        numbers = iter((401, 402))
+
+        async def order_number(_restaurant_id):
+            return next(numbers)
+
+        db = _DB()
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="en_preparacion", table_id="table-1",
+            total=60.0, subtotal=60.0,
+            items=[_table_item(f"i{n}", f"p{n}", f"Item {n}", n * 10.0) for n in (1, 2, 3)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        crashed = False
+
+        async def crash_after_parent_write(filt, update):
+            nonlocal crashed
+            result = await update_one(filt, update)
+            if crashed:
+                return result
+            sets = update.get("$set") or {}
+            unsets = update.get("$unset") or {}
+            is_intent = filt.get("account_operation") == {"$exists": False} and sets.get("account_operation", {}).get("kind") == "split"
+            is_commit = sets.get("account_operation", {}).get("phase") == "committed"
+            is_finalize = "account_operation" in unsets and "last_account_operation" in sets
+            if {"intent": is_intent, "commit": is_commit, "finalize": is_finalize}[crash_boundary]:
+                crashed = True
+                raise SimulatedProcessCrash(f"simulated process termination after {crash_boundary} write")
+            return result
+
+        db.orders.update_one = crash_after_parent_write
+        with pytest.raises(SimulatedProcessCrash):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.update_one = update_one
+        for _ in range(2):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    active = [order for order in db.orders.docs if order["status"] != "cancelado"]
+    assert sorted(item["id"] for order in active for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sorted(order["total"] for order in active) == [10.0, 20.0, 30.0]
+    assert len(active) == 3
+    assert "account_operation" not in next(order for order in active if order["id"] == "order-1")
+
+
+def test_pending_account_operation_blocks_payment_and_is_hidden_from_order_response():
+    async def run():
+        db = _DB()
+        order = _order(id="order-1", status="entregado", account_operation={"id": "op-1", "kind": "split"})
+        db.orders.docs.append(order)
+        _bind(db)
+        with pytest.raises(HTTPException) as exc:
+            await create_payment(_payment_body(), _cashier())
+        assert exc.value.status_code == 409
+        with pytest.raises(HTTPException) as exc:
+            await order_routes._save_order(order, {"notes": "concurrent edit", "updated_at": STAMP})
+        assert exc.value.status_code == 409
+        safe = order_routes._order_for_user(order, _cashier())
+        assert "account_operation" not in safe
+        assert db.payments.docs == []
+        assert order["amount_paid"] == 0.0
+
+    asyncio.run(run())
+
+
+def test_split_child_cannot_be_charged_after_partial_unlock_until_parent_recovery():
+    async def run():
+        from models import OrderSplit
+
+        order_sequence = iter((101, 102))
+
+        async def order_number(_restaurant_id):
+            return next(order_sequence)
+
+        db = _DB()
+        db.cash_registers.docs.append(_open_register())
+        db.attentions.docs.append({"id": "att-1", "restaurant_id": RID, "order_ids": ["order-1"]})
+        db.orders.docs.append(_order(
+            id="order-1", order_type="mesa", status="entregado", table_id="table-1",
+            attention_id="att-1", total=30.0, subtotal=30.0,
+            items=[_table_item("i1", "p1", "One", 10.0), _table_item("i2", "p2", "Two", 20.0),
+                   _table_item("i3", "p3", "Three", 30.0)],
+        ))
+        _bind(db)
+        order_routes._next_order_number = order_number
+        update_one = db.orders.update_one
+        unlocked_count = 0
+
+        async def crash_after_child_unlock(filt, update):
+            nonlocal unlocked_count
+            result = await update_one(filt, update)
+            if filt.get("account_operation_id") and "account_operation_id" in (update.get("$unset") or {}):
+                unlocked_count += 1
+                if unlocked_count == 2:
+                    raise KeyboardInterrupt("simulated process termination after second child unlock")
+            return result
+
+        db.orders.update_one = crash_after_child_unlock
+        with pytest.raises(KeyboardInterrupt):
+            await split_order("order-1", OrderSplit(parts=3), _mozo())
+        db.orders.update_one = update_one
+        assert next(o for o in db.orders.docs if o["id"] == "order-1")["account_operation"]["phase"] == "committed"
+        child = [order for order in db.orders.docs if order["id"] != "order-1"][1]
+        payment = await create_payment(PaymentCreate(
+            order_id=child["id"], method="efectivo", amount=child["total"],
+            received_amount=child["total"], idempotency_key="split-child-charge",
+        ), _cashier())
+        assert payment["amount"] == child["total"]
+        await split_order("order-1", OrderSplit(parts=3), _mozo())
+        return db
+
+    db = asyncio.run(run())
+    assert len(db.payments.docs) == 1
+    children = [o for o in db.orders.docs if o["id"] != "order-1"]
+    assert children[1]["amount_paid"] == 30
+    assert not next(o for o in db.orders.docs if o["id"] == "order-1").get("account_operation")
+    assert sorted(item["id"] for order in db.orders.docs for item in order.get("items", [])) == ["i1", "i2", "i3"]
+    assert sum(order["total"] for order in db.orders.docs if order["status"] != "cancelado") == 60
+
+
+def test_merge_aborts_before_copy_when_source_changes_after_intent_claim():
+    async def run():
+        from models import OrderMerge
+
+        db = _DB()
+        db.orders.docs.extend([
+            _order(id="order-1", order_number=12, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=20.0, total=20.0,
+                   items=[_table_item("i1", "p1", "One", 20.0)]),
+            _order(id="order-2", order_number=13, order_type="mesa", status="en_preparacion",
+                   table_id="table-1", attention_id="att-1", subtotal=10.0, total=10.0,
+                   items=[_table_item("i2", "p2", "Two", 10.0)]),
+        ])
+        _bind(db)
+        update_one = db.orders.update_one
+        changed_source = False
+
+        async def edit_source_after_intent(filt, update):
+            nonlocal changed_source
+            result = await update_one(filt, update)
+            if not changed_source and filt.get("id") == "order-1" and "account_operation" in (update.get("$set") or {}):
+                changed_source = True
+                await update_one({"id": "order-2", "restaurant_id": RID}, {"$set": {"updated_at": "concurrent-version"}})
+            return result
+
+        db.orders.update_one = edit_source_after_intent
+        with pytest.raises(HTTPException) as exc:
+            await merge_order("order-1", OrderMerge(source_order_id="order-2"), _mozo())
+        assert exc.value.status_code == 409
+        db.orders.update_one = update_one
+        target = next(o for o in db.orders.docs if o["id"] == "order-1")
+        source = next(o for o in db.orders.docs if o["id"] == "order-2")
+        assert [item["id"] for item in target["items"]] == ["i1"]
+        assert source["updated_at"] == "concurrent-version"
+        assert "account_operation" not in target
+
+    asyncio.run(run())
+
+
 def _table_row(table_id, status, attention=None):
     row = {"id": table_id, "restaurant_id": RID, "branch_id": "branch-1", "status": status}
     if attention:
@@ -668,6 +1341,51 @@ def test_shift_totals_ignore_other_registers():
     totals = asyncio.run(run())
     assert totals["total_sales"] == 10
     assert totals["cash_sales"] == 10
+
+
+def _shift_totals_with_ledger_sizes(payment_count, movement_count):
+    async def run():
+        db = _DB()
+        reg = _open_register("reg-large")
+        db.cash_registers.docs.append(reg)
+        db.payments.docs.extend(
+            {
+                "id": f"payment-{index}",
+                "restaurant_id": RID,
+                "cash_register_id": reg["id"],
+                "status": "completed",
+                "method": "efectivo",
+                "amount": 0.01,
+                "created_at": STAMP,
+            }
+            for index in range(payment_count)
+        )
+        db.cash_movements.docs.extend(
+            {
+                "id": f"movement-{index}",
+                "cash_register_id": reg["id"],
+                "type": "ingreso",
+                "amount": 0.01,
+                "created_at": STAMP,
+            }
+            for index in range(movement_count)
+        )
+        _bind(db)
+        return await _shift_totals(reg)
+
+    return asyncio.run(run())
+
+
+def test_shift_payment_totals_include_rows_beyond_old_limit():
+    totals = _shift_totals_with_ledger_sizes(payment_count=5001, movement_count=0)
+    assert totals["total_sales"] == 50.01
+    assert totals["cash_sales"] == 50.01
+
+
+def test_shift_movement_totals_include_rows_beyond_old_limit():
+    totals = _shift_totals_with_ledger_sizes(payment_count=0, movement_count=1001)
+    assert totals["income"] == 10.01
+    assert len(totals["movements"]) == 1000
 
 
 def test_refund_after_close_does_not_rewrite_the_closed_shift():
@@ -1280,3 +1998,111 @@ def test_a_mixed_payment_with_a_disabled_method_is_rejected():
     assert error.status_code == 400
     assert "plin" in error.detail
     assert payments == []
+
+
+def test_mixed_payment_rejects_change_greater_than_cash_tender_before_writes():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=40.0, total=40.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=40,
+            idempotency_key="mixed-overchange",
+            splits=[
+                PaymentSplit(method="yape", amount=50),
+                PaymentSplit(method="efectivo", amount=10),
+            ],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db, await db.orders.find_one({"id": "order-1"})
+
+    error, db, order = asyncio.run(run())
+    assert error.status_code == 400
+    assert db.payments.docs == []
+    assert order["amount_paid"] == 0
+
+
+def test_mixed_payment_cash_change_attributes_charge_and_replay_idempotently():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=100.0, total=100.0))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=100,
+            idempotency_key="mixed-valid-change",
+            splits=[
+                PaymentSplit(method="efectivo", amount=60),
+                PaymentSplit(method="yape", amount=50),
+            ],
+        )
+        first = await create_payment(body, _cashier())
+        replay = await create_payment(body, _cashier())
+        return first, replay, db
+
+    first, replay, db = asyncio.run(run())
+    assert first["amount"] == 100
+    assert first["change_amount"] == 10
+    assert method_amounts(first) == {"efectivo": 50, "yape": 50}
+    assert sum(method_amounts(first).values()) == first["amount"]
+    assert replay["id"] == first["id"]
+    assert len(db.payments.docs) == 1
+
+
+def test_mixed_payment_rejects_subcent_splits_that_round_above_charge_before_writes():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=0.01, total=0.01))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        body = PaymentCreate(
+            order_id="order-1",
+            method="mixto",
+            amount=0.01,
+            idempotency_key="mixed-subcent-overcharge",
+            splits=[
+                PaymentSplit(method="yape", amount=0.005),
+                PaymentSplit(method="plin", amount=0.005),
+            ],
+        )
+        with pytest.raises(HTTPException) as caught:
+            await create_payment(body, _cashier())
+        return caught.value, db, await db.orders.find_one({"id": "order-1"})
+
+    error, db, order = asyncio.run(run())
+    assert error.status_code == 400
+    assert "dos decimales" in error.detail
+    assert db.payments.docs == []
+    assert order["amount_paid"] == 0
+
+
+def test_mixed_payment_accepts_normal_cent_precision_and_attributes_exact_charge():
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(subtotal=0.03, total=0.03))
+        db.cash_registers.docs.append(_open_register())
+        _bind(db)
+        paid = await create_payment(
+            PaymentCreate(
+                order_id="order-1",
+                method="mixto",
+                amount=0.03,
+                splits=[
+                    PaymentSplit(method="efectivo", amount=0.01),
+                    PaymentSplit(method="yape", amount=0.02),
+                ],
+            ),
+            _cashier(),
+        )
+        return paid
+
+    paid = asyncio.run(run())
+    assert paid["amount"] == 0.03
+    assert method_amounts(paid) == {"efectivo": 0.01, "yape": 0.02}
+    assert sum(method_amounts(paid).values()) == paid["amount"]

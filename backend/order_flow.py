@@ -33,6 +33,9 @@ async def claim_order(orders, order: dict, fields: dict):
         "id": order["id"],
         "restaurant_id": order.get("restaurant_id"),
         "attention_state": {"$nin": ["mutating", "closing", "closed"]},
+        "account_operation": {"$exists": False},
+        "account_operation_ref": {"$exists": False},
+        "account_operation_id": {"$exists": False},
     }
     if order.get("branch_id") is not None:
         filt["branch_id"] = order["branch_id"]
@@ -51,6 +54,9 @@ async def claim_attention_mutation(orders, order: dict, token: str, fields: dict
     filt = {
         "id": order["id"], "restaurant_id": order["restaurant_id"],
         "attention_id": order["attention_id"], "attention_state": "open",
+        "account_operation": {"$exists": False},
+        "account_operation_ref": {"$exists": False},
+        "account_operation_id": {"$exists": False},
     }
     if stamp is None:
         filt["$or"] = [{"updated_at": None}, {"updated_at": {"$exists": False}}]
