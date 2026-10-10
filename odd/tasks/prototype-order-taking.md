@@ -43,6 +43,14 @@ Adapt Salon table-order composition to `restoflow.html`, removing repeated contr
 
 ## Progress and next step
 
+### Authorized GitHub delivery (T06)
+
+- On 2026-10-09 the maintainer explicitly approved the final integration `size:exception` for the 1,022-line accumulated feature and merge after passing checks. Earlier authorization covers the configured GitHub session, `adolfoleonidas/Restaurant`, feature-branch-chain delivery and main's existing automatic deployment workflow.
+- [ ] T06 — Publish the five work-unit PRs against their immediate parent branches, integrate the verified feature into a draft tracker, then merge that tracker to main only after its CI passes. Link an approved feature issue and attach every created PR to this task. Preserve source bytes and exclude all mocks/temp/unrelated untracked files.
+  - Route: delegated delivery worker; multi-PR preparation and review-facing artifacts require bounded delegation. Parent performs final CI/merge readback.
+  - Checks: clean source diff boundaries, each child within 400 authored lines, final tracker carries `size:exception`, full configured GitHub Tests pass for the final candidate. Child-target branches do not have a configured PR CI trigger; record this rather than inventing runs. Development status and remaining real-backend end-to-end coverage are explicit limitations, not a claim of final product readiness.
+  - Engram mirror remains pending until authoritative runtime session registration is restored. No agent-attributed memory calls permitted meanwhile.
+
 ### Approved refinement: two-step mobile send (T05)
 
 - User reported the mobile `Ver pedido` bar still introduces a third step. Approved behavior: mobile primary action `Enviar a cocina` opens the existing final review directly, then `Confirmar envio` submits; no mandatory ticket-sheet opening in between.
