@@ -153,8 +153,10 @@ describe('pedido inline en el salón', () => {
         expect(button).not.toBeNull();
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         await click(button);
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
     });
 
     it('guarda el alias al enviar el pedido, sin botón de guardar', async () => {
@@ -184,9 +186,11 @@ describe('pedido inline en el salón', () => {
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
         await click(document.body.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/alias', { alias: 'Juan', shared: false });
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
     });
 
     it('muestra la cantidad ya pedida por producto y el resumen de la cuenta', async () => {
