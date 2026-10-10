@@ -112,7 +112,7 @@ describe('mini-reproductor del pedido activo', () => {
         expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
     });
 
-    it('S14: la acción del mini dice "Enviar a cocina" y pasa por Confirmar pedido', async () => {
+    it('la acción del mini envía directamente a cocina', async () => {
         const o1 = order({ items: [item('i1', 'Ceviche', 2, 60, 'borrador')], total: 60 });
         mockTables.splice(0, mockTables.length, table({ active_order: { id: 'order-1', status: 'en_preparacion' } }));
         mockOrders.splice(0, mockOrders.length, o1);
@@ -135,13 +135,9 @@ describe('mini-reproductor del pedido activo', () => {
         expect(accion.textContent).toContain('S/ 60.00');
 
         await click(accion);
-        // No envía directo: abre el paso de confirmación (mismo que el ticket).
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).not.toBeNull();
-
-        // "Agregar más" desde el mini abre la hoja de esa cuenta.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-agregar"]'));
-        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-confirmar-dialog"]')).toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).toBeNull();
     });
 
     it('sirve desde la barra cuando hay platos listos', async () => {
