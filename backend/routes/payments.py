@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 import base64
 import copy
 import hashlib
+import json
 import re
 import uuid
 from pymongo.errors import DuplicateKeyError
@@ -75,6 +76,121 @@ def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     replay["fully_paid"] = paid + 0.009 >= total
     replay["table_released"] = False
     return replay
+
+
+def _payment_request_fingerprint(data: PaymentCreate) -> str:
+    payload = json.dumps(data.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _same_payment_operation(data: PaymentCreate, operation: dict) -> bool:
+    fingerprint = operation.get("request_fingerprint")
+    if data.idempotency_key:
+        return (
+            operation.get("idempotency_key") == data.idempotency_key
+            and (not fingerprint or fingerprint == _payment_request_fingerprint(data))
+        )
+    return (
+        not operation.get("idempotency_key")
+        and operation.get("request_fingerprint") == _payment_request_fingerprint(data)
+    )
+
+
+async def _resume_payment_operation(order: dict, operation: dict, user: dict) -> dict:
+    payment = operation.get("payment") or {}
+    payment_id = operation.get("id")
+    if (
+        not payment_id
+        or payment.get("id") != payment_id
+        or payment.get("restaurant_id") != user["restaurant_id"]
+        or payment.get("order_id") != order.get("id")
+        or payment.get("branch_id") != order.get("branch_id")
+    ):
+        raise HTTPException(status_code=409, detail="La operación de pago pendiente no coincide con la cuenta")
+
+    existing = await db.payments.find_one(
+        {"id": payment_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    )
+    if existing is None:
+        ledger_payment = {**payment, "_id": payment_id}
+        try:
+            await db.payments.insert_one(ledger_payment)
+        except DuplicateKeyError:
+            existing = await db.payments.find_one(
+                {"id": payment_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0}
+            )
+            if existing is None:
+                raise
+    if existing is not None:
+        if existing.get("status") != "completed":
+            raise HTTPException(status_code=409, detail="El pago pendiente ya no está vigente; la recuperación sigue pendiente")
+        for key in ("order_id", "branch_id", "amount", "method", "idempotency_key"):
+            if existing.get(key) != payment.get(key):
+                raise HTTPException(status_code=409, detail="El registro de pago existente no coincide con la operación")
+
+    audit_event_id = f"payment-create:{payment_id}"
+    audit = {
+        "id": audit_event_id,
+        "event_id": audit_event_id,
+        "restaurant_id": payment["restaurant_id"],
+        "user_id": payment["paid_by"],
+        "action": "payment_create",
+        "entity": "payment",
+        "entity_id": payment_id,
+        "details": {
+            "order_id": payment["order_id"],
+            "method": payment["method"],
+            "amount": payment["amount"],
+            "remaining": operation["remaining"],
+        },
+        "created_at": payment["created_at"],
+    }
+    if not await db.audit_logs.find_one({"event_id": audit_event_id}, {"_id": 0}):
+        try:
+            await db.audit_logs.insert_one(audit)
+        except DuplicateKeyError:
+            pass
+
+    emit_order(
+        payment["restaurant_id"], payment["order_id"], operation["order_status"],
+        source=operation.get("source"), payment_status=operation["payment_status"],
+        branch_id=payment.get("branch_id"),
+    )
+    table_id = operation.get("table_id")
+    if operation["order_status"] == "pagado" and table_id and not operation.get("attention_id"):
+        restaurant = await db.restaurants.find_one({"id": payment["restaurant_id"]}, {"_id": 0})
+        table_status = "disponible" if (restaurant or {}).get("auto_release_table") else "pagada"
+        await db.tables.update_one(
+            {
+                "id": table_id,
+                "restaurant_id": payment["restaurant_id"],
+                **({"branch_id": payment["branch_id"]} if payment.get("branch_id") else {}),
+            },
+            {"$set": {"status": table_status, "updated_at": _now()}},
+        )
+        emit_notice(payment["restaurant_id"], "table", table_id=table_id, status=table_status,
+                    branch_id=payment.get("branch_id"))
+
+    released = await db.orders.update_one(
+        {
+            "id": payment["order_id"],
+            "restaurant_id": payment["restaurant_id"],
+            "payment_operation": operation,
+        },
+        {"$unset": {"payment_operation": ""}},
+    )
+    if getattr(released, "matched_count", 0) != 1:
+        latest = await db.orders.find_one(
+            {"id": payment["order_id"], "restaurant_id": payment["restaurant_id"]}, {"_id": 0}
+        )
+        if latest and latest.get("payment_operation", {}).get("id") == payment_id:
+            raise HTTPException(status_code=409, detail="El pago quedó registrado; la recuperación sigue pendiente")
+
+    result = {key: value for key, value in payment.items() if key != "_id"}
+    result["remaining"] = operation["remaining"]
+    result["fully_paid"] = operation["fully_paid"]
+    result["table_released"] = False
+    return result
 
 
 def _validated_staff_proof(value: str) -> tuple[str, str]:
@@ -293,7 +409,20 @@ async def payments_for_order(order_id: str, user: dict = Depends(require_roles([
 
 @router.post("")
 async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles(["admin", "cajero"]))):
+    request_fingerprint = _payment_request_fingerprint(data)
     order = await _authorized_order(data.order_id, user)
+    operation = order.get("payment_operation")
+    if operation:
+        recovered = await _resume_payment_operation(order, operation, user)
+        if _same_payment_operation(data, operation):
+            return recovered
+        raise HTTPException(status_code=409, detail={
+            "code": "account_changed",
+            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "previous_total": data.expected_total,
+            "new_total": order.get("total"),
+            "updated_at": order.get("updated_at"),
+        })
     if data.idempotency_key:
         existing = await db.payments.find_one(
             {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
@@ -454,35 +583,6 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order_set["status"] == "pagado":
         order_set["paid_at"] = now
 
-    claim_filter = {
-            "id": data.order_id,
-            "restaurant_id": user["restaurant_id"],
-            "status": {"$nin": ["pagado", "cancelado"]},
-            "updated_at": order.get("updated_at"),
-            "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
-        }
-    if order.get("branch_id"):
-        claim_filter["branch_id"] = order["branch_id"]
-    claim = await db.orders.update_one(
-        claim_filter,
-        {"$set": order_set},
-    )
-    if claim.modified_count != 1:
-        if data.idempotency_key:
-            existing = await db.payments.find_one(
-                {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
-                {"_id": 0},
-            )
-            if existing:
-                return _check_payment_replay(existing, order, data.order_id)
-        raise HTTPException(status_code=409, detail={
-            "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
-            "previous_total": data.expected_total,
-            "new_total": order.get("total"),
-            "updated_at": order.get("updated_at"),
-        })
-
     payment_id = str(uuid.uuid4())
     payment = {
         "id": payment_id,
@@ -509,63 +609,58 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "idempotency_key": data.idempotency_key,
         "created_at": now,
     }
-    async def _release_claim():
-        await db.orders.update_one(
-            {"id": data.order_id, "updated_at": now},
-            {"$set": {
-                "discount": order.get("discount", 0.0),
-                "tip": order.get("tip", 0.0),
-                "total": order.get("total"),
-                "amount_paid": order.get("amount_paid", 0.0),
-                "updated_at": order.get("updated_at"),
-                "items": previous_items,
-                "status": order.get("status"),
-                "payment_status": order.get("payment_status"),
-                "fulfillment_status": order.get("fulfillment_status"),
-                "paid_at": order.get("paid_at"),
-            }},
-        )
-
-    try:
-        await db.payments.insert_one(payment)
-    except DuplicateKeyError:
-        await _release_claim()
-        existing = await db.payments.find_one(
-            {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
-            {"_id": 0},
-        )
-        if existing:
-            return _check_payment_replay(existing, order, data.order_id)
-        raise HTTPException(status_code=400, detail="No se pudo registrar el pago")
-    except Exception:
-        await _release_claim()
-        raise
-
-    emit_order(user["restaurant_id"], data.order_id, order_set.get("status", order.get("status")), source=order.get("source"), payment_status="pagado" if fully_paid else "parcial", branch_id=order.get("branch_id"))
-    if order_set.get("status") == "pagado" and order.get("table_id") and not order.get("attention_id"):
-        r = await db.restaurants.find_one({"id": user["restaurant_id"]}, {"_id": 0})
-        new_status = "disponible" if (r or {}).get("auto_release_table") else "pagada"
-        await db.tables.update_one(
-            {"id": order["table_id"], "restaurant_id": user["restaurant_id"], **({"branch_id": order["branch_id"]} if order.get("branch_id") else {})},
-            {"$set": {"status": new_status, "updated_at": _now()}},
-        )
-        emit_notice(user["restaurant_id"], "table", table_id=order["table_id"], status=new_status, branch_id=order.get("branch_id"))
-
-    await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()),
+    payment_status = "pagado" if fully_paid else "parcial"
+    operation = {
+        "id": payment_id,
+        "idempotency_key": data.idempotency_key,
+        "request_fingerprint": request_fingerprint,
+        "payment": payment,
+        "remaining": round(max(0.0, bill_total - new_paid), 2),
+        "fully_paid": fully_paid,
+        "order_status": order_set.get("status", order.get("status")),
+        "payment_status": payment_status,
+        "source": order.get("source"),
+        "table_id": order.get("table_id"),
+        "attention_id": order.get("attention_id"),
+    }
+    order_set["payment_operation"] = operation
+    claim_filter = {
+        "id": data.order_id,
         "restaurant_id": user["restaurant_id"],
-        "user_id": user["id"],
-        "action": "payment_create",
-        "entity": "payment",
-        "entity_id": payment_id,
-        "details": {"order_id": data.order_id, "method": data.method, "amount": amount, "remaining": round(bill_total - new_paid, 2)},
-        "created_at": _now(),
-    })
+        "status": {"$nin": ["pagado", "cancelado"]},
+        "updated_at": order.get("updated_at"),
+        "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
+        "payment_operation": {"$exists": False},
+    }
+    if order.get("branch_id"):
+        claim_filter["branch_id"] = order["branch_id"]
+    claim = await db.orders.update_one(
+        claim_filter,
+        {"$set": order_set},
+    )
+    if claim.modified_count != 1:
+        latest_order = await _authorized_order(data.order_id, user)
+        pending = latest_order.get("payment_operation")
+        if pending:
+            recovered = await _resume_payment_operation(latest_order, pending, user)
+            if _same_payment_operation(data, pending):
+                return recovered
+        if data.idempotency_key:
+            existing = await db.payments.find_one(
+                {"restaurant_id": user["restaurant_id"], "idempotency_key": data.idempotency_key},
+                {"_id": 0},
+            )
+            if existing:
+                return _check_payment_replay(existing, latest_order, data.order_id)
+        raise HTTPException(status_code=409, detail={
+            "code": "account_changed",
+            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "previous_total": data.expected_total,
+            "new_total": order.get("total"),
+            "updated_at": order.get("updated_at"),
+        })
 
-    payment["remaining"] = round(max(0.0, bill_total - new_paid), 2)
-    payment["fully_paid"] = fully_paid
-    payment["table_released"] = False
-    return {k: v for k, v in payment.items() if k != "_id"}
+    return await _resume_payment_operation(order, operation, user)
 
 
 async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str, kind: str,
@@ -828,6 +923,8 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     order = await _authorized_order(pay["order_id"], user)
+    if order.get("payment_operation"):
+        raise HTTPException(status_code=409, detail="El pago está terminando de registrarse; reintentá en unos segundos")
     if (not has_tenantwide_branch_access(user) and pay.get("branch_id") != order.get("branch_id")):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     if (has_tenantwide_branch_access(user) and pay.get("branch_id") is not None
