@@ -196,19 +196,17 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([account]));
         window.confirm = jest.fn().mockReturnValue(false);
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
         expect(window.confirm).toHaveBeenCalled();
         expect(api.delete).not.toHaveBeenCalled();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]')).not.toBeNull();
 
         window.confirm.mockReturnValue(true);
         api.delete.mockImplementation(async () => {
             account.items = account.items.filter((entry) => entry.id !== 'draft-1');
             return { data: {} };
         });
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
         expect(api.delete).toHaveBeenCalledTimes(1);
         expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
         expect(api.delete).not.toHaveBeenCalledWith('/orders/order-1/items/sent-1');
@@ -277,43 +275,34 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(true);
         api.delete.mockRejectedValue({ response: { data: { detail: 'No autorizado' } } });
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
 
         expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/draft-1');
         expect(toast.error).toHaveBeenCalledWith('No autorizado');
         expect(toast.success).not.toHaveBeenCalledWith(expect.stringMatching(/vaciado|eliminado/i));
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-item-draft-1"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-draft-1"]')).not.toBeNull();
     });
 
-    it('Escape oculta primero el ticket y luego protege la salida del compositor', async () => {
+    it('Escape protects the inline composer draft before leaving', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(false);
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-
-        await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
-        expect(window.confirm).not.toHaveBeenCalled();
         await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
         expect(window.confirm).toHaveBeenCalledTimes(1);
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
         expect(api.delete).not.toHaveBeenCalled();
     });
 
-    it('si falla el envío desde el ticket móvil, mantiene el ticket para recuperar el borrador', async () => {
+    it('keeps the inline draft available when the reviewed send fails', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('draft-1', 'Agua', 1, 5, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         api.post.mockRejectedValue({ response: { data: { detail: 'Error de cocina' } } });
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-fab"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(toast.error).toHaveBeenCalledWith('Error de cocina');
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).not.toBeNull();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-item-draft-1"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]')).not.toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-draft-1"]')).not.toBeNull();
     });
 
     it('no permite vaciar borradores mientras enviar cocina está en curso', async () => {
@@ -321,10 +310,9 @@ describe('compositor · paridad posView (S8)', () => {
         let resolveSend;
         api.post.mockReturnValue(new Promise((resolve) => { resolveSend = resolve; }));
         ({ container, root, sheet } = await openTableWith([draft]));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-vaciar"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
 
         expect(window.confirm).not.toHaveBeenCalled();
         expect(api.delete).not.toHaveBeenCalled();
@@ -332,8 +320,9 @@ describe('compositor · paridad posView (S8)', () => {
         await act(async () => {});
     });
 
-    it('móvil: FAB con los nuevos y monto, y hoja del borrador con scrim', async () => {
+    it('mobile keeps one editable draft ticket and routes sending through review', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')], { customer_name: 'Juan' });
+        api.patch.mockResolvedValue({ data: {} });
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(false);
 
@@ -344,8 +333,22 @@ describe('compositor · paridad posView (S8)', () => {
         expect(fab.textContent).toContain('S/ 24.00');
         expect(fab.className).toContain('min-[820px]:hidden');
 
-        // El contrato del e2e móvil sigue a la vista sin abrir la hoja.
+        // Draft editing stays inline while the mobile send action opens review.
         expect(sheet.querySelector('[data-testid="mesa-sheet-items"]')).not.toBeNull();
+        const inlineTicket = sheet.querySelector('[data-testid="mesa-sheet-ticket"]');
+        expect(inlineTicket).not.toBeNull();
+        expect(sheet.querySelectorAll('[data-testid="mesa-sheet-ticket"]')).toHaveLength(1);
+        expect(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        expect(inlineTicket.querySelector('[data-testid="mesa-sheet-item-menos-i1"]')).not.toBeNull();
+        expect(inlineTicket.querySelector('[data-testid="mesa-sheet-item-nota-i1"]')).not.toBeNull();
+        await click(inlineTicket.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 3 });
+        await click(inlineTicket.querySelector('[data-testid="mesa-sheet-item-nota-i1"]'));
+        const itemNotes = inlineTicket.querySelector('[data-testid="mesa-sheet-item-notas-i1"]');
+        await type(itemNotes, 'Sin cebolla');
+        await act(async () => itemNotes.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { notes: 'Sin cebolla' });
 
         await click(fab);
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
@@ -353,36 +356,20 @@ describe('compositor · paridad posView (S8)', () => {
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-        const ticket = sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]');
-        expect(ticket).not.toBeNull();
-        expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-items"]')).not.toBeNull();
-        expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-nota-general"]')).not.toBeNull();
-        expect(ticket.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]').textContent).toContain('S/ 24.00');
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-scrim"]'));
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
         expect(api.delete).not.toHaveBeenCalled();
         expect(window.confirm).not.toHaveBeenCalled();
-        expect(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]')).not.toBeNull();
-
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-ticket-cerrar"]'));
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
-        expect(api.delete).not.toHaveBeenCalled();
-        expect(window.confirm).not.toHaveBeenCalled();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
     });
 
-    it('envía a cocina desde la hoja del borrador y la cierra', async () => {
+    it('sends from the inline draft ticket after review confirmation', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
         api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
         ({ container, root, sheet } = await openTableWith([draft]));
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]')).toBeNull();
     });
 
     it('tras enviar vuelve al detalle con la cuenta y su tag', async () => {
@@ -641,7 +628,7 @@ describe('edición explícita de borradores (T04)', () => {
         await click(edit);
         expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).toBeNull();
         expect(container.textContent).toContain('Agua');
-        expect(container.querySelector('[data-testid="mesa-sheet-ticket-item-s2"]')).toBeNull();
+        expect(container.querySelector('[data-testid="mesa-sheet-item-s2"]')).toBeNull();
         expect(api.post).not.toHaveBeenCalledWith(expect.stringMatching(/\/kitchen|\/send/), expect.anything());
     });
 
@@ -703,8 +690,7 @@ describe('edición explícita de borradores (T04)', () => {
         ({ container, root } = await openTableWith(accounts));
         await click(container.querySelector('[data-testid="mesa-sheet-pedido-32"]'));
         await click(container.querySelector('[data-testid="mesa-sheet-editar-pedido"]'));
-        await click(container.querySelector('[data-testid="mesa-sheet-abrir-ticket"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-ticket-enviar-cocina"]'));
+        await click(container.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         expect(document.body.textContent).toContain('Después de confirmar, los productos enviados no se pueden editar.');
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
         expect(container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).toBeNull();

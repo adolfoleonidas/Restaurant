@@ -290,9 +290,6 @@ export default function Salon() {
     // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
     // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
     const [composerOpen, setComposerOpen] = useState(false);
-    // Hoja inferior del borrador (móvil) y edición del nombre en la franja de
-    // persona, al estilo posView del prototipo.
-    const [ticketOpen, setTicketOpen] = useState(false);
     const [reviewOrderId, setReviewOrderId] = useState(null);
     const [personNameEdit, setPersonNameEdit] = useState(false);
     // Renombre del alias desde el ✎ de cada tarjeta de cuenta (mueve el mismo
@@ -925,7 +922,6 @@ export default function Salon() {
                         : [...(s.accounts || []), data].filter(Boolean),
                 } : s));
             }
-            setTicketOpen(false);
             setReviewOrderId(null);
             refreshAll();
             return true;
@@ -1040,7 +1036,6 @@ export default function Salon() {
             if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
             if (!await discardDraftItems(orderId)) return;
         }
-        setTicketOpen(false);
         if (closeTable) {
             setOpenTable(null);
             setPersonNameEdit(false);
@@ -1297,7 +1292,6 @@ export default function Salon() {
     const editAccountDrafts = async (account) => {
         if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
         setReviewOrderId(null);
-        setTicketOpen(false);
         const latest = await selectAccount(account.id);
         if (latest?.id !== account.id || ['pagado', 'cancelado'].includes(latest.status)
             || !draftCount(latest.items || [], latest.status)) return;
@@ -1328,7 +1322,6 @@ export default function Salon() {
         if (!orderId) return;
         if (openTable?.order?.id === orderId || openTable?.accountId === orderId) {
             setReviewOrderId(null);
-            setTicketOpen(false);
             setComposerOpen(false);
             const latest = await selectAccount(orderId);
             if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
@@ -1347,7 +1340,6 @@ export default function Salon() {
                 return;
             }
             setComposerOpen(true);
-            setTicketOpen(false);
         }
     };
 
@@ -1358,22 +1350,17 @@ export default function Salon() {
     // without rebuilding it every render for locally declared handlers.
     escapeActionsRef.current = { leaveComposer, closeSheet };
 
-    // Escape first hides the mobile ticket; leaving its composer goes through discard confirmation.
     useEffect(() => {
         if (!openTable) return undefined;
         const onKey = (event) => {
             if (event.key !== 'Escape') return;
             if (document.querySelector('[role="dialog"][data-state="open"], [role="menu"]')) return;
-            if (ticketOpen) {
-                setTicketOpen(false);
-                return;
-            }
             if (composerOpen) void escapeActionsRef.current.leaveComposer();
             else void escapeActionsRef.current.closeSheet();
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [openTable, ticketOpen, composerOpen]);
+    }, [openTable, composerOpen]);
 
     return (
         <div
@@ -1982,18 +1969,6 @@ export default function Salon() {
                                             )}
                                         </div>
                                     )}
-                                    {canTake && canCompose && composerOpen && order && draftUnits > 0 && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full min-[820px]:hidden"
-                                            onClick={() => setTicketOpen(true)}
-                                            data-testid="mesa-sheet-abrir-ticket"
-                                        >
-                                            Editar ticket
-                                        </Button>
-                                    )}
                                     {/* La carta se queda montada al plegarse: así conserva
                                         la búsqueda y la categoría elegidas cuando el mozo
                                         la vuelve a abrir para el pedido siguiente. */}
@@ -2353,40 +2328,6 @@ export default function Salon() {
                                     </button>
                                 )}
 
-                                {/* Hoja inferior del borrador (móvil): el mismo
-                                    ticket del prototipo con otro prefijo de testids,
-                                    para no duplicar los del ticket en flujo. */}
-                                {ticketOpen && order && (
-                                    <div className="fixed inset-0 z-40 min-[820px]:hidden" data-testid="mesa-sheet-ticket-sheet">
-                                        <div
-                                            className="absolute inset-0 bg-black/45"
-                                            data-testid="mesa-sheet-ticket-scrim"
-                                            aria-hidden="true"
-                                            onClick={() => setTicketOpen(false)}
-                                        />
-                                        <div className="absolute inset-x-0 bottom-0 max-h-[88dvh] overflow-y-auto rounded-t-2xl pb-[var(--safe-bottom)]">
-                                            <OrderTicket
-                                                testIdPrefix="mesa-sheet-ticket"
-                                                order={order}
-                                                items={allItems}
-                                                draftOnly
-                                                canEdit={canCompose}
-                                                canVoid={canVoidItems}
-                                                saving={savingItem}
-                                                draftUnits={draftUnits}
-                                                sendLabel={sendState?.label}
-                                                showSend={showSend}
-                                                onChangeQty={changeItemQty}
-                                                onNotes={saveItemNotes}
-                                                onVoid={voidProduct}
-                                                onSend={() => requestSend()}
-                                                onClear={clearDraft}
-                                                onClose={() => setTicketOpen(false)}
-                                                className="rounded-b-none border-x-0 border-b-0"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
                             </section>
 
                             {/* "Resumen de mesa" del prototipo es sólo Pedidos/
