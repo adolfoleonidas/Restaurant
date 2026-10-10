@@ -411,6 +411,8 @@ async def payments_for_order(order_id: str, user: dict = Depends(require_roles([
 async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles(["admin", "cajero"]))):
     request_fingerprint = _payment_request_fingerprint(data)
     order = await _authorized_order(data.order_id, user)
+    if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     operation = order.get("payment_operation")
     if operation:
         recovered = await _resume_payment_operation(order, operation, user)
@@ -631,6 +633,9 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "updated_at": order.get("updated_at"),
         "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
         "payment_operation": {"$exists": False},
+        "account_operation": {"$exists": False},
+        "account_operation_ref": {"$exists": False},
+        "account_operation_id": {"$exists": False},
     }
     if order.get("branch_id"):
         claim_filter["branch_id"] = order["branch_id"]
@@ -925,6 +930,8 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     order = await _authorized_order(pay["order_id"], user)
     if order.get("payment_operation"):
         raise HTTPException(status_code=409, detail="El pago está terminando de registrarse; reintentá en unos segundos")
+    if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     if (not has_tenantwide_branch_access(user) and pay.get("branch_id") != order.get("branch_id")):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     if (has_tenantwide_branch_access(user) and pay.get("branch_id") is not None

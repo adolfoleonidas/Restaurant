@@ -32,6 +32,10 @@ def _match(doc, filt):
             if doc.get(key) in expected["$nin"]:
                 return False
             continue
+        if isinstance(expected, dict) and "$exists" in expected:
+            if (key in doc) != bool(expected["$exists"]):
+                return False
+            continue
         if doc.get(key) != expected:
             return False
     return True
