@@ -468,6 +468,10 @@ describe('compositor · paridad posView (S8)', () => {
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
         expect(review).not.toBeNull();
+        expect(review.getAttribute('aria-labelledby')).toBeTruthy();
+        expect(review.getAttribute('aria-describedby')).toBeTruthy();
+        expect(document.getElementById(review.getAttribute('aria-describedby')).textContent)
+            .toMatch(/revisa.*borradores.*antes de confirmar/i);
         expect(review.textContent).toContain('Juan');
         expect(review.textContent).toContain('Sopa');
         expect(review.textContent).toContain('2');
@@ -508,6 +512,8 @@ describe('compositor · paridad posView (S8)', () => {
 
         const confirm = document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]');
         expect(confirm.disabled).toBe(true);
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-vacia"]').textContent)
+            .toMatch(/no hay.*borradores.*actualiza/i);
         await click(confirm);
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
     });
@@ -523,6 +529,22 @@ describe('compositor · paridad posView (S8)', () => {
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
+    });
+
+    it('conserva la revisión y los borradores si falla el envío confirmado', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
+        api.post.mockRejectedValue({ response: { data: { detail: 'Error de cocina' } } });
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
+        const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
+        await click(review.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
+
+        expect(api.post).toHaveBeenCalledTimes(1);
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]').textContent).toContain('Sopa');
+        expect(toast.error).toHaveBeenCalledWith('Error de cocina');
     });
 
     it('envía a cocina y avisa con el toast del mockup sin una pantalla de confirmación', async () => {

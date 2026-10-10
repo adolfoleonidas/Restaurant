@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
 import { fmtMoney, fmtTime, fmtElapsed, fmtDateTime, elapsedMinutes, ORDER_STATUS_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
@@ -928,8 +928,10 @@ export default function Salon() {
             setTicketOpen(false);
             setReviewOrderId(null);
             refreshAll();
+            return true;
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            return false;
         } finally {
             setSendingToKitchen(false);
         }
@@ -947,8 +949,8 @@ export default function Salon() {
     const confirmReviewedSend = async () => {
         if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
         const targetId = reviewOrderId;
-        await sendCurrentToKitchen(targetId);
-        setReviewOrderId(null);
+        const sent = await sendCurrentToKitchen(targetId);
+        if (sent) setReviewOrderId(null);
     };
 
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
@@ -2528,9 +2530,12 @@ export default function Salon() {
                     if (!open && !sendingToKitchen) setReviewOrderId(null);
                 }}
             >
-                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby={undefined}>
+                <DialogContent data-testid="mesa-sheet-revision-envio" aria-describedby="mesa-sheet-revision-descripcion">
                     <DialogHeader>
                         <DialogTitle>Revisar pedido para cocina</DialogTitle>
+                        <DialogDescription id="mesa-sheet-revision-descripcion" data-testid="mesa-sheet-revision-descripcion">
+                            Revisa los borradores y sus cantidades antes de confirmar el envío a cocina.
+                        </DialogDescription>
                     </DialogHeader>
                     {reviewOrder && (
                         <div className="space-y-3">
@@ -2551,6 +2556,11 @@ export default function Salon() {
                                 <span className="font-mono tabular-nums">{fmtMoney(itemsTotal(reviewItems))}</span>
                             </div>
                         </div>
+                    )}
+                    {reviewOrder && !reviewItems.length && (
+                        <p role="status" className="text-sm text-muted-foreground" data-testid="mesa-sheet-revision-vacia">
+                            No hay borradores para enviar. Puede que se hayan enviado o actualizado desde que abriste esta revisión. Actualiza el pedido antes de confirmar.
+                        </p>
                     )}
                     <DialogFooter className="flex-col-reverse gap-2 sm:flex-row">
                         <Button
