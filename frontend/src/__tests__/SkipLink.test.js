@@ -4,6 +4,8 @@ import { AppShell } from '@/components/AppShell';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
+jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
+jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: () => ({ data: null, refetch: jest.fn() }) }));
 jest.mock('react-router-dom', () => ({
     NavLink: ({ children, to, className, ...props }) => (
         <a href={to} className={typeof className === 'function' ? className({ isActive: false }) : className} {...props}>{children}</a>
