@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FEATURE_DEFS, mergeFeatures, notifyFeaturesChanged } from '@/lib/features';
+import { fmtDateTimeShort } from '@/lib/format';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -360,12 +361,6 @@ function Funciones() {
     );
 }
 
-function fmtServerTime(iso) {
-    if (!iso) return '—';
-    try { return new Date(iso).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }); }
-    catch { return iso; }
-}
-
 function fmtUptime(seconds) {
     if (seconds == null) return '—';
     const h = Math.floor(seconds / 3600);
@@ -474,7 +469,7 @@ function Datos() {
                         <SystemItem label="Base de datos" value={`${info.database?.name} · ${info.database?.connected ? 'conectada' : 'sin conexión'}`} />
                         <SystemItem label="Restaurante" value={info.restaurant?.name || '—'} />
                         <SystemItem label="Zona horaria" value={info.restaurant?.timezone || '—'} />
-                        <SystemItem label="Hora del servidor (UTC)" value={fmtServerTime(info.server_time)} />
+                        <SystemItem label="Hora del servidor (UTC)" value={fmtDateTimeShort(info.server_time)} />
                         <SystemItem label="En línea desde" value={fmtUptime(info.uptime_seconds)} />
                         <SystemItem label="Python" value={info.runtime?.python || '—'} />
                         <SystemItem label="Datos demo" value={info.demo_seed ? 'Sí' : 'No'} />

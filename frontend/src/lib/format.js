@@ -26,6 +26,21 @@ export const fmtDateTime = (iso) => {
     } catch (e) { return ''; }
 };
 
+/** Plain es-PE date and time ("4/3/2026, 10:07:09"). Accepts an ISO string or a Date. */
+export const fmtDateFull = (value) => new Date(value).toLocaleString('es-PE');
+
+/** Short date with medium time, for server timestamps. Dash when empty; falls back to the raw value. */
+export const fmtDateTimeShort = (iso) => {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }); }
+    catch (e) { return iso; }
+};
+
+/** Weekday heading used to group history by day ("mié, 04 mar"). Dash when empty. */
+export const fmtDayLabel = (iso) => (
+    iso ? new Date(iso).toLocaleDateString('es-PE', { weekday: 'short', day: '2-digit', month: 'short' }) : '—'
+);
+
 export const elapsedMinutes = (iso) => {
     if (!iso) return 0;
     try {
