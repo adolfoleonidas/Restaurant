@@ -3,6 +3,7 @@ import { getTableGuestLink, revokeTableQr, rotateTableQr } from '@/lib/api/table
 import { Button } from '@/components/ui/button';
 import QrCode, { QrActions } from '@/components/TableQr';
 import { apiErrorMessage } from '@/lib/apiError';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 // El QR abre la carta con la mesa en contexto. Antes llevaba al checkout, así
 // que el cliente caía en una pantalla de pago sin haber elegido nada.
@@ -30,6 +31,7 @@ export default function TableQrActions({ table }) {
     const [busy, setBusy] = useState('');
     const [error, setError] = useState('');
     const [copyFallback, setCopyFallback] = useState(false);
+    const [confirming, setConfirming] = useState(null);
     const urlRef = useRef(null);
 
     useEffect(() => {
@@ -62,7 +64,6 @@ export default function TableQrActions({ table }) {
     };
 
     const rotateQr = async () => {
-        if (!window.confirm(`¿Regenerar el acceso QR de ${table.name}? El enlace anterior dejará de funcionar y habrá que reimprimir el cartel.`)) return;
         setGuestUrl('');
         setCopyFallback(false);
         setError('');
@@ -80,7 +81,6 @@ export default function TableQrActions({ table }) {
     };
 
     const revokeQr = async () => {
-        if (!window.confirm(`¿Revocar el acceso QR de ${table.name}? Los enlaces existentes dejarán de funcionar.`)) return;
         setGuestUrl('');
         setCopyFallback(false);
         setError('');
@@ -124,12 +124,12 @@ export default function TableQrActions({ table }) {
                     </Button>
                 )}
                 {(status === 'active' || status === 'revoked') && (
-                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={rotateQr} data-testid={`mesa-qr-rotate-${table.id}`}>
+                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => setConfirming('rotate')} data-testid={`mesa-qr-rotate-${table.id}`}>
                         {busy === 'rotate' ? 'Regenerando…' : 'Regenerar QR'}
                     </Button>
                 )}
                 {status === 'active' && (
-                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={revokeQr} data-testid={`mesa-qr-revoke-${table.id}`}>
+                    <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => setConfirming('revoke')} data-testid={`mesa-qr-revoke-${table.id}`}>
                         {busy === 'revoke' ? 'Revocando…' : 'Revocar QR'}
                     </Button>
                 )}
@@ -163,6 +163,20 @@ export default function TableQrActions({ table }) {
                 </div>
             )}
             {error && <p role="status" className="text-xs text-muted-foreground" data-testid={`mesa-qr-error-${table.id}`}>{error}</p>}
+            <ConfirmDialog
+                open={confirming !== null}
+                title={confirming === 'rotate' ? `¿Regenerar el acceso QR de ${table.name}?` : `¿Revocar el acceso QR de ${table.name}?`}
+                description={confirming === 'rotate'
+                    ? 'El enlace anterior dejará de funcionar y habrá que reimprimir el cartel.'
+                    : 'Los enlaces existentes dejarán de funcionar.'}
+                confirmLabel={confirming === 'rotate' ? 'Regenerar QR' : 'Revocar QR'}
+                onCancel={() => setConfirming(null)}
+                onConfirm={() => {
+                    const action = confirming;
+                    setConfirming(null);
+                    if (action === 'rotate') rotateQr(); else revokeQr();
+                }}
+            />
         </div>
     );
 }
