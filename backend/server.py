@@ -9,6 +9,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from database import db, ensure_indexes
+from error_handlers import register_error_handlers
 from security_config import assert_runtime_config
 from routes import (
     auth_router,
@@ -36,6 +37,7 @@ from seed import run_seed
 
 # Create the main app
 app = FastAPI(title="Sistema de Gestión para Restaurantes")
+register_error_handlers(app)
 
 # Master API router with /api prefix
 api_router = APIRouter(prefix="/api")

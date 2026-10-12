@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid, OrderItemMove
-from billing import BillError, assert_can_cancel, guarded_totals
+from billing import assert_can_cancel, guarded_totals
 from order_flow import (
     DRAFT_STATUS,
     FlowError,
@@ -173,13 +173,6 @@ async def _release_paid_table(order: dict, status: str):
         {"$set": {"status": table_status, "updated_at": _now()}},
     )
     emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status=table_status, branch_id=order.get("branch_id"))
-
-
-def _apply_bill(order: dict, items: list, removed_item: dict = None):
-    try:
-        return guarded_totals(order, items, removed_item=removed_item)
-    except BillError as exc:
-        raise HTTPException(status_code=400, detail=exc.detail)
 
 
 def _derive_kitchen_status(items: list, current: str) -> str:
@@ -491,7 +484,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
         it["status"] = DRAFT_STATUS
         it["added_at"] = _now()
     combined = (o.get("items") or []) + enriched_new
-    subtotal, total = _apply_bill(o, combined)
+    subtotal, total = guarded_totals(o, combined)
     # Cargar un producto no manda nada a cocina por sí solo: el pedido conserva
     # su estado hasta que el mozo envía.
     new_status = _derive_kitchen_status(combined, o["status"])
@@ -524,7 +517,7 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
     if (source.get("amount_paid") or 0) > 0.009:
         raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anulalos antes de fusionar")
     combined = (target.get("items") or []) + (source.get("items") or [])
-    subtotal, total = _apply_bill(target, combined)
+    subtotal, total = guarded_totals(target, combined)
     new_status = _derive_kitchen_status(combined, target["status"])
     if target["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
@@ -724,7 +717,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         # Un producto que cocina ya conoce no desaparece con "−": se anula.
         raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Usá Anular producto.")
     items = [i for i in (o.get("items") or []) if i["id"] != item_id]
-    subtotal, total = _apply_bill(o, items, removed_item=target)
+    subtotal, total = guarded_totals(o, items, removed_item=target)
     await _save_order(o, {
         "items": items,
         "subtotal": subtotal,
@@ -759,7 +752,7 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     target["voided_at"] = now
     target["voided_by"] = user["id"]
     target["voided_by_name"] = user.get("full_name")
-    subtotal, total = _apply_bill(o, items)
+    subtotal, total = guarded_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     patch = {"items": items, "subtotal": subtotal, "total": total, "updated_at": now}
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
@@ -805,8 +798,8 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     moved["moved_at"] = now
     target_items = (target.get("items") or []) + [moved]
 
-    source_subtotal, source_total = _apply_bill(source, source_items)
-    target_subtotal, target_total = _apply_bill(target, target_items)
+    source_subtotal, source_total = guarded_totals(source, source_items)
+    target_subtotal, target_total = guarded_totals(target, target_items)
 
     source_patch = {
         "items": source_items,
@@ -874,7 +867,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
             break
     if not found:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
-    subtotal, total = _apply_bill(o, items)
+    subtotal, total = guarded_totals(o, items)
     await _save_order(o, {
         "items": items,
         "subtotal": subtotal,
@@ -1107,10 +1100,7 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
     if new_status == "cancelado" and not data.reason:
         raise HTTPException(status_code=400, detail="Se requiere motivo de cancelación")
     if new_status == "cancelado":
-        try:
-            assert_can_cancel(o)
-        except BillError as exc:
-            raise HTTPException(status_code=400, detail=exc.detail)
+        assert_can_cancel(o)
     try:
         assert_order_transition(o["status"], new_status)
     except FlowError as exc:
