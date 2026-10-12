@@ -62,6 +62,8 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     // State
     const [loading, setLoading] = useState(false);
     const [result, setResult] = useState(null);
+    // Lo cobrado en este pago: la cuenta se refresca y el importe pendiente cae a cero.
+    const [paidAmount, setPaidAmount] = useState(null);
     const [stale, setStale] = useState(null);
     const [netError, setNetError] = useState(false);
     const [live, setLive] = useState(order);
@@ -112,7 +114,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         if (open) {
             proof.resetProof();
             form.resetForm(order);
-            setResult(null); setStale(null); setNetError(false);
+            setResult(null); setPaidAmount(null); setStale(null); setNetError(false);
             setLive(order); setDetailOpen(window.innerWidth > 760); setShowVerify(false); setVerified(false);
             setShowHelp(false); setShowHistory(false); setShowQr(false);
         } else {
@@ -171,6 +173,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             const idx = Number(e.key);
             if (!Number.isInteger(idx) || idx < 1 || idx > METHODS.length) return;
             if (proofIntent && !proofSent) return; // method rail is locked mid-proof-send
+            if (result) return; // pagado: el método queda fijo
             e.preventDefault();
             const next = METHODS[idx - 1].id;
             if (next !== method && !proofIntent && !proofSent && (live || order)?.payment_status !== 'comprobante_subido') {
@@ -210,6 +213,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         setNetError(false);
         try {
             const { data } = await createPayment(form.buildPayload());
+            setPaidAmount(chargeAmount);
             setResult(data);
             setNetError(false);
             try {
@@ -237,7 +241,9 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     };
 
     const handleRegister = () => {
-        if (result || proofRefreshPending) return;
+        if (proofRefreshPending) return;
+        // Con el pago ya registrado el botón dice "Finalizar": cierra el diálogo.
+        if (result) { onNextAccount(); return; }
         if (!canRegister) return;
         setShowVerify(true);
         setVerified(false);
@@ -270,7 +276,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     // After a partial payment: charge the rest of the account from scratch.
     const onChargeRest = () => {
-        setResult(null); form.resetForRest(); setNetError(false); setStale(null);
+        setResult(null); setPaidAmount(null); form.resetForRest(); setNetError(false); setStale(null);
     };
 
     const onNextAccount = () => { onOpenChange(false); setResult(null); };
@@ -371,6 +377,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                     onNextAccount={onNextAccount}
                     open={open}
                     paid={paid}
+                    paidAmount={paidAmount}
                     payMode={payMode}
                     proofAlreadySent={proofAlreadySent}
                     proofError={proofError}

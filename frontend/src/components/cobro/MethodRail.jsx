@@ -6,7 +6,7 @@ import { METHODS } from '@/components/cobro/constants';
  * Heading and the rail of payment methods.
  */
 export default function MethodRail({
-    method, proofIntent, proofSent, selectMethod,
+    method, proofIntent, proofSent, selectMethod, locked,
 }) {
     return (
         <>
@@ -22,7 +22,7 @@ export default function MethodRail({
                         <button key={m.id} className="method" role="tab" data-method={m.id}
                             data-testid={`caja-metodo-${METHOD_MAP[m.id]}`}
                             aria-selected={method === m.id}
-                            disabled={Boolean(proofIntent && !proofSent)}
+                            disabled={Boolean(locked || (proofIntent && !proofSent))}
                             onClick={() => selectMethod(m.id)}>
                             <kbd aria-hidden="true">{i + 1}</kbd>
                             <m.Icon style={{ width: 23, height: 23 }} />
