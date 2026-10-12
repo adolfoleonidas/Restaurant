@@ -1,75 +1,54 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import usePolling from '@/hooks/usePolling';
-import { listBranches } from '@/lib/api/branches';
-import { listCategories } from '@/lib/api/categories';
-import {
-    addOrderItems,
-    closeOrderAttention,
-    createOrder,
-    getOrder,
-    listOrders,
-    mergeOrder,
-    moveOrder,
-    moveOrderItem,
-    removeOrderItem,
-    sendOrderToKitchen,
-    serveOrder,
-    setOrderAlias,
-    setOrderStatus,
-    splitOrder,
-    updateOrderItem,
-    voidOrderItem,
-} from '@/lib/api/orders';
-import { listProducts } from '@/lib/api/products';
-import {
-    createTableGroup,
-    deleteTableGroup,
-    listTables,
-    releaseTable as releaseTableRequest,
-    removeTableGroupMember,
-    transferTable,
-} from '@/lib/api/tables';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useBranchScope from '@/pages/salon/useBranchScope';
+import useSalonData from '@/pages/salon/useSalonData';
+import useTableSheet from '@/pages/salon/useTableSheet';
+import useTableSelection from '@/pages/salon/useTableSelection';
+import useVisitTransfer from '@/pages/salon/useVisitTransfer';
+import useFloorActions from '@/pages/salon/useFloorActions';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useNavigate } from 'react-router-dom';
-import { fmtMoney, fmtElapsed, fmtDateTime, elapsedMinutes } from '@/lib/format';
+import { fmtMoney, fmtElapsed, fmtDateTime } from '@/lib/format';
 import { ORDER_STATUS_LABELS } from '@/constants/status';
+import {
+    LEGEND,
+    MINI_OPEN_CLASS,
+    STATE_FILTERS,
+    accountTally,
+    buildUnits,
+    countByState,
+    decorateTables,
+    filterUnits,
+    floorSummaryText,
+    freeTablesForAccountMove,
+    indexOrdersByTable,
+    isComposingDraft,
+    isMiniVisible,
+    listAreas,
+    projectPickups,
+    selectMiniOrder,
+    selectSheetModel,
+    summarizeOrders,
+    tallyLabel,
+} from '@/pages/salon/selectors';
 import OrderComposer from '@/components/OrderComposer';
 import PersonChips from '@/components/PersonChips';
 import { PersonOrderSummary, TableReceipt, TableSummary } from '@/components/OrderSummary';
-import { draftCount, isDraft, personLabel, sendAction, tableSummary, itemsTotal } from '@/lib/orderDraft';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { Search, Grid2X2, Plus, Users, ShoppingCart, Link2, Unlink, MoveRight } from 'lucide-react';
 import MoreActions from '@/components/MoreActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { hasFn } from '@/lib/functions';
-import {
-    branchScopeParams,
-    readRememberedScope,
-    rememberScope,
-    resolveBranchScope,
-} from '@/lib/branchScope';
-import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import MesaCard from '@/components/MesaCard';
 import GroupCard from '@/components/GroupCard';
 import useBranchNames from '@/hooks/useBranchNames';
-import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
-import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
-import {
-    groupAccountTables,
-    groupLabel,
-    groupMembers,
-    ordersByTable,
-    selectionProblem,
-    transferCandidates,
-    transferProblem,
-} from '@/lib/tableGroups';
+import { ordersByTable } from '@/lib/tableGroups';
 
 /**
  * Salón — unified floor + service screen.
@@ -90,115 +69,6 @@ import {
  * `servicio-recojos-activos`, `servicio-recojo-*`, `servicio-dias-anteriores`.
  */
 
-const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'atencion', 'reservada'];
-
-const STATE_FILTERS = [
-    { key: 'todas', label: 'Todas' },
-    { key: 'libre', label: 'Libres' },
-    { key: 'activas', label: 'Ocupadas' },
-    { key: 'listo', label: 'Por entregar' },
-    { key: 'cuenta', label: 'Por cobrar' },
-];
-
-// Estados del piso que cuenta cada filtro (para los conteos de los filtros).
-const STATE_FILTER_FLOORS = {
-    libre: ['libre'],
-    activas: ['sentados', 'preparando', 'entregado', 'atencion'],
-    listo: ['listo'],
-    cuenta: ['cuenta'],
-};
-
-function floorState(t) {
-    const o = t.active_order;
-    if (t.status === 'inactiva') return { key: 'inactiva' };
-    if (t.status === 'reservada' && !o) return { key: 'reservada' };
-    if (o?.status === 'cancelado') return { key: 'atencion' };
-    if (o?.status === 'pagado' || (t.status === 'pagada' && !o)) return { key: 'pagada' };
-    if (t.status === 'disponible' && !o) return { key: 'libre' };
-    if (o?.status === 'pendiente_pago' || t.status === 'esperando_pago') return { key: 'cuenta' };
-    if (o?.status === 'listo') return { key: 'listo' };
-    if (o?.status === 'entregado') return { key: 'entregado' };
-    if (o && ['enviado_cocina', 'en_preparacion', 'nuevo'].includes(o.status)) return { key: 'preparando' };
-    if (t.status === 'ocupada' && !o) return { key: 'sentados' };
-    return { key: 'sentados' };
-}
-
-// Urgencia relativa de cada estado: al unir mesas, el grupo hereda el estado
-// más urgente (cuenta > listo > atención > preparando > …). Menor = más urgente.
-const FLOOR_RANK = {
-    cuenta: 0,
-    listo: 1,
-    atencion: 2,
-    preparando: 3,
-    entregado: 4,
-    sentados: 5,
-    reservada: 6,
-    pagada: 7,
-    libre: 8,
-    inactiva: 9,
-};
-
-function groupFloorState(members) {
-    return members.reduce((best, m) => (
-        (FLOOR_RANK[m.floor.key] ?? 9) < (FLOOR_RANK[best.floor.key] ?? 9) ? m : best
-    )).floor;
-}
-
-function itemQty(items, predicate) {
-    return (items || []).filter(predicate).reduce((s, it) => s + (it.quantity || 0), 0);
-}
-
-/** Un ítem sigue "en cocina" mientras no esté entregado ni anulado. */
-const itemPending = (it) => !['entregado', 'cancelado'].includes(it.status || 'pendiente');
-
-/**
- * Estados agregados de los platos de una cuenta, en el orden en que reclaman
- * acción: lo listo se sirve antes de enviar nada nuevo, y lo que ya salió no
- * cuenta para ninguna acción.
- */
-function accountTally(order) {
-    const items = (order?.items || []).filter((it) => it.status !== 'cancelado');
-    return {
-        ready: itemQty(items, (it) => it.status === 'listo'),
-        drafts: itemQty(items, itemPending),
-        kitchen: itemQty(items, (it) => ['pendiente', 'enviado_cocina', 'en_preparacion'].includes(it.status)),
-        served: itemQty(items, (it) => it.status === 'entregado'),
-    };
-}
-
-/** Texto corto del estado agregado ("Listo para servir · 2"). */
-function tallyLabel(tally) {
-    if (tally.ready > 0) return `Listo para servir · ${tally.ready}`;
-    if (tally.drafts > 0) return `Por enviar · ${tally.drafts}`;
-    if (tally.kitchen > 0) return `En cocina · ${tally.kitchen}`;
-    if (tally.served > 0) return `Servido · ${tally.served}`;
-    return 'Sin platos todavía';
-}
-
-/**
- * Padding inferior del contenido cuando la barra fija del pedido activo está
- * visible.
- *
- * `!` (important) es deliberado: el hueco normal de la barra de navegación lo
- * pone `.has-bottom-nav`, que vive en la capa `components` y le gana a
- * cualquier utilidad `pb-*` de la capa `utilities`. Con `md:!pb-0` se devuelve
- * el hueco al shell en escritorio, donde el mini va pegado al borde inferior.
- */
-const MINI_OPEN_CLASS = 'pb-44 md:!pb-0';
-
-/**
- * Una cuenta sigue siendo el pedido a medio armar mientras nada haya salido a
- * cocina: sus productos están en borrador. Recién al enviarla se convierte en
- * una persona de la mesa, sin que el mozo "abra" nada.
- *
- * El alias no cuenta: se puede escribir (y guardar) antes de enviar, y eso no
- * convierte el borrador en una persona.
- */
-function isComposingDraft(order) {
-    if (!order) return false;
-    return !(order.items || []).some((item) => !isDraft(item, order.status));
-}
-
 export default function Salon() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
@@ -208,771 +78,83 @@ export default function Salon() {
     const [search, setSearch] = useState('');
     const [areaFilter, setAreaFilter] = useState('todas');
     const [stateFilter, setStateFilter] = useState('todas');
-    const [openTable, setOpenTable] = useState(null);
     const [showNewOrder, setShowNewOrder] = useState(false);
-    const [closing, setClosing] = useState(null);
-    const [selectMode, setSelectMode] = useState(false);
-    const [selected, setSelected] = useState([]);
-    const [joining, setJoining] = useState(false);
-    const [transferSource, setTransferSource] = useState(null);
-    const [movingVisit, setMovingVisit] = useState(false);
-    const [moveAccountId, setMoveAccountId] = useState(null);
-    const [savingItem, setSavingItem] = useState(false);
-    const [aliasDraft, setAliasDraft] = useState('');
-    // Mensaje de confirmación tras enviar: "✓ Pedido de Juan enviado.
-    // ¿Siguiente persona?" — la pantalla queda limpia para la siguiente.
-    const [flash, setFlash] = useState(null);
-    // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
-    const [sharedDraft, setSharedDraft] = useState(false);
-    const [receiptOpen, setReceiptOpen] = useState(false);
-    // La carta arranca plegada: el modal abre mostrando lo que ya se pidió y el
-    // "+ Pedido" del encabezado la despliega. Se vuelve a plegar al enviar, así el
-    // mozo ve el pedido que acaba de mandar y tiene el + listo para el siguiente.
-    const [composerOpen, setComposerOpen] = useState(false);
-    // Última cuenta abierta en la hoja: alimenta el mini-reproductor del pedido
-    // activo. Se guarda la mesa en mano (no solo el id) para poder reabrir la
-    // hoja sin depender de que la mesa siga en el listado del polling.
-    const [lastOpened, setLastOpened] = useState(null);
-    // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
-    // qué salón mira; el resto del personal queda fijado por el servidor.
-    const [branchCatalog, setBranchCatalog] = useState({ loading: false, error: false, branches: [], resolved: false });
-    const [scope, setScope] = useState(null);
     const searchRef = useRef(null);
 
     const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
-
-    useEffect(() => {
-        if (!isOwner) {
-            setBranchCatalog({ loading: false, error: false, branches: [], resolved: true });
-            setScope(null);
-            return undefined;
-        }
-        let active = true;
-        setBranchCatalog((current) => ({ ...current, loading: true, error: false }));
-        listBranches().then(({ data }) => {
-            if (!active) return;
-            const branches = Array.isArray(data) ? data : [];
-            setBranchCatalog({ loading: false, error: false, branches, resolved: true });
-            setScope(resolveBranchScope({
-                isOwner: true,
-                branches,
-                remembered: readRememberedScope(user?.id),
-            }));
-        }).catch(() => {
-            if (active) {
-                // Sin catálogo no se puede elegir: el salón queda como estaba.
-                setBranchCatalog({ loading: false, error: true, branches: [], resolved: true });
-                setScope(null);
-            }
-        });
-        return () => { active = false; };
-    }, [isOwner, user?.id]);
-
-    const scopeParams = useMemo(() => branchScopeParams(scope), [scope]);
-    const scopeKey = scope || 'sin-alcance';
-    // Quien elige piso espera a su catálogo: hasta entonces no se pide ninguno,
-    // para no mostrar todas las sucursales mezcladas ni un instante.
-    const scopePending = isOwner && !branchCatalog.resolved;
-    const chooseScope = (next) => {
-        setScope(next);
-        rememberScope(user?.id, next);
-    };
-
-    const { data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables } = usePolling(
-        // Sin sucursal elegida el pedido va sin parámetros: el servidor ya acota
-        // a la sucursal del usuario.
-        () => (scopePending
-            ? Promise.resolve(null)
-            : listTables(scopeParams)).then((r) => (r ? r.data : null)),
-        8000,
-        [generation, scopeKey, scopePending]
-    );
-    const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
-        () => (scopePending
-            ? Promise.resolve(null)
-            : listOrders({ active_only: true, ...scopeParams })).then((r) => (r ? r.data : null)),
-        8000,
-        [generation, scopeKey, scopePending]
-    );
-    const orders = useMemo(() => (Array.isArray(liveOrders) ? liveOrders : []), [liveOrders]);
-
-    // Mesas que ningún salón muestra porque no tienen sucursal guardada. Es una
-    // lectura de administración y a un ritmo más lento: sirve para avisar, no
-    // para operar el piso.
-    const { data: unassigned } = usePolling(
-        () => (isOwner && !scopePending && scope !== 'legacy'
-            ? listTables({ legacy_only: true }).then((r) => r.data)
-            : Promise.resolve(null)),
-        30000,
-        [generation, isOwner, scopeKey, scopePending]
-    );
-    const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
-
-    // Carta para componer el pedido sin salir del salón.
-    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, [generation]);
-    const { data: liveCategories } = usePolling(() => listCategories().then((r) => r.data), 60000);
-    const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
-    const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);
-
     const canServe = ['admin', 'mozo', 'cocina'].includes(user?.role);
     const canTake = ['admin', 'mozo'].includes(user?.role);
     const canClose = ['admin', 'mozo', 'cajero'].includes(user?.role);
     const canCharge = hasFn(user, 'cobro', 'administracion');
 
-    const byTable = useMemo(() => {
-        const map = {};
-        for (const o of orders) if (o.table_id) map[o.table_id] = o;
-        return map;
-    }, [orders]);
+    // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
+    // qué salón mira; el resto del personal queda fijado por el servidor.
+    const {
+        branchCatalog, scope, scopeParams, scopeKey, scopePending, chooseScope,
+    } = useBranchScope(user, isOwner);
+
+    const {
+        tables, tablesError, tablesLoading, refetchTables, orders, ordersError, refetchOrders,
+        unassignedCount, products, categories, refreshAll,
+    } = useSalonData({
+        generation, isOwner, scope, scopeKey, scopeParams, scopePending,
+    });
+
+    const byTable = useMemo(() => indexOrdersByTable(orders), [orders]);
 
     // Only the orders that still own their table: these decide what a joined
     // table can offer (join, transfer) and which member holds the account.
     const activeOrders = useMemo(() => ordersByTable(orders), [orders]);
 
-    const selectionIssue = selected.length >= 2 ? selectionProblem(tables || [], activeOrders, selected) : null;
-    const canConfirmJoin = selected.length >= 2 && !selectionIssue;
-    const transferTargets = useMemo(
-        () => transferCandidates(tables || [], activeOrders, transferSource),
-        [tables, activeOrders, transferSource]
-    );
+    const {
+        openTable, sheetOrder, savingItem, aliasDraft, setAliasDraft, flash, setFlash, sharedDraft, setSharedDraft,
+        receiptOpen, setReceiptOpen, composerOpen, setComposerOpen, moveAccountId, setMoveAccountId, lastOpened,
+        openSheet, closeSheet, selectAccount, mergeAccounts, moveAccount, splitAccount, addProductToAccount,
+        changeItemQty, removeProductFromAccount, saveItemNotes, voidProduct, applyItemNote, moveItemToPerson,
+        sendCurrentToKitchen, saveAlias, startAnotherPerson, takeOrderInline, openTrackedSheet,
+    } = useTableSheet({
+        tables, activeOrders, canTake, refreshAll,
+    });
 
-    const openOrderId = openTable?.order?.id || null;
-    const { data: liveOrderData } = usePolling(
-        () => (openOrderId ? getOrder(openOrderId).then((r) => r.data) : Promise.resolve(null)),
-        10000,
-        [openOrderId]
-    );
-    const sheetOrder = openTable?.order && liveOrderData && liveOrderData.id === openTable.order.id
-        ? liveOrderData
-        : (openTable?.order || null);
+    const {
+        selectMode, selected, joining, selectionIssue, canConfirmJoin, toggleSelected, startSelection,
+        cancelSelection, joinTables, dissolveGroup, removeGroupMember,
+    } = useTableSelection({
+        tables, activeOrders, refreshAll, closeSheet,
+    });
+
+    const {
+        transferSource, setTransferSource, movingVisit, transferTargets, openTransfer, moveVisit,
+    } = useVisitTransfer({
+        tables, activeOrders, closeSheet, refreshAll,
+    });
+
+    const {
+        closing, openCharge, deliver, closeAttention, requestBill, releaseTable,
+    } = useFloorActions({
+        canTake, closeSheet, refreshAll, refetchTables, navigate,
+    });
 
     // ── Summary (former Servicio header) ───────────────────────────────────
-    const summary = useMemo(() => {
-        let toPrep = 0;
-        let toReady = 0;
-        let toPay = 0;
-        for (const o of orders) {
-            const items = o.items || [];
-            toPrep += itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
-            toReady += itemQty(items, (it) => it.status === 'listo');
-            const due = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
-            if (due > 0) toPay += 1;
-        }
-        return { toPrep, toReady, toPay };
-    }, [orders]);
-
-    // Región viva para lectores de pantalla: el salón se actualiza por polling y
-    // los cambios de estado llegan sin aviso (4.1.3). El texto solo cambia si
-    // cambian los conteos, así que no se repite en cada refresco.
-    const floorSummary = `En preparación ${summary.toPrep} · listos para entregar ${summary.toReady} · cuentas por cobrar ${summary.toPay}`;
-
-    const pickupProjection = useMemo(() => {
-        const { live, prior } = partitionPriorPickupOrders(orders);
-        const active = live.filter((o) => (
-            o.order_type === 'recojo'
-            && !o.table_id
-            && !['entregado', 'pagado', 'cancelado'].includes(o.status)
-        ));
-        return { active, prior };
-    }, [orders]);
+    const summary = useMemo(() => summarizeOrders(orders), [orders]);
+    const floorSummary = floorSummaryText(summary);
+    const pickupProjection = useMemo(() => projectPickups(orders), [orders]);
 
     // ── Filters ────────────────────────────────────────────────────────────
-    const areas = useMemo(() => {
-        // `t.area` puede venir vacío (mesas antiguas sin zona). Sin filtrar, la
-        // fila de zonas pintaba un chip "undefined" y React avisaba de una clave
-        // ausente en la lista (`key={undefined}` no cuenta como clave).
-        const s = new Set((tables || []).map((t) => t.area).filter(Boolean));
-        return ['todas', ...Array.from(s)];
-    }, [tables]);
-
-    const decorated = useMemo(() => {
-        return (tables || []).map((t) => {
-            const floor = floorState(t);
-            const listOrder = byTable[t.id] || null;
-            const attentionOrder = activeAttentionOrder(t, orders);
-            const displayOrder = t.active_order || attentionOrder || listOrder || null;
-            const serviceOrder = t.active_attention_id ? attentionOrder : (listOrder || t.active_order || null);
-            const items = serviceOrder?.items || [];
-            const ready = itemQty(items, (it) => it.status === 'listo');
-            const pendingPrep = itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
-            const due = serviceOrder && serviceOrder.status !== 'cancelado'
-                ? Math.max(0, Number(serviceOrder.total || 0) - Number(serviceOrder.amount_paid || 0))
-                : 0;
-            const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
-            const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
-            const group = t.group || null;
-            // A joined group reports how many bills it holds: with two, the
-            // card must not pretend there is a single account.
-            const groupBadge = group
-                ? {
-                    label: groupLabel(group, tables),
-                    accounts: groupAccountTables(group, tables, activeOrders).length,
-                }
-                : null;
-            const groupNumbers = group ? groupMembers(group, tables).map((m) => m.number) : null;
-            return {
-                table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested,
-                showVisitaActiva, group, groupBadge, groupNumbers,
-            };
-        });
-    }, [tables, byTable, orders, activeOrders]);
-
-    // Unidades del piso: una mesa individual = una tarjeta; un grupo = UNA
-    // tarjeta grande con mesa principal + mini-mesas (igual que el prototipo).
-    const units = useMemo(() => {
-        const byGroup = new Map();
-        const singles = [];
-        for (const entry of decorated) {
-            const gid = entry.group?.id;
-            if (gid) {
-                if (!byGroup.has(gid)) byGroup.set(gid, []);
-                byGroup.get(gid).push(entry);
-            } else {
-                singles.push(entry);
-            }
-        }
-        const groupUnits = [...byGroup.values()].map((members) => {
-            members.sort((a, b) => Number(a.table.number) - Number(b.table.number));
-            const group = members[0].group;
-            const anchor = members.find((m) => m.table.id === group.anchor_table_id) || members[0];
-            const floor = groupFloorState(members);
-            const numbers = members.map((m) => Number(m.table.number));
-            const accounts = groupAccountTables(group, tables, activeOrders).length;
-            const dueSum = members.reduce((s, m) => s + (m.due || 0), 0);
-            const totalSum = members.reduce((s, m) => s + (Number(m.serviceOrder?.total) || Number(m.displayOrder?.total) || 0), 0);
-            const amount = dueSum > 0 ? `Debe ${fmtMoney(dueSum)}` : (totalSum > 0 ? fmtMoney(totalSum) : null);
-            const maxCreated = members.reduce((acc, m) => {
-                const iso = m.displayOrder?.created_at || m.serviceOrder?.created_at || null;
-                if (!iso) return acc;
-                return (!acc || new Date(iso) > new Date(acc)) ? iso : acc;
-            }, null);
-            const minutes = elapsedMinutes(maxCreated);
-            const urgency = minutes >= 45 ? 'bad' : minutes >= 30 ? 'warn' : null;
-            return {
-                type: 'group', group, members, anchor, floor, numbers, accounts, amount,
-                elapsed: maxCreated ? fmtElapsed(maxCreated) : null, minutes, urgency,
-                isLate: floor.key === 'cuenta' && urgency === 'bad',
-                anchorNumber: Number(anchor.table.number),
-            };
-        });
-        return [
-            ...singles.map((entry) => ({ type: 'single', entry, floor: entry.floor, anchorNumber: Number(entry.table.number) })),
-            ...groupUnits,
-        ];
-    }, [decorated, tables, activeOrders]);
-
-    // Conteos por estado para los filtros: cuentan tarjetas (una por unidad),
-    // de modo que "Todas" refleja lo que se ve en pantalla.
-    const stateCounts = useMemo(() => {
-        const counts = { todas: units.length };
-        for (const f of STATE_FILTERS) {
-            if (f.key === 'todas') continue;
-            const floors = STATE_FILTER_FLOORS[f.key] || [];
-            counts[f.key] = units.filter((u) => floors.includes(u.floor.key)).length;
-        }
-        return counts;
-    }, [units]);
-
-    const filteredUnits = useMemo(() => {
-        const list = units.filter((unit) => {
-            const entries = unit.type === 'group' ? unit.members : [unit.entry];
-            if (areaFilter !== 'todas' && !entries.some((e) => e.table.area === areaFilter)) return false;
-            const key = unit.floor.key;
-            if (stateFilter === 'libre' && key !== 'libre') return false;
-            if (stateFilter === 'activas' && !['sentados', 'preparando', 'entregado', 'atencion'].includes(key)) return false;
-            if (stateFilter === 'listo' && key !== 'listo') return false;
-            if (stateFilter === 'cuenta' && key !== 'cuenta') return false;
-            if (search && !entries.some((e) => `${e.table.number} ${e.table.name}`.toLowerCase().includes(search.toLowerCase()))) return false;
-            return true;
-        });
-        // Fixed order by anchor number: the floor must not reshuffle on every
-        // state change (it disorients the waiter mid-service). Urgency is shown
-        // by colour, the state filters and the summary bar instead.
-        return list.slice().sort((a, b) => a.anchorNumber - b.anchorNumber);
-    }, [units, areaFilter, stateFilter, search]);
-
-    // ── Actions ────────────────────────────────────────────────────────────
-    const openSheet = async (t, preferredOrderId = null) => {
-        // A joined table with no account of its own reads the group's account,
-        // but only when the group holds exactly one: with two separate bills
-        // there is nothing unambiguous to follow, so the sheet lists them.
-        const groupOwners = t.group?.id ? groupAccountTables(t.group, tables, activeOrders) : [];
-        const followed = groupOwners.length === 1 && groupOwners[0].id !== t.id && !t.active_order ? groupOwners[0] : null;
-        const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
-        setComposerOpen(false);
-        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
-        if (targetOrderId) {
-            try {
-                const { data } = await getOrder(targetOrderId);
-                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
-                // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
-                // abre sola, sin obligar a buscar el botón.
-                if (isComposingDraft(data)) setComposerOpen(true);
-            } catch {
-                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
-            }
-        }
-        try {
-            const { data } = await listOrders({ table_id: t.id, limit: 50 });
-            const all = data || [];
-            const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
-            const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
-            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
-            // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
-            if (!targetOrderId && active.length) await selectAccount(active[0].id);
-        } catch { /* historial opcional */ }
-    };
-
-    const closeSheet = () => setOpenTable(null);
-    const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
-
-    // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
-    const selectAccount = async (orderId) => {
-        setOpenTable((s) => (s ? { ...s, accountId: orderId, loading: true } : s));
-        try {
-            const { data } = await getOrder(orderId);
-            setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
-        } catch {
-            setOpenTable((s) => (s ? { ...s, loading: false } : s));
-        }
-    };
-
-    // Multi-cuenta: fusiona todas las demás cuentas dentro de la seleccionada.
-    const mergeAccounts = async () => {
-        const s = openTable;
-        if (!s || !canTake) return;
-        const list = s.accounts || [];
-        const targetId = s.order?.id || s.accountId || s.table?.active_order?.id;
-        if (!targetId || list.length < 2) return;
-        const others = list.filter((o) => o.id !== targetId);
-        try {
-            for (const o of others) {
-                await mergeOrder(targetId, { source_order_id: o.id });
-            }
-            toast.success('Cuentas fusionadas');
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron fusionar las cuentas');
-        }
-    };
-
-    // Multi-cuenta: mueve la cuenta seleccionada a una mesa libre.
-    const moveAccount = async (targetTableId) => {
-        if (!moveAccountId) return;
-        try {
-            await moveOrder(moveAccountId, { target_table_id: targetTableId });
-            toast.success('Cuenta movida');
-            setMoveAccountId(null);
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover la cuenta');
-        }
-    };
-
-    // Multi-cuenta: reparte los productos de la cuenta seleccionada en N cuentas.
-    const splitAccount = async (parts) => {
-        const s = openTable;
-        const targetId = s?.order?.id || s?.accountId || s?.table?.active_order?.id;
-        if (!targetId || !canTake) return;
-        try {
-            await splitOrder(targetId, { parts });
-            toast.success(`Cuenta dividida en ${parts}`);
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo dividir la cuenta');
-        }
-    };
-
-    // ── Pedido inline (sin salir del salón) ────────────────────────────────
-    const reloadCurrentOrder = async (orderId) => {
-        try {
-            const { data } = await getOrder(orderId);
-            setOpenTable((s) => (s && (s.order?.id === orderId || s.accountId === orderId)
-                ? { ...s, order: data, accountId: orderId }
-                : s));
-        } catch { /* la recarga es best-effort */ }
-    };
-
-    // La cuenta de la mesa se crea recién al agregar el primer producto, así
-    // abrir el sheet y arrepentirse no deja una orden vacía.
-    const ensureAccount = async () => {
-        const s = openTable;
-        if (!s) return null;
-        // Sólo la cuenta que el mozo tiene delante. El pedido activo de la mesa
-        // NO sirve de atajo: con la pantalla limpia, lo que se carga es de la
-        // siguiente persona, no un adicional de la anterior.
-        const existing = s.order?.id || s.accountId || null;
-        if (existing) return existing;
-        const payload = { table_id: s.table.id, order_type: 'mesa' };
-        // Si la mesa ya tiene su visita abierta, esta cuenta es OTRA persona de
-        // esa misma visita y hay que pedirla como tal: sin esto el backend la
-        // rechaza por pertenecer a una visita en curso.
-        if (s.table?.active_attention_id || (s.accounts || []).length > 0) {
-            payload.new_account = true;
-        }
-        const { data } = await createOrder(payload);
-        setOpenTable((prev) => (prev && prev.table.id === s.table.id
-            ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
-            : prev));
-        return data.id;
-    };
-
-    const addProductToAccount = async (product) => {
-        if (!canTake || savingItem) return;
-        setSavingItem(true);
-        // Arrancó el pedido siguiente: el aviso del envío anterior ya cumplió.
-        setFlash(null);
-        try {
-            const orderId = await ensureAccount();
-            if (!orderId) return;
-            await addOrderItems(orderId, [{ product_id: product.id, quantity: 1 }]);
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
-        } finally {
-            setSavingItem(false);
-        }
-    };
-
-    const changeItemQty = async (item, delta) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        const next = Number(item.quantity || 1) + delta;
-        try {
-            if (next <= 0) await removeOrderItem(orderId, item.id);
-            else await updateOrderItem(orderId, item.id, { quantity: next });
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
-        }
-    };
-
-    // El "−" de la carta sólo baja lo que sigue en borrador. Si el plato ya
-    // viajó a cocina, el backend lo rechaza y el camino es anularlo abajo.
-    const removeProductFromAccount = async (product, item) => {
-        if (!item) return;
-        await changeItemQty(item, -1);
-    };
-
-    // Las observaciones pertenecen al producto: "sin ensalada" es de ese plato,
-    // no de la cuenta ni de la mesa.
-    const saveItemNotes = async (item, notes) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        try {
-            await updateOrderItem(orderId, item.id, { notes });
-            await reloadCurrentOrder(orderId);
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
-        }
-    };
-
-    // Anular producto: lo enviado no se borra, se anula y deja de cobrarse.
-    const voidProduct = async (item, reason) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        try {
-            await voidOrderItem(orderId, item.id, { reason });
-            toast.success('Producto anulado');
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo anular el producto');
-        }
-    };
-
-    /**
-     * La identidad de la cuenta (alias y compartida) se guarda al enviar: no hay
-     * botón de guardar. Sólo se persiste lo que el mozo cambió.
-     */
-    const persistAlias = async (orderId) => {
-        const account = (openTable?.accounts || []).find((o) => o.id === orderId)
-            || (openTable?.order?.id === orderId ? openTable.order : null);
-        const currentName = account?.customer_name || '';
-        const nextName = aliasDraft.trim();
-        const currentShared = Boolean(account?.shared);
-        if (nextName === currentName && sharedDraft === currentShared) return;
-        await setOrderAlias(orderId, { alias: nextName || null, shared: sharedDraft });
-    };
-
-    /**
-     * Observación rápida. Con más de una unidad la observación es de UNA unidad
-     * ("2 sopas, una sin cebolla"), así que primero se agrega la unidad anotada y
-     * recién después se descuenta del grupo: si algo falla, nunca se pierde comida.
-     */
-    const applyItemNote = async (item, note) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || !item) return;
-        try {
-            if (Number(item.quantity || 1) > 1) {
-                await addOrderItems(orderId, [{ product_id: item.product_id, quantity: 1, notes: note }]);
-                await updateOrderItem(orderId, item.id, { quantity: Number(item.quantity) - 1 });
-            } else {
-                await updateOrderItem(orderId, item.id, { notes: note });
-            }
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
-        }
-    };
-
-    // Corregir "quién pidió qué" sin borrar y volver a cargar el producto. El
-    // origen sale de la propia línea: con la pantalla limpia no hay cuenta
-    // seleccionada, pero el producto sí sabe de quién es.
-    const moveItemToPerson = async (item, targetOrderId, sourceOrderId = null) => {
-        const orderId = sourceOrderId || openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !targetOrderId || !canTake) return;
-        try {
-            await moveOrderItem(orderId, item.id, { target_order_id: targetOrderId });
-            toast.success('Producto movido de persona');
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover el producto');
-        }
-    };
-
-    /**
-     * Envía a cocina los borradores de la cuenta.
-     *
-     * El id es opcional para que el mini-reproductor pueda mandar la cuenta que
-     * mantiene a la vista sin abrir su hoja; sin id, usa la cuenta abierta.
-     */
-    const sendCurrentToKitchen = async (orderId = null) => {
-        // Un `onClick={handler}` cuela el evento de React como primer argumento:
-        // solo un id de texto identifica una cuenta. Sin esta guarda, el destino
-        // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
-        const requested = typeof orderId === 'string' ? orderId : null;
-        const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake) return;
-        const openId = openTable?.order?.id || openTable?.accountId;
-        try {
-            // El alias viaja con la comanda: se guarda acá, sin botón aparte.
-            if (targetId === openId) await persistAlias(targetId);
-            const { data } = await sendOrderToKitchen(targetId);
-            const pending = draftCount(sendItemsFor(targetId), data?.status);
-            const who = data?.customer_name || (data?.shared ? 'Compartido' : 'la persona');
-            toast.success(pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina');
-            await reloadCurrentOrder(targetId);
-            if (targetId === openId) {
-                // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente, que es como el mozo trabaja de verdad. La carta se
-                // pliega y el "+ Pedido" del encabezado queda listo para el próximo.
-                setFlash(`✓ Pedido de ${who} enviado. ¿Siguiente persona?`);
-                setComposerOpen(false);
-                setOpenTable((s) => (s ? {
-                    ...s,
-                    order: null,
-                    accountId: null,
-                    accounts: (s.accounts || []).some((o) => o.id === data?.id)
-                        ? (s.accounts || []).map((o) => (o.id === data?.id ? data : o))
-                        : [...(s.accounts || []), data].filter(Boolean),
-                } : s));
-            }
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
-        }
-    };
-
-    // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
-    const sendItemsFor = (orderId) => {
-        const account = (openTable?.accounts || []).find((o) => o.id === orderId);
-        return (account || sheetOrder || {}).items || [];
-    };
-
-    // El alias también se puede fijar sin enviar (al salir del campo).
-    const saveAlias = async () => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake) return;
-        try {
-            await persistAlias(orderId);
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
-        }
-    };
-
-    // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
-    // abre una cuenta nueva de la misma visita. No es "abrir cuenta" — eso lo
-    // decide el sistema — sino pasar a la siguiente persona.
-    const startAnotherPerson = () => {
-        setFlash(null);
-        setOpenTable((s) => (s ? { ...s, order: null, accountId: null, loading: false } : s));
-    };
-
-    // "Tomar pedido" abre el sheet; la cuenta se crea al agregar el primer
-    // producto. No navega a /pedidos.
-    const takeOrderInline = async (t) => {
-        if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
-        if (t.status === 'pagada') { toast.info('Liberá la mesa pagada antes de tomar pedido'); return; }
-        await openSheet(t);
-    };
-
-    const toggleSelected = (t) => {
-        setSelected((ids) => (ids.includes(t.id) ? ids.filter((id) => id !== t.id) : [...ids, t.id]));
-    };
-
-    const startSelection = () => {
-        setSelected([]);
-        setSelectMode(true);
-    };
-
-    // Estable entre renders: el efecto del Esc la usa como dependencia.
-    const cancelSelection = useCallback(() => {
-        setSelectMode(false);
-        setSelected([]);
-    }, []);
-
-    const joinTables = async () => {
-        if (!canConfirmJoin || joining) return;
-        setJoining(true);
-        try {
-            const { data } = await createTableGroup({ table_ids: selected });
-            const groupId = data?.id || data?.group?.id || null;
-            // Unir mesas tiene inversa fiel: la misma disolución que ya usa la
-            // hoja (`DELETE /table-groups/:id`). Solo se ofrece si la API
-            // devolvió el grupo; sin id no se puede deshacer y no se promete.
-            if (groupId) {
-                toast.success('Mesas unidas', {
-                    duration: 8000,
-                    action: {
-                        label: 'Deshacer',
-                        onClick: async () => {
-                            try {
-                                await deleteTableGroup(groupId);
-                                toast.success('Mesas separadas');
-                            } catch (e) {
-                                toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
-                            } finally {
-                                refreshAll();
-                            }
-                        },
-                    },
-                });
-            } else {
-                toast.success('Mesas unidas');
-            }
-            cancelSelection();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron unir las mesas');
-            refreshAll();
-        } finally {
-            setJoining(false);
-        }
-    };
-
-    const dissolveGroup = async (group) => {
-        if (!group?.id) return;
-        try {
-            await deleteTableGroup(group.id);
-            toast.success('Mesas separadas');
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
-            refreshAll();
-        }
-    };
-
-    const removeGroupMember = async (group, member) => {
-        if (!group?.id || !member?.id) return;
-        try {
-            await removeTableGroupMember(group.id, member.id);
-            toast.success(`Mesa ${member.number} separada`);
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo separar la mesa');
-            refreshAll();
-        }
-    };
-
-    const openTransfer = (t) => {
-        const problem = transferProblem(t, activeOrders);
-        if (problem) { toast.info(problem); return; }
-        closeSheet();
-        setTransferSource(t);
-    };
-
-    const moveVisit = async (target) => {
-        if (!transferSource || movingVisit) return;
-        setMovingVisit(true);
-        try {
-            const { data } = await transferTable(transferSource.id, { target_table_id: target.id });
-            toast.success(`Pedido movido a Mesa ${data?.to_number ?? target.number}`);
-            setTransferSource(null);
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover el pedido');
-            refreshAll();
-        } finally {
-            setMovingVisit(false);
-        }
-    };
-
-    // Charging leaves the floor: the cash screen owns the whole payment flow.
-    const openCharge = (order) => {
-        closeSheet();
-        navigate(`/pedidos/${order.id}`);
-    };
-
-    const deliver = async (orderId) => {
-        try {
-            await serveOrder(orderId);
-            toast.success('Pedido entregado');
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo entregar');
-        }
-    };
-
-    const closeAttention = async (order) => {
-        setClosing(order.id);
-        try {
-            await closeOrderAttention(order.id);
-            toast.success('Atención cerrada');
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            refreshAll();
-            toast.error(e.response?.data?.detail || 'No se pudo cerrar la atención. Puedes reintentar.');
-        } finally {
-            setClosing(null);
-        }
-    };
-
-    const requestBill = async (order) => {
-        try {
-            await setOrderStatus(order.id, { status: 'pendiente_pago' });
-            toast.success('Cuenta solicitada');
-            closeSheet();
-            refreshAll();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo solicitar la cuenta');
-        }
-    };
-
-    const releaseTable = async (t) => {
-        if (!canTake) return;
-        try {
-            await releaseTableRequest(t.id);
-            toast.success(`Mesa ${t.number} libre`);
-            closeSheet();
-            refetchTables?.();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo liberar');
-        }
-    };
+    const areas = useMemo(() => listAreas(tables), [tables]);
+    const decorated = useMemo(
+        () => decorateTables({ tables, byTable, orders, activeOrders }),
+        [tables, byTable, orders, activeOrders]
+    );
+    const units = useMemo(
+        () => buildUnits({ decorated, tables, activeOrders }),
+        [decorated, tables, activeOrders]
+    );
+    const stateCounts = useMemo(() => countByState(units), [units]);
+    const filteredUnits = useMemo(
+        () => filterUnits(units, { areaFilter, stateFilter, search }),
+        [units, areaFilter, stateFilter, search]
+    );
 
     const closeAreas = () => setShowNewOrder(false);
 
@@ -1001,53 +183,11 @@ export default function Salon() {
         return () => document.removeEventListener('keydown', onKey);
     }, []);
 
-    // Esc sale del modo "unir mesas".
-    useEffect(() => {
-        if (!selectMode) return undefined;
-        const onKey = (e) => {
-            if (e.key === 'Escape') { e.preventDefault(); cancelSelection(); }
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [selectMode, cancelSelection]);
+    const miniOrder = useMemo(() => selectMiniOrder(orders, lastOpened), [orders, lastOpened]);
 
-    // El alias del formulario sigue a la cuenta que se está viendo.
-    useEffect(() => {
-        setAliasDraft(openTable?.order?.customer_name || '');
-        setSharedDraft(Boolean(openTable?.order?.shared));
-    }, [openTable?.order?.id, openTable?.order?.customer_name, openTable?.order?.shared]);
-
-    // ── Mini-reproductor del pedido activo ─────────────────────────────────
-    // Mientras la hoja está abierta con una cuenta cargada, esa cuenta pasa a
-    // ser "la última": es la que el mini mantiene a la vista cuando el mozo
-    // vuelve al plano. El setter está guardado por id para que el polling no
-    // re-renderice en cada refresco.
-    useEffect(() => {
-        const t = openTable?.table;
-        const orderId = openTable?.order?.id;
-        if (!t || !orderId) return;
-        setLastOpened((prev) => (prev && prev.tableId === t.id && prev.accountId === orderId
-            ? prev
-            : { tableId: t.id, accountId: orderId, table: t, account: openTable.order }));
-    }, [openTable?.table, openTable?.order?.id, openTable?.order]);
-
-    const openTrackedSheet = () => {
-        if (!lastOpened) return;
-        void openSheet(lastOpened.table, lastOpened.accountId);
-    };
-
-    // La cuenta puede haberse cerrado, cobrado o movido desde el último vistazo:
-    // el mini solo vive mientras el pedido siga abierto en la lista viva.
-    const miniOrder = useMemo(() => {
-        if (!lastOpened) return null;
-        const live = orders.find((o) => o.id === lastOpened.accountId && o.table_id === lastOpened.tableId);
-        const order = live || lastOpened.account;
-        if (!order || ['pagado', 'cancelado'].includes(order.status)) return null;
-        return order;
-    }, [orders, lastOpened]);
-
-    const miniVisible = Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
-        && !moveAccountId && !selectMode;
+    const miniVisible = isMiniVisible({
+        miniOrder, openTable, showNewOrder, transferSource, moveAccountId, selectMode,
+    });
 
     return (
         <div
@@ -1336,63 +476,13 @@ export default function Salon() {
             <Sheet open={Boolean(openTable)} onOpenChange={(o) => { if (!o) closeSheet(); }}>
                 <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col" aria-describedby={undefined} data-testid="mesa-sheet">
                     {openTable && (() => {
-                        const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
-                        const group = openTable.group || t.group || null;
-                        const members = group ? groupMembers(group, tables) : [];
-                        const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
-                        const order = sheetOrder;
-                        const currentAccountId = order?.id || accountId || t.active_order?.id || null;
-                        const floor = floorState(t);
+                        const {
+                            table: t, history, loading, accountTable, accounts, group, members, groupAccounts, order,
+                            currentAccountId, floor, canCompose, allItems, orderItems, sendState, showSend, personAccounts,
+                            persons, summaryRows, receiptAccounts, tableDishes, tableTotal, pendingCount, hasAccount,
+                            actionOrder, actionAccountId, closeable, billRequested,
+                        } = selectSheetModel({ openTable, sheetOrder, tables, activeOrders, canTake, canClose });
                         const s = FLOOR_STYLE[floor.key];
-                        // Composición inline: se puede pedir mientras la mesa no esté cerrada.
-                        const canCompose = canTake && ['disponible', 'ocupada'].includes(t.status);
-                        const allItems = order?.items || [];
-                        const orderItems = allItems.filter((i) => i.status !== 'cancelado');
-                        // Qué ofrece el botón de envío: la comanda entera la primera
-                        // vez, y después sólo los adicionales.
-                        const sendState = order ? sendAction(allItems, order) : null;
-                        const showSend = Boolean(sendState)
-                            && (sendState.kind === 'extra' ? sendState.count > 0 : allItems.length > 0);
-                        // Cada cuenta es una persona, pero sólo se muestra como tal
-                        // cuando algo salió a cocina: mientras todo es borrador, es el
-                        // "nuevo pedido" que el mozo todavía está armando.
-                        const allAccounts = accounts || [];
-                        // La visita la crea el primer pedido, no un botón: por eso la
-                        // barra depende de que exista una cuenta —incluida la que se
-                        // acaba de crear— y no del pedido que el listado del piso
-                        // todavía no refrescó.
-                        const hasAccount = Boolean(t.active_order || order || allAccounts.length > 0);
-                        const personAccounts = allAccounts.filter((o) => !isComposingDraft(activeOrders[o.id] || o));
-                        const persons = personAccounts.map((o, index) => {
-                            const detail = activeOrders[o.id] || o;
-                            return {
-                                id: o.id,
-                                number: o.order_number,
-                                label: personLabel(detail, index),
-                                shared: Boolean(detail.shared),
-                                draftCount: draftCount(detail.items || [], detail.status),
-                            };
-                        });
-                        const summaryRows = tableSummary(allAccounts.map((o, index) => {
-                            const detail = activeOrders[o.id] || o;
-                            return { id: o.id, label: personLabel(detail, index), items: detail.items || [] };
-                        }));
-                        // Salen de las mismas filas que se despliegan, así el número
-                        // de la barra nunca contradice el detalle.
-                        const tableDishes = summaryRows.reduce((sum, row) => sum + row.quantity, 0);
-                        const tableTotal = summaryRows.reduce((sum, row) => sum + row.subtotal, 0);
-                        // Lo que falta enviar de la cuenta que se está armando.
-                        const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
-                        // Con la pantalla limpia para la siguiente persona, las acciones
-                        // de la mesa siguen apuntando a una cuenta real.
-                        const fallbackPerson = persons[0] || null;
-                        const actionOrder = order
-                            || (fallbackPerson ? (activeOrders[fallbackPerson.id] || allAccounts.find((o) => o.id === fallbackPerson.id)) : null);
-                        const actionAccountId = currentAccountId || fallbackPerson?.id || null;
-                        // Con la pantalla limpia para la siguiente persona, las acciones
-                        // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
-                        const closeable = canClose && canCloseAttention(t, actionOrder);
-                        const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
                         return (
                             <>
                                 {/* Título para lectores de pantalla: Radix lo exige en el diálogo. */}
@@ -1447,10 +537,7 @@ export default function Salon() {
                                         <TableReceipt
                                             table={t}
                                             rows={summaryRows}
-                                            accounts={personAccounts.map((o, index) => {
-                                                const detail = activeOrders[o.id] || o;
-                                                return { id: o.id, label: personLabel(detail, index), total: itemsTotal(detail.items || []) };
-                                            })}
+                                            accounts={receiptAccounts}
                                             total={tableTotal}
                                             pending={pendingCount}
                                         />
@@ -1831,9 +918,7 @@ export default function Salon() {
                     </DialogHeader>
                     <div className="space-y-4 py-2">
                         {(() => {
-                            const targets = (tables || []).filter((t) => (
-                                t.status === 'disponible' && !t.active_order && !t.active_attention_id && t.id !== openTable?.table?.id
-                            ));
+                            const targets = freeTablesForAccountMove(tables, openTable?.table?.id);
                             return targets.length === 0 ? (
                                 <p className="text-sm text-muted-foreground text-center py-4" data-testid="mover-cuenta-sin-mesas">
                                     No hay mesas libres para mover la cuenta.
