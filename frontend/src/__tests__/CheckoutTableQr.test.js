@@ -175,8 +175,26 @@ describe('checkout con QR de mesa', () => {
         expect(host.querySelector('[data-testid="checkout-prepay-warning"]')).toBeNull();
         expect(host.querySelector('[data-testid="checkout-pay-button"]').textContent).toContain('Confirmar pedido');
         await click(host, 'checkout-pay-button');
-        expect(host.querySelector('[data-testid="checkout-result-title"]').textContent).toBe('Pago confirmado ✓');
+        // Nadie pagó todavía: el título no puede afirmar un pago.
+        expect(host.querySelector('[data-testid="checkout-result-title"]').textContent).toBe('Pedido enviado a cocina');
+        expect(host.textContent).not.toContain('Pago confirmado');
         expect(host.textContent).toContain('Pedido #1043 enviado a cocina');
+        await act(async () => root.unmount());
+    });
+
+    it('dice "Pago confirmado" solo cuando el pago está confirmado', async () => {
+        mockApi({ prepay: { ...PREPAY_POLICY, prepay_required: false, prepay_mode: 'never' } });
+        api.post.mockResolvedValue({
+            data: {
+                id: 'order-4', tracking_code: 'TRACK4', order_number: 1045, total: 32,
+                payment_method: 'yape', payment_state: 'confirmado', payment_status: 'pagado', prepay_required: false,
+                sent_to_kitchen: true, status: 'enviado_cocina',
+            },
+        });
+        const { host, root } = await render();
+        await click(host, 'checkout-confirmar-button');
+        await click(host, 'checkout-pay-button');
+        expect(host.querySelector('[data-testid="checkout-result-title"]').textContent).toBe('Pago confirmado ✓');
         await act(async () => root.unmount());
     });
 
@@ -201,7 +219,7 @@ describe('checkout con QR de mesa', () => {
         expect(host.querySelector('[data-testid="checkout-prepay-warning"]')).toBeNull();
         await click(host, 'checkout-pay-button');
         expect(host.textContent).toContain('Se cobra en caja');
-        expect(host.querySelector('[data-testid="checkout-result-title"]').textContent).toBe('Pago confirmado ✓');
+        expect(host.querySelector('[data-testid="checkout-result-title"]').textContent).toBe('Pedido enviado a cocina');
         await act(async () => root.unmount());
     });
 
