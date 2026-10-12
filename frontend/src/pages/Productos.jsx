@@ -441,8 +441,9 @@ export default function Productos({ section = 'platos' }) {
                     </DialogHeader>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
-                            <Label>{form.is_combo ? 'Nombre del combo *' : 'Nombre *'}</Label>
+                            <Label htmlFor="producto-form-nombre">{form.is_combo ? 'Nombre del combo *' : 'Nombre *'}</Label>
                             <Input
+                                id="producto-form-nombre"
                                 value={form.name}
                                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                                 placeholder={form.is_combo ? 'Ej: Combo almuerzo criollo' : 'Ej: Ceviche clásico'}
@@ -450,8 +451,9 @@ export default function Productos({ section = 'platos' }) {
                             />
                         </div>
                         <div className="sm:col-span-2">
-                            <Label>{form.is_combo ? 'Código / identificador' : 'Código (opcional)'}</Label>
+                            <Label htmlFor="producto-form-codigo">{form.is_combo ? 'Código / identificador' : 'Código (opcional)'}</Label>
                             <Input
+                                id="producto-form-codigo"
                                 value={form.code}
                                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                                 placeholder={form.is_combo ? 'Ej: ALM-01' : 'Ej: CE-01'}
@@ -459,27 +461,28 @@ export default function Productos({ section = 'platos' }) {
                             />
                         </div>
                         <div className="sm:col-span-2">
-                            <Label>Descripción</Label>
+                            <Label htmlFor="producto-form-descripcion">Descripción</Label>
                             <Textarea
+                                id="producto-form-descripcion"
                                 value={form.description}
                                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                                 placeholder={form.is_combo ? 'Qué incluye y para quién es' : ''}
                             />
                         </div>
-                        <div><Label>Precio (S/)</Label><Input type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="producto-form-price" /></div>
-                        <div><Label>Tiempo prep. (min)</Label><Input type="number" min="1" value={form.preparation_time} onChange={(e) => setForm({ ...form, preparation_time: e.target.value })} /></div>
+                        <div><Label htmlFor="producto-form-precio-s">Precio (S/)</Label><Input id="producto-form-precio-s" type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="producto-form-price" /></div>
+                        <div><Label htmlFor="producto-form-tiempo-prep-min">Tiempo prep. (min)</Label><Input id="producto-form-tiempo-prep-min" type="number" min="1" value={form.preparation_time} onChange={(e) => setForm({ ...form, preparation_time: e.target.value })} /></div>
                         {!form.is_combo && (
                             <div className="sm:col-span-2">
-                                <Label>Categoría</Label>
+                                <Label htmlFor="producto-form-categoria">Categoría</Label>
                                 <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
-                                    <SelectTrigger data-testid="producto-form-category"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                                    <SelectTrigger id="producto-form-categoria" data-testid="producto-form-category"><SelectValue placeholder="Selecciona" /></SelectTrigger>
                                     <SelectContent>
                                         {categories.filter((c) => c.slug !== 'combos').map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                         )}
-                        <div className="sm:col-span-2"><Label>URL imagen (opcional)</Label><Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} /></div>
+                        <div className="sm:col-span-2"><Label htmlFor="producto-form-url-imagen-opcional">URL imagen (opcional)</Label><Input id="producto-form-url-imagen-opcional" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} /></div>
                         {form.is_combo && (
                             <div className="sm:col-span-2 space-y-2 border border-border rounded-sm p-3">
                                 <div className="font-medium text-sm">Platos que incluye</div>

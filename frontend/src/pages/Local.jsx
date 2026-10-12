@@ -207,13 +207,13 @@ export function ZonasPanel() {
                     <DialogHeader><DialogTitle>{editing ? 'Editar zona' : 'Nueva zona'}</DialogTitle></DialogHeader>
                     <div className="space-y-4">
                         <div>
-                            <Label>Nombre</Label>
-                            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
+                            <Label htmlFor="zona-form-nombre">Nombre</Label>
+                            <Input id="zona-form-nombre" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
                         </div>
                         <div>
-                            <Label>Sucursal asignada</Label>
+                            <Label htmlFor="zona-form-sucursal">Sucursal asignada</Label>
                             <Select value={branchId} onValueChange={setBranchId}>
-                                <SelectTrigger data-testid="zona-form-branch">
+                                <SelectTrigger id="zona-form-sucursal" data-testid="zona-form-branch">
                                     <SelectValue placeholder="Seleccionar sucursal..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -468,17 +468,17 @@ export function TablesManager() {
                     <DialogHeader><DialogTitle>{editing ? 'Editar mesa' : 'Nueva mesa'}</DialogTitle></DialogHeader>
                     {/* Una columna en móvil: a 360 px cada campo de la rejilla de 2 quedaba en ~136 px */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><Label>Número</Label><Input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
-                        <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-                        <div><Label>Capacidad</Label><Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
-                        <div><Label>Zona</Label>
+                        <div><Label htmlFor="mesa-form-numero">Número</Label><Input id="mesa-form-numero" type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
+                        <div><Label htmlFor="mesa-form-nombre">Nombre</Label><Input id="mesa-form-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                        <div><Label htmlFor="mesa-form-capacidad">Capacidad</Label><Input id="mesa-form-capacidad" type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
+                        <div><Label htmlFor="mesa-form-zona">Zona</Label>
                             <Select value={form.area} onValueChange={(v) => {
                                 const zoneBranch = getZoneBranch(v);
                                 // Si la mesa no tiene branch_id explícito, hereda de la zona
                                 const newBranchId = (!editing || !editing.branch_id) ? (zoneBranch || '') : form.branch_id;
                                 setForm({ ...form, area: v, branch_id: newBranchId });
                             }}>
-                                <SelectTrigger data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
+                                <SelectTrigger id="mesa-form-zona" data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
                                 <SelectContent>
                                     {zones.map((z) => <SelectItem key={z.id} value={z.name}>{z.name}</SelectItem>)}
                                 </SelectContent>
@@ -528,9 +528,9 @@ export function TablesManager() {
                             )}
                         </div>
                         {editing && (
-                            <div className="col-span-2"><Label>Estado</Label>
+                            <div className="col-span-2"><Label htmlFor="mesa-form-estado">Estado</Label>
                                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger id="mesa-form-estado"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {['disponible', 'ocupada', 'esperando_pago', 'reservada', 'inactiva'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                                     </SelectContent>

@@ -30,8 +30,8 @@ export default function OpenCajaCard({ onOpened, branchId, canOpen = true, runMu
             <div className="flex items-center gap-3 mb-3"><LockOpen className="h-5 w-5 text-primary" /><h2 className="font-display text-xl font-semibold">Apertura de caja</h2></div>
             <p className="text-sm text-muted-foreground mb-3">Registra el monto inicial en efectivo en la caja para empezar el turno.</p>
             <div className="grid sm:grid-cols-2 gap-3">
-                <div><Label>Monto inicial (S/)</Label><Input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-11" data-testid="caja-apertura-monto" /></div>
-                <div><Label>Notas (opcional)</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} className="h-11" /></div>
+                <div><Label htmlFor="caja-apertura-monto-inicial-s">Monto inicial (S/)</Label><Input id="caja-apertura-monto-inicial-s" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-11" data-testid="caja-apertura-monto" /></div>
+                <div><Label htmlFor="caja-apertura-notas-opcional">Notas (opcional)</Label><Input id="caja-apertura-notas-opcional" value={notes} onChange={(e) => setNotes(e.target.value)} className="h-11" /></div>
             </div>
             <Button onClick={open} disabled={loading || !canOpen} className="mt-4 h-11" data-testid="caja-apertura-submit"><LockOpen className="h-4 w-4 mr-2" /> Abrir caja</Button>
         </CardContent></Card>

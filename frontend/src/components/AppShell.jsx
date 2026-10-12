@@ -215,6 +215,12 @@ export const AppShell = () => {
     return (
         <NotifyProvider>
         <div className="min-h-dvh flex bg-background">
+            <a
+                href="#contenido"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-sm focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+                Saltar al contenido
+            </a>
             <aside className="hidden md:flex w-64 shrink-0 border-r border-border">
                 <SidebarContent user={user} restaurant={restaurant} readyCount={readyCount} />
             </aside>
@@ -271,7 +277,7 @@ export const AppShell = () => {
                 {/* Sin utilidades de padding inferior: el hueco de la barra
                     inferior lo pone `.has-bottom-nav`, que vive en la capa
                     `components` y perdería contra un `p-*` de `utilities`. */}
-                <main className="has-bottom-nav flex-1 px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
+                <main id="contenido" tabIndex={-1} className="has-bottom-nav flex-1 focus:outline-none px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
                     <Suspense fallback={<RouteLoading />}>
                         <Outlet />
                     </Suspense>

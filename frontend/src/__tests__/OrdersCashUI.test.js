@@ -211,3 +211,29 @@ describe('T05 Caja payment history clarity', () => {
         expect(host.textContent).toContain('Anulado');
     });
 });
+
+describe('Pedidos "Ver" links', () => {
+    let host; let root;
+    beforeEach(() => {
+        api.get.mockReset().mockResolvedValue({ data: [] });
+        host = document.createElement('div');
+        document.body.appendChild(host);
+        root = createRoot(host);
+    });
+    afterEach(async () => {
+        await act(async () => root.unmount());
+        host.remove();
+        document.body.innerHTML = '';
+    });
+
+    it('give every order a distinct accessible name', async () => {
+        mockOrders = [
+            baseOrder({ id: 'o-a', order_number: 51, status: 'en_preparacion' }),
+            baseOrder({ id: 'o-b', order_number: 52, status: 'en_preparacion' }),
+        ];
+        await act(async () => root.render(<Pedidos />));
+        await flush();
+        const names = ['51', '52'].map((n) => host.querySelector(`[data-testid="pedidos-ver-${n}"]`).getAttribute('aria-label'));
+        expect(names).toEqual(['Ver pedido #51', 'Ver pedido #52']);
+    });
+});
