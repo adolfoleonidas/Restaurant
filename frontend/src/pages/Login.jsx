@@ -40,6 +40,10 @@ export default function Login() {
 
     if (user) return <Navigate to={homeFor(user)} replace />;
 
+    // Demo credentials are a development convenience only: CRA inlines
+    // NODE_ENV at build time, so production bundles drop this block.
+    const showDemo = process.env.NODE_ENV !== 'production';
+
     const submit = async (e) => {
         e.preventDefault();
         if (!email || !password) {
@@ -139,23 +143,25 @@ export default function Login() {
                         </Button>
                     </form>
 
-                    <div className="mt-8 pt-6 border-t border-border">
-                        <div className="page-kicker mb-3">Cuentas demo</div>
-                        <div className="grid grid-cols-2 gap-2">
-                            {DEMO.map((d) => (
-                                <button
-                                    key={d.email}
-                                    type="button"
-                                    onClick={() => fillDemo(d)}
-                                    data-testid={`demo-${d.role}-button`}
-                                    className="flex flex-col items-start rounded-sm border border-border bg-secondary/40 hover:bg-secondary px-3 py-2.5 text-left transition-colors"
-                                >
-                                    <span className="text-xs font-semibold">{ROLE_LABELS[d.role]}</span>
-                                    <span className="text-xs text-muted-foreground break-all w-full">{d.email}</span>
-                                </button>
-                            ))}
+                    {showDemo && (
+                        <div className="mt-8 pt-6 border-t border-border">
+                            <div className="page-kicker mb-3">Cuentas demo</div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {DEMO.map((d) => (
+                                    <button
+                                        key={d.email}
+                                        type="button"
+                                        onClick={() => fillDemo(d)}
+                                        data-testid={`demo-${d.role}-button`}
+                                        className="flex flex-col items-start rounded-sm border border-border bg-secondary/40 hover:bg-secondary px-3 py-2.5 text-left transition-colors"
+                                    >
+                                        <span className="text-xs font-semibold">{ROLE_LABELS[d.role]}</span>
+                                        <span className="text-xs text-muted-foreground break-all w-full">{d.email}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </main>
