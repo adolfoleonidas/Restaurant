@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listPaymentProofs } from '@/lib/api/payments';
+import { getOrder } from '@/lib/api/orders';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +35,7 @@ export default function Comprobantes() {
     const [detail, setDetail] = useState(null);
 
     const { data, refetch } = usePolling(
-        () => api.get('/payments/proofs', { params: filter === 'pending' ? { pending: true } : {} }).then((r) => r.data),
+        () => listPaymentProofs(filter === 'pending' ? { pending: true } : {}).then((r) => r.data),
         10000,
         [filter, generation]
     );
@@ -58,7 +59,7 @@ export default function Comprobantes() {
     const openDetail = async (row) => {
         setDetail({ row, image: null, loading: true });
         try {
-            const { data: order } = await api.get(`/orders/${row.id}`);
+            const { data: order } = await getOrder(row.id);
             setDetail({ row: { ...row, ...order }, image: order?.payment_proof_url || null, loading: false });
         } catch {
             toast.error('No se pudo cargar el comprobante');

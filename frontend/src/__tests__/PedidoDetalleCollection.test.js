@@ -28,7 +28,7 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const source = fetcher.toString();
-        if (source.includes('/orders/${id}')) return { data: mockOrder, refetch: mockOrderRefetch };
+        if (source.includes('getOrder')) return { data: mockOrder, refetch: mockOrderRefetch };
         return { data: [], refetch: jest.fn() };
     },
 }));

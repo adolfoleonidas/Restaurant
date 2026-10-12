@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { listBranches } from '@/lib/api/branches';
+import { createUser, deleteUser, listUsers, updateUser } from '@/lib/api/users';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,13 +37,13 @@ export default function Usuarios() {
     const [confirmDel, setConfirmDel] = useState(null);
     const { user: me } = useAuth();
 
-    const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
+    const load = async () => { const { data } = await listUsers(); setUsers(data); };
     useEffect(() => { load(); }, []);
     const loadBranches = async () => {
         setBranchesLoading(true);
         setBranchesError(false);
         try {
-            const { data } = await api.get('/branches');
+            const { data } = await listBranches();
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
@@ -62,12 +63,12 @@ export default function Usuarios() {
                 const payload = { full_name: form.full_name, role: form.role, phone: form.phone, can_discount: form.can_discount, can_void: form.can_void, functions: form.functions };
                 if (form.password) payload.password = form.password;
                 if (form.branch_id && form.branch_id !== (editing.branch_id || '')) payload.branch_id = form.branch_id;
-                await api.patch(`/users/${editing.id}`, payload);
+                await updateUser(editing.id, payload);
                 toast.success('Actualizado');
             } else {
                 const { branch_id, ...payload } = form;
                 if (branch_id) payload.branch_id = branch_id;
-                await api.post('/users', payload);
+                await createUser(payload);
                 toast.success('Creado');
             }
             setDlg(false); await load();
@@ -75,11 +76,11 @@ export default function Usuarios() {
         finally { setSaving(false); }
     };
     const doDelete = async (u) => {
-        try { await api.delete(`/users/${u.id}`); toast.success('Eliminado'); await load(); }
+        try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
     };
     const toggleActive = async (u) => {
-        try { await api.patch(`/users/${u.id}`, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
+        try { await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
         catch (e) { toast.error('Error'); }
     };
 

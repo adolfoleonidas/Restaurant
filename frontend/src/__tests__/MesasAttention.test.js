@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 const mockOrder = { id: 'order-1', order_number: 22, status: 'en_preparacion', source: 'staff', order_type: 'mesa', acceptance_status: 'aceptado', attention_number: 3, attention_business_date: '2026-10-02', branch_id: 'branch-2', items: [], total: 20 };
 const mockTables = [{ id: 'table-1', number: 7, name: 'Mesa 7', area: 'Salón', capacity: 4, status: 'ocupada', active_attention_id: 'attention-1', active_order: mockOrder }];
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn() } }));
-jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: (fetcher) => fetcher.toString().includes("api.get('/tables')") ? { data: mockTables, refetch: jest.fn() } : { data: mockOrder } }));
+jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: (fetcher) => /^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(fetcher.toString()) ? { data: mockTables, refetch: jest.fn() } : { data: mockOrder } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));

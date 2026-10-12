@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { createCategory, deleteCategory, listCategories, updateCategory } from '@/lib/api/categories';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ export default function Categorias() {
     const [form, setForm] = useState({ name: '', description: '', sort_order: 0 });
     const [confirmDel, setConfirmDel] = useState(null);
 
-    const load = async () => { const { data } = await api.get('/categories'); setCats(data); };
+    const load = async () => { const { data } = await listCategories(); setCats(data); };
     useEffect(() => { load(); }, []);
 
     const openNew = () => { setEditing(null); setForm({ name: '', description: '', sort_order: cats.length + 1 }); setDlg(true); };
@@ -28,13 +28,13 @@ export default function Categorias() {
     const save = async () => {
         try {
             const payload = { ...form, sort_order: Number(form.sort_order) };
-            if (editing) { await api.patch(`/categories/${editing.id}`, payload); toast.success('Actualizado'); }
-            else { await api.post('/categories', payload); toast.success('Creado'); }
+            if (editing) { await updateCategory(editing.id, payload); toast.success('Actualizado'); }
+            else { await createCategory(payload); toast.success('Creado'); }
             setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
     const doDelete = async (c) => {
-        try { await api.delete(`/categories/${c.id}`); toast.success('Eliminada'); await load(); }
+        try { await deleteCategory(c.id); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
     };
 

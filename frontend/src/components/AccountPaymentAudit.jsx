@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { getOrder } from '@/lib/api/orders';
+import { listPaymentsByOrder } from '@/lib/api/payments';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtDateFull, PAYMENT_LABELS } from '@/lib/format';
@@ -102,8 +103,8 @@ export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_P
         setResult({ orderId, status: 'loading' });
         const options = Object.keys(scopeParams || {}).length ? { params: scopeParams } : undefined;
         Promise.all([
-            api.get(`/orders/${encodeURIComponent(orderId)}`, options),
-            api.get(`/payments/by-order/${encodeURIComponent(orderId)}`, options),
+            getOrder(encodeURIComponent(orderId), options),
+            listPaymentsByOrder(encodeURIComponent(orderId), options),
         ]).then(([orderResponse, paymentResponse]) => {
             if (!active || sequence !== requestSequence.current) return;
             const audit = inspectAudit(orderId, orderResponse?.data, paymentResponse?.data);

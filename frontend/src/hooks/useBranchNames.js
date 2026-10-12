@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { listBranches } from '@/lib/api/branches';
 
 export default function useBranchNames(scopeKey) {
     const [catalog, setCatalog] = useState({ scopeKey: null, names: {} });
@@ -12,7 +12,7 @@ export default function useBranchNames(scopeKey) {
             return () => { generation.current += 1; };
         }
         setCatalog({ scopeKey, names: {} });
-        api.get('/branches').then(({ data }) => {
+        listBranches().then(({ data }) => {
             if (generation.current !== requestGeneration) return;
             const names = Object.fromEntries((Array.isArray(data) ? data : [])
                 .filter((branch) => typeof branch?.id === 'string' && typeof branch?.name === 'string')

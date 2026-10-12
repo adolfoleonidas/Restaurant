@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getRestaurant, getSystemInfo, resetCatalog as resetCatalogRequest, resetData, updateRestaurant } from '@/lib/api/restaurant';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,14 +23,14 @@ function Temas() {
     const [saving, setSaving] = useState(false);
     
     useEffect(() => {
-        api.get('/restaurants/current').then((res) => setRestaurant(res.data));
+        getRestaurant().then((res) => setRestaurant(res.data));
     }, []);
     
     const saveTheme = async (themeId) => {
         if (!restaurant) return;
         setSaving(true);
         try {
-            await api.patch('/restaurants/current', { theme_id: themeId });
+            await updateRestaurant({ theme_id: themeId });
             setTheme(themeId);
             toast.success('Tema guardado para todo el restaurante');
         } catch (e) {
@@ -99,9 +99,9 @@ function Temas() {
 
 function Restaurante() {
     const [r, setR] = useState(null);
-    useEffect(() => { api.get('/restaurants/current').then((res) => setR(res.data)); }, []);
+    useEffect(() => { getRestaurant().then((res) => setR(res.data)); }, []);
     const save = async () => {
-        try { const { data } = await api.patch('/restaurants/current', r); setR(data); toast.success('Configuración guardada'); }
+        try { const { data } = await updateRestaurant(r); setR(data); toast.success('Configuración guardada'); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la configuración. Revisá tu conexión y reintentá.'); }
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
@@ -169,7 +169,7 @@ function Marca() {
     const [r, setR] = useState(null);
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => { api.get('/restaurants/current').then((res) => setR(res.data)); }, []);
+    useEffect(() => { getRestaurant().then((res) => setR(res.data)); }, []);
     const set = (patch) => setR((prev) => ({ ...prev, ...patch }));
 
     const onFile = (key) => (e) => {
@@ -184,7 +184,7 @@ function Marca() {
     const save = async () => {
         setSaving(true);
         try {
-            const { data } = await api.patch('/restaurants/current', {
+            const { data } = await updateRestaurant({
                 logo_url: r.logo_url || '',
                 cover_url: r.cover_url || '',
                 public_description: r.public_description || '',
@@ -305,13 +305,13 @@ function Funciones() {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        api.get('/restaurants/current').then((res) => setFeatures(mergeFeatures(res.data?.features)));
+        getRestaurant().then((res) => setFeatures(mergeFeatures(res.data?.features)));
     }, []);
 
     const save = async () => {
         setSaving(true);
         try {
-            await api.patch('/restaurants/current', { features });
+            await updateRestaurant({ features });
             notifyFeaturesChanged();
             toast.success('Funciones guardadas');
         } catch (e) {
@@ -391,7 +391,7 @@ function Datos() {
 
     const loadInfo = async () => {
         try {
-            const { data } = await api.get('/system/info');
+            const { data } = await getSystemInfo();
             setInfo(data);
             setInfoError(false);
         } catch {
@@ -405,7 +405,7 @@ function Datos() {
         if (!password) { toast.error('Ingresa tu contraseña de administrador'); return; }
         setLoading(true);
         try {
-            await api.post('/data/reset', { confirm: confirm.trim(), password });
+            await resetData({ confirm: confirm.trim(), password });
             toast.success('Datos operativos restablecidos');
             setOpen(false);
             setConfirm('');
@@ -429,7 +429,7 @@ function Datos() {
         if (!catalogPassword) { toast.error('Ingresa tu contraseña de administrador'); return; }
         setCatalogLoading(true);
         try {
-            const { data } = await api.post('/data/catalog', { confirm: catalogConfirm.trim(), password: catalogPassword });
+            const { data } = await resetCatalogRequest({ confirm: catalogConfirm.trim(), password: catalogPassword });
             const cleared = data?.cleared || {};
             toast.success(`Carta vaciada: ${cleared.products ?? 0} platos y ${cleared.categories ?? 0} categorías`);
             setCatalogOpen(false);
