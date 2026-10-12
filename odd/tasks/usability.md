@@ -69,3 +69,12 @@ About 800 to 1200 authored changed lines (UX-01 alone touches ~25 files mechanic
 ## Next step
 
 All ten tasks are implemented. Next: rebuild the stack from this branch and re-check the critical and major findings in the browser (touch targets, focus ring and dark contrast need real rendering, not jsdom); then decide on delivery slicing (`feature-branch-chain`).
+
+## Parent verification (2026-10-12, rebuilt stack with fresh volume)
+
+- Backend hermetic suite re-run by the parent: 515 passed, 49 deselected.
+- Integration suite against `localhost:8082`: 22 failed, 6 errors, 20 passed, 1 skipped (was 41 failed, 1 error, 7 passed). The remaining failures are the pre-existing stale suite, not regressions; refresh is a separate task.
+- Browser: production login shows no demo accounts (PB-01 confirmed on the real bundle); Equipo create with a 6-character password (client `minlength` removed to force the server 422) shows the toast "Contraseña: debe tener al menos 8 caracteres." and the screen does not crash (finding 01 fixed).
+- API: mozo, cajero, and cocina log in on the fresh seed and list 12 tables each (finding 04 fixed).
+- Checkout heading keyed on `isPaid` (finding 02) confirmed in `pages/Checkout.jsx:367`; covered by frontend tests, not re-walked in the browser.
+- No voseo/usted forms left in non-test frontend sources (grep).
