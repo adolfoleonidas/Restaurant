@@ -354,7 +354,7 @@ describe('table branch assignment controls', () => {
         }));
         const view = await render(TablesManager);
         expect(document.body.querySelector('[data-testid="mesa-sin-sucursal-aviso"]')).not.toBeNull();
-        expect(document.body.textContent).toContain('creá una en la pestaña Sucursales');
+        expect(document.body.textContent).toContain('crea una en la pestaña Sucursales');
         expect(document.body.querySelector('[data-testid="mesa-sin-sucursal-asignar"]')).toBeNull();
         await cleanup(view);
     });

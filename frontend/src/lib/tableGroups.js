@@ -80,7 +80,7 @@ export function groupMembership(tables = []) {
  */
 export function selectionProblem(tables = [], activeOrders = {}, selectedIds = []) {
     const selected = (tables || []).filter((table) => selectedIds.includes(table.id));
-    if (selected.length < 2) return 'Seleccioná al menos dos mesas para unirlas';
+    if (selected.length < 2) return 'Selecciona al menos dos mesas para unirlas';
     const branch = selected[0].branch_id;
     if (selected.some((table) => table.branch_id !== branch)) {
         return 'Las mesas deben pertenecer a la misma sucursal';
@@ -117,9 +117,9 @@ export function transferCandidates(tables = [], activeOrders = {}, sourceTable =
 
 /** Why the visit of this table cannot be moved, or null when it can. */
 export function transferProblem(sourceTable, activeOrders = {}) {
-    if (!sourceTable) return 'Elegí una mesa';
+    if (!sourceTable) return 'Elige una mesa';
     if (!tableHasAccount(sourceTable, activeOrders)) return 'La mesa no tiene un pedido activo para mover';
-    if (sourceTable.group?.id) return 'Separala del grupo de mesas antes de mover el pedido';
+    if (sourceTable.group?.id) return 'Sepárala del grupo de mesas antes de mover el pedido';
     return null;
 }
 

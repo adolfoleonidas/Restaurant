@@ -28,7 +28,7 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const source = fetcher.toString();
-        if (source.includes('/orders/${id}')) return { data: mockOrder, refetch: mockOrderRefetch };
+        if (source.includes('getOrder')) return { data: mockOrder, refetch: mockOrderRefetch };
         return { data: [], refetch: jest.fn() };
     },
 }));
@@ -296,5 +296,16 @@ describe('PedidoDetalle collection entry', () => {
         } finally {
             mockOrder.items = originalItems;
         }
+    });
+
+    it('offers "Anular pedido" in the destructive style', async () => {
+        mockUser.role = 'admin';
+        const view = await renderDetail();
+        await flush();
+        const cancel = view.host.querySelector('[data-testid="pedido-cancelar-button"]');
+        expect(cancel).not.toBeNull();
+        expect(cancel.className).toContain('text-destructive');
+        expect(cancel.className).toContain('border-destructive');
+        await cleanup(view);
     });
 });

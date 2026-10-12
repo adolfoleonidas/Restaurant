@@ -99,7 +99,7 @@ async def resolve_branch_id(
                 raise HTTPException(status_code=404, detail="Sucursal no encontrada")
             return requested
         if owner_must_choose:
-            raise HTTPException(status_code=400, detail="Seleccione una sucursal para esta operación")
+            raise HTTPException(status_code=400, detail="Selecciona una sucursal para esta operación")
         return None
     branch_id = await validate_user_branch(user, branches)
     if requested and requested != branch_id:
@@ -124,7 +124,7 @@ async def read_branch_filter(
     """Build a read-only branch filter without changing owner default visibility."""
     tenantwide = has_tenantwide_branch_access(user)
     if legacy_only and requested is not None:
-        raise HTTPException(status_code=400, detail="Seleccione sucursal o registros históricos, no ambos")
+        raise HTTPException(status_code=400, detail="Selecciona sucursal o registros históricos, no ambos")
     if legacy_only:
         if not tenantwide:
             raise HTTPException(status_code=403, detail="No tiene acceso a registros históricos sin sucursal")

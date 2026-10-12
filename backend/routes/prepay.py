@@ -119,7 +119,7 @@ async def open_paid_table_order(order: dict) -> None:
     except AttentionBlocked as exc:
         raise HTTPException(
             status_code=409,
-            detail=f"El pago quedó registrado pero la mesa cambió: revisá la mesa antes de continuar. {exc.detail}",
+            detail=f"El pago quedó registrado pero la mesa cambió: revisa la mesa antes de continuar. {exc.detail}",
         ) from exc
 
 

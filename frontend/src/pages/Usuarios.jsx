@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '@/lib/api';
+import { listBranches } from '@/lib/api/branches';
+import { createUser, deleteUser, listUsers, updateUser } from '@/lib/api/users';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +17,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const ROLE_AVATAR_BG = {
     admin: 'bg-purple-100 text-purple-700',
@@ -36,17 +38,17 @@ export default function Usuarios() {
     const [confirmDel, setConfirmDel] = useState(null);
     const { user: me } = useAuth();
 
-    const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
+    const load = async () => { const { data } = await listUsers(); setUsers(data); };
     useEffect(() => { load(); }, []);
     const loadBranches = async () => {
         setBranchesLoading(true);
         setBranchesError(false);
         try {
-            const { data } = await api.get('/branches');
+            const { data } = await listBranches();
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
-            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
+            toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales'));
         } finally { setBranchesLoading(false); }
     };
     useEffect(() => { loadBranches(); }, []);
@@ -62,24 +64,24 @@ export default function Usuarios() {
                 const payload = { full_name: form.full_name, role: form.role, phone: form.phone, can_discount: form.can_discount, can_void: form.can_void, functions: form.functions };
                 if (form.password) payload.password = form.password;
                 if (form.branch_id && form.branch_id !== (editing.branch_id || '')) payload.branch_id = form.branch_id;
-                await api.patch(`/users/${editing.id}`, payload);
+                await updateUser(editing.id, payload);
                 toast.success('Actualizado');
             } else {
                 const { branch_id, ...payload } = form;
                 if (branch_id) payload.branch_id = branch_id;
-                await api.post('/users', payload);
+                await createUser(payload);
                 toast.success('Creado');
             }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (u) => {
-        try { await api.delete(`/users/${u.id}`); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
+        try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
     };
     const toggleActive = async (u) => {
-        try { await api.patch(`/users/${u.id}`, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
+        try { await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
         catch (e) { toast.error('Error'); }
     };
 
@@ -109,7 +111,7 @@ export default function Usuarios() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* min-h-11: el Switch mide 24 px de alto; la fila da el área táctil, sin encoger en escritorio */}
-                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
+                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} aria-label={`Activo: ${u.full_name}`} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={`Editar ${u.full_name}`}><Pencil className="h-4 w-4" /></Button>
                                 {u.id !== me.id && (<Button size="icon" variant="ghost" aria-label={`Eliminar ${u.full_name}`} onClick={() => setConfirmDel(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
                             </div>
@@ -134,13 +136,13 @@ export default function Usuarios() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</DialogTitle></DialogHeader>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><Label>Nombre completo</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} data-testid="usuario-form-name" /></div>
-                        <div><Label>Teléfono</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-                        <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} data-testid="usuario-form-email" /></div>
+                        <div><Label htmlFor="usuario-form-nombre-completo">Nombre completo</Label><Input id="usuario-form-nombre-completo" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} data-testid="usuario-form-name" /></div>
+                        <div><Label htmlFor="usuario-form-telefono">Teléfono</Label><Input id="usuario-form-telefono" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                        <div><Label htmlFor="usuario-form-email">Email</Label><Input id="usuario-form-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} data-testid="usuario-form-email" /></div>
                         <div>
-                            <Label>Rol</Label>
+                            <Label htmlFor="usuario-form-rol">Rol</Label>
                             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v, functions: ROLE_FUNCTIONS[v] || form.functions })}>
-                                <SelectTrigger data-testid="usuario-form-rol"><SelectValue /></SelectTrigger>
+                                <SelectTrigger id="usuario-form-rol" data-testid="usuario-form-rol"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     {Object.entries(ROLE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                                 </SelectContent>
@@ -163,7 +165,7 @@ export default function Usuarios() {
                             {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="usuario-branches-retry">Reintentar</Button></div>}
                             {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
                         </div>
-                        <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /></div>
+                        <div className="sm:col-span-2"><Label htmlFor="usuario-form-password">{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input id="usuario-form-password" type="password" minLength={8} aria-describedby="usuario-form-pass-hint" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /><p id="usuario-form-pass-hint" className="text-xs text-muted-foreground mt-1">Mínimo 8 caracteres</p></div>
                         <div className="sm:col-span-2 space-y-2 text-sm">
                             <div className="text-xs text-muted-foreground">Funciones (se pueden combinar)</div>
                             {Object.entries(FN_LABELS).map(([k, lab]) => (

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { createBranch, listBranches, updateBranch } from '@/lib/api/branches';
+import { createTable, deleteTable, listTables, updateTable } from '@/lib/api/tables';
+import { createZone, deleteZone, listZones, updateZone } from '@/lib/api/zones';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,11 +12,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Grid2X2, Plus, Pencil, Trash2, MapPin, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
-import { TABLE_STATUS_LABELS } from '@/lib/format';
+import { TABLE_STATUS_LABELS } from '@/constants/status';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Local — structural master data of the venue (sede → zona → mesa).
@@ -29,8 +32,8 @@ export function SucursalesPanel() {
     const [saving, setSaving] = useState(false);
     const load = async () => {
         setLoading(true);
-        try { const { data } = await api.get('/branches'); setBranches(Array.isArray(data) ? data : []); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales'); }
+        try { const { data } = await listBranches(); setBranches(Array.isArray(data) ? data : []); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales')); }
         finally { setLoading(false); }
     };
     useEffect(() => { load(); }, []);
@@ -38,23 +41,23 @@ export function SucursalesPanel() {
     const create = async () => {
         setSaving(true);
         try {
-            await api.post('/branches', draft);
+            await createBranch(draft);
             setDraft({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
             toast.success('Sucursal creada'); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear la sucursal'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo crear la sucursal')); }
         finally { setSaving(false); }
     };
     const save = async (branch) => {
         setSaving(true);
         try {
-            await api.patch(`/branches/${branch.id}`, {
+            await updateBranch(branch.id, {
                 name: branch.name,
                 timezone: branch.timezone,
                 business_day_cutoff: branch.business_day_cutoff,
                 pickup_enabled: Boolean(branch.pickup_enabled),
             });
             toast.success('Sucursal guardada'); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la sucursal'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la sucursal')); }
         finally { setSaving(false); }
     };
     const fields = (value, onChange, prefix) => (
@@ -97,9 +100,9 @@ export function ZonasPanel() {
     const load = async () => {
         try {
             const [z, b, t] = await Promise.all([
-                api.get('/zones'),
-                api.get('/branches'),
-                api.get('/tables')
+                listZones(),
+                listBranches(),
+                listTables()
             ]);
             setZones(z.data);
             setBranches(Array.isArray(b.data) ? b.data : []);
@@ -130,15 +133,15 @@ export function ZonasPanel() {
             const payload = { name };
             if (branchId) payload.branch_id = branchId;
 
-            if (editing) await api.patch(`/zones/${editing.id}`, payload);
-            else await api.post('/zones', payload);
+            if (editing) await updateZone(editing.id, payload);
+            else await createZone(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const doDelete = async (z) => {
-        try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        try { await deleteZone(z.id); toast.success('Zona eliminada'); await load(); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const getBranchName = (id) => {
@@ -156,10 +159,10 @@ export function ZonasPanel() {
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2"><MapPin className="h-5 w-5" /> Zonas del salón</h2>
                 <Button onClick={openNew} data-testid="zona-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva zona</Button>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">Asigná una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
+            <p className="text-xs text-muted-foreground mb-4">Asigna una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
 
             {zones.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Sin zonas. Creá una para agrupar las mesas (ej: Salón, Terraza).</p>
+                <p className="text-sm text-muted-foreground py-2">Sin zonas. Crea una para agrupar las mesas (ej: Salón, Terraza).</p>
             ) : (
                 <div className="space-y-3">
                     {zones.map((z) => {
@@ -204,13 +207,13 @@ export function ZonasPanel() {
                     <DialogHeader><DialogTitle>{editing ? 'Editar zona' : 'Nueva zona'}</DialogTitle></DialogHeader>
                     <div className="space-y-4">
                         <div>
-                            <Label>Nombre</Label>
-                            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
+                            <Label htmlFor="zona-form-nombre">Nombre</Label>
+                            <Input id="zona-form-nombre" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Terraza" data-testid="zona-form-name" />
                         </div>
                         <div>
-                            <Label>Sucursal asignada</Label>
+                            <Label htmlFor="zona-form-sucursal">Sucursal asignada</Label>
                             <Select value={branchId} onValueChange={setBranchId}>
-                                <SelectTrigger data-testid="zona-form-branch">
+                                <SelectTrigger id="zona-form-sucursal" data-testid="zona-form-branch">
                                     <SelectValue placeholder="Seleccionar sucursal..." />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -271,7 +274,7 @@ export function TablesManager() {
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
         try {
-            const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
+            const [t, z] = await Promise.all([listTables(), listZones()]);
             setTables(t.data); setZones(z.data);
         } catch {
             // Keep the section usable with whatever data is already loaded.
@@ -282,11 +285,11 @@ export function TablesManager() {
         setBranchesLoading(true);
         setBranchesError(false);
         try {
-            const { data } = await api.get('/branches');
+            const { data } = await listBranches();
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
-            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
+            toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales'));
         } finally { setBranchesLoading(false); }
     };
     useEffect(() => { loadBranches(); }, []);
@@ -300,14 +303,14 @@ export function TablesManager() {
             const { branch_id, ...tableForm } = form;
             const payload = { ...tableForm, number: Number(form.number), capacity: Number(form.capacity) };
             if (branch_id && branch_id !== (editing?.branch_id || '')) payload.branch_id = branch_id;
-            if (editing) await api.patch(`/tables/${editing.id}`, payload);
-            else await api.post('/tables', payload);
+            if (editing) await updateTable(editing.id, payload);
+            else await createTable(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (t) => {
-        try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
+        try { await deleteTable(t.id); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error('Error'); }
     };
 
@@ -346,14 +349,14 @@ export function TablesManager() {
         let done = 0;
         try {
             for (const t of missingBranch) {
-                await api.patch(`/tables/${t.id}`, { branch_id: assignBranch });
+                await updateTable(t.id, { branch_id: assignBranch });
                 done += 1;
             }
             toast.success(done === 1 ? 'Mesa asignada' : `${done} mesas asignadas`);
         } catch (e) {
-            const detail = e.response?.data?.detail;
+            const detail = apiErrorMessage(e, '');
             toast.error(done > 0
-                ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintentá con el resto.'}`
+                ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintenta con el resto.'}`
                 : (detail || 'No se pudieron asignar las mesas'));
         } finally {
             setAssigning(false);
@@ -369,7 +372,7 @@ export function TablesManager() {
                 <Button className="h-11 sm:h-10" onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-                Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
+                Las mesas heredan la sucursal de su zona. Puedes asignar una sucursal diferente individualmente si es necesario.
             </p>
             {missingBranch.length > 0 && (
                 <div
@@ -382,7 +385,7 @@ export function TablesManager() {
                     </p>
                     <p className="mt-1 text-muted-foreground">
                         El mozo, la caja y la cocina solo ven las mesas de su sucursal: estas mesas no
-                        aparecen en su salón. Asigná la sucursal de la zona (pestaña Zonas) o elegila acá.
+                        aparecen en su salón. Asigna la sucursal de la zona (pestaña Zonas) o elígela acá.
                     </p>
                     {branches.length > 0 ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -394,7 +397,7 @@ export function TablesManager() {
                                 aria-label="Sucursal para las mesas sin sucursal"
                                 data-testid="mesa-sin-sucursal-branch"
                             >
-                                <option value="">Elegí una sucursal</option>
+                                <option value="">Elige una sucursal</option>
                                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                             </select>
                             <Button
@@ -408,7 +411,7 @@ export function TablesManager() {
                         </div>
                     ) : (
                         <p className="mt-2 text-muted-foreground">
-                            Todavía no hay sucursales: creá una en la pestaña Sucursales para poder asignarlas.
+                            Todavía no hay sucursales: crea una en la pestaña Sucursales para poder asignarlas.
                         </p>
                     )}
                 </div>
@@ -465,17 +468,17 @@ export function TablesManager() {
                     <DialogHeader><DialogTitle>{editing ? 'Editar mesa' : 'Nueva mesa'}</DialogTitle></DialogHeader>
                     {/* Una columna en móvil: a 360 px cada campo de la rejilla de 2 quedaba en ~136 px */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><Label>Número</Label><Input type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
-                        <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-                        <div><Label>Capacidad</Label><Input type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
-                        <div><Label>Zona</Label>
+                        <div><Label htmlFor="mesa-form-numero">Número</Label><Input id="mesa-form-numero" type="number" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} data-testid="mesa-form-number" /></div>
+                        <div><Label htmlFor="mesa-form-nombre">Nombre</Label><Input id="mesa-form-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+                        <div><Label htmlFor="mesa-form-capacidad">Capacidad</Label><Input id="mesa-form-capacidad" type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} /></div>
+                        <div><Label htmlFor="mesa-form-zona">Zona</Label>
                             <Select value={form.area} onValueChange={(v) => {
                                 const zoneBranch = getZoneBranch(v);
                                 // Si la mesa no tiene branch_id explícito, hereda de la zona
                                 const newBranchId = (!editing || !editing.branch_id) ? (zoneBranch || '') : form.branch_id;
                                 setForm({ ...form, area: v, branch_id: newBranchId });
                             }}>
-                                <SelectTrigger data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
+                                <SelectTrigger id="mesa-form-zona" data-testid="mesa-form-area"><SelectValue placeholder="Elige una zona" /></SelectTrigger>
                                 <SelectContent>
                                     {zones.map((z) => <SelectItem key={z.id} value={z.name}>{z.name}</SelectItem>)}
                                 </SelectContent>
@@ -525,9 +528,9 @@ export function TablesManager() {
                             )}
                         </div>
                         {editing && (
-                            <div className="col-span-2"><Label>Estado</Label>
+                            <div className="col-span-2"><Label htmlFor="mesa-form-estado">Estado</Label>
                                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger id="mesa-form-estado"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         {['disponible', 'ocupada', 'esperando_pago', 'reservada', 'inactiva'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                                     </SelectContent>

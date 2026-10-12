@@ -14,7 +14,7 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 let mockTables = [];
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
-    default: (fetcher) => (fetcher.toString().includes("api.get('/tables')")
+    default: (fetcher) => (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(fetcher.toString())
         ? { data: mockTables, refetch: jest.fn() }
         : { data: null, refetch: jest.fn() }),
 }));

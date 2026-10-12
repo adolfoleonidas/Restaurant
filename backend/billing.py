@@ -79,12 +79,12 @@ def account_total(*, subtotal, delivery_fee=0, discount=0, tip=0) -> float:
 
 def guarded_totals(order: dict, items: list, removed_item: dict = None):
     if removed_item is not None and int(removed_item.get("paid_qty") or 0) > 0:
-        raise BillError("No podés quitar un producto que ya fue cobrado")
+        raise BillError("No puedes quitar un producto que ya fue cobrado")
     for item in billable_items(items):
         quantity = int(item.get("quantity") or 0)
         paid = int(item.get("paid_qty") or 0)
         if quantity < 1 or quantity < paid:
-            raise BillError("No podés dejar un producto por debajo de lo ya cobrado")
+            raise BillError("No puedes dejar un producto por debajo de lo ya cobrado")
     subtotal = money(sum(float(item.get("subtotal") or 0) for item in billable_items(items)))
     total = account_total(
         subtotal=subtotal,
@@ -99,7 +99,7 @@ def guarded_totals(order: dict, items: list, removed_item: dict = None):
 
 def assert_can_cancel(order: dict):
     if money(order.get("amount_paid") or 0) > 0.009:
-        raise BillError("Devolvé o anulá los cobros antes de cancelar el pedido")
+        raise BillError("Devuelve o anula los cobros antes de cancelar el pedido")
 
 
 DRAWER_METHODS = ("efectivo", "yape", "plin", "tarjeta", "transferencia")

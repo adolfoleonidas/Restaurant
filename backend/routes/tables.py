@@ -66,7 +66,7 @@ async def _resolve_area(restaurant_id: str, area: str, branch_id: str | None = N
         return area, legacy
     raise HTTPException(
         status_code=400,
-        detail="Hay más de una zona con ese nombre; elegí la sucursal de la mesa",
+        detail="Hay más de una zona con ese nombre; elige la sucursal de la mesa",
     )
 
 
@@ -176,7 +176,7 @@ async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin",
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
     if table.get("qr_revoked"):
-        raise HTTPException(status_code=400, detail="El QR está revocado. Regeneralo desde el panel.")
+        raise HTTPException(status_code=400, detail="El QR está revocado. Regenéralo desde el panel.")
     nonce = table.get("qr_nonce")
     if not nonce:
         nonce = secrets.token_urlsafe(16)
@@ -230,13 +230,13 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     if active:
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
     if table.get("status") == "pagada":
-        raise HTTPException(status_code=400, detail="Liberá la mesa pagada antes de tomarla")
+        raise HTTPException(status_code=400, detail="Libera la mesa pagada antes de tomarla")
     if table.get("status") not in ("disponible", "ocupada"):
         raise HTTPException(status_code=400, detail="Esta mesa no se puede tomar")
     claim = await db.tables.update_one({**scope, "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
         {"$set": {"status": "ocupada", "updated_at": _now()}})
     if getattr(claim, "matched_count", 0) != 1:
-        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
+        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; vuelve a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada", branch_id=table.get("branch_id"))
     await record_audit("seat", "table", table_id, user, {"table_number": table.get("number")},
                        branch_id=table.get("branch_id"))
@@ -263,7 +263,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
     claim = await db.tables.update_one({**scope, "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
         {"$set": {"status": "disponible", "updated_at": _now()}})
     if getattr(claim, "matched_count", 0) != 1:
-        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
+        raise HTTPException(status_code=409, detail="La visita de la mesa cambió; vuelve a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible", branch_id=table.get("branch_id"))
     await record_audit("release", "table", table_id, user, {"table_number": table.get("number")},
                        branch_id=table.get("branch_id"))
@@ -328,7 +328,7 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
         if not table:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")
         if table.get("group_id"):
-            raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de cambiar de sucursal")
+            raise HTTPException(status_code=409, detail="Sepárala del grupo de mesas antes de cambiar de sucursal")
         if table.get("active_attention_id") or table.get("opening_order_id") or table.get("status") != "disponible":
             raise HTTPException(status_code=409, detail="No se puede cambiar la sucursal de una mesa ocupada o en apertura")
         active = await db.orders.find_one({
@@ -353,16 +353,16 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
         if not table:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")
         if update.get("status") == "inactiva" and table.get("group_id"):
-            raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de desactivarla")
+            raise HTTPException(status_code=409, detail="Sepárala del grupo de mesas antes de desactivarla")
         if table.get("active_attention_id") or table.get("opening_order_id"):
-            raise HTTPException(status_code=409, detail="Cerrá la visita antes de cambiar el estado de la mesa")
+            raise HTTPException(status_code=409, detail="Cierra la visita antes de cambiar el estado de la mesa")
         scope["active_attention_id"] = {"$exists": False}
         scope["opening_order_id"] = {"$exists": False}
     update["updated_at"] = _now()
     res = await db.tables.update_one(scope, {"$set": update})
     if res.matched_count == 0:
         if "branch_id" in update or "status" in update:
-            raise HTTPException(status_code=409, detail="La mesa cambió; volvé a cargarla")
+            raise HTTPException(status_code=409, detail="La mesa cambió; vuelve a cargarla")
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
     result = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     return _table_response(result)
@@ -374,7 +374,7 @@ async def delete_table(table_id: str, user: dict = Depends(require_roles(["admin
         {"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "group_id": 1}
     )
     if grouped and grouped.get("group_id"):
-        raise HTTPException(status_code=409, detail="Separala del grupo de mesas antes de eliminarla")
+        raise HTTPException(status_code=409, detail="Sepárala del grupo de mesas antes de eliminarla")
     res = await db.tables.delete_one({"id": table_id, "restaurant_id": user["restaurant_id"], "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -484,7 +484,7 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
     duplicating it.
     """
     if data.target_table_id == table_id:
-        raise HTTPException(status_code=400, detail="Elegí una mesa destino distinta")
+        raise HTTPException(status_code=400, detail="Elige una mesa destino distinta")
     source = await _load_scoped_table(table_id, user)
     target = await _load_scoped_table(data.target_table_id, user, "Mesa destino no encontrada")
     if source.get("branch_id") != target.get("branch_id"):
@@ -492,7 +492,7 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
     if source.get("group_id") or target.get("group_id"):
         raise HTTPException(
             status_code=409,
-            detail="Hay mesas unidas en el grupo; separá las mesas antes de mover el pedido",
+            detail="Hay mesas unidas en el grupo; separa las mesas antes de mover el pedido",
         )
 
     order = await _open_order_for_table(table_id, user)
@@ -513,7 +513,7 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
                                   attention_id=attention_id, user=user, now=now):
             raise HTTPException(
                 status_code=409,
-                detail="El movimiento quedó a medias; reintentá la operación para completarlo",
+                detail="El movimiento quedó a medias; reintenta la operación para completarlo",
             )
         return await _transfer_response(stranded["id"], source, target, user, reconciled=True)
 
@@ -527,10 +527,10 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
         if not attention:
             raise HTTPException(
                 status_code=409,
-                detail="La visita de la mesa todavía no está abierta; reintentá abrirla antes de moverla",
+                detail="La visita de la mesa todavía no está abierta; reintenta abrirla antes de moverla",
             )
         if attention.get("table_id") != source["id"]:
-            raise HTTPException(status_code=409, detail="La visita cambió de mesa; volvé a cargar el salón")
+            raise HTTPException(status_code=409, detail="La visita cambió de mesa; vuelve a cargar el salón")
 
     target_order = await _open_order_for_table(target["id"], user)
     if target_order:
@@ -552,7 +552,7 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
         "opening_order_id": {"$exists": False},
     }, {"$set": fields})
     if getattr(reserved, "modified_count", 0) != 1:
-        raise HTTPException(status_code=409, detail="La mesa destino cambió; volvé a cargar el salón")
+        raise HTTPException(status_code=409, detail="La mesa destino cambió; vuelve a cargar el salón")
 
     order_filter = {"id": order["id"], "restaurant_id": user["restaurant_id"], "table_id": source["id"]}
     if attention_id:
@@ -565,13 +565,13 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
     moved = await db.orders.update_one(order_filter, {"$set": {"table_id": target["id"], "updated_at": now}})
     if getattr(moved, "modified_count", 0) != 1:
         await _undo_reservation(target, attention_id, user, now)
-        raise HTTPException(status_code=409, detail="El pedido cambió; volvé a cargarlo antes de mover la mesa")
+        raise HTTPException(status_code=409, detail="El pedido cambió; vuelve a cargarlo antes de mover la mesa")
 
     moved_order = await db.orders.find_one({"id": order["id"], "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     if not await _finish_move(order=moved_order or order, source=source, target=target,
                               attention_id=attention_id, user=user, now=now):
         raise HTTPException(
             status_code=409,
-            detail="El pedido se movió pero la visita quedó pendiente; reintentá la operación para completarla",
+            detail="El pedido se movió pero la visita quedó pendiente; reintenta la operación para completarla",
         )
     return await _transfer_response(order["id"], source, target, user)
