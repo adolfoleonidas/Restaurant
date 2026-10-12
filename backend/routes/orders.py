@@ -491,7 +491,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
-    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"), kitchen=False)
     return await _current_order_response(order_id, user)
 
 
@@ -566,7 +566,8 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
     if getattr(result, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La cuenta cambió mientras la revisabas")
     await _resume_merge_operation(operation, user)
-    emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, new_status, source=target.get("source"), extra="merged", branch_id=target.get("branch_id"),
+               related_order_ids=[source["id"]])
     return await _current_order_response(order_id, user)
 
 
@@ -749,7 +750,8 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
     if getattr(result, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La cuenta cambió mientras la revisabas")
     await _resume_split_operation(order, operation)
-    emit_order(user["restaurant_id"], order_id, operation["result_status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, operation["result_status"], source=order.get("source"), extra="split", branch_id=order.get("branch_id"),
+               related_order_ids=[child["id"] for child in operation["children"]])
     return await _current_order_response(order_id, user)
 
 
@@ -807,7 +809,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         "updated_at": _now(),
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
-    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed", branch_id=o.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed", branch_id=o.get("branch_id"), kitchen=False)
     return await _current_order_response(order_id, user)
 
 
@@ -961,7 +963,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
         "updated_at": _now(),
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
-    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated", branch_id=o.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated", branch_id=o.get("branch_id"), kitchen=False)
     return await _current_order_response(order_id, user)
 
 

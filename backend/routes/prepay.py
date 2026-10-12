@@ -104,7 +104,8 @@ async def record_public_prepayment(order: dict, user: dict, *, reason: str = Non
         "created_at": _now(),
     })
     emit_order(restaurant_id, order["id"], stored.get("status") if stored else order.get("status"),
-               source="public", payment_status="pagado", branch_id=order.get("branch_id"))
+               source="public", payment_status="pagado", branch_id=order.get("branch_id"),
+               topics=("prepay",))
     if order.get("table_id"):
         emit_notice(restaurant_id, "table", table_id=order["table_id"], status="ocupada", branch_id=order.get("branch_id"))
     return payment
