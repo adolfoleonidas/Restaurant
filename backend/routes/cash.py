@@ -134,7 +134,7 @@ async def current_register(
 @router.get("/history")
 async def cash_history(
     user: dict = Depends(require_roles(["admin", "cajero"])),
-    period: str = Query("day", regex="^(day|week|month)$"),
+    period: str = Query("day", pattern="^(day|week|month)$"),
     branch_id: str | None = Query(None),
     legacy_only: bool = False,
 ):

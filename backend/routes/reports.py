@@ -111,7 +111,7 @@ async def dashboard(
 @router.get("/sales")
 async def sales_report(
     user: dict = Depends(require_roles(["admin", "cajero"])),
-    period: str = Query("day", regex="^(day|week|month)$"),
+    period: str = Query("day", pattern="^(day|week|month)$"),
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     branch_id: Optional[str] = None,
@@ -176,7 +176,7 @@ async def sales_report(
 @router.get("/products")
 async def product_sales(
     user: dict = Depends(require_roles(["admin", "cajero"])),
-    period: str = Query("day", regex="^(day|week|month)$"),
+    period: str = Query("day", pattern="^(day|week|month)$"),
     branch_id: Optional[str] = None,
     legacy_only: bool = False,
 ):

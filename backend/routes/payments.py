@@ -191,7 +191,7 @@ async def list_payments(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     limit: int = 200,
     q: Optional[str] = None,
-    period: Optional[str] = Query(None, regex="^(day|week|month)$"),
+    period: Optional[str] = Query(None, pattern="^(day|week|month)$"),
     branch_id: Optional[str] = None,
     legacy_only: bool = False,
 ):

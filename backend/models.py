@@ -39,7 +39,8 @@ def _user_branch_id(value: str) -> str:
 
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    # bcrypt only reads the first 72 bytes, and newer versions refuse longer input.
+    password: str = Field(min_length=8, max_length=72)
     full_name: str
     role: Role
     phone: Optional[str] = None
@@ -59,7 +60,7 @@ class UserUpdate(BaseModel):
     role: Optional[Role] = None
     phone: Optional[str] = None
     status: Optional[Literal["active", "inactive"]] = None
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, min_length=8, max_length=72)
     can_discount: Optional[bool] = None
     can_void: Optional[bool] = None
     functions: Optional[List[str]] = None
@@ -139,9 +140,9 @@ TableStatus = Literal["disponible", "ocupada", "esperando_pago", "reservada", "i
 
 
 class TableCreate(BaseModel):
-    number: int
+    number: int = Field(ge=1, le=9999)
     name: Optional[str] = None
-    capacity: int = 4
+    capacity: int = Field(default=4, ge=1, le=100)
     area: str = "Salón"
     branch_id: Optional[str] = None
 
@@ -152,9 +153,9 @@ class TableCreate(BaseModel):
 
 
 class TableUpdate(BaseModel):
-    number: Optional[int] = None
+    number: Optional[int] = Field(default=None, ge=1, le=9999)
     name: Optional[str] = None
-    capacity: Optional[int] = None
+    capacity: Optional[int] = Field(default=None, ge=1, le=100)
     area: Optional[str] = None
     status: Optional[TableStatus] = None
     branch_id: Optional[str] = None
@@ -215,7 +216,7 @@ class TableTransfer(BaseModel):
 # ============== ZONE ==============
 class ZoneCreate(BaseModel):
     name: str = Field(min_length=1, max_length=60)
-    sort_order: int = 0
+    sort_order: int = Field(default=0, ge=0, le=100_000)
     branch_id: Optional[str] = None
 
     @field_validator("branch_id")
@@ -226,7 +227,7 @@ class ZoneCreate(BaseModel):
 
 class ZoneUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=60)
-    sort_order: Optional[int] = None
+    sort_order: Optional[int] = Field(default=None, ge=0, le=100_000)
     branch_id: Optional[str] = None
 
     @field_validator("branch_id", mode="before")
@@ -336,13 +337,13 @@ class BranchUpdate(BaseModel):
 class CategoryCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    sort_order: int = 0
+    sort_order: int = Field(default=0, ge=0, le=100_000)
 
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    sort_order: Optional[int] = None
+    sort_order: Optional[int] = Field(default=None, ge=0, le=100_000)
     status: Optional[Literal["active", "inactive"]] = None
 
 
@@ -359,7 +360,7 @@ class ProductCreate(BaseModel):
     price: float = Field(ge=0)
     image_url: Optional[str] = None
     is_available: bool = True
-    preparation_time: int = 15  # minutes
+    preparation_time: int = Field(default=15, ge=0, le=1440)  # minutes
     is_combo: bool = False
     combo_items: Optional[List[ComboComponent]] = None
     code: Optional[str] = None
@@ -372,7 +373,7 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
-    preparation_time: Optional[int] = None
+    preparation_time: Optional[int] = Field(default=None, ge=0, le=1440)
     is_combo: Optional[bool] = None
     combo_items: Optional[List[ComboComponent]] = None
     code: Optional[str] = None
@@ -392,23 +393,23 @@ OrderType = Literal["mesa", "local", "recojo", "delivery", "llevar"]
 class OrderItemInput(BaseModel):
     product_id: str
     quantity: int = Field(ge=1, default=1)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=200)
 
 
 class OrderCreate(BaseModel):
     table_id: Optional[str] = None
     branch_id: Optional[str] = None
     order_type: OrderType = "mesa"
-    items: List[OrderItemInput] = []
-    notes: Optional[str] = None
+    items: List[OrderItemInput] = Field(default=[], max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=500)
     # Cuenta adicional dentro de la misma visita de la mesa (multi-cuenta).
     new_account: bool = False
     # Cuenta "Compartido": lo que pide la mesa entera (fuente, jarra, entrada).
     shared: bool = False
     # Staff can take counter/pickup/delivery orders too, so they need the customer.
-    customer_name: Optional[str] = None
-    customer_phone: Optional[str] = None
-    customer_address: Optional[str] = None
+    customer_name: Optional[str] = Field(default=None, max_length=100)
+    customer_phone: Optional[str] = Field(default=None, max_length=30)
+    customer_address: Optional[str] = Field(default=None, max_length=300)
 
     @field_validator("branch_id")
     @classmethod
@@ -459,12 +460,12 @@ class PublicOrderCreate(BaseModel):
     table_id: Optional[str] = None
     table_token: Optional[str] = None
     branch_id: Optional[str] = None
-    customer_name: Optional[str] = None
-    customer_phone: Optional[str] = None
-    customer_address: Optional[str] = None
-    customer_email: Optional[str] = None
-    items: List[OrderItemInput]
-    notes: Optional[str] = None
+    customer_name: Optional[str] = Field(default=None, max_length=100)
+    customer_phone: Optional[str] = Field(default=None, max_length=30)
+    customer_address: Optional[str] = Field(default=None, max_length=300)
+    customer_email: Optional[str] = Field(default=None, max_length=254)
+    items: List[OrderItemInput] = Field(max_length=100)
+    notes: Optional[str] = Field(default=None, max_length=500)
     payment_method: Literal["efectivo", "yape", "plin", "transferencia", "tarjeta"]
 
     @field_validator("branch_id")
@@ -483,7 +484,7 @@ class StaffPaymentProof(BaseModel):
 
 
 class PublicItemsAdd(BaseModel):
-    items: List[OrderItemInput]
+    items: List[OrderItemInput] = Field(max_length=100)
 
 
 class PublicItemUpdate(BaseModel):
@@ -531,7 +532,7 @@ class PaymentCreate(BaseModel):
     tip: float = Field(default=0.0, ge=0)
     splits: Optional[List[PaymentSplit]] = None  # for mixto
     lines: Optional[List[PaymentLine]] = None
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
     discount_reason: Optional[str] = None
     idempotency_key: Optional[str] = None
     expected_updated_at: Optional[str] = None
@@ -566,7 +567,7 @@ class ApprovalCreate(BaseModel):
     reason: str = Field(min_length=5)
     payment_id: Optional[str] = None
     order_id: Optional[str] = None
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0, le=1_000_000)
 
 
 class ApprovalDecide(BaseModel):
@@ -581,13 +582,13 @@ class OrderReassign(BaseModel):
 # ============== CASH REGISTER ==============
 class CashOpen(BaseModel):
     opening_amount: float = Field(ge=0)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
     branch_id: Optional[str] = None
 
 
 class CashClose(BaseModel):
     closing_amount: float = Field(ge=0)
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(default=None, max_length=500)
     branch_id: Optional[str] = None
 
 
