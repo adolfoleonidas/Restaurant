@@ -41,8 +41,10 @@ export default function useSalonData({
     );
     const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
 
-    // Carta para componer el pedido sin salir del salón.
-    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, [generation]);
+    // Carta para componer el pedido sin salir del salón. No sigue a `generation`:
+    // la carta cambia pocas veces al día y refetcharla en cada evento del salón
+    // (cada toque del mozo lo genera) solo repinta el compositor.
+    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, []);
     const { data: liveCategories } = usePolling(() => listCategories().then((r) => r.data), 60000);
     const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
     const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);

@@ -76,6 +76,8 @@ export default function useTableSheet({
     // Id of an account created by the queue that the sheet state has not shown yet:
     // it keeps the next queued product from creating a second account.
     const createdAccountRef = useRef(null);
+    // Set when the queue created an account: only then does saving taps change what the floor shows.
+    const floorChangedRef = useRef(false);
     const leavingRef = useRef(false);
     const [awaitingSend, setAwaitingSend] = useState(false);
 
@@ -226,20 +228,26 @@ export default function useTableSheet({
     };
 
     // ── Pedido inline (sin salir del salón) ────────────────────────────────
+    // Shows an account the server just returned (a read, or the answer to a write).
+    const applyOrder = (data) => {
+        const orderId = data.id;
+        setOpenTable((s) => {
+            if (!s) return s;
+            const isSelected = s.order?.id === orderId || s.accountId === orderId;
+            return {
+                ...s, accounts: accountSnapshots(s, data),
+                ...(isSelected ? { order: data, accountId: orderId } : {}),
+            };
+        });
+    };
+
     // Re-reads an account into the sheet. Best-effort by default; the sync queue
     // asks for `strict` so a dead network is reported instead of hidden.
     const reloadCurrentOrder = async (orderId, { strict = false } = {}) => {
         try {
             const { data } = await getOrder(orderId);
             if (data?.id !== orderId) return null;
-            setOpenTable((s) => {
-                if (!s) return s;
-                const isSelected = s.order?.id === orderId || s.accountId === orderId;
-                return {
-                    ...s, accounts: accountSnapshots(s, data),
-                    ...(isSelected ? { order: data, accountId: orderId } : {}),
-                };
-            });
+            applyOrder(data);
             return data;
         } catch (e) {
             if (strict) throw e;
@@ -269,6 +277,8 @@ export default function useTableSheet({
         }
         const { data } = await createOrder(payload);
         createdAccountRef.current = { tableId: s.table.id, id: data.id };
+        // The table now has an account: the floor needs one refresh when the taps are saved.
+        floorChangedRef.current = true;
         setOpenTable((prev) => (prev && prev.table.id === s.table.id
             ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
             : prev));
@@ -287,6 +297,7 @@ export default function useTableSheet({
         placeholder: emptyOrder,
         ensureOrderId: ensureAccount,
         loadOrder: (orderId) => reloadCurrentOrder(orderId, { strict: true }),
+        acceptOrder: applyOrder,
         onError: (error, entry) => {
             // The line is already back at the last confirmed quantity; one toast,
             // and a re-read in case the server did apply part of it.
@@ -296,7 +307,14 @@ export default function useTableSheet({
             ));
             if (entry.orderId) void reloadCurrentOrder(entry.orderId);
         },
-        onSynced: () => refreshAll(),
+        // A quantity change is confirmed from the write's own response and the
+        // realtime stream refreshes the floor; the floor is refreshed here only
+        // when the taps opened a new account (its table changes state).
+        onSynced: () => {
+            if (!floorChangedRef.current) return;
+            floorChangedRef.current = false;
+            refreshAll();
+        },
     });
     // What the screen shows: the confirmed order plus the taps still on their way.
     const sheetOrder = sync.order;
