@@ -43,8 +43,9 @@ describe('useFloorView', () => {
         expect(view.areas).toEqual(['todas', 'Terraza', 'Salón']);
         expect(view.units.map((u) => u.anchorNumber)).toEqual([1, 2, 3]);
         expect(view.stateCounts).toMatchObject({ todas: 3, libre: 1, listo: 1 });
-        expect(view.summary).toEqual({ toPrep: 1, toReady: 2, toPay: 2 });
-        expect(view.floorSummary).toBe('En preparación 1 · listos para entregar 2 · cuentas por cobrar 2');
+        // toPay counts the tables of the "Por cobrar" chip (none here: t1 is ready), not raw orders.
+        expect(view.summary).toEqual({ toPrep: 1, toReady: 2, toPay: 0 });
+        expect(view.floorSummary).toBe('En cocina 1 plato · listos 2 platos · por cobrar 0 mesas');
         expect(view.floorDue).toBe(20);
         expect(view.pickups.active.map((o) => o.id)).toEqual(['o9']);
         expect(view.byTable.t1.id).toBe('o1');
