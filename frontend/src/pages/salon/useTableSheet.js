@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import usePolling from '@/hooks/usePolling';
+import useOrderLineSync from '@/hooks/useOrderLineSync';
 import {
-    addOrderItems,
     createOrder,
     getOrder,
     listOrders,
@@ -18,6 +18,7 @@ import {
 } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
 import { draftCount, editableItems, isDraft } from '@/lib/orderDraft';
+import { plainDraftLine } from '@/lib/optimisticOrder';
 import { groupAccountTables, groupMembers } from '@/lib/tableGroups';
 import {
     accountSnapshots,
@@ -66,6 +67,18 @@ export default function useTableSheet({
     // hoja sin depender de que la mesa siga en el listado del polling.
     const [lastOpened, setLastOpened] = useState(null);
     const escapeActionsRef = useRef(null);
+    // The queue worker runs between renders, so it reads the sheet through refs.
+    const openTableRef = useRef(null);
+    // Id of an account created by the queue that the sheet state has not shown yet:
+    // it keeps the next queued product from creating a second account.
+    const createdAccountRef = useRef(null);
+    const leavingRef = useRef(false);
+    const [awaitingSend, setAwaitingSend] = useState(false);
+
+    openTableRef.current = openTable;
+    if (createdAccountRef.current && openTable?.order?.id === createdAccountRef.current.id) {
+        createdAccountRef.current = null;
+    }
 
     const openOrderId = openTable?.order?.id || null;
     const { data: liveOrderData } = usePolling(
@@ -76,7 +89,7 @@ export default function useTableSheet({
     // La hoja muestra el snapshot más fresco: el polling vivo puede ser anterior
     // a una recarga puntual (alta de producto, alias), y con la versión vieja la
     // línea recién agregada no aparecía hasta el próximo refresco.
-    const sheetOrder = selectFreshOrder(openTable?.order, liveOrderData);
+    const serverOrder = selectFreshOrder(openTable?.order, liveOrderData);
 
     const composeTableFor = (account) => {
         const selectedTable = (tables || []).find((table) => table.id === openTable?.table?.id) || openTable?.table;
@@ -88,7 +101,7 @@ export default function useTableSheet({
     };
 
     const openSheet = async (t, preferredOrderId = null) => {
-        if (savingItem || sendingToKitchen || openTable?.loading) return null;
+        if (writing() || sendingToKitchen || openTable?.loading) return null;
         // A joined table with no account of its own reads the group's account,
         // but only when the group holds exactly one: with two separate bills
         // there is nothing unambiguous to follow, so the sheet lists them.
@@ -133,9 +146,9 @@ export default function useTableSheet({
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
     const selectAccount = async (orderId, validate = null) => {
-        if (!orderId || savingItem || sendingToKitchen || openTable?.loading) return null;
+        if (!orderId || writing() || sendingToKitchen || openTable?.loading) return null;
         setOpenTable((s) => (s ? {
-            ...s, accounts: accountSnapshots(s, sheetOrder), accountId: orderId, loading: true,
+            ...s, accounts: accountSnapshots(s, serverOrder), accountId: orderId, loading: true,
         } : s));
         try {
             const { data } = await getOrder(orderId);
@@ -209,10 +222,12 @@ export default function useTableSheet({
     };
 
     // ── Pedido inline (sin salir del salón) ────────────────────────────────
-    const reloadCurrentOrder = async (orderId) => {
+    // Re-reads an account into the sheet. Best-effort by default; the sync queue
+    // asks for `strict` so a dead network is reported instead of hidden.
+    const reloadCurrentOrder = async (orderId, { strict = false } = {}) => {
         try {
             const { data } = await getOrder(orderId);
-            if (data?.id !== orderId) return;
+            if (data?.id !== orderId) return null;
             setOpenTable((s) => {
                 if (!s) return s;
                 const isSelected = s.order?.id === orderId || s.accountId === orderId;
@@ -221,18 +236,25 @@ export default function useTableSheet({
                     ...(isSelected ? { order: data, accountId: orderId } : {}),
                 };
             });
-        } catch { /* la recarga es best-effort */ }
+            return data;
+        } catch (e) {
+            if (strict) throw e;
+            return null; /* la recarga es best-effort */
+        }
     };
 
     // La cuenta de la mesa se crea recién al agregar el primer producto, así
-    // abrir el sheet y arrepentirse no deja una orden vacía.
+    // abrir el sheet y arrepentirse no deja una orden vacía. La llama la cola de
+    // sincronización (fuera del render), por eso lee la hoja desde refs.
     const ensureAccount = async () => {
-        const s = openTable;
+        const s = openTableRef.current;
         if (!s) return null;
         // Sólo la cuenta que el mozo tiene delante. El pedido activo de la mesa
         // NO sirve de atajo: con la pantalla limpia, lo que se carga es de la
         // siguiente persona, no un adicional de la anterior.
-        const existing = s.order?.id || s.accountId || null;
+        const created = createdAccountRef.current;
+        const existing = s.order?.id || s.accountId
+            || (created?.tableId === s.table.id ? created.id : null);
         if (existing) return existing;
         const payload = { table_id: s.table.id, order_type: 'mesa' };
         // Si la mesa ya tiene su visita abierta, esta cuenta es OTRA persona de
@@ -242,48 +264,51 @@ export default function useTableSheet({
             payload.new_account = true;
         }
         const { data } = await createOrder(payload);
+        createdAccountRef.current = { tableId: s.table.id, id: data.id };
         setOpenTable((prev) => (prev && prev.table.id === s.table.id
             ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
             : prev));
         return data.id;
     };
 
-    const addProductToAccount = async (product) => {
-        if (!canTake || savingItem || sendingToKitchen || openTable?.loading) return;
-        setSavingItem(true);
-        try {
-            const orderId = await ensureAccount();
-            if (!orderId) return;
-            // Como el mockup: si ya hay una línea EN BORRADOR de este producto
-            // (sin nota) en la cuenta activa, la unidad se suma ahí en vez de
-            // abrir otra línea. Se lee `openTable.order` (recién recargado tras
-            // cada alta) y no `sheetOrder`, que puede venir del polling anterior.
-            // Lo ya enviado no se toca: va como línea nueva.
-            const current = openTable?.order || sheetOrder;
-            const existing = (current?.items || []).find((it) => (
-                it.product_id === product.id
-                && isDraft(it, current?.status)
-                && !String(it.notes || '').trim()
+    // Cada toque cambia la cantidad en pantalla al instante; la cola manda al
+    // servidor la cantidad neta, de a una petición, sin deshabilitar la carta.
+    // El pedido vacío es lo que se ve antes de que exista la cuenta.
+    const emptyOrder = useMemo(() => ({
+        id: null, status: 'nuevo', items: [], total: 0, table_id: openTable?.table?.id || null,
+    }), [openTable?.table?.id]);
+
+    const sync = useOrderLineSync({
+        order: serverOrder,
+        placeholder: emptyOrder,
+        ensureOrderId: ensureAccount,
+        loadOrder: (orderId) => reloadCurrentOrder(orderId, { strict: true }),
+        onError: (error, entry) => {
+            // The line is already back at the last confirmed quantity; one toast,
+            // and a re-read in case the server did apply part of it.
+            toast.error(apiErrorMessage(
+                error,
+                entry.kind === 'new' && !entry.lineId ? 'No se pudo agregar el producto' : 'No se pudo cambiar la cantidad'
             ));
-            if (existing) {
-                await updateOrderItem(orderId, existing.id, {
-                    quantity: Number(existing.quantity || 0) + 1,
-                });
-            } else {
-                await addOrderItems(orderId, [{ product_id: product.id, quantity: 1 }]);
-            }
-            await reloadCurrentOrder(orderId);
-            refreshAll();
-        } catch (e) {
-            toast.error(apiErrorMessage(e, 'No se pudo agregar el producto'));
-        } finally {
-            setSavingItem(false);
-        }
+            if (entry.orderId) void reloadCurrentOrder(entry.orderId);
+        },
+        onSynced: () => refreshAll(),
+    });
+    // What the screen shows: the confirmed order plus the taps still on their way.
+    const sheetOrder = sync.order;
+    // Other writes wait while taps are still being saved (leaving and sending flush them).
+    const writing = () => savingItem || sync.busy();
+
+    const addProductToAccount = async (product) => {
+        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        await sync.tap(product, 1);
     };
 
+    // La cantidad de una línea concreta (el stepper del ticket).
     const changeItemQty = async (item, delta) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        return changeItemQtyFor(orderId, item, delta);
+        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        const orderId = openTable?.order?.id || openTable?.accountId || sync.latest()?.id || null;
+        await sync.changeLine(item, delta, orderId);
     };
 
     // S14: el paso de confirmación puede operar sobre OTRA cuenta (el
@@ -307,15 +332,22 @@ export default function useTableSheet({
     // El "−" de la carta sólo baja lo que sigue en borrador. Si el plato ya
     // viajó a cocina, el backend lo rechaza y el camino es anularlo abajo.
     const removeProductFromAccount = async (product, item) => {
-        if (!item) return;
-        await changeItemQty(item, -1);
+        if (!item || !canTake || sendingToKitchen || openTable?.loading) return;
+        await sync.tap(product, -1);
     };
 
     // Las observaciones pertenecen al producto: "sin ensalada" es de ese plato,
     // no de la cuenta ni de la mesa.
     const saveItemNotes = async (item, notes) => {
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        return saveItemNotesFor(orderId, item, notes);
+        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        // The line may still be waiting to be created, or a tap may be moving its
+        // quantity: let the queue finish so the note lands on the real line.
+        if (sync.busy()) await sync.flush();
+        const fresh = sync.latest();
+        const orderId = fresh?.id || openTable?.order?.id || openTable?.accountId;
+        const real = item.__virtual ? plainDraftLine(fresh, item.product_id) : item;
+        if (!real) return;
+        await saveItemNotesFor(orderId, real, notes);
     };
 
     const saveItemNotesFor = async (orderId, item, notes) => {
@@ -396,10 +428,18 @@ export default function useTableSheet({
         const firstSend = (accountBefore?.status || 'nuevo') === 'nuevo';
         setSendingToKitchen(true);
         try {
+            // Never send a stale draft: wait for the taps still on their way, and
+            // stop if one of them failed (the waiter never saw that quantity confirmed).
+            if (sync.busy()) {
+                const failedBefore = sync.failures();
+                await sync.flush();
+                if (sync.failures() > failedBefore) return false;
+            }
             // El alias viaja con la comanda: se guarda acá, sin botón aparte.
             if (targetId === openId) await persistAlias(targetId);
             const { data } = await sendOrderToKitchen(targetId);
-            const pending = draftCount(sendItemsFor(targetId), data?.status);
+            const latestOrder = sync.latest();
+            const pending = draftCount(latestOrder?.id === targetId ? latestOrder.items || [] : sendItemsFor(targetId), data?.status);
             const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
             // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
             toast.success(firstSend
@@ -409,6 +449,7 @@ export default function useTableSheet({
             if (targetId === openId) {
                 // La persona ya quedó registrada: la pantalla se limpia sola para
                 // la siguiente.
+                createdAccountRef.current = null;
                 setComposerOpen(false);
                 setOpenTable((s) => (s ? {
                     ...s,
@@ -435,9 +476,26 @@ export default function useTableSheet({
     const requestSend = (orderId = null) => {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
+        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        if (!targetId) {
+            // The first product is still creating the account: review once it exists.
+            if (sync.busy()) setAwaitingSend(true);
+            return;
+        }
+        if (savingItem) return;
         setReviewOrderId(targetId);
     };
+
+    // Always the latest closure, so the deferred review sees the account that
+    // the queue has just created.
+    const requestSendRef = useRef(null);
+    requestSendRef.current = requestSend;
+    const syncing = sync.syncing;
+    useEffect(() => {
+        if (!awaitingSend || syncing) return;
+        setAwaitingSend(false);
+        requestSendRef.current();
+    }, [awaitingSend, syncing]);
 
     const confirmReviewedSend = async () => {
         if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
@@ -449,13 +507,13 @@ export default function useTableSheet({
     // Los platos de una cuenta concreta, para saber cuántos adicionales viajaron.
     const sendItemsFor = (orderId) => {
         const account = (openTable?.accounts || []).find((o) => o.id === orderId);
-        return (account || sheetOrder || {}).items || [];
+        return (account || serverOrder || {}).items || [];
     };
 
     // El alias también se puede fijar sin enviar (al salir del campo).
     const saveAlias = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!orderId || !canTake || writing() || sendingToKitchen) return;
         setSavingItem(true);
         try {
             await persistAlias(orderId);
@@ -474,7 +532,7 @@ export default function useTableSheet({
      * apuntado a la persona elegida y conservando el "Compartido" que ya tenía.
      */
     const renamePerson = async (orderId, alias) => {
-        if (!canTake || !orderId || savingItem || sendingToKitchen || openTable?.loading) return;
+        if (!canTake || !orderId || writing() || sendingToKitchen || openTable?.loading) return;
         const account = (openTable?.accounts || []).find((o) => o.id === orderId)
             || (openTable?.order?.id === orderId ? openTable.order : null);
         const nextName = alias || null;
@@ -506,9 +564,9 @@ export default function useTableSheet({
         renamePerson(view.id, next);
     };
 
-    const discardDraftItems = async (orderId) => {
+    const discardDraftItems = async (orderId, knownOrder = null) => {
         if (!orderId || !canTake || savingItem || sendingToKitchen) return false;
-        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
+        const current = knownOrder || (serverOrder?.id === orderId ? serverOrder : openTable?.order);
         const drafts = (current?.items || []).filter((it) => isDraft(it, current?.status));
         if (!drafts.length) return true;
         setSavingItem(true);
@@ -527,29 +585,44 @@ export default function useTableSheet({
     };
 
     const leaveComposer = async ({ closeTable = false } = {}) => {
-        if (savingItem || sendingToKitchen || openTable?.loading) return;
-        const orderId = openTable?.order?.id || openTable?.accountId;
-        const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
-        const hasDrafts = (current?.items || []).some((it) => isDraft(it, current?.status));
-        if (hasDrafts) {
-            if (!canTake || savingItem || sendingToKitchen) return;
-            if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
-            if (!await discardDraftItems(orderId)) return;
-        }
-        if (closeTable) {
-            setOpenTable(null);
-            setPersonNameEdit(false);
-            setSummaryOpen(false);
-            setReceiptOpen(false);
-        } else {
-            setComposerOpen(false);
+        if (savingItem || sendingToKitchen || openTable?.loading || leavingRef.current) return;
+        leavingRef.current = true;
+        try {
+            // Taps still on their way are saved first, so the draft check below
+            // sees what the waiter really ordered.
+            let fresh = null;
+            if (sync.busy()) {
+                await sync.flush();
+                fresh = sync.latest();
+            }
+            const orderId = fresh?.id || openTable?.order?.id || openTable?.accountId;
+            const current = fresh?.id === orderId
+                ? fresh
+                : (serverOrder?.id === orderId ? serverOrder : openTable?.order);
+            const hasDrafts = (current?.items || []).some((it) => isDraft(it, current?.status));
+            if (hasDrafts) {
+                if (!canTake || savingItem || sendingToKitchen) return;
+                if (!window.confirm('¿Descartar los productos sin enviar antes de salir?')) return;
+                if (!await discardDraftItems(orderId, fresh?.id === orderId ? fresh : null)) return;
+            }
+            if (closeTable) {
+                createdAccountRef.current = null;
+                setOpenTable(null);
+                setPersonNameEdit(false);
+                setSummaryOpen(false);
+                setReceiptOpen(false);
+            } else {
+                setComposerOpen(false);
+            }
+        } finally {
+            leavingRef.current = false;
         }
     };
 
     // The ticket clear action confirms before deleting draft items only.
     const clearDraft = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
+        if (!orderId || !canTake || writing() || sendingToKitchen || openTable?.loading) return;
         if (!window.confirm('¿Vaciar los productos sin enviar? Los productos enviados se conservarán.')) return;
         await discardDraftItems(orderId);
     };
@@ -557,10 +630,11 @@ export default function useTableSheet({
     // A new independent account is created only when its first product is added.
     const startNewAccount = () => {
         const table = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
-        if (!canTake || !isComposableTable(table) || savingItem || sendingToKitchen || openTable?.loading) return;
+        if (!canTake || !isComposableTable(table) || writing() || sendingToKitchen || openTable?.loading) return;
         setOpenTable((s) => (s ? {
-            ...s, accounts: accountSnapshots(s, sheetOrder), order: null, accountId: null, accountTable: null,
+            ...s, accounts: accountSnapshots(s, serverOrder), order: null, accountId: null, accountTable: null,
         } : s));
+        createdAccountRef.current = null;
         setReviewOrderId(null);
         setPersonNameEdit(false);
         setCardRenameId(null);
@@ -604,7 +678,7 @@ export default function useTableSheet({
     };
 
     const editAccount = async (account) => {
-        if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
+        if (!canTake || !account?.id || writing() || sendingToKitchen || openTable?.loading) return;
         const selectedTable = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
         if (!isComposableTable(selectedTable)) return;
         const table = composeTableFor(account);
@@ -673,6 +747,7 @@ export default function useTableSheet({
         moveAccountId,
         setMoveAccountId,
         savingItem,
+        syncing: sync.syncing,
         sendingToKitchen,
         aliasDraft,
         setAliasDraft,

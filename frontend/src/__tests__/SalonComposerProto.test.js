@@ -477,23 +477,82 @@ describe('compositor · paridad posView (S8)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
     });
 
-    it('keeps the ticket send and clear actions guarded until a pending draft write completes', async () => {
+    it('UX-14 a send requested while a quantity write is pending waits for it, then sends', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         let resolveWrite;
         api.patch.mockReturnValue(new Promise((resolve) => { resolveWrite = resolve; }));
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
         expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 3 });
+        // The ticket already shows the tapped quantity (3 x 12) while the write is pending.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]').textContent).toContain('S/ 36.00');
+
+        // The review opens at once with the optimistic quantity; "Vaciar" stays guarded.
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
-        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
-        expect(api.post).not.toHaveBeenCalled();
-        expect(api.delete).not.toHaveBeenCalled();
-        expect(window.confirm).not.toHaveBeenCalled();
-        await act(async () => resolveWrite({ data: {} }));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]'));
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]').textContent).toContain('3× Sopa');
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(api.delete).not.toHaveBeenCalled();
+
+        // Confirming does not send until the write is saved.
+        api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
+        await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).not.toHaveBeenCalled();
+        await act(async () => resolveWrite({ data: {} }));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(api.post).toHaveBeenCalledTimes(1);
+    });
+
+    it('UX-14 quick taps on a card + while the first save is pending are all kept', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        const releases = [];
+        // The fake server applies each write when the test releases it.
+        api.patch.mockImplementation((url, body) => new Promise((resolve) => {
+            releases.push(() => {
+                draft.items[0].quantity = body.quantity;
+                draft.items[0].subtotal = body.quantity * 38;
+                draft.total = draft.items[0].subtotal;
+                resolve({ data: {} });
+            });
+        }));
+        const plus = () => sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]');
+        const qty = () => sheet.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-n1"]').textContent;
+        const send = () => sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]');
+
+        await click(plus());
+        expect(qty()).toBe('2');
+        // The control stays enabled while the first save is in flight.
+        expect(plus().disabled).toBe(false);
+        await click(plus());
+        await click(plus());
+        expect(qty()).toBe('4');
+        expect(send().textContent).toContain('S/ 152.00');
+        expect(api.patch).toHaveBeenCalledTimes(1);
+        expect(api.patch).toHaveBeenLastCalledWith('/orders/order-1/items/i1', { quantity: 2 });
+
+        await act(async () => releases.shift()());
+        // One follow-up request carries the net quantity, and the screen never dips back.
+        expect(api.patch).toHaveBeenCalledTimes(2);
+        expect(api.patch).toHaveBeenLastCalledWith('/orders/order-1/items/i1', { quantity: 4 });
+        expect(qty()).toBe('4');
+        await act(async () => releases.shift()());
+        expect(qty()).toBe('4');
+    });
+
+    it('UX-14 a failed save puts the card back to the confirmed quantity and shows one toast', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 2, 38, 'borrador', { product_id: 'prod-n1' })]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        api.patch.mockRejectedValue({ response: { data: { detail: 'Pedido cerrado' } } });
+        const qty = () => sheet.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-n1"]').textContent;
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+        expect(qty()).toBe('2');
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(toast.error).toHaveBeenCalledWith('Pedido cerrado');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]').disabled).toBe(false);
     });
 
     it('sends from the inline draft ticket after review confirmation', async () => {
