@@ -65,4 +65,11 @@ describe('cobro footer reason', () => {
         expect(note.className).toContain('why');
         expect(note.textContent).toMatch(/Completa/);
     });
+    it('says Cobrando… and sets aria-busy while the payment request is in flight', async () => {
+        await act(async () => root.render(<CobroFooter {...base} canRegister loading footerNote="" />));
+        const btn = q('caja-cobrar-submit-button');
+        expect(btn.textContent).toContain('Cobrando…');
+        expect(btn.disabled).toBe(true);
+        expect(btn.getAttribute('aria-busy')).toBe('true');
+    });
 });

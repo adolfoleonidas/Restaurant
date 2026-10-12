@@ -6,13 +6,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
 import { fmtElapsed, elapsedMinutes, ORDER_TYPE_LABELS, countOf } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
-import { apiErrorMessage } from '@/lib/apiError';
+import usePendingAction from '@/hooks/usePendingAction';
 
 function itemStage(it) {
     const st = it.status || 'pendiente';
@@ -78,7 +77,8 @@ const COLUMN_TONE = {
     },
 };
 
-const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }) => {
+const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames, pending }) => {
+    const bumping = pending.has(`bump:${order.id}:${stage}`);
     const when = stage === 'retirado' ? (order.updated_at || order.created_at) : waveTime(order, items);
     const mesa = order.table_number && order.table_number !== '—'
         ? String(order.table_number).replace(/^Mesa\s*/i, '')
@@ -134,9 +134,11 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                                     type="button"
                                     className="min-h-11 sm:min-h-10 shrink-0 text-sm font-semibold px-3 py-2 rounded-sm border border-primary text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                     aria-label={`Marcar ${it.product_name} listo`}
+                                    disabled={pending.has(`item:${it.id}`)}
+                                    aria-busy={pending.has(`item:${it.id}`) ? 'true' : undefined}
                                     onClick={(e) => { e.stopPropagation(); onItem(order, it); }}
                                 >
-                                    Listo
+                                    {pending.has(`item:${it.id}`) ? 'Marcando…' : 'Listo'}
                                 </button>
                             )}
                         </div>
@@ -146,8 +148,8 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames }
                     <div className="mt-3 text-sm text-primary dark:text-sky-300">{order.notes}</div>
                 )}
                 {['llegan', 'fuego'].includes(stage) && (
-                    <button type="button" className="mt-4 min-h-11 w-full rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" onClick={() => onBump(order, stage)}>
-                        {stage === 'llegan' ? 'Pasar a fuego' : 'Avanzar pedido'}
+                    <button type="button" className="mt-4 min-h-11 w-full rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-60" disabled={bumping} aria-busy={bumping ? 'true' : undefined} onClick={() => onBump(order, stage)}>
+                        {stage === 'llegan' ? (bumping ? 'Pasando a fuego…' : 'Pasar a fuego') : (bumping ? 'Avanzando…' : 'Avanzar pedido')}
                     </button>
                 )}
             </CardContent>
@@ -166,6 +168,7 @@ export default function Cocina() {
     );
     const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
     const [zone, setZone] = useState('todas');
+    const [run, pending] = usePendingAction();
 
     const tableMap = useMemo(() => Object.fromEntries((tables || []).map((t) => [t.id, t])), [tables]);
     const zones = useMemo(() => [...new Set((tables || []).map((t) => t.area).filter(Boolean))].sort(), [tables]);
@@ -223,24 +226,18 @@ export default function Cocina() {
         return `${byKey.llegan} nuevos · ${byKey.fuego} en fuego · ${byKey.listo} listos para retiro · ${byKey.retirado} retirados`;
     }, [columns]);
 
-    const bump = async (order, stage) => {
+    // The key stays pending until the board refetched, so the stale button cannot
+    // be tapped again and answered with "Nada para avanzar".
+    const bump = (order, stage) => run(`bump:${order.id}:${stage}`, async () => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
-        try {
-            await bumpOrder(order.id, { from_status });
-            await refetch();
-        } catch (e) {
-            toast.error(apiErrorMessage(e, 'No se pudo avanzar'));
-        }
-    };
+        await bumpOrder(order.id, { from_status });
+        await refetch();
+    }, { errorMessage: 'No se pudo avanzar' });
 
-    const bumpItem = async (order, item) => {
-        try {
-            await setOrderItemStatus(order.id, item.id, { status: 'listo' });
-            await refetch();
-        } catch (e) {
-            toast.error(apiErrorMessage(e, 'No se pudo marcar'));
-        }
-    };
+    const bumpItem = (order, item) => run(`item:${item.id}`, async () => {
+        await setOrderItemStatus(order.id, item.id, { status: 'listo' });
+        await refetch();
+    }, { errorMessage: 'No se pudo marcar' });
 
     return (
         <div className="space-y-4" data-testid="cocina-root">
@@ -329,6 +326,7 @@ export default function Cocina() {
                                     added={c.added}
                                     onBump={bump}
                                     onItem={bumpItem}
+                                    pending={pending}
                                     branchNames={branchNames}
                                 />
                             ))}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
+import { PendingActionsContext } from '@/contexts/PendingActionsContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { ACTIONS, can, canAccessRoute } from '@/lib/permissions';
@@ -125,6 +126,7 @@ export default function Salon() {
         : null;
 
     return (
+        <PendingActionsContext.Provider value={floorActions.pending}>
         <div
             className={`space-y-5 ${selection.selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
             data-testid="salon-root"
@@ -237,6 +239,7 @@ export default function Salon() {
                         releaseTable: floorActions.releaseTable,
                         openCharge: floorActions.openCharge,
                         closing: floorActions.closing,
+                        pending: floorActions.pending,
                         openTransfer: transfer.openTransfer,
                         dissolveGroup: selection.dissolveGroup,
                         removeGroupMember: selection.removeGroupMember,
@@ -299,5 +302,6 @@ export default function Salon() {
                 />
             )}
         </div>
+        </PendingActionsContext.Provider>
     );
 }

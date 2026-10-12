@@ -18,6 +18,8 @@ import { listUsers } from '@/lib/api/users';
 import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import PendingButton from '@/components/ui/pending-button';
+import usePendingAction from '@/hooks/usePendingAction';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { fmtMoney } from '@/lib/format';
@@ -57,6 +59,7 @@ export default function PedidoDetalle() {
         [user?.role]
     );
 
+    const [run, busy] = usePendingAction();
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
     const [cancelDlg, setCancelDlg] = useState(false);
@@ -147,44 +150,36 @@ export default function PedidoDetalle() {
         } catch (e) { toast.error(apiErrorMessage(e, 'Error al agregar')); }
     };
 
-    const sendToKitchen = async () => {
-        try {
-            await sendOrderToKitchen(order.id);
-            toast.success('Enviado a cocina');
-            await refetch();
-        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
-    };
+    const sendToKitchen = () => run('send', async () => {
+        await sendOrderToKitchen(order.id);
+        toast.success('Enviado a cocina');
+        await refetch();
+    }, { errorMessage: 'No se pudo enviar a cocina' });
 
     // Lo que sigue en borrador se quita; lo que cocina ya recibió se anula, para
     // no borrar de la comanda algo que ya se está preparando.
-    const removeItem = async (it) => {
-        try {
-            if (isDraft(it, order.status)) {
-                await removeOrderItem(order.id, it.id);
-                toast.success(`${it.product_name} quitado`);
-            } else {
-                await voidOrderItem(order.id, it.id, { reason: 'Anulado desde el detalle del pedido' });
-                toast.success(`${it.product_name} anulado`);
-            }
-            await refetch();
-        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
-    };
+    const removeItem = (it) => run(`remove:${it.id}`, async () => {
+        if (isDraft(it, order.status)) {
+            await removeOrderItem(order.id, it.id);
+            toast.success(`${it.product_name} quitado`);
+        } else {
+            await voidOrderItem(order.id, it.id, { reason: 'Anulado desde el detalle del pedido' });
+            toast.success(`${it.product_name} anulado`);
+        }
+        await refetch();
+    }, { errorMessage: 'No se pudo quitar el producto' });
 
-    const serve = async () => {
-        try {
-            await serveOrder(order.id);
-            toast.success('Entregado. La cuenta sigue abierta.');
-            await refetch();
-        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
-    };
+    const serve = () => run('serve', async () => {
+        await serveOrder(order.id);
+        toast.success('Entregado. La cuenta sigue abierta.');
+        await refetch();
+    }, { errorMessage: 'No se pudo entregar' });
 
-    const requestBill = async () => {
-        try {
-            await setOrderStatus(order.id, { status: 'pendiente_pago' });
-            toast.success('Cuenta solicitada');
-            navigate('/salon');
-        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
-    };
+    const requestBill = () => run('bill', async () => {
+        await setOrderStatus(order.id, { status: 'pendiente_pago' });
+        toast.success('Cuenta solicitada');
+        navigate('/salon');
+    }, { errorMessage: 'No se pudo solicitar la cuenta' });
 
     const reassign = async (waiterId) => {
         try {
@@ -194,17 +189,20 @@ export default function PedidoDetalle() {
         } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo reasignar')); }
     };
 
-    const doCancel = async () => {
-        if (!cancelReason.trim()) { toast.error('Indica el motivo'); return; }
-        try {
+    const doCancel = () => {
+        if (!cancelReason.trim()) { toast.error('Indica el motivo'); return undefined; }
+        return run('cancel', async () => {
             await setOrderStatus(order.id, { status: 'cancelado', reason: cancelReason });
             setCancelDlg(false);
             toast.success('Pedido anulado');
             navigate('/salon');
-        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
+        }, { errorMessage: 'No se pudo anular el pedido' });
     };
 
-    const openCollection = async () => {
+    // The register lookup can take a moment: the button says so and ignores taps meanwhile.
+    const openCollection = () => run('collect', openCollectionNow, { errorMessage: 'No se pudo abrir el cobro' });
+
+    const openCollectionNow = async () => {
         if (!canCharge || !order?.id || id !== order.id || !detailMountedRef.current) return;
         const requestId = ++collectionRequestRef.current;
         const requestedRouteId = id;
@@ -290,6 +288,8 @@ export default function PedidoDetalle() {
                                         <button
                                             type="button"
                                             onClick={() => removeItem(it)}
+                                            disabled={busy.has(`remove:${it.id}`)}
+                                            aria-busy={busy.has(`remove:${it.id}`) ? 'true' : undefined}
                                             className="flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-destructive md:h-4 md:w-4"
                                             aria-label={`Cancelar ${it.product_name}`}
                                             data-testid={`pedido-item-cancel-${it.id}`}
@@ -365,9 +365,9 @@ export default function PedidoDetalle() {
                 de navegación (las dos están en z-40 y se tapaban). */}
             <div className="fixed bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
                 {order.status === 'nuevo' && can(user, ACTIONS.ORDER_EDIT) && (
-                    <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
+                    <PendingButton onClick={sendToKitchen} pending={busy.has('send')} pendingLabel="Enviando…" className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
                         {order.acceptance_status === 'pendiente' ? 'Aceptar y enviar a cocina' : 'Enviar a cocina'}
-                    </Button>
+                    </PendingButton>
                 )}
                 {['enviado_cocina', 'en_preparacion'].includes(order.status) && (
                     <Button variant="outline" className="w-full h-12" onClick={() => navigate('/cocina')} data-testid="pedido-ver-cocina">
@@ -375,9 +375,9 @@ export default function PedidoDetalle() {
                     </Button>
                 )}
                 {order.status === 'listo' && canServe && (
-                    <Button onClick={serve} className="w-full h-14 rounded-full text-base" data-testid="pedido-servir-button">
+                    <PendingButton onClick={serve} pending={busy.has('serve')} pendingLabel="Entregando…" className="w-full h-14 rounded-full text-base" data-testid="pedido-servir-button">
                         Entregar pedido
-                    </Button>
+                    </PendingButton>
                 )}
                 {['entregado', 'listo'].includes(order.status) && canEdit && (
                     billRequested ? (
@@ -385,25 +385,29 @@ export default function PedidoDetalle() {
                             Cuenta solicitada
                         </Button>
                     ) : (
-                        <Button
+                        <PendingButton
                             onClick={requestBill}
+                            pending={busy.has('bill')}
+                            pendingLabel="Solicitando…"
                             variant={order.status === 'listo' ? 'outline' : 'default'}
                             className={`w-full ${order.status === 'listo' ? 'h-12' : 'h-14 rounded-full text-base'}`}
                             data-testid="pedido-solicitar-cuenta-button"
                         >
                             Solicitar cuenta
-                        </Button>
+                        </PendingButton>
                     )
                 )}
                 {['listo', 'entregado', 'pendiente_pago'].includes(order.status) && canCharge && (
-                    <Button
+                    <PendingButton
                         onClick={openCollection}
+                        pending={busy.has('collect')}
+                        pendingLabel="Abriendo cobro…"
                         variant={order.status === 'pendiente_pago' ? 'default' : 'outline'}
                         className={`w-full ${order.status === 'pendiente_pago' ? 'h-14 rounded-full text-base' : 'h-12'}`}
                         data-testid="pedido-cobrar-button"
                     >
                         <CreditCard className="h-4 w-4 mr-2" /> Cobrar
-                    </Button>
+                    </PendingButton>
                 )}
                 {billRequested && !canCharge && (
                     <div className="text-center text-sm text-muted-foreground py-2" data-testid="pedido-cuenta-solicitada">Se paga en caja</div>
@@ -434,7 +438,7 @@ export default function PedidoDetalle() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setCancelDlg(false)}>Cerrar</Button>
-                        <Button variant="destructive" onClick={doCancel} data-testid="cancel-confirm-button">Confirmar anulación</Button>
+                        <PendingButton variant="destructive" onClick={doCancel} pending={busy.has('cancel')} pendingLabel="Anulando…" data-testid="cancel-confirm-button">Confirmar anulación</PendingButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

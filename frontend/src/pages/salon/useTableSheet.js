@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import usePolling from '@/hooks/usePolling';
+import usePendingAction from '@/hooks/usePendingAction';
 import useOrderLineSync from '@/hooks/useOrderLineSync';
 import {
     createOrder,
@@ -38,12 +39,15 @@ import {
 export default function useTableSheet({
     tables, orders, activeOrders, canTake, refreshAll,
 }) {
+    const [run] = usePendingAction();
     const [openTable, setOpenTable] = useState(null);
     const [moveAccountId, setMoveAccountId] = useState(null);
     const [savingItem, setSavingItem] = useState(false);
     // Bloquea el doble envío mientras el POST está en vuelo (el ticket se
     // desmonta al volver al detalle, pero un doble toque no debe repetir).
     const [sendingToKitchen, setSendingToKitchen] = useState(false);
+    // A tap that lands on a busy guard says so instead of doing nothing.
+    const busyToast = () => { toast.info('Un momento, guardando…', { id: 'sheet-busy' }); };
     const [aliasDraft, setAliasDraft] = useState('');
     // Interruptor de la cuenta compartida de la mesa (la fuente, la jarra).
     const [sharedDraft, setSharedDraft] = useState(false);
@@ -426,49 +430,54 @@ export default function useTableSheet({
         const accountBefore = (openTable?.accounts || []).find((o) => o.id === targetId)
             || (openTable?.order?.id === targetId ? openTable.order : null);
         const firstSend = (accountBefore?.status || 'nuevo') === 'nuevo';
-        setSendingToKitchen(true);
-        try {
-            // Never send a stale draft: wait for the taps still on their way, and
-            // stop if one of them failed (the waiter never saw that quantity confirmed).
-            if (sync.busy()) {
-                const failedBefore = sync.failures();
-                await sync.flush();
-                if (sync.failures() > failedBefore) return false;
+        // The ref-backed key blocks a second tap in the same tick, before the
+        // sendingToKitchen state has re-rendered.
+        const sent = await run(`send:${targetId}`, async () => {
+            setSendingToKitchen(true);
+            try {
+                // Never send a stale draft: wait for the taps still on their way, and
+                // stop if one of them failed (the waiter never saw that quantity confirmed).
+                if (sync.busy()) {
+                    const failedBefore = sync.failures();
+                    await sync.flush();
+                    if (sync.failures() > failedBefore) return false;
+                }
+                // El alias viaja con la comanda: se guarda acá, sin botón aparte.
+                if (targetId === openId) await persistAlias(targetId);
+                const { data } = await sendOrderToKitchen(targetId);
+                const latestOrder = sync.latest();
+                const pending = draftCount(latestOrder?.id === targetId ? latestOrder.items || [] : sendItemsFor(targetId), data?.status);
+                const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
+                // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
+                toast.success(firstSend
+                    ? (mesaNumber ? `Enviado a cocina · Mesa ${mesaNumber}` : 'Enviado a cocina')
+                    : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
+                await reloadCurrentOrder(targetId);
+                if (targetId === openId) {
+                    // La persona ya quedó registrada: la pantalla se limpia sola para
+                    // la siguiente.
+                    createdAccountRef.current = null;
+                    setComposerOpen(false);
+                    setOpenTable((s) => (s ? {
+                        ...s,
+                        order: null,
+                        accountId: null,
+                        accounts: (s.accounts || []).some((o) => o.id === data?.id)
+                            ? (s.accounts || []).map((o) => (o.id === data?.id ? data : o))
+                            : [...(s.accounts || []), data].filter(Boolean),
+                    } : s));
+                }
+                setReviewOrderId(null);
+                refreshAll();
+                return true;
+            } catch (e) {
+                toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
+                return false;
+            } finally {
+                setSendingToKitchen(false);
             }
-            // El alias viaja con la comanda: se guarda acá, sin botón aparte.
-            if (targetId === openId) await persistAlias(targetId);
-            const { data } = await sendOrderToKitchen(targetId);
-            const latestOrder = sync.latest();
-            const pending = draftCount(latestOrder?.id === targetId ? latestOrder.items || [] : sendItemsFor(targetId), data?.status);
-            const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
-            // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
-            toast.success(firstSend
-                ? (mesaNumber ? `Enviado a cocina · Mesa ${mesaNumber}` : 'Enviado a cocina')
-                : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
-            await reloadCurrentOrder(targetId);
-            if (targetId === openId) {
-                // La persona ya quedó registrada: la pantalla se limpia sola para
-                // la siguiente.
-                createdAccountRef.current = null;
-                setComposerOpen(false);
-                setOpenTable((s) => (s ? {
-                    ...s,
-                    order: null,
-                    accountId: null,
-                    accounts: (s.accounts || []).some((o) => o.id === data?.id)
-                        ? (s.accounts || []).map((o) => (o.id === data?.id ? data : o))
-                        : [...(s.accounts || []), data].filter(Boolean),
-                } : s));
-            }
-            setReviewOrderId(null);
-            refreshAll();
-            return true;
-        } catch (e) {
-            toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
-            return false;
-        } finally {
-            setSendingToKitchen(false);
-        }
+        });
+        return sent === true;
     };
 
     // The first action opens an order review; only explicit confirmation reaches
@@ -476,13 +485,14 @@ export default function useTableSheet({
     const requestSend = (orderId = null) => {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        if (!canTake) return;
+        if (sendingToKitchen || openTable?.loading) { busyToast(); return; }
         if (!targetId) {
             // The first product is still creating the account: review once it exists.
             if (sync.busy()) setAwaitingSend(true);
             return;
         }
-        if (savingItem) return;
+        if (savingItem) { busyToast(); return; }
         setReviewOrderId(targetId);
     };
 
@@ -498,7 +508,8 @@ export default function useTableSheet({
     }, [awaitingSend, syncing]);
 
     const confirmReviewedSend = async () => {
-        if (!reviewOrderId || !reviewItems.length || savingItem || sendingToKitchen) return;
+        if (!reviewOrderId || !reviewItems.length) return;
+        if (savingItem || sendingToKitchen) { busyToast(); return; }
         const targetId = reviewOrderId;
         const sent = await sendCurrentToKitchen(targetId);
         if (sent) setReviewOrderId(null);
@@ -585,7 +596,8 @@ export default function useTableSheet({
     };
 
     const leaveComposer = async ({ closeTable = false } = {}) => {
-        if (savingItem || sendingToKitchen || openTable?.loading || leavingRef.current) return;
+        if (savingItem || sendingToKitchen || openTable?.loading) { busyToast(); return; }
+        if (leavingRef.current) return;
         leavingRef.current = true;
         try {
             // Taps still on their way are saved first, so the draft check below

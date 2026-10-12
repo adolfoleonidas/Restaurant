@@ -410,6 +410,43 @@ describe('useTableSheet: sending to the kitchen', () => {
         expect(result.current.sendingToKitchen).toBe(false);
     });
 
+    test('two sends in the same tick reach the server once', async () => {
+        const { result, current } = await openDraft();
+        let release;
+        sendOrderToKitchen.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+        let first; let second;
+        await act(async () => {
+            first = result.current.sendCurrentToKitchen('o1');
+            second = result.current.sendCurrentToKitchen('o1');
+        });
+        expect(sendOrderToKitchen).toHaveBeenCalledTimes(1);
+        await act(async () => { release({ data: current }); await first; });
+        expect(await second).toBe(false);
+    });
+
+    test('a tap that hits the busy guards tells the waiter to wait instead of doing nothing', async () => {
+        const { result, current } = await openDraft();
+        let release;
+        sendOrderToKitchen.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+        let sending;
+        await act(async () => { sending = result.current.sendCurrentToKitchen('o1'); });
+        expect(result.current.sendingToKitchen).toBe(true);
+
+        await act(async () => { result.current.requestSend(); });
+        expect(toast.info).toHaveBeenCalledWith('Un momento, guardando…', expect.anything());
+        expect(result.current.reviewOrderId).toBeNull();
+
+        toast.info.mockClear();
+        await act(async () => { await result.current.leaveComposer(); });
+        expect(toast.info).toHaveBeenCalledWith('Un momento, guardando…', expect.anything());
+
+        toast.info.mockClear();
+        await act(async () => { await result.current.confirmReviewedSend(); });
+        expect(sendOrderToKitchen).toHaveBeenCalledTimes(1);
+
+        await act(async () => { release({ data: current }); await sending; });
+    });
+
     test('requesting a send opens the review and only the confirmation sends', async () => {
         const { result, current } = await openDraft();
         sendOrderToKitchen.mockResolvedValue({ data: current });

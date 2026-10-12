@@ -24,13 +24,13 @@ export default function TableSheet({
     const { composerOpen, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
     const { canTake, canServe, canCharge, canVoidItems } = perms;
     const { products, categories, branchNames, activeOrders } = data;
-    const { navigate, deliver, closeAttention, requestBill, releaseTable, openCharge, openTransfer, dissolveGroup, removeGroupMember, closing } = actions;
+    const { navigate, deliver, closeAttention, requestBill, releaseTable, openCharge, openTransfer, dissolveGroup, removeGroupMember, closing, pending } = actions;
 
     // "Más opciones" del prototipo: todas las acciones ocasionales en un solo
     // menú, disparado por el botón de tres puntitos de la cabecera (S13). La
     // zona de acciones queda con dos botones: "+ Nuevo pedido" y "Cobrar".
     const moreActions = buildMoreActions({
-        t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId, closeable, billRequested, closing, canTake, canServe, closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill, setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
+        t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId, closeable, billRequested, closing, pending, canTake, canServe, closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill, setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
     });
 
     return (

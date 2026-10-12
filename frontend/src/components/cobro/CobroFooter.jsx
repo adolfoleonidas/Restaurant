@@ -23,9 +23,10 @@ export default function CobroFooter({
                 <button className="primary-button" onClick={handleRegister}
                     disabled={proofRefreshPending || loading || blocked}
                     aria-describedby="cobro-footer-note"
+                    aria-busy={loading ? 'true' : undefined}
                     data-testid="caja-cobrar-submit-button">
                     <CheckCircle2 style={{ width: 19, height: 19 }} />
-                    <span>{loading ? 'Registrando...' : (netError ? 'Reintentar el mismo cobro' : registerLabel)}</span>
+                    <span>{loading ? 'Cobrando…' : (netError ? 'Reintentar el mismo cobro' : registerLabel)}</span>
                 </button>
             </div>
         </footer>
