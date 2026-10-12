@@ -96,3 +96,6 @@ frontend/node_modules/.cache/default-development/2.pack
 
 # TLS certificates (a private key must never be committed)
 certs/
+
+# Local MongoDB backup archives (docker compose `backup` service)
+/backups/

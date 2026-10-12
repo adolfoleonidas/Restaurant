@@ -19,7 +19,7 @@ cambiarlos **antes** de que entre el primer cliente.
 9. **Casa (Ajustes)**: Restaurante + Marca + Tema + Funciones.
 10. **Caja**: abrir caja.
 11. **Prueba de humo** y volver a limpiar.
-12. **Backup** del volumen de Mongo.
+12. **Backup** automático de Mongo y cómo restaurarlo.
 
 ---
 
@@ -166,10 +166,30 @@ el deploy normal sigue funcionando por HTTP hasta que pongas los certificados.
 > Si preferís probar sin dominio, podés generar un certificado **autofirmado**, pero el navegador
 > va a mostrar una advertencia (no sirve para un local real).
 
-## 12. Backup
+## 12. Backup y restauración
 
-El volumen `mongo-data` **no viene respaldado**. Programá un backup (por ejemplo
-`docker run --rm -v restaurant_mongo-data:/data -v $(pwd):/backup mongo:7 mongodump ...`).
+`docker compose up -d` también levanta el servicio **`backup`**: cada `BACKUP_INTERVAL_HOURS`
+(24 por defecto) ejecuta `mongodump --archive --gzip` y guarda un archivo
+`<DB_NAME>-<fecha>.archive.gz` en `BACKUP_DIR` (por defecto `./backups`, junto al
+`docker-compose.yml`). Conserva solo los últimos `BACKUP_KEEP` (7 por defecto). Se configura en el `.env`
+(ver `env.example`).
+
+- Revisá que funcione: `docker compose logs backup` debe mostrar `backup ok: ...` y el archivo debe
+  aparecer en `backups/`.
+- **Copiá esa carpeta fuera del servidor** (otro disco o un servicio en la nube): un backup en el mismo
+  disco no protege de una falla del disco.
+- Probá una restauración en un equipo de prueba antes de abrir el local.
+
+**Restaurar** (reemplaza el contenido actual de la base; detené el backend antes):
+
+```bash
+docker compose stop backend
+docker compose exec -T mongo mongorestore --archive --gzip --drop --nsInclude='restaurant_db.*'   < backups/restaurant_db-20260101T030000Z.archive.gz
+docker compose start backend
+```
+
+Cambiá `restaurant_db` por tu `DB_NAME` y el nombre del archivo por el que quieras recuperar. En
+Windows ejecutá el comando del medio desde `cmd` (PowerShell no pasa binarios con `<`).
 
 ---
 
@@ -205,4 +225,4 @@ El volumen `mongo-data` **no viene respaldado**. Programá un backup (por ejempl
 - [ ] Marca, restaurante y tema configurados
 - [ ] Caja abierta con el monto inicial real
 - [ ] Prueba de humo completa y datos de prueba borrados
-- [ ] Backup del volumen programado
+- [ ] Backup automático funcionando, copiado fuera del servidor y restauración probada
