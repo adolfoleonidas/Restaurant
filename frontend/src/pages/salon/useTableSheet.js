@@ -16,6 +16,7 @@ import {
     updateOrderItem,
     voidOrderItem,
 } from '@/lib/api/orders';
+import { apiErrorMessage } from '@/lib/apiError';
 import { draftCount, editableItems, isDraft } from '@/lib/orderDraft';
 import { groupAccountTables, groupMembers } from '@/lib/tableGroups';
 import {
@@ -174,7 +175,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron fusionar las cuentas');
+            toast.error(apiErrorMessage(e, 'No se pudieron fusionar las cuentas'));
         }
     };
 
@@ -188,7 +189,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover la cuenta');
+            toast.error(apiErrorMessage(e, 'No se pudo mover la cuenta'));
         }
     };
 
@@ -203,7 +204,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo dividir la cuenta');
+            toast.error(apiErrorMessage(e, 'No se pudo dividir la cuenta'));
         }
     };
 
@@ -274,7 +275,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo agregar el producto'));
         } finally {
             setSavingItem(false);
         }
@@ -297,7 +298,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+            toast.error(apiErrorMessage(e, 'No se pudo cambiar la cantidad'));
         } finally {
             setSavingItem(false);
         }
@@ -324,7 +325,7 @@ export default function useTableSheet({
             await updateOrderItem(orderId, item.id, { notes });
             await reloadCurrentOrder(orderId);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la observación'));
         } finally {
             setSavingItem(false);
         }
@@ -340,7 +341,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo anular el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo anular el producto'));
         }
     };
 
@@ -370,7 +371,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo mover el producto'));
         }
     };
 
@@ -422,7 +423,7 @@ export default function useTableSheet({
             refreshAll();
             return true;
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
             return false;
         } finally {
             setSendingToKitchen(false);
@@ -461,7 +462,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar el alias'));
         } finally {
             setSavingItem(false);
         }
@@ -490,7 +491,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar el alias'));
         } finally {
             setSavingItem(false);
         }
@@ -518,7 +519,7 @@ export default function useTableSheet({
             return true;
         } catch (e) {
             await reloadCurrentOrder(orderId);
-            toast.error(e.response?.data?.detail || 'No se pudo descartar el pedido');
+            toast.error(apiErrorMessage(e, 'No se pudo descartar el pedido'));
             return false;
         } finally {
             setSavingItem(false);

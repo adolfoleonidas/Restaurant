@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import { addPublicOrderItem, getPublicOrder, removePublicOrderItem, updatePublicOrderItem } from '@/lib/api/public';
 import usePolling from '@/hooks/usePolling';
 import usePublicStream from '@/hooks/usePublicStream';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const KEY = 'public_last_order_v1';
 const LiveOrderContext = createContext(null);
@@ -74,7 +75,7 @@ export const LiveOrderProvider = ({ children }) => {
             });
             await refetch();
         } catch (e) {
-            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+            throw new Error(apiErrorMessage(e, 'No se pudo actualizar el pedido'));
         } finally {
             setBusy((b) => ({ ...b, [product.id]: false }));
         }
@@ -94,7 +95,7 @@ export const LiveOrderProvider = ({ children }) => {
             }
             await refetch();
         } catch (e) {
-            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+            throw new Error(apiErrorMessage(e, 'No se pudo actualizar el pedido'));
         } finally {
             setBusy((b) => ({ ...b, [line.product_id]: false }));
         }

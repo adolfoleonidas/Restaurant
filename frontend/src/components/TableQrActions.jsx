@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { getTableGuestLink, revokeTableQr, rotateTableQr } from '@/lib/api/tables';
 import { Button } from '@/components/ui/button';
 import QrCode, { QrActions } from '@/components/TableQr';
+import { apiErrorMessage } from '@/lib/apiError';
 
 // El QR abre la carta con la mesa en contexto. Antes llevaba al checkout, así
 // que el cliente caía en una pantalla de pago sin haber elegido nada.
@@ -54,7 +55,7 @@ export default function TableQrActions({ table }) {
             updateStatus('active');
         } catch (requestError) {
             updateStatus(requestError.response?.status === 400 ? 'revoked' : 'unknown');
-            setError(requestError.response?.data?.detail || 'No se pudo obtener el enlace. Inténtelo nuevamente.');
+            setError(apiErrorMessage(requestError, 'No se pudo obtener el enlace. Inténtelo nuevamente.'));
         } finally {
             setBusy('');
         }
@@ -72,7 +73,7 @@ export default function TableQrActions({ table }) {
             setGuestUrl(buildGuestUrl(data?.path));
             updateStatus('active');
         } catch (requestError) {
-            setError(requestError.response?.data?.detail || 'No se pudo confirmar la regeneración. Vuelva a cargar la mesa.');
+            setError(apiErrorMessage(requestError, 'No se pudo confirmar la regeneración. Vuelva a cargar la mesa.'));
         } finally {
             setBusy('');
         }
@@ -90,7 +91,7 @@ export default function TableQrActions({ table }) {
             if (data?.qr_status !== 'revoked') throw new Error('Revocation was not confirmed');
             updateStatus('revoked');
         } catch (requestError) {
-            setError(requestError.response?.data?.detail || 'No se pudo confirmar la revocación. Vuelva a cargar la mesa.');
+            setError(apiErrorMessage(requestError, 'No se pudo confirmar la revocación. Vuelva a cargar la mesa.'));
         } finally {
             setBusy('');
         }

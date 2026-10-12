@@ -28,6 +28,7 @@ import {
     Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote,
     CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon, AlertCircle, Clock,
 } from 'lucide-react';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const ORDER_TYPE_INFO = {
     local: { label: 'Comer en local', icon: Utensils, desc: 'Te esperamos en nuestra mesa' },
@@ -253,7 +254,7 @@ export default function Checkout() {
             setProofSent(true);
             setLivePaymentState('reportado');
             toast.success('Comprobante enviado al restaurante');
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo subir'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo subir')); }
         finally { setUploading(false); setUploadPct(0); }
     };
 
@@ -339,7 +340,7 @@ export default function Checkout() {
                     else toast.success(`Pedido #${data.order_number} guardado: falta el pago`);
                 },
             });
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo crear el pedido')); }
         finally { setSubmitting(false); }
     };
 

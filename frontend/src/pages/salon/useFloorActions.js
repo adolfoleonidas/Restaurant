@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { closeOrderAttention, serveOrder, setOrderStatus } from '@/lib/api/orders';
 import { releaseTable as releaseTableRequest } from '@/lib/api/tables';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /** One-shot actions of the floor: deliver, close a visit, ask for the bill, free a table. */
 export default function useFloorActions({
@@ -22,7 +23,7 @@ export default function useFloorActions({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo entregar');
+            toast.error(apiErrorMessage(e, 'No se pudo entregar'));
         }
     };
 
@@ -35,7 +36,7 @@ export default function useFloorActions({
             refreshAll();
         } catch (e) {
             refreshAll();
-            toast.error(e.response?.data?.detail || 'No se pudo cerrar la atención. Puedes reintentar.');
+            toast.error(apiErrorMessage(e, 'No se pudo cerrar la atención. Puedes reintentar.'));
         } finally {
             setClosing(null);
         }
@@ -48,7 +49,7 @@ export default function useFloorActions({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo solicitar la cuenta');
+            toast.error(apiErrorMessage(e, 'No se pudo solicitar la cuenta'));
         }
     };
 
@@ -60,7 +61,7 @@ export default function useFloorActions({
             closeSheet();
             refetchTables?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo liberar');
+            toast.error(apiErrorMessage(e, 'No se pudo liberar'));
         }
     };
 

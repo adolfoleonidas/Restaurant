@@ -12,6 +12,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function Categorias() {
     const [cats, setCats] = useState([]);
@@ -31,11 +32,11 @@ export default function Categorias() {
             if (editing) { await updateCategory(editing.id, payload); toast.success('Actualizado'); }
             else { await createCategory(payload); toast.success('Creado'); }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.')); }
     };
     const doDelete = async (c) => {
         try { await deleteCategory(c.id); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.')); }
     };
 
     return (

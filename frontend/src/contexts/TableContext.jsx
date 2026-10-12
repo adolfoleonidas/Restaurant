@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { getPublicTableSession } from '@/lib/api/public';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Contexto del QR de mesa.
@@ -89,7 +90,7 @@ export const TableProvider = ({ children }) => {
             .catch((requestError) => {
                 if (!active) return;
                 // Un QR revocado o rotado deja de servir: se avisa y se olvida.
-                setError(requestError.response?.data?.detail || 'No pudimos leer el QR de la mesa.');
+                setError(apiErrorMessage(requestError, 'No pudimos leer el QR de la mesa.'));
                 setState({ token, table: null, session: null, policy: null });
                 writeStored(null);
             })

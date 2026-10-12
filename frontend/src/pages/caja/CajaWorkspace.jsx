@@ -24,6 +24,7 @@ import OpenCajaCard from '@/pages/caja/OpenCajaCard';
 import CloseCajaDialog from '@/pages/caja/CloseCajaDialog';
 import MovementCard from '@/pages/caja/MovementCard';
 import CajaKpis from '@/pages/caja/CajaKpis';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams = {}, selectedBranchId = null, branches = [], canOpen = true, runMutation, onCollectionChange }) {
     const [params] = useSearchParams();
@@ -127,7 +128,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
             toast.success(`Pedido #${order.order_number}: pago web confirmado`);
             refetchPending();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo confirmar');
+            toast.error(apiErrorMessage(e, 'No se pudo confirmar'));
         }
     };
 

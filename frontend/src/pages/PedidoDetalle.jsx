@@ -32,6 +32,7 @@ import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { isDraft } from '@/lib/orderDraft';
+import { apiErrorMessage } from '@/lib/apiError';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -143,7 +144,7 @@ export default function PedidoDetalle() {
         try {
             await addOrderItems(order.id, [{ product_id: product.id, quantity: 1 }]);
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error al agregar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error al agregar')); }
     };
 
     const sendToKitchen = async () => {
@@ -151,7 +152,7 @@ export default function PedidoDetalle() {
             await sendOrderToKitchen(order.id);
             toast.success('Enviado a cocina');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     // Lo que sigue en borrador se quita; lo que cocina ya recibió se anula, para
@@ -166,7 +167,7 @@ export default function PedidoDetalle() {
                 toast.success(`${it.product_name} anulado`);
             }
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const serve = async () => {
@@ -174,7 +175,7 @@ export default function PedidoDetalle() {
             await serveOrder(order.id);
             toast.success('Servido. La cuenta sigue abierta.');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const requestBill = async () => {
@@ -182,7 +183,7 @@ export default function PedidoDetalle() {
             await setOrderStatus(order.id, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
             navigate('/salon');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const reassign = async (waiterId) => {
@@ -190,7 +191,7 @@ export default function PedidoDetalle() {
             await reassignOrder(order.id, { waiter_id: waiterId });
             toast.success('Mozo reasignado. Cocina no se reinicia.');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo reasignar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo reasignar')); }
     };
 
     const doCancel = async () => {
@@ -200,7 +201,7 @@ export default function PedidoDetalle() {
             setCancelDlg(false);
             toast.success('Pedido cancelado');
             navigate('/salon');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const openCollection = async () => {

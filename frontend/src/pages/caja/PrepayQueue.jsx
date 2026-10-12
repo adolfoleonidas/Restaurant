@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const PREPAY_STATE_LABELS = {
     pendiente: 'Esperando el pago del cliente',
@@ -49,7 +50,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
             reload();
             onChanged?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo completar la acción');
+            toast.error(apiErrorMessage(e, 'No se pudo completar la acción'));
         } finally {
             setBusy('');
         }

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { setOrderNotes } from '@/lib/api/orders';
+import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
@@ -34,7 +35,7 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
             await setOrderNotes(order.id, { notes: next });
         } catch (e) {
             setNoteDraft(order.notes || '');
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la nota'));
         }
     };
 

@@ -16,6 +16,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export function Temas() {
     const { theme, setTheme, clearThemeOverride, themes } = useTheme();
@@ -34,7 +35,7 @@ export function Temas() {
             setTheme(themeId);
             toast.success('Tema guardado para todo el restaurante');
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'Error al guardar el tema');
+            toast.error(apiErrorMessage(e, 'Error al guardar el tema'));
         } finally {
             setSaving(false);
         }
@@ -103,7 +104,7 @@ function Restaurante() {
     useEffect(() => { getRestaurant().then((res) => setR(res.data)); }, []);
     const save = async () => {
         try { const { data } = await updateRestaurant(r); setR(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la configuración. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la configuración. Revisá tu conexión y reintentá.')); }
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (
@@ -195,7 +196,7 @@ function Marca() {
             });
             setR(data);
             toast.success('Marca guardada');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error al guardar la marca'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error al guardar la marca')); }
         finally { setSaving(false); }
     };
 
@@ -316,7 +317,7 @@ function Funciones() {
             notifyFeaturesChanged();
             toast.success('Funciones guardadas');
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron guardar las funciones');
+            toast.error(apiErrorMessage(e, 'No se pudieron guardar las funciones'));
         } finally {
             setSaving(false);
         }
@@ -413,7 +414,7 @@ function Datos() {
             setPassword('');
             loadInfo();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo restablecer los datos');
+            toast.error(apiErrorMessage(e, 'No se pudo restablecer los datos'));
         } finally {
             setLoading(false);
         }
@@ -438,7 +439,7 @@ function Datos() {
             setCatalogPassword('');
             loadInfo();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo vaciar la carta');
+            toast.error(apiErrorMessage(e, 'No se pudo vaciar la carta'));
         } finally {
             setCatalogLoading(false);
         }

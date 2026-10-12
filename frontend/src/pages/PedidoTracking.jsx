@@ -15,6 +15,7 @@ import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, 
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import TableSessionPanel from '@/components/TableSessionPanel';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const STEP_ICONS = {
     check: CheckCircle2,
@@ -100,7 +101,7 @@ export default function PedidoTracking() {
     const upload = async () => {
         setUploading(true);
         try { await uploadPublicOrderProof(code, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.')); }
         finally { setUploading(false); }
     };
     const needsProof = !order.has_proof && ['yape', 'plin', 'transferencia'].includes(order.payment_method_choice);

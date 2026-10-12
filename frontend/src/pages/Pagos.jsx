@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CreditCard, Smartphone, Banknote, Building2, Upload, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
     <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40 transition-colors">
@@ -40,7 +41,7 @@ export default function Pagos() {
 
     const save = async () => {
         try { const { data } = await updatePaymentConfig(cfg); setCfg(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     if (!cfg) return (
