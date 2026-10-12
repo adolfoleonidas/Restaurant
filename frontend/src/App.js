@@ -8,6 +8,7 @@ import { LiveOrderProvider } from '@/contexts/LiveOrderContext';
 import { TableProvider } from '@/contexts/TableContext';
 import { AssistantProvider } from '@/contexts/AssistantContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { routeRoles } from '@/lib/permissions';
 import { AppShell } from '@/components/AppShell';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { PublicLayout } from '@/components/PublicLayout';
@@ -39,6 +40,10 @@ const Reportes = React.lazy(() => import('@/pages/Reportes'));
 const Configuracion = React.lazy(() => import('@/pages/Configuracion'));
 const Pagos = React.lazy(() => import('@/pages/Pagos'));
 const Disponibilidad = React.lazy(() => import('@/pages/Disponibilidad'));
+
+// The role guard of every route comes from lib/permissions, the same module the
+// navigation reads.
+const guard = (path, element) => <ProtectedRoute roles={routeRoles(path)}>{element}</ProtectedRoute>;
 
 function ScrollToTop() {
     const { pathname } = useLocation();
@@ -136,24 +141,24 @@ function App() {
                                 {/* ADMIN ROUTES */}
                                 <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
                                     <Route path="/dashboard" element={<Dashboard />} />
-                                    <Route path="/salon" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Salon /></ProtectedRoute>} />
+                                    <Route path="/salon" element={guard('/salon', <Salon />)} />
                                     <Route path="/servicio" element={<Navigate to="/salon" replace />} />
-                                    <Route path="/local" element={<ProtectedRoute roles={['admin']}><Local /></ProtectedRoute>} />
+                                    <Route path="/local" element={guard('/local', <Local />)} />
                                     <Route path="/mesas" element={<Navigate to="/local" replace />} />
-                                    <Route path="/pedidos" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><Pedidos /></ProtectedRoute>} />
-                                    <Route path="/pedidos/nuevo" element={<ProtectedRoute roles={['admin', 'mozo']}><PedidoNuevo /></ProtectedRoute>} />
-                                    <Route path="/pedidos/:id" element={<ProtectedRoute roles={['admin', 'mozo', 'cajero']}><PedidoDetalle /></ProtectedRoute>} />
-                                    <Route path="/cocina" element={<ProtectedRoute roles={['admin', 'cocina', 'mozo']}><Cocina /></ProtectedRoute>} />
-                                    <Route path="/caja" element={<ProtectedRoute roles={['admin', 'cajero']}><Caja /></ProtectedRoute>} />
-                                    <Route path="/comprobantes" element={<ProtectedRoute roles={['admin', 'cajero']}><Comprobantes /></ProtectedRoute>} />
-                                    <Route path="/reportes" element={<ProtectedRoute roles={['admin']}><Reportes /></ProtectedRoute>} />
-                                    <Route path="/disponibilidad" element={<ProtectedRoute roles={['admin', 'cocina']}><Disponibilidad /></ProtectedRoute>} />
-                                    <Route path="/productos" element={<ProtectedRoute roles={['admin']}><Productos /></ProtectedRoute>} />
-                                    <Route path="/combos" element={<ProtectedRoute roles={['admin']}><Combos /></ProtectedRoute>} />
-                                    <Route path="/categorias" element={<ProtectedRoute roles={['admin']}><Categorias /></ProtectedRoute>} />
-                                    <Route path="/usuarios" element={<ProtectedRoute roles={['admin']}><Usuarios /></ProtectedRoute>} />
-                                    <Route path="/pagos" element={<ProtectedRoute roles={['admin']}><Pagos /></ProtectedRoute>} />
-                                    <Route path="/configuracion" element={<ProtectedRoute roles={['admin']}><Configuracion /></ProtectedRoute>} />
+                                    <Route path="/pedidos" element={guard('/pedidos', <Pedidos />)} />
+                                    <Route path="/pedidos/nuevo" element={guard('/pedidos/nuevo', <PedidoNuevo />)} />
+                                    <Route path="/pedidos/:id" element={guard('/pedidos/:id', <PedidoDetalle />)} />
+                                    <Route path="/cocina" element={guard('/cocina', <Cocina />)} />
+                                    <Route path="/caja" element={guard('/caja', <Caja />)} />
+                                    <Route path="/comprobantes" element={guard('/comprobantes', <Comprobantes />)} />
+                                    <Route path="/reportes" element={guard('/reportes', <Reportes />)} />
+                                    <Route path="/disponibilidad" element={guard('/disponibilidad', <Disponibilidad />)} />
+                                    <Route path="/productos" element={guard('/productos', <Productos />)} />
+                                    <Route path="/combos" element={guard('/combos', <Combos />)} />
+                                    <Route path="/categorias" element={guard('/categorias', <Categorias />)} />
+                                    <Route path="/usuarios" element={guard('/usuarios', <Usuarios />)} />
+                                    <Route path="/pagos" element={guard('/pagos', <Pagos />)} />
+                                    <Route path="/configuracion" element={guard('/configuracion', <Configuracion />)} />
                                 </Route>
 
                                 <Route path="*" element={<Navigate to="/" replace />} />

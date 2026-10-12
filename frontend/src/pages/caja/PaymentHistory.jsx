@@ -12,6 +12,7 @@ import { PAYMENT_RECORD_STATUS_LABELS } from '@/constants/status';
 import { Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { ACTIONS, can } from '@/lib/permissions';
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import { accountLabel } from '@/lib/cash';
@@ -19,7 +20,7 @@ import { accountLabel } from '@/lib/cash';
 export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     const { user } = useAuth();
     const scopeOptions = useCallback(() => Object.keys(scopeParams).length ? { params: scopeParams } : undefined, [scopeParams]);
-    const canVoid = user?.role === 'admin' || !!user?.can_void;
+    const canVoid = can(user, ACTIONS.CASH_VOID);
     const [period, setPeriod] = useState('day');
     const [q, setQ] = useState('');
     const [items, setItems] = useState(null);

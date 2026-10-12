@@ -2,12 +2,13 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { listBranches } from '@/lib/api/branches';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
+import { ACTIONS, can } from '@/lib/permissions';
 import CajaWorkspace from '@/pages/caja/CajaWorkspace';
 import ConsolidatedCashView from '@/pages/caja/ConsolidatedCashView';
 
 export default function Caja() {
     const { user } = useAuth();
-    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
     const userKey = user?.id || user?.email || user?.role || 'signed-in';
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);

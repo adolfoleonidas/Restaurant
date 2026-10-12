@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
-import { hasFn } from '@/lib/functions';
+import { ACTIONS, can } from '@/lib/permissions';
 import FloorFilters from './salon/FloorFilters';
 import FloorGrid from './salon/FloorGrid';
 import JoinBar from './salon/JoinBar';
@@ -61,7 +61,7 @@ export default function Salon() {
 
     const [showNewOrder, setShowNewOrder] = useState(false);
 
-    const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
 
     // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
     // qué salón mira; el resto del personal queda fijado por el servidor.
@@ -76,10 +76,10 @@ export default function Salon() {
         generation, isOwner, scope, scopeKey, scopeParams, scopePending,
     });
 
-    const canServe = ['admin', 'mozo', 'cocina'].includes(user?.role);
-    const canTake = ['admin', 'mozo'].includes(user?.role);
-    const canClose = ['admin', 'mozo', 'cajero'].includes(user?.role);
-    const canCharge = hasFn(user, 'cobro', 'administracion');
+    const canServe = can(user, ACTIONS.SALON_SERVE);
+    const canTake = can(user, ACTIONS.SALON_TAKE);
+    const canClose = can(user, ACTIONS.SALON_CLOSE);
+    const canCharge = can(user, ACTIONS.SALON_CHARGE);
 
     const floorView = useFloorView({ user, tables, orders });
     const { activeOrders } = floorView;
