@@ -86,7 +86,9 @@ export default function OrderTicket({
             <div className="grid gap-2">
                 {showSend && (
                     <Button
-                        className="min-h-[54px] w-full text-base font-bold"
+                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30
+                            min-h-[54px] w-auto min-w-0 whitespace-normal text-base font-bold
+                            min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:w-full"
                         onClick={onSend}
                         data-testid={`${testIdPrefix}-enviar-cocina`}
                     >

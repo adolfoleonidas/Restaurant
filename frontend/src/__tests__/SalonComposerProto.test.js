@@ -393,6 +393,42 @@ describe('compositor · paridad posView (S8)', () => {
         await act(async () => {});
     });
 
+    it('anchors the sole ticket send action above mobile navigation without full-width overflow', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        const send = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
+        expect(send).not.toBeNull();
+        expect(send.className.split(/\s+/)).toEqual(expect.arrayContaining([
+            'fixed', 'left-3', 'right-3',
+            'bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)]', 'z-30',
+            'min-h-[54px]', 'w-auto', 'min-w-0', 'whitespace-normal',
+        ]));
+        expect(send.classList.contains('w-full')).toBe(false);
+        expect(sheet.className.split(/\s+/)).toEqual(expect.arrayContaining([
+            'pb-28', 'min-[820px]:pb-0',
+        ]));
+    });
+
+    it('provides desktop inline overrides on the same ticket send node', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+
+        const ticket = sheet.querySelector('[data-testid="mesa-sheet-ticket"]');
+        const send = ticket.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
+        expect(send.className.split(/\s+/)).toEqual(expect.arrayContaining([
+            'min-[820px]:static', 'min-[820px]:inset-auto',
+            'min-[820px]:z-auto', 'min-[820px]:w-full',
+        ]));
+        expect(ticket.parentElement.className.split(/\s+/)).toEqual(expect.arrayContaining([
+            'min-[820px]:sticky', 'min-[820px]:top-4',
+        ]));
+
+        await type(container.querySelector('[data-testid="salon-search-input"]'), 'Mesa');
+        expect(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]')).toBe(send);
+        expect(sheet.querySelectorAll('[data-testid="mesa-sheet-enviar-cocina"]')).toHaveLength(1);
+    });
+
     it('mobile keeps exactly one ticket send action with inline editing and review cancellation', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')], { customer_name: 'Juan' });
         api.patch.mockResolvedValue({ data: {} });
@@ -434,6 +470,7 @@ describe('compositor · paridad posView (S8)', () => {
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
+        expect(inlineTicket.querySelector('[data-testid="mesa-sheet-enviar-cocina"]')).toBe(send);
 
         expect(api.delete).not.toHaveBeenCalled();
         expect(window.confirm).not.toHaveBeenCalled();
