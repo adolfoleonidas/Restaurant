@@ -36,6 +36,8 @@ The browser UX/UI audit of 2026-10-12 (ux-ui-audit protocol, isolated stack at `
 - [x] **UX-08 Labelled controls [13, 14, 16, 19].** `htmlFor`/`id` on every visible label-input pair; Reportes branch select labelled by `label[for]`; Equipo switches named "Activo: <nombre>"; a skip link to `main`; distinct names for the two Pedidos "Ver" links.
 - [x] **UX-09 Focus, size, contrast, danger [12, 15, 17, 18, 20].** One focus ring token for buttons, links, and card buttons (≥3:1). Touch targets ≥44 px for steppers, quick-note chips, filter chips, and "Cobrar" on touch layouts. Dark-theme tokens for muted text, destructive red, and success meet 4.5:1. "Anular pedido" uses the destructive style. Quick-note chips filtered by product category.
 - [x] **UX-10 No silent failures, no native dialogs [lead 1, 20].** Caja shows its polling error with "Reintentar"; `window.confirm` in `PrepayQueue.jsx` and `TableQrActions.jsx` becomes the shared AlertDialog.
+- [x] **UX-12 Empty table: action where the eye is (user request, 2026-10-12).** "Nuevo pedido" lives inside the "Mesa libre" card (hint "Aún no hay pedidos en esta mesa."); the bottom bar is not rendered while the table has no orders; the duplicated plus ("+ + Nuevo pedido") is gone. Commit `f89478d`.
+- [x] **UX-13 Quantity steppers on product cards (user request).** Composer cards show an inline [−] qty [+] stepper (replacing the badge) when the product is in the account; tap on the card still adds one; the stepper row always reserves its height (invisible at 0). Commit `37b7440`.
 
 ## Deferred / separate
 
@@ -105,3 +107,9 @@ All ten tasks are implemented. Next: rebuild the stack from this branch and re-c
 - API: mozo, cajero, and cocina log in on the fresh seed and list 12 tables each (finding 04 fixed).
 - Checkout heading keyed on `isPaid` (finding 02) confirmed in `pages/Checkout.jsx:367`; covered by frontend tests, not re-walked in the browser.
 - No voseo/usted forms left in non-test frontend sources (grep).
+
+## UX-12 / UX-13 evidence (writer, 2026-10-12)
+
+- UX-12 RED: `SalonDetailView.test.js` empty-state test failed (old hint, button outside the card, bar present). GREEN after new `pages/salon/NewOrderButton.jsx` (icon + "Nuevo pedido", `h-12 touch-target-coarse`, same testid and `aria-expanded`), card button in `TableSheet`, `SheetSummaryPanel` renders the bar only with orders or a charge. `SalonComposerProto` T04 test updated: the control now remounts from the card to the bar when the account list loads.
+- UX-13 RED: `OrderComposerParity.test.js` 2 of 5 new tests failed (badge still present, hidden stepper). GREEN: the old hidden stepper is now visible when qty > 0 (`invisible` otherwise, keeps height), buttons 32px (44px under coarse pointers), `stopPropagation` on both, same `onAddProduct`/`onRemoveProduct` callbacks (no new draft path); "−" stays disabled when only sent lines exist; "+" disabled when unavailable or saving. The qty shown is the account total as before; badge removed.
+- Verification: focused suites green; full `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4`: 98 suites / 859 tests passed; `npx craco build`: Compiled successfully; `git diff --check` clean. Not checked in a real browser (touch sizes, layout stability).
