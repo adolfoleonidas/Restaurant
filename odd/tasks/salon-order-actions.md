@@ -42,7 +42,7 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
 
 ## Work units
 
-- [ ] OA-01 — Unify new independent order entry and preserve existing-card modification.
+- [x] OA-01 — Unify new independent order entry and preserve existing-card modification.
   - Route: delegated writer; `Salon.jsx` state, account targeting, and multiple behavioral suites must change together.
   - Acceptance: selected-table `Nuevo pedido` prepares a fresh account, created lazily with `new_account=true` during an existing attention; no `Agregar persona` remains; previous products/drafts/names/shared identity stay intact.
   - Acceptance: each eligible existing card provides the correct additions/draft-edit route, including sent-only open orders; products target that order, and closed/moved/non-composable targets are rejected after fresh fetch. Optional card naming remains usable.
@@ -57,12 +57,12 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
 
 ## Progress and evidence
 
-- Mapping and prototype comparison completed; OA-01 is implemented locally with writer verification recorded below. OA-02 has not started.
+- Mapping and prototype comparison completed. OA-01 is committed; OA-02 implementation and local writer/independent functional checks have completed, with its work-unit commit pending.
 - Account cards need a coherent additions path when no drafts exist; broadening only the fresh-order button would remove functionality.
 - Prototype comparisons: `restoflow.html:611–614,921–925` clean new draft; `594,941–945` optional card naming; `790–806` simplified ticket model differs from application billing; `633,1011–1015` immediate send must not replace application's review.
 - File/memory mirror: this document is the local recovery record; mirror verification follows creation and each observed work-unit update.
-- Commits: none. OA-01 remains unchecked for parent-owned independent checks, mirror reconciliation, and commit handling. Browser and real-backend proof are unavailable.
-- Next: close the verified OA-01 work-unit commit and record its identity, then continue OA-02. No remote action.
+- OA-01 work-unit commit: `92225dbcc8992b861887d433e19f4ef7b8d106eb` (`fix(salon): make new orders independent and keep card editing`), 541 additions + 117 deletions = 658 authored lines including tests and the task document. Post-commit tracked worktree was clean; no source-mutating hook change was observed. RDD outcome: off/unmanaged, with high/unassessable assessment and independent functional checking, not review approval.
+- Next: close the verified OA-02 work-unit commit and persist final progress. Browser and real-backend proof remain unavailable; no remote action.
 
 ### OA-01 local writer evidence
 
@@ -78,7 +78,7 @@ Selected-table `Nuevo pedido` now clears the composition target without deleting
 - Regression coverage: visible product-name controls; lazy `new_account` payloads and same-account destinations; latest draft quantities/notes/names/shared snapshots; optional unnamed sending; fresh paid/cancelled/moved/closed-visit/branch/type rejection; table/role/loading/write guards; grouped navigation and selected-member identity reset. Existing review, send-failure recovery, sent-line, quantity, notes, deletion, and guarded-exit assertions remain active.
 - Intermediate focused runs also reported 12 failed / 94 passed, 2 failed / 104 passed, and 1 failed / 107 passed tests. Fixture issues (automatic draft opening, an absent pre-creation ticket, stale mocked alias reads, and Escape leaving the composer) were corrected; no assertions were disabled or skipped. First GREEN was 6 suites / 108 tests before the final two guard regressions.
 - Nonfailing output: Radix dialog description warnings; the full suite also logs missing dialog-title diagnostics in the existing payment presets suite. Build logs Node `DEP0176` (`fs.F_OK`); Git logs LF-to-CRLF warnings.
-- Authored tracked diff: 448 additions + 117 deletions = 565 lines. The local task document is currently untracked and is counted separately; no staging, commit, or task mirror update was performed.
+- At the writer handoff, the tracked source/test diff was 448 additions + 117 deletions = 565 lines and the task document was still untracked. The later parent work-unit commit and mirror update are recorded separately; the writer performed neither.
 - Rollback: remove only OA-01 hunks in `Salon.jsx`, `SalonComposerProto.test.js`, `SalonSheetParity.test.js`, `MesasPersonasPedido.test.js`, `MesasPedidoInline.test.js`, and this evidence section. Preserve the parent task record, unrelated untracked assets, and the unchanged lower `mesa-sheet-fab` for OA-02.
 - Writer evidence boundary: mocked frontend functional tests and production compilation only, not browser or real-backend E2E. Parent-owned assessment and independent checks were pending at that handoff; their subsequent results follow below.
 
@@ -90,4 +90,30 @@ Selected-table `Nuevo pedido` now clears the composition target without deleting
 - Independent overall result was **partial**, not a blanket PASS: an additional DOM/mock probe reproduced loss of an optional name/shared selection entered before the very first product creates an account. Equivalent baseline inspection/probing reproduced the same behavior. It predates OA-01; existing-card naming and outgoing identity preservation pass. No newly introduced OA-01 regression was reproduced, and this inherited issue was not automatically fixed or accepted as extra scope.
 - Inherited identity issue: `saveAlias` cannot persist before an account exists, and the identity effect reloads the initial account fields after lazy creation. Naming from an existing card is the selected flow; pre-creation identity handling is a disclosed follow-up.
 - Delivery analysis considered existing-card support/snapshots/guards before independent-entry/person-CTA removal. Shared state and combined regressions need repartitioning and intermediate proof; verified <=400-line slices were not established. Preserve the smallest presently checked coherent bundle rather than omit tests or make cosmetic line savings.
-- The maintainer accepted the size exception through the native question. OA-01 remains unchecked until the work-unit commit; OA-02, browser checks and real-backend E2E remain pending. Record the exact local commit before continuing.
+- The maintainer accepted the size exception through the native question, and OA-01 closed with the work-unit commit recorded above. Its inherited pre-product identity issue stays disclosed as a follow-up; OA-02, browser checks and real-backend E2E remain pending.
+
+### OA-02 local writer evidence
+
+Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the sole composer send action, with unchanged `requestSend`, explicit review/confirmation, account targeting, and draft controls. OA-02 remains unchecked and uncommitted for parent-owned independent checks and commit handling.
+
+| Check | Observed result |
+|-------|-----------------|
+| Exact focused runner in Implementation and checking | Genuine RED before production edits on `92225dbcc8992b861887d433e19f4ef7b8d106eb`: 1 failed / 5 passed suites; 1 failed / 110 passed tests (111 total). The duplicate-action assertion expected one non-hidden send control and found the ticket button plus the lower FAB. After removal: GREEN, 6 suites / 111 tests passed; no snapshots. |
+| `npm.cmd test -- --watchAll=false --runInBand` | 61 suites / 436 tests passed; no snapshots. |
+| `npm.cmd run build` | Compiled successfully in one foreground attempt with a 300-second tool limit. All frontend checks used `CI=true` and `ENABLE_HEALTH_CHECK=false`. |
+| Repository checks | `git diff --check` found no whitespace errors; `git diff --stat` and `git diff --name-only` showed only `Salon.jsx`, `SalonComposerProto.test.js`, `MesasPersonasPedido.test.js`, and this document. |
+
+- Behavior coverage: exactly one ticket send control, no lower FAB or drawer; ticket total, draft quantity/notes/clear; review cancellation preserves drafts and submits nothing; explicit confirmation sends once; failed sending keeps draft/review and permits an explicit retry; pending-write and existing pending-send guards remain exercised. No tests were skipped or deleted.
+- Nonfailing output: existing Radix dialog-description warnings, plus dialog-title diagnostics in the full suite; Node `DEP0176` (`fs.F_OK`) during build; Git LF-to-CRLF warnings.
+- Scope: production changes are only the duplicate button removal and two obsolete comments. OA-01 account behavior, its checked checkbox/commit evidence, the inherited pre-product identity disclosure, and the parent's pre-existing document changes are preserved. No mirror update, staging, commit, review operation, or remote action was performed.
+- Authored boundary: OA-02 contributes 105 source/test changed lines plus this 18-line evidence section = 123 lines (+84/-39). The complete working diff also includes 10 pre-existing parent document changed lines (+5/-5), for 133 lines (+89/-44); do not attribute those parent changes to this writer.
+- Rollback: restore only the lower floating button/comment hunks in `Salon.jsx`, their matched OA-02 test changes in the two suites, and this evidence section. Keep the retained ticket/review/account behavior and every parent document update intact.
+- Proof boundary: mocked frontend functional tests and compilation only, not browser or real-backend E2E. Parent native assessment, independent closure/spot checks, mirror reconciliation, task check-off, and commit remain pending.
+
+### OA-02 independent closure
+
+- Native risk assessment again returned high/unassessable because unrelated untracked inventory needs declaration. RDD stayed off/unmanaged; no review or mode toggle was started. A fresh independent functional verifier inspected the bounded candidate instead.
+- Independently reran the exact six-suite command: 6 suites / 111 tests passed; full frontend suite: 61 suites / 436 tests passed; production build: compiled successfully in one bounded attempt; `git diff --check`: passed. No required command failed or was unavailable, and no candidate-caused functional defect was reproduced.
+- Targeted inspection confirms the ticket's sole composer send action still opens review, cancellation preserves drafts without posting, explicit confirmation posts once, failure stays recoverable, and account/role/context guards remain covered. Only the duplicate lower button and obsolete comments changed in production.
+- The inherited pre-first-product name/shared-input issue remains an unfixed follow-up; existing-card naming passes. DOM/mock checks do not prove viewport scrolling/occlusion, real-backend persistence, or concurrency/idempotency. Existing nonfailing Radix/Node/LF-to-CRLF diagnostics remain.
+- Parent structural readback and whitespace spot check passed; scope remained the four intended files. Functional scope is verified, while browser and real-backend proof remain pending. The local work-unit commit is the remaining closure step.

@@ -1811,8 +1811,7 @@ export default function Salon() {
                         const tablePendiente = allAccounts.reduce((sum, o) => sum + accountDue(activeOrders[o.id] || o), 0);
                         // Lo que falta enviar de la cuenta que se está armando.
                         const pendingCount = order ? draftCount(order.items || [], order.status) : 0;
-                        // Unidades en borrador de la cuenta activa: lo que el FAB
-                        // anuncia como "nuevos" (por unidad, como el prototipo).
+                        // Draft units enable clearing the active account's draft ticket.
                         const draftUnits = orderItems
                             .filter((it) => isDraft(it, order?.status))
                             .reduce((sum, it) => sum + Number(it.quantity || 0), 0);
@@ -2269,9 +2268,8 @@ export default function Salon() {
                                     </div>
 
                                     {composerOpen ? (
-                                        /* Ticket del borrador, como el `.ticket` del
-                                           prototipo: columna sticky en escritorio; en
-                                           móvil queda en flujo y el FAB abre la hoja. */
+                                        /* Inline draft ticket: sticky on desktop, in-flow on mobile.
+                                           Sending opens review before explicit confirmation. */
                                         <div className="min-w-0 min-[820px]:sticky min-[820px]:top-4">
                                             <OrderTicket
                                                 testIdPrefix="mesa-sheet"
@@ -2363,20 +2361,6 @@ export default function Salon() {
                                     </aside>
                                     )}
                                 </div>
-
-                                {/* Mobile's primary draft action goes straight to the final review. */}
-                                {canTake && composerOpen && order && draftUnits > 0 && showSend && sendState && (
-                                    <button
-                                        type="button"
-                                        disabled={savingItem || sendingToKitchen}
-                                        onClick={() => requestSend()}
-                                        data-testid="mesa-sheet-fab"
-                                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex min-h-[52px] items-center justify-between gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-[0_10px_30px_-10px_rgba(0,0,0,0.4)] min-[820px]:hidden"
-                                    >
-                                        <span>Enviar a cocina · {draftUnits} nuevo{draftUnits === 1 ? '' : 's'}</span>
-                                        <span className="font-mono tabular-nums">{fmtMoney(sendState.amount || 0)}</span>
-                                    </button>
-                                )}
 
                             </section>
 
