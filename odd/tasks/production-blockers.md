@@ -6,7 +6,7 @@ Close the six production-readiness defects confirmed by the 2026-10-12 full audi
 
 ## Scope and authority
 
-- Branch: `fix/production-blockers`, branched from `main` at `bf47b3d`. Independent of the unmerged `fix/salon-fixed-send`.
+- Branch: `fix/production-blockers`, rebased onto `origin/main` at `ec3c303` on 2026-10-12 (originally branched from the stale local `main` at `bf47b3d`). Independent of the unmerged `fix/salon-fixed-send`.
 - User authorized stage 1 implementation in chat on 2026-10-12.
 - Preserve unrelated untracked roots: `.audit_tmp/`, `.tmp/`, `aprendisaje/`, `docs/audit/`, `documentos/`, `frontend/.tmp/`.
 - UI copy stays in neutral Spanish; code, comments, tests, and docs in English.
@@ -44,6 +44,16 @@ About 250 to 350 authored changed lines across six work-unit commits. Strategy: 
 - PB-06 (user decision B authorized by the coordinator). RED: `python -m pytest tests/test_table_actor_audit.py -q` (hermetic env) -> 3 failed (seat/release wrote no audit entry; transfer entry had no `user_name`). GREEN: same command -> 3 passed after `record_audit` gained `user_name`, `user_role`, `branch_id` (additive top-level fields) and seat/release call it. Full hermetic suite: 473 passed, 49 deselected. Commit: 61b0c14.
 
 - Final checks: backend hermetic suite 473 passed, 49 deselected; frontend full suite 52 suites / 321 tests passed (baselines of 492 and 61/438 quoted at delegation did not match this tree: main measured 460 backend passes).
+
+## Rebase onto origin/main (2026-10-12)
+
+New base: `origin/main` `ec3c303` (merged PRs #77 financial integrity chain, #80, #82, #84). Backup of the pre-rebase branch: `backup/fix/production-blockers` (`3ec5fe9`).
+
+- Textual conflicts: none. The only files touched by both sides were `backend/routes/orders.py` and `tests/test_order_flow_and_secrets.py`; git merged both cleanly and the result was read back (PB-02 counter key helper intact, no origin/main logic changed).
+- Semantic re-check: PB-03 still reuses `_authorized_order` from `routes/payments.py`, which exists unchanged on origin/main. PB-06 `record_audit` in `routes/table_groups.py` still serves seat, release and transfer on the new `tables.py`.
+- No intent dropped or rewritten; computed amounts untouched.
+- Commit hashes (old -> new): bf7505a -> 98d7947 (PB-01), da5029c -> f80fa0f (PB-02), 31ce41b -> 8606843 (PB-03), a1e9bf0 -> d530f54 (PB-04), 9076e7c -> 5ba187a (PB-05), 61b0c14 -> 7c01b38 (PB-06).
+- Checks after rebase: backend hermetic suite 505 passed, 49 deselected (origin/main baseline: 492 passed, 49 deselected; delta +13 = this stage's new tests); frontend `LoginDemoAccounts` + `LoginNavigation`: 2 suites / 6 tests passed; `git diff --check origin/main...HEAD` clean.
 
 ## Next step
 
