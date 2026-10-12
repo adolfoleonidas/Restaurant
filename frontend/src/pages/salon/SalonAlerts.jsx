@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Stale-data banner, branch catalog error and the notice for tables without a branch.
@@ -9,11 +10,16 @@ export default function SalonAlerts({
     refetchOrders, refetchTables, scope, tablesError,
     unassignedCount,
 }) {
+    // Un 403 trae el motivo ("sin sucursal asignada"): decirlo en lugar de un mensaje genérico.
+    const failure = tablesError || ordersError;
+    const serverReason = failure?.response ? apiErrorMessage(failure, '') : '';
     return (
         <>
             {(tablesError || ordersError) && (
                 <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-                    <span className="font-medium">No se pudo actualizar el salón: las mesas y los pedidos pueden estar desactualizados.</span>
+                    <span className="font-medium">
+                        {serverReason || 'No se pudo actualizar el salón: las mesas y los pedidos pueden estar desactualizados.'}
+                    </span>
                     <Button variant="outline" className="h-11" onClick={() => { refetchTables(); refetchOrders(); }}>Reintentar</Button>
                 </div>
             )}

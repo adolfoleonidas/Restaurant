@@ -28,6 +28,9 @@ export function NotifyProvider({ children }) {
                         },
                         signal: ctrl.signal,
                     });
+                    // Sin permiso (p. ej. usuario sin sucursal) reintentar no cambia nada:
+                    // se deja de insistir hasta que el usuario inicie sesión de nuevo.
+                    if (res.status === 403) return;
                     if (!res.ok || !res.body) throw new Error('stream');
                     const reader = res.body.getReader();
                     const decoder = new TextDecoder();
