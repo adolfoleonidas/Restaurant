@@ -84,7 +84,8 @@ describe('pedido inline en el salón', () => {
 
         const sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido"]')).not.toBeNull();
-        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
         expect(api.post).toHaveBeenCalledWith('/orders/order-new/items', [{ product_id: 'prod-1', quantity: 1 }]);
@@ -102,7 +103,10 @@ describe('pedido inline en el salón', () => {
         api.post.mockResolvedValue({ data: existing });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-pedido-11"] [data-testid="mesa-sheet-editar-pedido"]'));
+        const product = document.body.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]');
+        expect(product.closest('[hidden]')).toBeNull();
+        await click(product);
 
         expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/items', [{ product_id: 'prod-1', quantity: 1 }]);
@@ -123,10 +127,9 @@ describe('pedido inline en el salón', () => {
         ));
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        // La mesa ya tiene visita: la siguiente cuenta se inicia desde el área
-        // visible de cuentas/personas.
-        await click(document.body.querySelector('[data-testid="mesa-sheet-agregar-persona"]'));
-        await click(document.body.querySelector('[data-testid="mesa-sheet-producto-prod-1"]'));
+        // The selected table's New order starts the next independent account.
+        await click(document.body.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(document.body.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders', {
             table_id: 'table-1', order_type: 'mesa', new_account: true,

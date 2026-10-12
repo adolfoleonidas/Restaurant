@@ -175,10 +175,13 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-cobrar"]')).toBeNull();
     });
 
-    it('S2-3 renombra el alias de una persona desde la franja', async () => {
+    it('renames the intended card and reflects the saved account name immediately', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: null });
-        api.patch.mockResolvedValue({ data: { ...maria, customer_name: 'Pedro' } });
+        api.patch.mockImplementation(async (_, payload) => {
+            maria.customer_name = payload.alias;
+            return { data: maria };
+        });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
 
         const pencil = sheet.querySelector('[data-testid="mesa-sheet-renombrar-12"]');

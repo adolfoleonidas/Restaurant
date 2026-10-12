@@ -161,22 +161,29 @@ describe('pedido por personas en el salón', () => {
         expect(button.textContent).not.toContain('adicionales');
     });
 
-    it('el envío móvil abre directamente la revisión sin enviar antes de confirmar', async () => {
+    it('the mobile ticket send action supports review cancellation and sends once after confirmation', async () => {
         const previousWidth = window.innerWidth;
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
         const account = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 2, 38, 'borrador')], { customer_name: 'Juan' });
         api.post.mockResolvedValue({ data: account });
         ({ container, root, sheet } = await openTableWith([account]));
 
-        const send = sheet.querySelector('[data-testid="mesa-sheet-fab"]');
+        const send = sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]');
         expect(send.textContent).toContain('Enviar a cocina');
+        expect(send.textContent).toContain('S/ 76.00');
         await click(send);
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]').textContent).toContain('S/ 76.00');
         expect(document.body.querySelector('[data-testid="mesa-sheet-ticket-sheet"]')).toBeNull();
+        await click(document.body.querySelector('[data-testid="mesa-sheet-volver-editar"]'));
+        expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-i1"]')).not.toBeNull();
+        expect(api.post).not.toHaveBeenCalled();
+        await click(sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
+        expect(api.post).toHaveBeenCalledTimes(1);
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: previousWidth });
     });
 
@@ -289,9 +296,11 @@ describe('pedido por personas en el salón', () => {
         });
         ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
 
-        // La acción para agregar a otra persona queda visible junto a las cuentas.
-        await click(sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        // New order prepares an independent account within the existing attention.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        const product = sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
+        expect(product.closest('[hidden]')).toBeNull();
+        await click(product);
 
         expect(api.post).toHaveBeenCalledWith('/orders', {
             table_id: 'table-1', order_type: 'mesa', new_account: true,
@@ -317,7 +326,8 @@ describe('pedido por personas en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
         sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
     });
 
