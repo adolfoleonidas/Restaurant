@@ -29,7 +29,7 @@ describe('status constants', () => {
             entregado: 'Entregado',
             pendiente_pago: 'Pendiente de pago',
             pagado: 'Pagado',
-            cancelado: 'Cancelado',
+            cancelado: 'Anulado',
         });
         expect(TABLE_STATUS_LABELS).toEqual({
             disponible: 'Disponible',
@@ -78,7 +78,7 @@ describe('status constants', () => {
             ['nuevo', 'Pedido recibido', 'check'],
             ['en_preparacion', 'En preparación', 'chef'],
             ['listo', 'Listo', 'bell'],
-            ['servido', 'Servido', 'utensils'],
+            ['servido', 'Entregado', 'utensils'],
             ['pagado', 'Pagado', 'check'],
         ]);
         expect(RECOJO_TRACKING_STEPS.map((s) => [s.key, s.label, s.icon])).toEqual([
@@ -110,7 +110,7 @@ describe('status constants', () => {
             ['pendiente', 'nuevo'],
             ['en_preparacion', 'en cocina'],
             ['listo', 'listo'],
-            ['entregado', 'servido'],
+            ['entregado', 'entregado'],
         ]);
         expect(LIVE_ITEM_CHIPS.listo.cls).toBe('bg-[#E6F2FF] text-[#0B3A66]');
     });

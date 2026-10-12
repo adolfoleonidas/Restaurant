@@ -168,7 +168,7 @@ describe('moving an open visit', () => {
         expect(canTransferVisit(source, {})).toBe(true);
         expect(transferProblem(table('t9', 9), {})).toMatch(/no tiene un pedido activo/);
         const joined = { ...source, group: group(['t1', 't2']) };
-        expect(transferProblem(joined, {})).toMatch(/Separala del grupo/);
+        expect(transferProblem(joined, {})).toMatch(/Sepárala del grupo/);
         expect(canTransferVisit(joined, {})).toBe(false);
     });
 });

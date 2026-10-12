@@ -55,7 +55,7 @@ export function TableSessionPanel({ table, session, onOrderMore, currentOrderId 
 
             {orders.length === 0 ? (
                 <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                    Todavía no hay pedidos en esta mesa. Elegí algo de la carta para empezar.
+                    Todavía no hay pedidos en esta mesa. Elige algo de la carta para empezar.
                 </p>
             ) : (
                 <ul className="space-y-2">

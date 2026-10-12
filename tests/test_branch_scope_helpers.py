@@ -75,7 +75,7 @@ def test_record_lookup_scope_matches_one_record_in_the_users_scope():
 def test_resolve_admin_without_selection_is_tenant_wide_unless_owner_must_choose():
     assert _run(resolve_branch_id(_admin(), _Branches("b1"))) is None
     assert _status(resolve_branch_id(_admin(), _Branches("b1"), owner_must_choose=True)) == (
-        400, "Seleccione una sucursal para esta operación")
+        400, "Selecciona una sucursal para esta operación")
 
 
 def test_resolve_admin_selection_must_belong_to_the_restaurant():

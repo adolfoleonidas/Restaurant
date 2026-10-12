@@ -302,7 +302,7 @@ async def today_board(
             "product_id": prod["id"],
             "href": "/disponibilidad",
             "title": f"{prod['name']}: agotado",
-            "body": "Carta de salón actualizada. Revisá pedidos pendientes de ese plato.",
+            "body": "Carta de salón actualizada. Revisa pedidos pendientes de ese plato.",
         })
 
     return {

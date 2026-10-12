@@ -57,7 +57,7 @@ export default function TableQrActions({ table }) {
             updateStatus('active');
         } catch (requestError) {
             updateStatus(requestError.response?.status === 400 ? 'revoked' : 'unknown');
-            setError(apiErrorMessage(requestError, 'No se pudo obtener el enlace. Inténtelo nuevamente.'));
+            setError(apiErrorMessage(requestError, 'No se pudo obtener el enlace. Inténtalo nuevamente.'));
         } finally {
             setBusy('');
         }
@@ -74,7 +74,7 @@ export default function TableQrActions({ table }) {
             setGuestUrl(buildGuestUrl(data?.path));
             updateStatus('active');
         } catch (requestError) {
-            setError(apiErrorMessage(requestError, 'No se pudo confirmar la regeneración. Vuelva a cargar la mesa.'));
+            setError(apiErrorMessage(requestError, 'No se pudo confirmar la regeneración. Vuelve a cargar la mesa.'));
         } finally {
             setBusy('');
         }
@@ -91,7 +91,7 @@ export default function TableQrActions({ table }) {
             if (data?.qr_status !== 'revoked') throw new Error('Revocation was not confirmed');
             updateStatus('revoked');
         } catch (requestError) {
-            setError(apiErrorMessage(requestError, 'No se pudo confirmar la revocación. Vuelva a cargar la mesa.'));
+            setError(apiErrorMessage(requestError, 'No se pudo confirmar la revocación. Vuelve a cargar la mesa.'));
         } finally {
             setBusy('');
         }
@@ -106,7 +106,7 @@ export default function TableQrActions({ table }) {
             setError('Enlace copiado.');
         } catch {
             setCopyFallback(true);
-            setError('No se pudo copiar automáticamente. Seleccione el enlace para copiarlo manualmente.');
+            setError('No se pudo copiar automáticamente. Selecciona el enlace para copiarlo manualmente.');
             urlRef.current?.focus();
             urlRef.current?.select();
         }
@@ -140,7 +140,7 @@ export default function TableQrActions({ table }) {
                         <QrCode value={guestUrl} size={168} label={`QR de ${table.name}`} />
                         <div className="min-w-0 flex-1 space-y-2">
                             <p className="text-xs text-muted-foreground">
-                                Imprimí este código y pegalo en {table.name}. El cliente lo escanea, ve la carta y pide desde ahí.
+                                Imprime este código y pégalo en {table.name}. El cliente lo escanea, ve la carta y pide desde ahí.
                             </p>
                             <input
                                 ref={urlRef}

@@ -53,7 +53,7 @@ def test_register_installs_the_bill_error_handler():
 def test_bill_error_in_a_route_answers_400_with_its_detail():
     status, body = _call(_app(), "/bill")
     assert status == 400
-    assert body == {"detail": "Devolvé o anulá los cobros antes de cancelar el pedido"}
+    assert body == {"detail": "Devuelve o anula los cobros antes de cancelar el pedido"}
 
 
 def test_other_http_errors_are_untouched():

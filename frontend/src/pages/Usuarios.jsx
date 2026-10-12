@@ -73,12 +73,12 @@ export default function Usuarios() {
                 toast.success('Creado');
             }
             setDlg(false); await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (u) => {
         try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
     };
     const toggleActive = async (u) => {
         try { await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }

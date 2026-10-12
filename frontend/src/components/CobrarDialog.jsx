@@ -207,7 +207,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const doSubmit = async () => {
         if (loading || proofRefreshPending) return;
         if (Number(discount || 0) > 0 && (discountReason || '').trim().length < 5) {
-            toast.error('El descuento requiere un motivo (minimo 5 caracteres).');
+            toast.error('El descuento requiere un motivo (mínimo 5 caracteres).');
             return;
         }
         setLoading(true);
@@ -229,13 +229,13 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         } catch (e) {
             if (!e.response) {
                 setNetError(true);
-                toast.error('Se corto la conexion. No cobres de nuevo a ciegas: reintenta esta misma operacion.');
+                toast.error('Se cortó la conexión. No cobres de nuevo a ciegas: reintenta esta misma operación.');
             } else {
                 const detail = e.response?.data?.detail;
                 if (e.response?.status === 409 && detail?.code === 'account_changed') {
                     setStale(detail);
                 } else {
-                    toast.error(apiErrorMessage(e, 'No se pudo registrar el pago. Revisá tu conexión y reintentá.'));
+                    toast.error(apiErrorMessage(e, 'No se pudo registrar el pago. Revisa tu conexión y reintenta.'));
                     form.rotateIdempotencyKey();
                 }
             }

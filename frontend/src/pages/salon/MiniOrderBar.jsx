@@ -14,7 +14,7 @@ export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSe
     // S14: la acción de borradores dice "Enviar a cocina" (con unidades
     // y monto) y pasa por el paso de confirmación, igual que el ticket.
     const actionVerb = tally.ready > 0
-        ? 'Servir'
+        ? 'Entregar'
         : tally.drafts > 0
             ? `Enviar a cocina · ${tally.drafts} · ${fmtMoney(draftsAmount)}`
             : 'Agregar';

@@ -47,10 +47,10 @@ const PAYMENT_STATE_INFO = {
     pendiente: { label: 'Pendiente de pago', tone: 'amber', hint: 'Todavía no registramos tu pago.' },
     reportado: { label: 'Comprobante en revisión', tone: 'amber', hint: 'El restaurante está verificando tu pago.' },
     confirmado: { label: 'Pago confirmado', tone: 'green', hint: 'Tu pedido ya está en cocina.' },
-    rechazado: { label: 'Pago rechazado', tone: 'red', hint: 'No pudimos verificar el pago. Probá con otro método o consultá al personal.' },
-    expirado: { label: 'Pago vencido', tone: 'red', hint: 'El tiempo para pagar terminó. Empezá un pedido nuevo.' },
+    rechazado: { label: 'Pago rechazado', tone: 'red', hint: 'No pudimos verificar el pago. Prueba con otro método o consulta al personal.' },
+    expirado: { label: 'Pago vencido', tone: 'red', hint: 'El tiempo para pagar terminó. Empieza un pedido nuevo.' },
     reembolsado: { label: 'Pago reembolsado', tone: 'gray', hint: 'El dinero fue devuelto.' },
-    no_requerido: { label: 'Se paga al final', tone: 'gray', hint: 'Podés pagar cuando termines.' },
+    no_requerido: { label: 'Se paga al final', tone: 'gray', hint: 'Puedes pagar cuando termines.' },
 };
 
 const TONE_CLASSES = {
@@ -272,10 +272,10 @@ export default function Checkout() {
             toast.error('Selecciona una sucursal para delivery'); return false;
         }
         if (orderType === 'local' && tableToken && !tableInfo) {
-            toast.error('Escaneá el QR de tu mesa'); return false;
+            toast.error('Escanea el QR de tu mesa'); return false;
         }
         if (orderType === 'local' && !tableToken && !contextTable && !tableId) {
-            toast.error(restaurant?.require_table_qr ? 'Escaneá el QR de tu mesa' : 'Elegí tu mesa'); return false;
+            toast.error(restaurant?.require_table_qr ? 'Escanea el QR de tu mesa' : 'Elige tu mesa'); return false;
         }
         return true;
     };
@@ -371,7 +371,7 @@ export default function Checkout() {
                                 ? `Pedido #${confirmed.order_number} enviado a cocina.`
                                 : waiting
                                     ? 'Tu pedido queda guardado. Cuando el restaurante confirme el pago, pasa a cocina.'
-                                    : 'Seguí el estado con tu código.'}
+                                    : 'Sigue el estado con tu código.'}
                         </p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
@@ -392,7 +392,7 @@ export default function Checkout() {
                     <Card><CardContent className="p-5 space-y-1">
                         <h2 className="font-display text-lg font-semibold">Se cobra en caja</h2>
                         <p className="text-sm text-muted-foreground">
-                            Tu pedido ya está en cocina. Acercate a caja para pagar {fmtMoney(confirmed.total)} cuando quieras.
+                            Tu pedido ya está en cocina. Acércate a caja para pagar {fmtMoney(confirmed.total)} cuando quieras.
                         </p>
                     </CardContent></Card>
                 )}
@@ -405,7 +405,7 @@ export default function Checkout() {
                         <p className="text-sm text-muted-foreground">
                             {proofSent
                                 ? 'El restaurante está verificando tu pago. Esta pantalla se actualiza sola cuando lo confirme.'
-                                : 'Transferí el monto y adjuntá la captura. El restaurante verifica el pago antes de preparar tu pedido.'}
+                                : 'Transfiere el monto y adjunta la captura. El restaurante verifica el pago antes de preparar tu pedido.'}
                         </p>
                         {proofFile ? (
                             <div className="flex items-center gap-3 border rounded-xl p-2">
@@ -506,7 +506,7 @@ export default function Checkout() {
                 {payAtCounter && (
                     <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm text-muted-foreground" data-testid="checkout-pay-counter-warning">
                         <div className="flex items-center gap-2 font-semibold text-foreground"><Banknote className="h-4 w-4" /> Se cobra al entregar</div>
-                        <p className="mt-1">Tu pedido va a cocina ahora y pagás {fmtMoney(total)} en caja.</p>
+                        <p className="mt-1">Tu pedido va a cocina ahora y pagas {fmtMoney(total)} en caja.</p>
                     </div>
                 )}
 
@@ -570,20 +570,20 @@ export default function Checkout() {
                                         <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Del QR</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Si te moviste a otra mesa, elegila abajo. Las mesas ocupadas o reservadas no se pueden elegir.
+                                        Si te moviste a otra mesa, elígela abajo. Las mesas ocupadas o reservadas no se pueden elegir.
                                     </p>
                                     {tables.length > 0 && (
                                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                            {tables.map((t) => <TableButton key={t.id} t={t} selected={false} onSelect={() => toast.info('Pedile al mozo que mueva tu cuenta a esa mesa')} />)}
+                                            {tables.map((t) => <TableButton key={t.id} t={t} selected={false} onSelect={() => toast.info('Pídele al mozo que mueva tu cuenta a esa mesa')} />)}
                                         </div>
                                     )}
                                 </div>
                             ) : restaurant?.require_table_qr ? (
-                                <p className="text-sm text-muted-foreground">Escaneá el QR de tu mesa para pedir en el local.</p>
+                                <p className="text-sm text-muted-foreground">Escanea el QR de tu mesa para pedir en el local.</p>
                             ) : contextTable ? (
                                 <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{contextTable.number}</span></p>
                             ) : tables.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pedí recojo o avisá al mozo.</p>
+                                <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pide recojo o avisa al mozo.</p>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                     {tables.map((t) => <TableButton key={t.id} t={t} selected={tableId === t.id} onSelect={() => setTableId(t.id)} />)}
@@ -620,7 +620,7 @@ export default function Checkout() {
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-1">Tus datos</h2>
                         {orderType === 'local' ? (
-                            <p className="text-sm text-muted-foreground mb-3">Opcional: si querés, dejá tu nombre para conocerte mejor. En mesa no es obligatorio.</p>
+                            <p className="text-sm text-muted-foreground mb-3">Opcional: si quieres, deja tu nombre para conocerte mejor. En mesa no es obligatorio.</p>
                         ) : (
                             <p className="text-sm text-muted-foreground mb-3">Los necesitamos para entregarte el pedido.</p>
                         )}
@@ -677,8 +677,8 @@ export default function Checkout() {
                                             <Button variant="outline" size="sm" className="h-11" onClick={() => copyText(paymentCfg[`${method}_number`] || '', method)} data-testid={`checkout-copy-${method}`}><Copy className="h-3.5 w-3.5 mr-1" /> {copied === method ? 'Copiado' : 'Copiar número'}</Button>
                                             <p className="text-xs text-muted-foreground">
                                                 {needsCounterVerification
-                                                    ? 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante. Cocina arranca cuando el restaurante lo verifique.'
-                                                    : 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante.'}
+                                                    ? 'Haz la transferencia y al confirmar el pedido vas a poder subir tu comprobante. Cocina arranca cuando el restaurante lo verifique.'
+                                                    : 'Haz la transferencia y al confirmar el pedido vas a poder subir tu comprobante.'}
                                             </p>
                                         </div>
                                     </div>
@@ -706,14 +706,14 @@ export default function Checkout() {
                             {method === 'efectivo' && (
                                 <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
                                     {payAtCounter
-                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} en caja.`
+                                        ? `Tu pedido va a cocina ahora y pagas ${fmtMoney(total)} en caja.`
                                         : `Paga ${fmtMoney(total)} en efectivo al recibir tu pedido. Te recomendamos llevar monto exacto.`}
                                 </div>
                             )}
                             {method === 'tarjeta' && (
                                 <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
                                     {payAtCounter
-                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} con tarjeta en caja.`
+                                        ? `Tu pedido va a cocina ahora y pagas ${fmtMoney(total)} con tarjeta en caja.`
                                         : `Aceptamos tarjeta al momento de entrega/recojo. Cobro: ${fmtMoney(total)}.`}
                                 </div>
                             )}

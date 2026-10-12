@@ -4,7 +4,7 @@ import useOrderProof from '@/hooks/useOrderProof';
 import ProofPreview from '@/components/ProofPreview';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/apiError';
 import ConfirmDialog from '@/components/ConfirmDialog';
@@ -64,7 +64,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
             <CardContent className="p-4">
                 <h2 className="font-display text-lg font-semibold mb-1">Prepagos por verificar ({rows.length})</h2>
                 <p className="text-xs text-muted-foreground mb-3">
-                    Verificá el pago en tu app antes de confirmar: recién ahí el pedido entra a cocina.
+                    Verifica el pago en tu app antes de confirmar: recién ahí el pedido entra a cocina.
                 </p>
                 <div className="divide-y">
                     {rows.map((row) => (
@@ -77,7 +77,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                     {PREPAY_STATE_LABELS[row.payment_state] || row.payment_state}
-                                    {' · '}{(row.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} ítems
+                                    {' · '}{countOf((row.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 'ítem', 'ítems')}
                                     {row.customer_name ? ` · ${row.customer_name}` : ''}
                                 </div>
                             </div>

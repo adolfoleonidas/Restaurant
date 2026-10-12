@@ -25,7 +25,7 @@ export default function ScopeTabs({
                     <div className="stepper">
                         <button onClick={() => people > 2 && setPeople(people - 1)} disabled={people <= 2} aria-label="Una persona menos">-</button>
                         <output aria-label="Numero de personas">{people}</output>
-                        <button onClick={() => people < 12 && setPeople(people + 1)} disabled={people >= 12} aria-label="Una persona mas">+</button>
+                        <button onClick={() => people < 12 && setPeople(people + 1)} disabled={people >= 12} aria-label="Una persona más">+</button>
                     </div>
                     <select className="split-select" value={part} onChange={(e) => setPart(Number(e.target.value))}>
                         {Array.from({ length: people }, (_, i) => (

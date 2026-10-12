@@ -60,7 +60,7 @@ export default function Pagos() {
                 <div>
                     <p className="page-kicker mb-1">Administración</p>
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
-                    <p className="text-muted-foreground text-sm">Activá los medios que aceptás y completá los datos que ve tu cliente al pagar.</p>
+                    <p className="text-muted-foreground text-sm">Activa los medios que aceptas y completa los datos que ve tu cliente al pagar.</p>
                 </div>
                 <Button onClick={save} data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button>
             </div>

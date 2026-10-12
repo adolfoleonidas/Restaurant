@@ -11,7 +11,7 @@ export default function JoinBar({ selected, tables, selectionIssue, cancelSelect
                 <div className="min-w-[200px] flex-1">
                     <span className="text-sm font-medium" data-testid="salon-seleccion-resumen">
                         {selected.length === 0
-                            ? 'Elegí dos o más mesas para unirlas'
+                            ? 'Elige dos o más mesas para unirlas'
                             : `Elegidas: ${(tables || []).filter((t) => selected.includes(t.id)).sort((a, b) => Number(a.number) - Number(b.number)).map((t) => t.number).join(' + ')}`}
                     </span>
                     {selectionIssue && (

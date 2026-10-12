@@ -58,7 +58,7 @@ export default function usePaymentProof({
         } catch {
             if (dialogEpochRef.current === requestEpoch && open) {
                 setProofRefreshPending(true);
-                setProofRefreshError('El comprobante fue recibido, pero no se pudo actualizar la cuenta. Recargue antes de registrar un pago.');
+                setProofRefreshError('El comprobante fue recibido, pero no se pudo actualizar la cuenta. Recarga antes de registrar un pago.');
             }
             return false;
         }
@@ -84,7 +84,7 @@ export default function usePaymentProof({
             await refreshOrderAfterProof(requestOrderId, requestEpoch);
         } catch (error) {
             if (dialogEpochRef.current !== requestEpoch || !open) return;
-            setProofError(apiErrorMessage(error, 'No se pudo enviar el comprobante. Puede reintentar la misma imagen.'));
+            setProofError(apiErrorMessage(error, 'No se pudo enviar el comprobante. Puedes reintentar la misma imagen.'));
         } finally {
             if (dialogEpochRef.current === requestEpoch && open) setProofSending(false);
         }

@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, countOf } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -61,17 +61,17 @@ function splitDelimited(line, sep) {
 
 function parseRows(text) {
     const lines = (text || '').split(/\r?\n/).filter((l) => l.trim());
-    if (!lines.length) return { error: 'Pegá o subí datos con encabezados (nombre, categoría, precio…).' };
+    if (!lines.length) return { error: 'Pega o sube datos con encabezados (nombre, categoría, precio…).' };
     const first = lines[0].replace(/^\uFEFF/, '');
     const seps = ['\t', ';', ','];
     const counts = seps.map((s) => first.split(s).length - 1);
     const sepIdx = counts.indexOf(Math.max(...counts));
-    if (Math.max(...counts) === 0) return { error: 'No se detectaron columnas. Separalas con tab, punto y coma o coma.' };
+    if (Math.max(...counts) === 0) return { error: 'No se detectaron columnas. Sepáralas con tab, punto y coma o coma.' };
     const sep = seps[sepIdx];
     const header = splitDelimited(first, sep).map((h) => norm(h));
     const fields = header.map((h) => COLUMN_MAP[h] || null);
     if (!fields.includes('name') || !fields.includes('price')) {
-        return { error: 'Faltan columnas: necesitás al menos «nombre» y «precio». Descargá la plantilla de ejemplo.' };
+        return { error: 'Faltan columnas: necesitas al menos «nombre» y «precio». Descarga la plantilla de ejemplo.' };
     }
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
@@ -137,8 +137,8 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
             const skipped = data.skipped?.length || 0;
             toast.success(
                 skipped > 0
-                    ? `${data.created.length} platos creados, ${skipped} omitidos`
-                    : `${data.created.length} platos creados`
+                    ? `${countOf(data.created.length, 'plato creado', 'platos creados')}, ${countOf(skipped, 'omitido', 'omitidos')}`
+                    : countOf(data.created.length, 'plato creado', 'platos creados')
             );
             if (data.categories_created?.length) {
                 toast.info(`Categorías nuevas: ${data.categories_created.join(', ')}`);
@@ -163,7 +163,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-muted-foreground">
-                            Copiá las filas de tu Excel/Google Sheets y pegalas acá, o subí un archivo CSV.
+                            Copia las filas de tu Excel/Google Sheets y pégalas acá, o sube un archivo CSV.
                         </p>
                         <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
                             <Download className="h-4 w-4 mr-1" /> Plantilla
@@ -272,11 +272,11 @@ export default function Productos({ section = 'platos' }) {
 
     const save = async () => {
         if (!form.name.trim()) {
-            toast.error(tab === 'combos' ? 'Poné un nombre al combo' : 'Poné un nombre al plato');
+            toast.error(tab === 'combos' ? 'Pon un nombre al combo' : 'Pon un nombre al plato');
             return;
         }
         if (form.is_combo && !(form.combo_items || []).length) {
-            toast.error('Agregá al menos un plato al combo');
+            toast.error('Agrega al menos un plato al combo');
             return;
         }
         try {
@@ -296,12 +296,12 @@ export default function Productos({ section = 'platos' }) {
             }
             setOpenDlg(false);
             await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const doDelete = async (p) => {
         try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const toggleAvail = async (p) => {
@@ -393,7 +393,7 @@ export default function Productos({ section = 'platos' }) {
 
             {visible.length === 0 ? (
                 <Card><CardContent className="py-14 text-center text-muted-foreground">
-                    {tab === 'combos' ? 'Todavía no hay combos. Creá uno con nombre y los platos que incluye.' : 'No hay platos en la carta.'}
+                    {tab === 'combos' ? 'Todavía no hay combos. Crea uno con nombre y los platos que incluye.' : 'No hay platos en la carta.'}
                 </CardContent></Card>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -490,7 +490,7 @@ export default function Productos({ section = 'platos' }) {
                                 {(form.combo_items || []).map((line, idx) => (
                                     <div key={idx} className="flex gap-2">
                                         <Select value={line.product_id} onValueChange={(v) => setComboLine(idx, { product_id: v })}>
-                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Elegí un plato" /></SelectTrigger>
+                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Elige un plato" /></SelectTrigger>
                                             <SelectContent>
                                                 {simples.filter((p) => p.id !== editing?.id).map((p) => (
                                                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -514,7 +514,7 @@ export default function Productos({ section = 'platos' }) {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => {
-                                        if (!simples.length) { toast.error('Primero creá platos en la carta'); return; }
+                                        if (!simples.length) { toast.error('Primero crea platos en la carta'); return; }
                                         setForm({ ...form, combo_items: [...(form.combo_items || []), { product_id: simples[0].id, quantity: 1 }] });
                                     }}
                                 >

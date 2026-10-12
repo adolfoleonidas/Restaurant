@@ -22,7 +22,7 @@ const FILTERS = [
     { value: 'activos', label: 'Activos' },
     { value: 'pendiente_pago', label: 'Pendiente pago' },
     { value: 'pagado', label: 'Pagados' },
-    { value: 'cancelado', label: 'Cancelados' },
+    { value: 'cancelado', label: 'Anulados' },
     { value: 'all', label: 'Todos' },
 ];
 

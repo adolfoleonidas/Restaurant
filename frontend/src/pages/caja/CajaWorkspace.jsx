@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StateBadge } from '@/components/StateBadge';
-import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { Wallet, DollarSign, Lock, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -174,7 +174,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                 <Card data-testid="caja-cuentas-cerradas">
                     <CardContent className="p-4">
                         <h2 className="font-display text-lg font-semibold mb-1">Cuentas esperando tu turno ({cobrables.length})</h2>
-                        <p className="text-xs text-muted-foreground mb-3">Abrí la caja para cobrarlas.</p>
+                        <p className="text-xs text-muted-foreground mb-3">Abre la caja para cobrarlas.</p>
                         <div className="divide-y opacity-70">
                             {cobrables.slice(0, 8).map((o) => (
                                 <div key={o.id} className="py-2 flex items-center justify-between gap-3 text-sm">
@@ -248,7 +248,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {countOf((o.items || []).length, 'ítem', 'ítems')}</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
@@ -276,7 +276,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {countOf((o.items || []).length, 'ítem', 'ítems')}</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
