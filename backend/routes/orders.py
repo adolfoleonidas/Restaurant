@@ -23,6 +23,7 @@ from order_flow import (
     version_conflict,
 )
 from routes.products import combo_components_for
+from routes.reports import BUSINESS_TIMEZONE
 from notify import emit_order, emit_notice
 from payment_policy import kitchen_visible, payment_label
 from attention import AttentionBlocked, open_table_attention, close_table_attention, reserve_table_opening, recover_opening_intent, discard_table_opening
@@ -106,17 +107,22 @@ async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, ent
     })
 
 
+def _order_counter_key(now: datetime) -> str:
+    """Daily counter key for the business day (Peru), so numbering resets at local midnight."""
+    return f"order_{now.astimezone(BUSINESS_TIMEZONE).strftime('%Y-%m-%d')}"
+
+
 async def _next_order_number(restaurant_id: str) -> int:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    key = _order_counter_key(datetime.now(BUSINESS_TIMEZONE))
     res = await db.counters.find_one_and_update(
-        {"restaurant_id": restaurant_id, "key": f"order_{today}"},
+        {"restaurant_id": restaurant_id, "key": key},
         {"$inc": {"value": 1}},
         upsert=True,
         return_document=True,
     )
     # Some Motor versions need different return_document handling; fetch as fallback
     if not res or "value" not in (res or {}):
-        res = await db.counters.find_one({"restaurant_id": restaurant_id, "key": f"order_{today}"})
+        res = await db.counters.find_one({"restaurant_id": restaurant_id, "key": key})
     return res.get("value", 1) if res else 1
 
 
