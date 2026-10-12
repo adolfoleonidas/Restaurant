@@ -35,6 +35,8 @@ export default function NewOrderSheet({
     const [customerAddress, setCustomerAddress] = useState('');
     // Account created by the queue that the state has not shown yet.
     const createdOrderRef = useRef(null);
+    // Set when the queue created the order: saving taps then changes the list behind the sheet.
+    const orderCreatedRef = useRef(false);
 
     const availableTables = useMemo(
         () => (tables || [])
@@ -52,6 +54,7 @@ export default function NewOrderSheet({
         setCustomerPhone('');
         setCustomerAddress('');
         createdOrderRef.current = null;
+        orderCreatedRef.current = false;
     }, [open]);
 
     const isTable = type === 'mesa';
@@ -86,6 +89,7 @@ export default function NewOrderSheet({
         }
         const { data } = await createOrder(payload);
         createdOrderRef.current = data.id;
+        orderCreatedRef.current = true;
         setOrder(data);
         return data.id;
     };
@@ -100,6 +104,7 @@ export default function NewOrderSheet({
         placeholder: emptyOrder,
         ensureOrderId: ensureOrder,
         loadOrder: (orderId) => reload(orderId, { strict: true }),
+        acceptOrder: setOrder,
         onError: (error, entry) => {
             toast.error(apiErrorMessage(
                 error,
@@ -107,7 +112,13 @@ export default function NewOrderSheet({
             ));
             if (entry.orderId) void reload(entry.orderId);
         },
-        onSynced: () => onCreated?.(),
+        // Quantity changes are confirmed from the write's response; the list
+        // behind the sheet only needs a refresh once the order exists.
+        onSynced: () => {
+            if (!orderCreatedRef.current) return;
+            orderCreatedRef.current = false;
+            onCreated?.();
+        },
     });
     // The order as the waiter sees it: confirmed lines plus the taps on their way.
     const shownOrder = sync.order;

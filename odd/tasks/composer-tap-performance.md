@@ -26,7 +26,7 @@ Causes, verified in code:
 ## Tasks
 
 - [x] **CP-01 Memoized product cards.** Extract the card into a `React.memo` component that receives only its own product, quantity, and disabled state, with stable `onAdd`/`onRemove` callbacks; a tap re-renders only the tapped card (plus the summary/bar).
-- [ ] **CP-02 Fewer requests and commits per tap.** Confirm a synced line from the write response instead of `refreshAll()`; take `generation` out of the products poll; debounce `generation` bumps in `NotifyContext`; `usePolling` skips `setData` when the payload is unchanged; `KitchenAlerts` does not poll the kitchen list for roles that do not need it. Other screens still refresh on realtime events.
+- [x] **CP-02 Fewer requests and commits per tap.** Confirm a synced line from the write response instead of `refreshAll()`; take `generation` out of the products poll; debounce `generation` bumps in `NotifyContext`; `usePolling` skips `setData` when the payload is unchanged; `KitchenAlerts` does not poll the kitchen list for roles that do not need it. Other screens still refresh on realtime events.
 - [ ] **CP-03 CSS-only tap feedback.** Replace the `setPulse` state with a CSS-only effect (`:active` transform, transform/opacity only); remove `transition-colors` from the card row if it no longer serves a state; `touch-action: manipulation` on card and stepper buttons.
 
 ## Progress and evidence
@@ -34,8 +34,12 @@ Causes, verified in code:
 - 2026-10-12: document and branch created.
 - 2026-10-12 CP-01 (route: delegated direct, single writer; TDD on, runner `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4`, source: global configuration):
   - RED: new `OrderComposerRenders.test.js` counts card renders through `fmtMoney` calls (one per card render, unique price per card). Before the change `tapping a card re-renders that card only` and `the stepper + and - also leave the other cards alone` failed (`Expected: 0, Received: 1` for the untapped cards).
+  - Commit: 51e8e3b `perf(composer): memoize product cards so a tap re-renders only the tapped card`.
   - GREEN: extracted `components/ComposerProductCard.jsx` (`React.memo`; props: product, qty, out, busy, canRemove, pulsing, testIdPrefix, stable `onAdd`/`onRemove`). `OrderComposer` builds a per-product `{qty, target}` map once per `lines` change and keeps `add`/`remove` stable with refs to the latest `onAddProduct`/`onRemoveProduct`; `onRemoveProduct(product, draftLine)` still receives the draft line. New test file 3/3 pass; full suite 108 suites / 940 tests green (baseline 107 / 937).
-
-## Next step
-
-Writer implements CP-01 to CP-03.
+- 2026-10-12 CP-02 (route: delegated direct, single writer):
+  - Backend check (`backend/routes/orders.py`): `POST /orders/{id}/items`, `PATCH .../items/{item_id}` and `DELETE .../items/{item_id}` all answer with `_current_order_response` (the whole order, same shape `GET /orders/{id}` returns for admin/mozo, the only roles allowed to write), so the write response is enough to confirm a line.
+  - RED (new tests first): `useOrderLineSync`, `useTableSheetRequests`, `usePollingEqual`, `NotifyCoalesce` and `KitchenAlertsGating` = 13 failed / 14 passed in 5 files; the failures were the intended ones (extra `getOrder` and `refreshAll` after a tap, `loadOrder` called despite a usable response, `setData` committing equal payloads, 5 events producing 5 bumps). `KitchenAlertsGating` passed on the old code: the role gate already existed, the test pins it.
+  - GREEN: `useOrderLineSync` takes an optional `acceptOrder(order)` and confirms a synced line from the write response (falls back to the old `loadOrder` GET when the response has no order for that id). `useTableSheet` extracts `applyOrder`, passes it as `acceptOrder`, and its `onSynced` calls `refreshAll()` only when the queue created the account in this drain (`floorChangedRef`); `NewOrderSheet` does the same with `setOrder` and `onCreated`. `useSalonData` products poll no longer depends on `generation`. `NotifyContext` coalesces event bumps (250 ms quiet period, 1000 ms max wait; reconnect and wake bumps unchanged) and memoizes its value. `usePolling` skips `setData` when the JSON text equals the one on screen (payloads over 1M chars or not serialisable are committed as before), no longer ticks a state counter every interval (nothing read `tick`), and only touches `error`/`loading` state when they change.
+  - KitchenAlerts: the gate was already `ROLES = admin, cocina, mozo` (cajero, other roles and signed-out users never request `/orders/kitchen`). Mozo was added on purpose in 82c123b ("mozo role included"), so it was kept; its refetch per realtime burst is now one GET that commits nothing when the list is unchanged. No code change; role gating test added.
+  - Tests changed: `useTableSheetOptimistic.test.js` fake server now answers writes with the order (the real shape), so the UX-14 scenarios run on the new path; its final `refreshAll` assertion became `not.toHaveBeenCalled()` because a plain quantity change no longer refreshes the floor.
+  - Result: full suite 113 suites / 967 tests green.

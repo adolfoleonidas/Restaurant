@@ -18,13 +18,17 @@ import {
  * - `ensureOrderId()`: id of the order, creating it on the first product.
  * - `loadOrder(orderId)`: re-reads the order, applies it to the caller's state
  *   and returns it (null when it cannot be read). It must throw on network errors.
+ * - `acceptOrder(order)` (optional): applies an order the server just returned
+ *   to the caller's state. Every line write answers with the whole order, so a
+ *   synced line is confirmed from that answer and `loadOrder` is only the
+ *   fallback for a response that carries no usable order.
  * - `onError(error, entry)`: called once for each line that failed; the line has
  *   already been rolled back to the last confirmed quantity.
  * - `onSynced()`: called when the queue empties.
  * - `placeholder`: the empty order shown before the first product exists.
  */
 export default function useOrderLineSync({
-    order, placeholder, ensureOrderId, loadOrder, onError, onSynced,
+    order, placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onSynced,
 }) {
     // What the queue has not confirmed yet; a new object on every change, so the
     // screen re-renders whenever a tap is recorded or confirmed.
@@ -34,11 +38,26 @@ export default function useOrderLineSync({
     const latest = useRef(order);
     const handlers = useRef({});
     handlers.current = {
-        placeholder, ensureOrderId, loadOrder, onError, onSynced,
+        placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onSynced,
     };
     const queueRef = useRef(null);
 
     if (!queueRef.current) {
+        // The order as the server has it after a write: taken from the write's own
+        // response when it carries the order, otherwise read once more.
+        const confirmed = async (orderId, response) => {
+            const written = response?.data;
+            const usable = written?.id === orderId && Array.isArray(written.items);
+            if (usable && handlers.current.acceptOrder) {
+                handlers.current.acceptOrder(written);
+                latest.current = written;
+                return written;
+            }
+            const data = await handlers.current.loadOrder(orderId);
+            if (data) latest.current = data;
+            return data;
+        };
+
         const run = async (key, entry) => {
             const sent = entry.quantity;
             if (entry.lineId) {
@@ -48,10 +67,10 @@ export default function useOrderLineSync({
                     : null;
                 // The taps netted out to what the server already has.
                 if (known && Number(known.quantity) === sent) return;
-                if (sent <= 0) await removeOrderItem(orderId, entry.lineId);
-                else await updateOrderItem(orderId, entry.lineId, { quantity: sent });
-                const data = await handlers.current.loadOrder(orderId);
-                if (data) latest.current = data;
+                const response = sent <= 0
+                    ? await removeOrderItem(orderId, entry.lineId)
+                    : await updateOrderItem(orderId, entry.lineId, { quantity: sent });
+                await confirmed(orderId, response);
                 return;
             }
             // No line yet: nothing to create if the taps netted out to zero.
@@ -66,9 +85,8 @@ export default function useOrderLineSync({
             const before = new Set(
                 (latest.current?.id === orderId ? latest.current.items || [] : []).map((item) => item.id)
             );
-            await addOrderItems(orderId, [{ product_id: entry.productId, quantity: sent }]);
-            const data = await handlers.current.loadOrder(orderId);
-            if (data) latest.current = data;
+            const response = await addOrderItems(orderId, [{ product_id: entry.productId, quantity: sent }]);
+            const data = await confirmed(orderId, response);
             const created = (data ? plainDraftLines(data, entry.productId) : [])
                 .find((item) => !before.has(item.id)) || null;
             if (created) entry.lineId = created.id;

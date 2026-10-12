@@ -46,9 +46,12 @@ const snapshot = () => ({
     items: server.lines.map((l) => ({ ...l, subtotal: l.quantity * l.unit_price })),
 });
 
-/** A write that waits for `releaseNext()` and then changes the fake server. */
+/**
+ * A write that waits for `releaseNext()`, changes the fake server and answers
+ * with the whole order, like the real POST/PATCH/DELETE (CP-02).
+ */
 const hold = (apply) => new Promise((resolve, reject) => {
-    held.push({ resolve: () => { apply(); resolve({ data: {} }); }, reject });
+    held.push({ resolve: () => { apply(); resolve({ data: snapshot() }); }, reject });
 });
 const releaseNext = async () => {
     await act(async () => { held.shift().resolve(); });
@@ -143,7 +146,8 @@ describe('UX-14 optimistic composer taps', () => {
         await settleAll();
         expect(server.lines[0].quantity).toBe(4);
         expect(quantityOf(view, 'p-a')).toBe(4);
-        expect(refreshAll).toHaveBeenCalled();
+        // The line was confirmed from the write responses: no floor refresh for a plain quantity change.
+        expect(refreshAll).not.toHaveBeenCalled();
     });
 
     test('five taps in a row end with the five units on the server', async () => {
