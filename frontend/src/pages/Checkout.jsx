@@ -625,13 +625,13 @@ export default function Checkout() {
                             <p className="text-sm text-muted-foreground mb-3">Los necesitamos para entregarte el pedido.</p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><Label>Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoComplete="name" className="h-11" data-testid="checkout-nombre" /></div>
-                            <div><Label>Celular{orderType === 'local' ? '' : ' *'}</Label><Input type="tel" inputMode="tel" autoComplete="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
-                            <div className="sm:col-span-2"><Label>Correo (opcional)</Label><Input type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
+                            <div><Label htmlFor="checkout-nombre-y-apellidos">Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input id="checkout-nombre-y-apellidos" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoComplete="name" className="h-11" data-testid="checkout-nombre" /></div>
+                            <div><Label htmlFor="checkout-celular">Celular{orderType === 'local' ? '' : ' *'}</Label><Input id="checkout-celular" type="tel" inputMode="tel" autoComplete="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
+                            <div className="sm:col-span-2"><Label htmlFor="checkout-correo-opcional">Correo (opcional)</Label><Input id="checkout-correo-opcional" type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
                             {orderType === 'delivery' && (
-                                <div className="sm:col-span-2"><Label>Dirección de entrega *</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} autoComplete="street-address" placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
+                                <div className="sm:col-span-2"><Label htmlFor="checkout-direccion-de-entrega">Dirección de entrega *</Label><Textarea id="checkout-direccion-de-entrega" value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} autoComplete="street-address" placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
                             )}
-                            <div className="sm:col-span-2"><Label>Observaciones del pedido (opcional)</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sin picante, cubiertos extra…" /></div>
+                            <div className="sm:col-span-2"><Label htmlFor="checkout-observaciones-del-pedido-opcional">Observaciones del pedido (opcional)</Label><Textarea id="checkout-observaciones-del-pedido-opcional" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sin picante, cubiertos extra…" /></div>
                         </div>
                     </CardContent></Card>
 

@@ -57,3 +57,21 @@ describe('user create form validation', () => {
         expect(document.body.querySelector('[data-testid="usuario-form-pass"]')).not.toBeNull();
     });
 });
+
+describe('team list switches', () => {
+    it('name each switch after the person it activates', async () => {
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/users'
+                ? [{ id: 'u1', email: 'a@x.test', full_name: 'Ana Mozo', role: 'mozo', status: 'active', functions: ['atencion'] }]
+                : [],
+        }));
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        view = { host, root };
+        await act(async () => root.render(<Usuarios />));
+        await flush();
+        const toggle = host.querySelector('[role="switch"]');
+        expect(toggle.getAttribute('aria-label')).toBe('Activo: Ana Mozo');
+    });
+});

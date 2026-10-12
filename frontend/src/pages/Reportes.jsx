@@ -129,9 +129,10 @@ function ReportesView({ userKey, isOwner }) {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                     {isOwner && (
-                        <label className="flex flex-col gap-1 text-sm min-w-0">
+                        <label htmlFor="reportes-branch-context" className="flex flex-col gap-1 text-sm min-w-0">
                             Contexto de sucursal
                             <select
+                                id="reportes-branch-context"
                                 data-testid="reportes-branch-context"
                                 className="h-11 w-full min-w-0 sm:min-w-52 rounded-md border border-border bg-background px-3"
                                 value={context}

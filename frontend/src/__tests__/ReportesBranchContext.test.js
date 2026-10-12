@@ -260,3 +260,13 @@ test('catalog failure exposes no unverified branch option but keeps deliberate a
     expect(Array.from(branchSelector(host).options).map((option) => option.value)).toEqual(['all', 'legacy']);
     expect(api.get).toHaveBeenCalledWith('/reports/sales', { params: { period: 'day' } });
 });
+
+test('the branch selector is named by a label tied to it', async () => {
+    const { host } = mount();
+    await flush();
+    const select = branchSelector(host);
+    expect(select.id).toBeTruthy();
+    const label = host.querySelector(`label[for="${select.id}"]`);
+    expect(label).not.toBeNull();
+    expect(label.textContent).toContain('Contexto de sucursal');
+});

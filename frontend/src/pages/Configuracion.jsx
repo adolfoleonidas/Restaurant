@@ -116,11 +116,11 @@ function Restaurante() {
             <div><Label htmlFor="zona-horaria">Zona horaria</Label><Input id="zona-horaria" value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
             <div><Label htmlFor="horario">Horario</Label><Input id="horario" value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
             <div className="md:col-span-2">
-                <Label>Seguimiento de preparación</Label>
+                <Label htmlFor="config-prep-mode">Seguimiento de preparación</Label>
                 <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
                     {/* El botón de Radix toma su nombre del valor elegido; si el
                         ajuste llega vacío, el disparador queda sin nombre. */}
-                    <SelectTrigger aria-label="Seguimiento de preparación"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="config-prep-mode"><SelectValue /></SelectTrigger>
                     <SelectContent>
                         <SelectItem value="simple">Sencillo — Pendiente → Servido</SelectItem>
                         <SelectItem value="detailed">Detallado — Enviado → Preparando → Listo → Entregado</SelectItem>
@@ -137,9 +137,9 @@ function Restaurante() {
             </div>
             <div className="md:col-span-2 border-t pt-4 space-y-3">
                 <div>
-                    <Label>Cobro de pedidos hechos por el cliente (QR, web)</Label>
+                    <Label htmlFor="config-prepay-mode">Cobro de pedidos hechos por el cliente (QR, web)</Label>
                     <Select value={r.table_prepay_mode || 'never'} onValueChange={(v) => setR({ ...r, table_prepay_mode: v })}>
-                        <SelectTrigger aria-label="Cuándo se cobra un pedido hecho por el cliente" data-testid="config-prepay-mode"><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="config-prepay-mode" data-testid="config-prepay-mode"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="never">Pago al finalizar — se cocina y se cobra al terminar</SelectItem>
                             <SelectItem value="always">Prepago obligatorio — nada se cocina sin pago confirmado</SelectItem>
@@ -264,8 +264,9 @@ function Marca() {
             </div>
 
             <div>
-                <Label>Descripción pública</Label>
+                <Label htmlFor="marca-descripcion">Descripción pública</Label>
                 <Textarea
+                    id="marca-descripcion"
                     value={r.public_description || ''}
                     onChange={(e) => set({ public_description: e.target.value })}
                     placeholder="Cocina peruana de autor con productos frescos…"
@@ -545,12 +546,12 @@ function Datos() {
                             Si hay pedidos activos el sistema lo rechaza: cerralos o restablecé primero los datos operativos.
                         </p>
                         <div>
-                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
-                            <Input value={catalogConfirm} onChange={(e) => setCatalogConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="catalog-reset-confirm" />
+                            <Label htmlFor="catalog-reset-confirm">Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input id="catalog-reset-confirm" value={catalogConfirm} onChange={(e) => setCatalogConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="catalog-reset-confirm" />
                         </div>
                         <div>
-                            <Label>Contraseña de administrador</Label>
-                            <Input type="password" value={catalogPassword} onChange={(e) => setCatalogPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="catalog-reset-password" />
+                            <Label htmlFor="catalog-reset-password">Contraseña de administrador</Label>
+                            <Input id="catalog-reset-password" type="password" value={catalogPassword} onChange={(e) => setCatalogPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="catalog-reset-password" />
                         </div>
                     </div>
                     <AlertDialogFooter>
@@ -579,12 +580,12 @@ function Datos() {
                             <strong> se conservan</strong>. Esta acción no se puede deshacer.
                         </p>
                         <div>
-                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
-                            <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="data-reset-confirm" />
+                            <Label htmlFor="data-reset-confirm">Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input id="data-reset-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="data-reset-confirm" />
                         </div>
                         <div>
-                            <Label>Contraseña de administrador</Label>
-                            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="data-reset-password" />
+                            <Label htmlFor="data-reset-password">Contraseña de administrador</Label>
+                            <Input id="data-reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="data-reset-password" />
                         </div>
                     </div>
                     <AlertDialogFooter>

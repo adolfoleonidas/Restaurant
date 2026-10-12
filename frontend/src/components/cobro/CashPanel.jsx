@@ -15,10 +15,10 @@ export default function CashPanel({
             {/* CASH PANEL */}
             {method === 'cash' && (
                 <div className="cash-fields">
-                    <label>Efectivo recibido</label>
+                    <label htmlFor="caja-recibido">Efectivo recibido</label>
                     <div className="currency-input">
                         <span>S/</span>
-                        <input type="text" inputMode={coarsePointer ? 'none' : 'decimal'} value={received} placeholder={chargeAmount.toFixed(2)}
+                        <input id="caja-recibido" type="text" inputMode={coarsePointer ? 'none' : 'decimal'} value={received} placeholder={chargeAmount.toFixed(2)}
                             onChange={(e) => setReceived(e.target.value)}
                             data-testid="caja-recibido-input" aria-label="Efectivo recibido" />
                     </div>
