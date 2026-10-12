@@ -253,6 +253,8 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     if getattr(claim, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="ocupada", branch_id=table.get("branch_id"))
+    await record_audit("seat", "table", table_id, user, {"table_number": table.get("number")},
+                       branch_id=table.get("branch_id"))
     result = await db.tables.find_one(scope, {"_id": 0})
     result["active_order"] = None
     return _table_response(result)
@@ -278,6 +280,8 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
     if getattr(claim, "matched_count", 0) != 1:
         raise HTTPException(status_code=409, detail="La visita de la mesa cambió; volvé a cargarla")
     emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible", branch_id=table.get("branch_id"))
+    await record_audit("release", "table", table_id, user, {"table_number": table.get("number")},
+                       branch_id=table.get("branch_id"))
     result = await db.tables.find_one(scope, {"_id": 0})
     result["active_order"] = None
     return _table_response(result)
@@ -473,7 +477,7 @@ async def _transfer_response(order_id: str, source: dict, target: dict, user: di
         "from_table": source.get("number"), "to_table": target.get("number"),
         "from_table_id": source["id"], "to_table_id": target["id"],
         **({"reconciled": True} if reconciled else {}),
-    })
+    }, branch_id=source.get("branch_id"))
     return {
         "ok": True,
         "order_id": order_id,
