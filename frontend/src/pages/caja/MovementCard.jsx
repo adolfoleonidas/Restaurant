@@ -14,14 +14,14 @@ export default function MovementCard({ register, onAdded, runMutation }) {
     const [amount, setAmount] = useState('');
     const [desc, setDesc] = useState('');
     const submit = async () => {
-        if (!amount || Number(amount) <= 0) { toast.error('Ingresá un monto mayor a 0'); return; }
+        if (!amount || Number(amount) <= 0) { toast.error('Ingresa un monto mayor a 0'); return; }
         if (desc.trim().length < 5) { toast.error('Escribe una descripción (mínimo 5 caracteres)'); return; }
         try {
             await runMutation(() => addCashMovement({ type, amount: Number(amount), description: desc.trim() }));
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisa tu conexión y reintenta.')); }
     };
     return (
         <Card><CardContent className="p-5">

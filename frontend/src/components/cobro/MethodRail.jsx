@@ -12,7 +12,7 @@ export default function MethodRail({
         <>
             {/* Method heading */}
             <div className="method-heading">
-                <h2 className="section-heading">Metodo de pago</h2>
+                <h2 className="section-heading">Método de pago</h2>
             </div>
 
             {/* Method Rail */}

@@ -304,7 +304,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
 
     # The venue may switch a method off in Datos de cobro; the UI hides it, but a
     # cached screen or a direct call still got through. Only an explicit `false`
@@ -323,7 +323,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "message": "La cuenta cambió mientras la revisabas. Revisa el nuevo importe antes de cobrar.",
             "previous_total": data.expected_total,
             "new_total": order.get("total"),
             "updated_at": order.get("updated_at"),
@@ -337,7 +337,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         # the one the account already carries does not.
         if abs(discount - stored_discount) > 0.009:
             if not user.get("can_discount"):
-                raise HTTPException(status_code=403, detail="No tenés permiso para aplicar descuentos")
+                raise HTTPException(status_code=403, detail="No tienes permiso para aplicar descuentos")
             if len((data.discount_reason or "").strip()) < 5:
                 raise HTTPException(status_code=400, detail="El descuento requiere un motivo")
     else:
@@ -458,7 +458,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
                 return _check_payment_replay(existing, order, data.order_id)
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "message": "La cuenta cambió mientras la revisabas. Revisa el nuevo importe antes de cobrar.",
             "previous_total": data.expected_total,
             "new_total": order.get("total"),
             "updated_at": order.get("updated_at"),
@@ -708,7 +708,7 @@ async def _resume_attention_void(order: dict, payment: dict, intent: dict) -> di
     if getattr(released, "matched_count", 0) != 1:
         latest = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
         if not latest or latest.get("attention_state") != "open" or payment["id"] not in latest.get("voided_payment_ids", []):
-            raise HTTPException(status_code=409, detail="La devolución quedó pendiente; reintentá la misma operación")
+            raise HTTPException(status_code=409, detail="La devolución quedó pendiente; reintenta la misma operación")
 
     if intent.get("movement"):
         emit_notice(intent["restaurant_id"], "cash", status="movement",
@@ -758,7 +758,7 @@ async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: 
             raise HTTPException(status_code=409, detail="Otra actualización de la visita requiere recuperación")
         return await _resume_attention_void(order, payment, intent)
     if order.get("attention_state") != "open":
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
     if payment.get("status") in ("voided", "refunded"):
         return await _verify_attention_void(order, payment)
     if payment.get("status") != "completed":
@@ -779,7 +779,7 @@ async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: 
     cash_amount = cash_portion(payment)
     record_refund = (not reversal_is_inside_open_shift(payment, owned, register)) and cash_amount > 0.009
     if record_refund and not register:
-        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+        raise HTTPException(status_code=400, detail="Abre la caja para registrar la devolución")
     intent = await _attention_void_intent(payment, order, user, reason, kind, register, record_refund)
     try:
         await claim_attention_mutation(db.orders, order, token, {"attention_mutation": intent})
@@ -831,7 +831,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if order.get("status") == "cancelado":
         raise HTTPException(status_code=400, detail="El pedido está cancelado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed") and not recovering:
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
     if recovering:
         kind = pay.get("void_kind") or "void"
         reason = pay.get("void_reason") or reason
@@ -876,7 +876,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     cash_out = cash_portion(pay)
     record_refund = (not reversal_is_inside_open_shift(pay, owned, open_reg)) and cash_out > 0.009
     if record_refund and not open_reg:
-        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+        raise HTTPException(status_code=400, detail="Abre la caja para registrar la devolución")
 
     mutation_claimed = False
     if _has_open_visit(order) and not recovering:
@@ -955,5 +955,5 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
 @router.post("/{payment_id}/void")
 async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(require_roles(["admin", "cajero"]))):
     if not user.get("can_void"):
-        raise HTTPException(status_code=403, detail="No tenés permiso para anular o devolver un cobro")
+        raise HTTPException(status_code=403, detail="No tienes permiso para anular o devolver un cobro")
     return await apply_void_payment(payment_id, user, data.reason, data.kind)

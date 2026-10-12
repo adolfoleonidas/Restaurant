@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Ban, ChevronDown, ChevronUp, Minus, Plus, Printer, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, countOf } from '@/lib/format';
 import { quickNotesFor, itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
 
 const TONE_CLASS = {
@@ -267,7 +267,7 @@ export function TableSummary({
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                         {!empty && (
-                            <span className="text-xs text-muted-foreground tabular-nums">{dishes} platos</span>
+                            <span className="text-xs text-muted-foreground tabular-nums">{countOf(dishes, 'plato', 'platos')}</span>
                         )}
                         <span className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(total)}</span>
                         {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}

@@ -104,7 +104,7 @@ export default function CategoriaPage() {
                 </div>
             ) : loadError ? (
                 <div className="py-16 text-center" data-testid="categoria-load-error">
-                    <p className="text-muted-foreground">Revisá tu conexión y volvé a intentar.</p>
+                    <p className="text-muted-foreground">Revisa tu conexión y vuelve a intentar.</p>
                     <Button type="button" variant="outline" className="mt-3" onClick={() => setReloadToken((n) => n + 1)} data-testid="categoria-retry">
                         Reintentar
                     </Button>

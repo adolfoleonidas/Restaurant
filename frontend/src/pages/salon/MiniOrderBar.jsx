@@ -15,7 +15,7 @@ export default function MiniOrderBar({
     const tally = accountTally(order);
     const total = order.total != null ? fmtMoney(order.total) : '—';
     const statusSummary = `${tallyLabel(tally)} · ${total}`;
-    const actionVerb = tally.ready > 0 ? 'Servir' : tally.drafts > 0 ? `Enviar · ${tally.drafts}` : 'Agregar';
+    const actionVerb = tally.ready > 0 ? 'Entregar' : tally.drafts > 0 ? `Enviar · ${tally.drafts}` : 'Agregar';
     const runAction = () => {
         if (tally.ready > 0) return onDeliver(order.id);
         if (tally.drafts > 0) return onSend(order.id);

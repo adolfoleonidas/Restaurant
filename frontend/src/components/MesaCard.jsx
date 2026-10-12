@@ -2,7 +2,7 @@ import React from 'react';
 import { Bell, Check, CheckCheck, Clock, Link2, Plus, Receipt, UtensilsCrossed } from 'lucide-react';
 import AttentionReference from '@/components/AttentionReference';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
-import { elapsedMinutes, fmtElapsed, fmtMoney } from '@/lib/format';
+import { elapsedMinutes, fmtElapsed, fmtMoney, countOf } from '@/lib/format';
 import { canCloseAttention } from '@/lib/attentionClose';
 
 /**
@@ -178,7 +178,7 @@ export default function MesaCard({
                         </span>
                     )}
                     {!selectMode && needsAttention && (
-                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} role="img" aria-label="Requiere atencion">
+                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} role="img" aria-label="Requiere atención">
                             <Bell className="h-3.5 w-3.5 text-white" />
                         </span>
                     )}
@@ -204,7 +204,7 @@ export default function MesaCard({
                         <Link2 className="h-3 w-3 shrink-0" />
                         <span className="truncate">
                             {groupBadge.label}
-                            {groupBadge.accounts > 1 ? ` · ${groupBadge.accounts} cuentas` : ''}
+                            {groupBadge.accounts > 1 ? ` · ${countOf(groupBadge.accounts, 'cuenta', 'cuentas')}` : ''}
                         </span>
                     </div>
                 )}

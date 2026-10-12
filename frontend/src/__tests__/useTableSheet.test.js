@@ -111,7 +111,7 @@ describe('useTableSheet: opening and closing', () => {
 
         await mounted.rerender({ tables: [], activeOrders: {}, canTake: true, refreshAll });
         await act(async () => { await result.current.takeOrderInline(table('t1', 1, { status: 'pagada' })); });
-        expect(toast.info).toHaveBeenCalledWith('Liberá la mesa pagada antes de tomar pedido');
+        expect(toast.info).toHaveBeenCalledWith('Libera la mesa pagada antes de tomar pedido');
         expect(result.current.openTable).toBeNull();
     });
 

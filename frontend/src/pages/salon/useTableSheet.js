@@ -97,7 +97,7 @@ export default function useTableSheet({
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
-            // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
+            // Sin orden objetivo pero con cuentas abiertas: sigue la primera.
             if (!targetOrderId && active.length) await selectAccount(active[0].id);
         } catch { /* historial opcional */ }
     };
@@ -377,7 +377,7 @@ export default function useTableSheet({
     // producto. No navega a /pedidos.
     const takeOrderInline = async (t) => {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
-        if (t.status === 'pagada') { toast.info('Liberá la mesa pagada antes de tomar pedido'); return; }
+        if (t.status === 'pagada') { toast.info('Libera la mesa pagada antes de tomar pedido'); return; }
         await openSheet(t);
     };
 

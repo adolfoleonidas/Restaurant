@@ -84,10 +84,10 @@ describe('item and account tallies', () => {
     });
 
     test('tallyLabel names the most urgent state first', () => {
-        expect(tallyLabel({ ready: 2, drafts: 4, kitchen: 1, served: 1 })).toBe('Listo para servir · 2');
+        expect(tallyLabel({ ready: 2, drafts: 4, kitchen: 1, served: 1 })).toBe('Listo para entregar · 2');
         expect(tallyLabel({ ready: 0, drafts: 4, kitchen: 1, served: 1 })).toBe('Por enviar · 4');
         expect(tallyLabel({ ready: 0, drafts: 0, kitchen: 1, served: 1 })).toBe('En cocina · 1');
-        expect(tallyLabel({ ready: 0, drafts: 0, kitchen: 0, served: 2 })).toBe('Servido · 2');
+        expect(tallyLabel({ ready: 0, drafts: 0, kitchen: 0, served: 2 })).toBe('Entregado · 2');
         expect(tallyLabel({ ready: 0, drafts: 0, kitchen: 0, served: 0 })).toBe('Sin platos todavía');
     });
 

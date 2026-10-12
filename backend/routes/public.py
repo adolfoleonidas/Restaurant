@@ -166,7 +166,7 @@ async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
         try:
             await open_table_attention(db, order=order, user={"id": None}, now=_now())
         except AttentionBlocked as exc:
-            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá el mismo pedido. {exc.detail}")
+            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintenta el mismo pedido. {exc.detail}")
     if order.get("attention_number_pending") and order.get("acceptance_status") != "pendiente":
         try:
             await number_accepted_order(db, order=order)
@@ -203,7 +203,7 @@ async def _finish_public_order(order: dict, data: PublicOrderCreate) -> dict:
         except Exception:
             persisted = await db.audit_logs.find_one({"event_id": event_id}) if event_id else None
             if not persisted or persisted.get("entity_id") != order["id"] or persisted.get("restaurant_id") != order["restaurant_id"]:
-                raise HTTPException(status_code=503, detail="El pedido quedó guardado; reintentá la misma solicitud")
+                raise HTTPException(status_code=503, detail="El pedido quedó guardado; reintenta la misma solicitud")
     return _public_order_response(order)
 
 
@@ -216,7 +216,7 @@ def _public_order_missing(request: Request):
     customers reading their own order.
     """
     if not public_miss_limiter.allow(client_host(request)):
-        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera unos minutos.")
     raise HTTPException(status_code=404, detail="Pedido no encontrado")
 
 
@@ -226,13 +226,13 @@ def _public_mutate_guard(o: dict, request: Request):
     if o["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if o.get("payment_state") == "rechazado":
-        raise HTTPException(status_code=400, detail="El pago no se pudo verificar. Consultá al personal antes de seguir.")
+        raise HTTPException(status_code=400, detail="El pago no se pudo verificar. Consulta al personal antes de seguir.")
     # Un pedido ya enviado a cocina no se toca; una intención que todavía espera
     # pago sí, porque nada se está preparando.
     if o.get("acceptance_status") == "pendiente":
         return
     if o["status"] == "pendiente_pago":
-        raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acercate a caja para pagar o consultá al mozo.")
+        raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acércate a caja para pagar o consulta al mozo.")
 
 
 async def _save_public_order(order: dict, fields: dict):
@@ -571,7 +571,7 @@ async def _renew_table_qr(table_id: str, nonce: str) -> dict:
     if not table:
         raise HTTPException(status_code=404, detail="Esa mesa no existe")
     if table.get("qr_revoked"):
-        raise HTTPException(status_code=400, detail="El QR de la mesa fue revocado. Pedí el QR otra vez o avisá al personal.")
+        raise HTTPException(status_code=400, detail="El QR de la mesa fue revocado. Pide el QR otra vez o avisa al personal.")
     if table.get("qr_nonce") != nonce:
         raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
     renewed = sign_table(table_id, nonce)
@@ -625,7 +625,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     if data.order_type == "local" and (data.table_token or data.table_id) and not request_id:
         raise HTTPException(status_code=400, detail="Actualiza el menú para enviar tu pedido en mesa de forma segura")
     if not public_order_limiter.allow(client_host(request)):
-        raise HTTPException(status_code=429, detail="Demasiados pedidos desde esta conexión. Esperá un momento.")
+        raise HTTPException(status_code=429, detail="Demasiados pedidos desde esta conexión. Espera un momento.")
     r = await _get_restaurant()
     if not data.items:
         raise HTTPException(status_code=400, detail="Agrega al menos un producto")
@@ -652,12 +652,12 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
                 except ValueError:
                     raise HTTPException(status_code=400, detail="El QR de la mesa no es válido")
         elif r.get("require_table_qr"):
-            raise HTTPException(status_code=400, detail="Escaneá el QR de tu mesa")
+            raise HTTPException(status_code=400, detail="Escanea el QR de tu mesa")
         elif data.table_id:
             table_id = data.table_id
             table_nonce = None
         else:
-            raise HTTPException(status_code=400, detail="Elegí una mesa")
+            raise HTTPException(status_code=400, detail="Elige una mesa")
         table = await db.tables.find_one({"id": table_id, "restaurant_id": r["id"]}, {"_id": 0})
         if not table:
             raise HTTPException(status_code=400, detail="Esa mesa no existe")
@@ -668,7 +668,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             }, {"_id": 0})
             if previous:
                 if previous.get("request_fingerprint") != request_fingerprint or previous.get("table_id") != table_id:
-                    raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
+                    raise HTTPException(status_code=409, detail="La solicitud cambió; inicia un nuevo pedido")
                 return await _finish_public_order(previous, data)
             intent = table.get("opening_intent")
             if table.get("opening_order_id") and intent:
@@ -708,7 +708,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         }, {"_id": 0})
         if previous:
             if previous.get("request_fingerprint") != request_fingerprint:
-                raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
+                raise HTTPException(status_code=409, detail="La solicitud cambió; inicia un nuevo pedido")
             return await _finish_public_order(previous, data)
 
     pickup_branch = None
@@ -843,7 +843,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
             if previous and previous.get("request_fingerprint") == request_fingerprint:
                 return await _finish_public_order(previous, data)
             if previous:
-                raise HTTPException(status_code=409, detail="La solicitud cambió; iniciá un nuevo pedido")
+                raise HTTPException(status_code=409, detail="La solicitud cambió; inicia un nuevo pedido")
         raise HTTPException(status_code=400, detail="La mesa ya tiene un pedido activo")
     except Exception:
         # Keep the durable intent because an insert may have committed before raising.
@@ -910,7 +910,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     if not target:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
     if target.get("status") not in ("pendiente", None):
-        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés modificarlo.")
+        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consulta al mozo si quieres modificarlo.")
     target["quantity"] = data.quantity
     target["subtotal"] = line_subtotal(target["unit_price"], data.quantity)
     subtotal, total = guarded_totals(o, items)
@@ -945,7 +945,7 @@ async def public_remove_item(tracking_code: str, item_id: str, request: Request)
     if not target:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
     if target.get("status") not in ("pendiente", None):
-        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés quitarlo.")
+        raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consulta al mozo si quieres quitarlo.")
     items = [i for i in items if i["id"] != item_id]
     subtotal, total = guarded_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])

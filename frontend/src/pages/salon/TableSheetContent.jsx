@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SheetTitle } from '@/components/ui/sheet';
-import { fmtMoney, fmtElapsed } from '@/lib/format';
+import { fmtMoney, fmtElapsed, countOf } from '@/lib/format';
 import { ORDER_STATUS_LABELS } from '@/constants/status';
 import { isComposingDraft } from '@/pages/salon/selectors';
 import OrderComposer from '@/components/OrderComposer';
@@ -52,7 +52,7 @@ export default function TableSheetContent({
                     <h2 className="font-display text-2xl font-semibold" style={{ color: s.fg }}>{s.label}</h2>
                 </div>
                 <div className="flex items-center gap-1 text-xs mt-1" style={{ color: s.fg, opacity: 0.8 }}>
-                    <Users className="h-3.5 w-3.5" /> Capacidad {t.capacity} personas
+                    <Users className="h-3.5 w-3.5" /> Capacidad {countOf(t.capacity, 'persona', 'personas')}
                 </div>
             </div>
             {/* "+ Pedido" arriba, donde el mozo ya está mirando: abre la
@@ -148,7 +148,7 @@ export default function TableSheetContent({
                         </div>
                         <p className="text-xs text-muted-foreground" data-testid="mesa-sheet-alias-hint">
                             {persons.length > 0
-                                ? 'Nuevo pedido: escribí un alias o tocá una persona para sumarle lo suyo.'
+                                ? 'Nuevo pedido: escribe un alias o toca una persona para sumarle lo suyo.'
                                 : 'El alias es opcional: sin él queda como Persona 1.'}
                         </p>
                         {/* Con una persona ya cargada a la vista, este es el
@@ -219,7 +219,7 @@ export default function TableSheetContent({
                     </p>
                 )}
                 {t.active_attention_id && order && (
-                    <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalizala cuando el cobro y la entrega estén completos.</p>
+                    <p className="text-sm text-muted-foreground">La visita sigue abierta. Finalízala cuando el cobro y la entrega estén completos.</p>
                 )}
                 {group && (
                 <TableGroupPanel

@@ -144,7 +144,7 @@ async def _validate_join(
     exclude_group_id: str | None = None,
 ) -> None:
     if len(tables) < 2:
-        raise HTTPException(status_code=400, detail="Seleccioná al menos dos mesas para unirlas")
+        raise HTTPException(status_code=400, detail="Selecciona al menos dos mesas para unirlas")
     if len(tables) > _MAX_GROUP_SIZE:
         raise HTTPException(status_code=400, detail=f"Un grupo admite hasta {_MAX_GROUP_SIZE} mesas")
     branch_id = tables[0].get("branch_id")
@@ -165,7 +165,7 @@ async def _validate_join(
         if table.get("active_attention_id") or table.get("opening_order_id"):
             raise HTTPException(
                 status_code=409,
-                detail=f"La mesa {number} tiene una visita en curso; cerrala antes de unirla",
+                detail=f"La mesa {number} tiene una visita en curso; ciérrala antes de unirla",
             )
         if table.get("status") not in _JOINABLE_STATUSES:
             raise HTTPException(
@@ -263,7 +263,7 @@ async def _claim_members(group_id: str, tables: list[dict], busy: dict, user: di
             await _rollback_claim(group_id, claimed, user)
             raise HTTPException(
                 status_code=409,
-                detail="Una de las mesas cambió; volvé a cargarla antes de unir",
+                detail="Una de las mesas cambió; vuelve a cargarla antes de unir",
             )
         claimed.append((table["id"], previous))
     return claimed
@@ -305,7 +305,7 @@ async def _dissolve(group: dict, tables: list[dict], user: dict) -> None:
     if getattr(result, "modified_count", 0) != 1:
         latest = await _active_group(group["id"], user)
         if latest:
-            raise HTTPException(status_code=409, detail="El grupo cambió; volvé a cargarlo")
+            raise HTTPException(status_code=409, detail="El grupo cambió; vuelve a cargarlo")
     await record_audit("dissolve", "table_group", group["id"], user, {
         "tables": [table.get("number") for table in tables],
     })
@@ -428,7 +428,7 @@ async def add_table_to_group(
     )
     if getattr(result, "modified_count", 0) != 1:
         await _rollback_claim(group_id, claimed, user)
-        raise HTTPException(status_code=409, detail="El grupo cambió; volvé a cargarlo antes de unir la mesa")
+        raise HTTPException(status_code=409, detail="El grupo cambió; vuelve a cargarlo antes de unir la mesa")
     await record_audit("join", "table_group", group_id, user, {
         "tables": [incoming[0].get("number")],
         "accounts": len(owners),
@@ -471,7 +471,7 @@ async def remove_table_from_group(
         {"$set": {"table_ids": table_ids, "anchor_table_id": anchor_id, "name": name, "updated_at": _now()}},
     )
     if getattr(result, "modified_count", 0) != 1:
-        raise HTTPException(status_code=409, detail="El grupo cambió; volvé a cargarlo antes de separar la mesa")
+        raise HTTPException(status_code=409, detail="El grupo cambió; vuelve a cargarlo antes de separar la mesa")
     await record_audit("split", "table_group", group_id, user, {"tables": [leaving.get("number")]})
     _announce(remaining, user)
     updated = {**group, "table_ids": table_ids, "anchor_table_id": anchor_id, "name": name}

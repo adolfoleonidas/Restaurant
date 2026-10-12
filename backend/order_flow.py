@@ -9,14 +9,14 @@ class FlowError(Exception):
 
 class VersionError(Exception):
     def __init__(self):
-        super().__init__("El pedido cambió. Volvé a cargarlo.")
-        self.detail = "El pedido cambió. Volvé a cargarlo."
+        super().__init__("El pedido cambió. Vuelve a cargarlo.")
+        self.detail = "El pedido cambió. Vuelve a cargarlo."
 
 
 def version_conflict(order: dict) -> dict:
     return {
         "code": "account_changed",
-        "message": "El pedido cambió. Volvé a cargarlo.",
+        "message": "El pedido cambió. Vuelve a cargarlo.",
         "updated_at": order.get("updated_at"),
     }
 

@@ -239,7 +239,7 @@ async def open_table_attention(db, *, order: dict, user: dict, now: str) -> dict
                     or latest.get("order_id") != order["id"]
                     or latest.get("table_id") != table_id
                     or latest.get("branch_id") != order.get("branch_id")):
-                raise AttentionBlocked("No se pudo confirmar la apertura; reintentá la misma visita")
+                raise AttentionBlocked("No se pudo confirmar la apertura; reintenta la misma visita")
 
     latest_order = await db.orders.find_one({
         "id": order["id"], "restaurant_id": restaurant_id,
@@ -359,7 +359,7 @@ async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str)
     # Verifica que ninguna cuenta quedó abierta (reconciliación).
     for sibling in await _attention_orders(db, attention):
         if sibling.get("attention_state") != "closed":
-            raise AttentionBlocked("El cierre quedó pendiente de reconciliación; reintentá la misma visita")
+            raise AttentionBlocked("El cierre quedó pendiente de reconciliación; reintenta la misma visita")
     return await _load_attention(db, order) or attention
 
 
@@ -369,7 +369,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
     La visita se identifica por su propio id, nunca por `order["id"]`: `order_id`
     del documento guarda sólo la cuenta canónica, así que anclar el cierre a esa
     cuenta dejaba sin salida a cualquier otra cuenta de la misma visita —el mozo
-    veía "reintentá la misma visita" para siempre y la mesa quedaba tomada—.
+    veía "reintenta la misma visita" para siempre y la mesa quedaba tomada—.
     """
     current = await db.orders.find_one({
         "id": order["id"], "restaurant_id": order["restaurant_id"],
@@ -397,7 +397,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
             "attention_close_actor_name": user.get("full_name"),
         }})
         if getattr(claimed, "modified_count", 0) != 1:
-            raise AttentionBlocked("El pedido cambió; volvé a cargarlo antes de cerrar")
+            raise AttentionBlocked("El pedido cambió; vuelve a cargarlo antes de cerrar")
         order = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
         close_user = {"id": order.get("attention_close_actor"),
                       "full_name": order.get("attention_close_actor_name")}
@@ -413,7 +413,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
             if attention.get("status") == "closed":
                 return await _finish_closed(db, order, attention, user, now)
             if attention.get("status") == "open":
-                raise AttentionBlocked("El cierre quedó pendiente; reintentá la misma visita")
+                raise AttentionBlocked("El cierre quedó pendiente; reintenta la misma visita")
         attention = await _load_attention(db, order)
     elif state == "closing" and attention.get("status") == "open":
         # Recover a crash between the canonical order claim and its attention projection.
@@ -427,13 +427,13 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
         }, {"$set": {"status": "closing", "closed_by": close_user["id"],
             "closed_by_name": close_user["full_name"], "closed_at": now}})
         if getattr(changed, "modified_count", 0) != 1:
-            raise AttentionBlocked("El cierre quedó pendiente; reintentá la misma visita")
+            raise AttentionBlocked("El cierre quedó pendiente; reintenta la misma visita")
         attention = await _load_attention(db, order)
     elif state != "closing" or attention.get("status") != "closing":
         raise AttentionBlocked("La visita no está abierta para cierre")
 
     if not order or order.get("attention_close_token") != attention["id"]:
-        raise AttentionBlocked("El cierre no conserva su reclamo; reintentá la misma visita")
+        raise AttentionBlocked("El cierre no conserva su reclamo; reintenta la misma visita")
     payments = await _completed_payments(db, order)
     reason = close_block_reason(order, payments)
     if reason:
@@ -459,7 +459,7 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
     if getattr(changed, "matched_count", 0) != 1:
         attention = await _load_attention(db, order)
         if not attention or attention.get("status") != "closed":
-            raise AttentionBlocked("No se pudo confirmar el cierre; reintentá la misma visita")
+            raise AttentionBlocked("No se pudo confirmar el cierre; reintenta la misma visita")
     else:
         attention = await _load_attention(db, order)
     return await _finish_closed(db, order, attention, user, now)

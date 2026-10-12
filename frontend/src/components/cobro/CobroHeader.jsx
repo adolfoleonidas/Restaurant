@@ -1,6 +1,7 @@
 import React from 'react';
 import { CreditCard, X } from 'lucide-react';
 import { accountLabel } from '@/lib/cash';
+import { countOf } from '@/lib/format';
 
 /**
  * Account title, meta line and the close button.
@@ -20,7 +21,7 @@ export default function CobroHeader({
                             <span className="dot" />
                         </>
                     ) : null}
-                    <span>{(acct.items || []).length} items</span>
+                    <span>{countOf((acct.items || []).length, 'ítem', 'ítems')}</span>
                     <span className="dot" />
                     <span>{result ? 'Pagada' : paid > 0 ? 'Pago parcial' : 'Cuenta abierta'}</span>
                 </div>

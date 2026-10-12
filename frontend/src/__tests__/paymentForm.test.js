@@ -270,7 +270,7 @@ describe('copy', () => {
         expect(footerNote({ ...ok, online: false })).toBe('Sin conexión: reconecta para registrar');
         expect(footerNote({ ...ok, result: {} })).toBe('');
         expect(footerNote({ ...ok, tipInvalid: true })).toBe('Corrige la propina para continuar');
-        expect(footerNote({ ...ok, canRegister: false })).toBe('Monto exacto · escribí el efectivo recibido si te dan un billete mayor');
+        expect(footerNote({ ...ok, canRegister: false })).toBe('Monto exacto · escribe el efectivo recibido si te dan un billete mayor');
         expect(footerNote({ ...ok, canRegister: false, r: 50 })).toBe('El efectivo recibido no cubre el total');
         expect(footerNote({ ...ok, canRegister: false, method: 'mixed' })).toBe('Completa los montos del pago mixto');
         expect(footerNote({ ...ok, canRegister: false, method: 'yape', chargeAmount: 0 })).toBe('Selecciona al menos un ítem');

@@ -1,5 +1,6 @@
 import React from 'react';
 import AttentionReference from '@/components/AttentionReference';
+import { countOf } from '@/lib/format';
 
 /**
  * Active takeout orders and the ready pickups left from previous days.
@@ -36,7 +37,7 @@ export default function PickupSections({
             {pickupProjection.prior.length > 0 && (
                 <details className="rounded-md border border-border bg-card/50 p-3" data-testid="servicio-dias-anteriores">
                     <summary className="cursor-pointer font-semibold">
-                        Días anteriores · {pickupProjection.prior.length} recojo(s) listos
+                        Días anteriores · {countOf(pickupProjection.prior.length, 'recojo listo', 'recojos listos')}
                     </summary>
                     <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                         {pickupProjection.prior.map((order) => (

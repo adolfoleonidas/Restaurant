@@ -401,7 +401,7 @@ def test_cannot_remove_an_already_paid_item():
     # The route lets the billing rule through; the app-level handler maps it to 400.
     with pytest.raises(BillError) as removed:
         asyncio.run(run())
-    assert removed.value.detail == "No podés quitar un producto que ya fue cobrado"
+    assert removed.value.detail == "No puedes quitar un producto que ya fue cobrado"
 
 
 def test_cannot_shrink_an_item_below_what_was_paid():
@@ -413,7 +413,7 @@ def test_cannot_shrink_an_item_below_what_was_paid():
 
     with pytest.raises(BillError) as shrunk:
         asyncio.run(run())
-    assert shrunk.value.detail == "No podés dejar un producto por debajo de lo ya cobrado"
+    assert shrunk.value.detail == "No puedes dejar un producto por debajo de lo ya cobrado"
 
 
 def test_can_remove_an_unpaid_item_while_another_is_paid():
@@ -438,7 +438,7 @@ def test_cannot_cancel_while_money_was_collected():
 
     with pytest.raises(BillError) as caught:
         asyncio.run(run())
-    assert caught.value.detail == "Devolvé o anulá los cobros antes de cancelar el pedido"
+    assert caught.value.detail == "Devuelve o anula los cobros antes de cancelar el pedido"
 
 
 def test_editing_items_keeps_the_delivery_fee():

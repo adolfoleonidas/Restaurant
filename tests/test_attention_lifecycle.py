@@ -472,7 +472,7 @@ def test_close_from_a_secondary_account_reports_the_unsettled_canonical_one():
 
     La visita puede tener varias cuentas y `order_id` guarda sólo la canónica.
     Anclar el cierre a esa cuenta hacía que cualquier otra de la misma visita
-    fallara con "reintentá la misma visita" para siempre, dejando la mesa tomada
+    fallara con "reintenta la misma visita" para siempre, dejando la mesa tomada
     sin salida y sin decir qué cuenta faltaba liquidar.
     """
     async def run():

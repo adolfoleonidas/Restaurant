@@ -422,7 +422,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
             try:
                 await open_table_attention(db, order=o, user=user, now=_now())
             except AttentionBlocked as exc:
-                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
+                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintenta /orders/{order_id}/attention/open. {exc.detail}")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no, branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
@@ -498,7 +498,7 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
     if not source:
         raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
     if source["id"] == target["id"]:
-        raise HTTPException(status_code=400, detail="Elegí cuentas distintas")
+        raise HTTPException(status_code=400, detail="Elige cuentas distintas")
     if target["status"] in ("pagado", "cancelado") or source["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="Solo se pueden fusionar cuentas abiertas")
     if target.get("table_id") != source.get("table_id"):
@@ -506,7 +506,7 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
     if target.get("attention_id") != source.get("attention_id"):
         raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma visita")
     if (source.get("amount_paid") or 0) > 0.009:
-        raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anulalos antes de fusionar")
+        raise HTTPException(status_code=400, detail="La cuenta a fusionar ya tiene cobros; anúlalos antes de fusionar")
     combined = (target.get("items") or []) + (source.get("items") or [])
     subtotal, total = guarded_totals(target, combined)
     new_status = _derive_kitchen_status(combined, target["status"])
@@ -542,7 +542,7 @@ async def move_order(order_id: str, data: OrderMove, user: dict = Depends(requir
     if not target:
         raise HTTPException(status_code=404, detail="Mesa destino no encontrada")
     if target["id"] == source_table_id:
-        raise HTTPException(status_code=400, detail="Elegí una mesa distinta")
+        raise HTTPException(status_code=400, detail="Elige una mesa distinta")
     if target.get("branch_id") != order.get("branch_id"):
         raise HTTPException(status_code=400, detail="Las mesas pertenecen a sucursales distintas")
     if target.get("group_id"):
@@ -614,11 +614,11 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede dividir una cuenta cerrada")
     if (order.get("amount_paid") or 0) > 0.009:
-        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anulalos antes de dividir")
+        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anúlalos antes de dividir")
     items = order.get("items") or []
     parts = data.parts
     if parts < 2:
-        raise HTTPException(status_code=400, detail="Elegí 2 o más partes")
+        raise HTTPException(status_code=400, detail="Elige 2 o más partes")
     if parts > len(items):
         raise HTTPException(status_code=400, detail="No hay suficientes productos para dividir en tantas partes")
 
@@ -731,7 +731,7 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     if is_cancelled(target):
         return await _current_order_response(order_id, user)
     if int(target.get("paid_qty") or 0) > 0:
-        raise HTTPException(status_code=400, detail="No podés anular un producto que ya fue cobrado")
+        raise HTTPException(status_code=400, detail="No puedes anular un producto que ya fue cobrado")
     reason = (data.reason or "").strip()
     now = _now()
     target["status"] = "cancelado"
@@ -765,7 +765,7 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     if not target:
         raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
     if target["id"] == source["id"]:
-        raise HTTPException(status_code=400, detail="Elegí otra persona")
+        raise HTTPException(status_code=400, detail="Elige otra persona")
     if target["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="La cuenta destino está cerrada")
     if target.get("attention_id") != source.get("attention_id"):
@@ -776,7 +776,7 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     if is_cancelled(item):
         raise HTTPException(status_code=400, detail="El producto está anulado")
     if int(item.get("paid_qty") or 0) > 0:
-        raise HTTPException(status_code=400, detail="No podés mover un producto que ya fue cobrado")
+        raise HTTPException(status_code=400, detail="No puedes mover un producto que ya fue cobrado")
 
     now = _now()
     source_items = [i for i in (source.get("items") or []) if i["id"] != item_id]
@@ -844,7 +844,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
             # Lo que cocina ya recibió no se edita en silencio: se anula y se
             # vuelve a pedir. Sólo el borrador se corrige libremente.
             if not is_draft(it):
-                raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anulalo y volvé a pedirlo.")
+                raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anúlalo y vuelve a pedirlo.")
             if data.quantity is not None:
                 it["quantity"] = data.quantity
                 it["subtotal"] = line_subtotal(it["unit_price"], data.quantity)
@@ -1055,7 +1055,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
     if o.get("acceptance_status") == "pendiente":
         raise HTTPException(
             status_code=409,
-            detail="Confirmá el prepago desde Caja para registrar el cobro y enviarlo a cocina",
+            detail="Confirma el prepago desde Caja para registrar el cobro y enviarlo a cocina",
         )
     await _save_order(o, {"payment_status": "confirmado", "payment_proof_status": "verificado", "updated_at": _now()})
     await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)

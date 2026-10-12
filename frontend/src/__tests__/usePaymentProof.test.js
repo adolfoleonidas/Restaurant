@@ -102,7 +102,7 @@ describe('usePaymentProof: sending a proof', () => {
         const { result } = await mount();
         act(() => result.current.setSelectedProof('img'));
         await act(async () => { await result.current.submitProof(); });
-        expect(result.current.proofError).toBe('No se pudo enviar el comprobante. Puede reintentar la misma imagen.');
+        expect(result.current.proofError).toBe('No se pudo enviar el comprobante. Puedes reintentar la misma imagen.');
     });
 
     test('when the account cannot be refreshed the cashier is told to reload before charging', async () => {
@@ -112,7 +112,7 @@ describe('usePaymentProof: sending a proof', () => {
         await act(async () => { await result.current.submitProof(); });
         expect(result.current.proofSent).toBe(true);
         expect(result.current.proofRefreshPending).toBe(true);
-        expect(result.current.proofRefreshError).toBe('El comprobante fue recibido, pero no se pudo actualizar la cuenta. Recargue antes de registrar un pago.');
+        expect(result.current.proofRefreshError).toBe('El comprobante fue recibido, pero no se pudo actualizar la cuenta. Recarga antes de registrar un pago.');
 
         await act(async () => { await result.current.retryOrderRefresh(); });
         expect(result.current.proofRefreshPending).toBe(false);

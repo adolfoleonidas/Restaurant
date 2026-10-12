@@ -13,7 +13,7 @@ const LINE_STATUS = {
     pendiente: { label: 'nuevo', cls: 'bg-secondary text-muted-foreground' },
     en_preparacion: { label: 'en cocina', cls: 'bg-[#FFF6DB] text-[#6B4E00]' },
     listo: { label: 'listo', cls: 'bg-[#E6F2FF] text-[#0B3A66]' },
-    entregado: { label: 'servido', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
+    entregado: { label: 'entregado', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
 };
 
 export const CartPanel = ({ onClose }) => {
@@ -61,7 +61,7 @@ export const CartPanel = ({ onClose }) => {
                     {liveItems.length === 0 ? (
                         <div className="py-16 text-center text-muted-foreground">
                             <div className="font-display text-xl mb-2">Sin platos</div>
-                            <div className="text-sm">Agregá un plato desde el menú</div>
+                            <div className="text-sm">Agrega un plato desde el menú</div>
                         </div>
                     ) : liveItems.map((it) => {
                         const st = LINE_STATUS[it.status] || LINE_STATUS.pendiente;
@@ -94,7 +94,7 @@ export const CartPanel = ({ onClose }) => {
                         <span className="carta-dots" />
                         <span className="font-mono font-bold tabular-nums text-primary" data-testid="cart-live-total">{fmtMoney(order.total)}</span>
                     </div>
-                    {billPending && <p className="text-xs text-amber-700">La cuenta ya fue solicitada. Podés pagar en caja.</p>}
+                    {billPending && <p className="text-xs text-amber-700">La cuenta ya fue solicitada. Puedes pagar en caja.</p>}
                     <Button asChild className="w-full h-12 rounded-sm text-base" data-testid="cart-live-track-button">
                         <Link to={`/pedido/${order.tracking_code}`} onClick={onClose}>Ver estado del pedido</Link>
                     </Button>
@@ -109,13 +109,13 @@ export const CartPanel = ({ onClose }) => {
                 {tabs}
                 <p className="page-kicker">{cartMode ? 'Para llevar' : 'Tu mesa'}</p>
                 <h2 className="font-display text-2xl font-semibold">Pedido ({count})</h2>
-                {cartMode && <p className="text-xs text-muted-foreground mt-1">Este pedido es aparte del de tu mesa: lo pagás y lo llevás.</p>}
+                {cartMode && <p className="text-xs text-muted-foreground mt-1">Este pedido es aparte del de tu mesa: lo pagas y lo llevas.</p>}
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 {items.length === 0 ? (
                     <div className="py-16 text-center text-muted-foreground">
                         <div className="font-display text-xl mb-2">Carta vacía</div>
-                        <div className="text-sm">Agregá un plato para armar el pedido</div>
+                        <div className="text-sm">Agrega un plato para armar el pedido</div>
                     </div>
                 ) : items.map((it) => (
                     <div key={it.product_id} className="border border-border rounded-sm p-3 space-y-2" data-testid={`cart-item-${it.product_id}`}>

@@ -15,7 +15,7 @@ export default function ConsolidatedCashView({ branches, userKey }) {
             <CardContent className="space-y-4 p-5">
                 <div>
                     <h1 className="font-display text-xl font-semibold">Caja consolidada</h1>
-                    <p className="mt-1 text-sm text-muted-foreground">Vista de solo lectura de las cajas del negocio. Seleccione una sucursal para operar.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Vista de solo lectura de las cajas del negocio. Selecciona una sucursal para operar.</p>
                 </div>
                 {error && <p role="alert" className="text-sm text-destructive">No se pudieron cargar las cajas consolidadas.</p>}
                 {loading && !registers ? <p className="text-sm text-muted-foreground">Cargando cajas…</p>

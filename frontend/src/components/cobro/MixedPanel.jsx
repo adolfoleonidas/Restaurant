@@ -17,7 +17,7 @@ export default function MixedPanel({
             {/* MIXED PANEL */}
             {method === 'mixed' && (
                 <div>
-                    <p className="neutral-copy">Combina varios metodos. El ultimo metodo completa el total.</p>
+                    <p className="neutral-copy">Combina varios métodos. El último método completa el total.</p>
                     {splits.map((s, idx) => {
                         const isLast = idx === splits.length - 1;
                         const usedMethods = splits.map(l => l.method);
@@ -37,11 +37,11 @@ export default function MixedPanel({
                                         <span>S/</span>
                                         <input type="text" inputMode="decimal" value={s.amount} placeholder="0.00" maxLength={9}
                                             onChange={(e) => updateSplit(idx, { amount: e.target.value })}
-                                            data-testid={`caja-split-${idx}-amount`} aria-label={`Importe metodo ${idx + 1}`} />
+                                            data-testid={`caja-split-${idx}-amount`} aria-label={`Importe método ${idx + 1}`} />
                                     </div>
                                 )}
                                 <button className="icon-button mixed-remove" onClick={() => removeSplit(idx)}
-                                    disabled={splits.length <= 2} aria-label="Quitar metodo">
+                                    disabled={splits.length <= 2} aria-label="Quitar método">
                                     <X style={{ width: 17, height: 17 }} />
                                 </button>
                             </div>
@@ -55,7 +55,7 @@ export default function MixedPanel({
                     <button className="secondary-button mixed-add" type="button"
                         disabled={!canAddSplit}
                         onClick={addSplit}>
-                        + Agregar otro metodo
+                        + Agregar otro método
                     </button>
                 </div>
             )}

@@ -18,7 +18,7 @@ function exportCsv(data) {
     rows.push(['Total ventas', data.total_sales]);
     rows.push(['Pedidos pagados', data.orders_count]);
     rows.push(['Ticket promedio', data.avg_ticket]);
-    rows.push(['Cancelados', data.cancelled_orders]);
+    rows.push(['Anulados', data.cancelled_orders]);
     rows.push([]);
     rows.push(['Ventas por día']);
     rows.push(['Fecha', 'Monto']);
@@ -211,7 +211,7 @@ function ReportesView({ userKey, isOwner }) {
                         </CardContent></Card>
                         <Card><CardContent className="p-5">
                             <div className="flex items-center justify-between gap-2 min-w-0">
-                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Cancelados</div>
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Anulados</div>
                                     <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1">{data.cancelled_orders}</div></div>
                                 <Ban className="h-6 w-6 text-destructive shrink-0" />
                             </div>

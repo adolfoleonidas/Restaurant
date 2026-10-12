@@ -13,7 +13,7 @@ export const ORDER_STATUS_LABELS = {
     entregado: 'Entregado',
     pendiente_pago: 'Pendiente de pago',
     pagado: 'Pagado',
-    cancelado: 'Cancelado',
+    cancelado: 'Anulado',
 };
 
 export const TABLE_STATUS_LABELS = {
@@ -60,7 +60,7 @@ export const LIVE_ITEM_CHIPS = {
     pendiente: { label: 'nuevo', cls: 'bg-secondary text-muted-foreground' },
     en_preparacion: { label: 'en cocina', cls: 'bg-[#FFF6DB] text-[#6B4E00]' },
     listo: { label: 'listo', cls: 'bg-[#E6F2FF] text-[#0B3A66]' },
-    entregado: { label: 'servido', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
+    entregado: { label: 'entregado', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
 };
 
 // ---- Payments --------------------------------------------------------------
@@ -80,7 +80,7 @@ export const ORDER_PAYMENT_LABELS = {
     pagado: 'Pagado',
     comprobante_subido: 'Comprobante pendiente de revisión',
     confirmado: 'Confirmado',
-    cancelado: 'Cancelado',
+    cancelado: 'Anulado',
     anulado: 'Anulado',
     voided: 'Anulado',
     refunded: 'Devuelto',
@@ -147,7 +147,7 @@ export const LOCAL_TRACKING_STEPS = [
     { key: 'nuevo', label: 'Pedido recibido', icon: 'check' },
     { key: 'en_preparacion', label: 'En preparación', icon: 'chef' },
     { key: 'listo', label: 'Listo', icon: 'bell' },
-    { key: 'servido', label: 'Servido', icon: 'utensils' },
+    { key: 'servido', label: 'Entregado', icon: 'utensils' },
     { key: 'pagado', label: 'Pagado', icon: 'check' },
 ];
 

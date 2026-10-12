@@ -19,7 +19,7 @@ export default function WalletPanel({
             {walletMethod && canSubmitProof && (
                 <section data-testid="caja-comprobante-pago">
                     {collectionConfigError ? (
-                        <p role="status" className="stale-error">No se pudo cargar la configuración. Cierre y vuelva a abrir este diálogo.</p>
+                        <p role="status" className="stale-error">No se pudo cargar la configuración. Cierre y vuelve a abrir este diálogo.</p>
                     ) : !collectionConfig ? (
                         <p className="neutral-copy">Cargando opciones de pago…</p>
                     ) : !walletConfig?.enabled ? (
@@ -44,9 +44,9 @@ export default function WalletPanel({
                             <dl className="account-data">
                                 {walletConfig.number && (
                                     <div className="data-row">
-                                        <dt>Numero</dt>
+                                        <dt>Número</dt>
                                         <dd className="account-number">{walletConfig.number}</dd>
-                                        <button className="copy-button" onClick={() => copyText(walletConfig.number, 'Numero')} aria-label="Copiar numero">
+                                        <button className="copy-button" onClick={() => copyText(walletConfig.number, 'Número')} aria-label="Copiar número">
                                             <Copy style={{ width: 17, height: 17 }} />
                                         </button>
                                     </div>
