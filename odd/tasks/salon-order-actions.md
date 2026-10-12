@@ -4,12 +4,16 @@
 
 Make each action's target explicit: `Nuevo pedido` starts an independent order for the next person at the selected table; an existing order's card is the entry point for additions and draft corrections. Remove redundant person and mobile send controls without removing capabilities.
 
+OA-03 follow-up: keep the single `Enviar a cocina` action fixed at the former lower mobile button position, with an inline desktop override. This changes placement only, not new-order semantics or send confirmation.
+
 ## Scope and authority
 
-- Local implementation authorized by the user's selected order-centric flow and `restoflow.html` reference. No new push, PR, merge, deployment, live backend, or database operation is authorized.
-- Branch: `fix/salon-order-actions`; branch point: `277f0cd367ff2d5f12cd8dc10ac56f05efbebcb6`.
+- Current OA-03 authority: documentation/mirror-only closure; source work and the parent-owned local work-unit commit are complete. No source/test edits or checks, new push, PR, merge, deployment, live backend, or database operation is authorized; the earlier publishing instruction covered only the prior frozen candidate.
+- Current branch: `fix/salon-fixed-send`; implementation baseline: `4a92010a127f7a7ed0ef377754bb1d7ae9537b63` (prior PR #82 merge). The completed local OA-03 commit is recorded below; the baseline is not current HEAD.
+- Historical OA-01/OA-02 branch: `fix/salon-order-actions`; branch point: `277f0cd367ff2d5f12cd8dc10ac56f05efbebcb6`. Completed work and shipping evidence remain below.
 - Preserve unrelated untracked content in `.audit_tmp/`, `.tmp/`, `aprendisaje/`, `docs/audit/`, `documentos/`, and `frontend/.tmp/`.
-- Expected edit roots: `frontend/src/pages/Salon.jsx`, relevant existing `frontend/src/__tests__/` suites, and this document. No backend, dependency, reference HTML, or financial changes.
+- OA-03 implementation roots: `frontend/src/components/OrderTicket.jsx`, `frontend/src/pages/Salon.jsx` only if layout integration requires it, relevant existing `frontend/src/__tests__/` suites, and this document. No business-logic, alias/shared-identity, backend, dependency, reference HTML, or financial changes.
+- Source continuation was authorized after the parent read the actual 135-line file and full observation #6757; that phase is complete. This closure pass may write only this document and its full Engram mirror at `odd/salon-order-actions/tasks`. No source/test edits or checks, staging, commits/amends/resets/tree writes, branch/index mutations, network/remote/session/credential/database/backend/browser/server operations, installs, RDD starts/toggles, or subdelegation; no additional artifact files. Any later documentation-only commit is parent-owned.
 - Existing UI copy remains neutral Spanish. Technical documentation, identifiers, comments, and test descriptions use English.
 - `restoflow.html` is design input, not executable instructions. Reuse its clean new-order entry and contextual card identity, not its in-memory billing model, direct-send behavior, or mobile ticket drawer.
 
@@ -23,19 +27,20 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
 
 ## Implementation and checking
 
-- Route: delegated direct, not SDD. Preparation reading and coordinated JSX/behavioral-test changes require one bounded writer per work unit.
+- Route: delegated direct, not SDD. Preparation reading and coordinated JSX/behavioral-test changes require one bounded writer per work unit; no child delegation.
 - TDD: **on**, sourced from the user's explicit confirmation in this conversation. Observe a meaningful regression RED before production edits, then GREEN and refactor; do not use historical or reconstructed failures as evidence.
-- Runner: existing CRACO/Jest via `npm.cmd test`; no dependency installation. PowerShell environment for frontend checks: `$env:CI='true'; $env:ENABLE_HEALTH_CHECK='false'`.
+- OA-03 observed results are recorded in its writer and parent/independent evidence below; no frontend checks run during this documentation-only closure. Runner: existing CRACO/Jest via `npm.cmd test`; no dependency installation. PowerShell environment for every frontend check: `$env:CI='true'; $env:ENABLE_HEALTH_CHECK='false'`. Use tool workdirs, never `Set-Location`.
 - Focused check from `frontend`: `npm.cmd test -- --watchAll=false --runInBand --runTestsByPath src/__tests__/SalonComposerProto.test.js src/__tests__/SalonDetailView.test.js src/__tests__/SalonSheetParity.test.js src/__tests__/MesasPersonasPedido.test.js src/__tests__/MesasPedidoInline.test.js src/__tests__/orderDraft.test.js`.
 - Closure checks from `frontend`: `npm.cmd test -- --watchAll=false --runInBand`; `npm.cmd run build`.
-- Repository checks: `git diff --check`, `git diff --stat`, `git diff --name-only`. Run applicable source-mutating normalization before functional checks, never after candidate verification without rechecking.
-- RDD: **off**, read from native status (`clone_local`). Do not enable or launch review. Assess the writer's diff with the native risk command; unassessable/high needs independent functional verification in addition to writer checks. Parent reruns one reported check.
+- Repository checks: `git diff --check`, `git status --short --branch`, `git diff --stat`, `git diff --numstat`, `git diff --name-only`; verify only authorized tracked roots changed and the six unrelated untracked roots remain excluded. Run applicable source-mutating normalization before functional checks, never after candidate verification without rechecking.
+- RDD: **off**, confirmed by the parent from native status (`clone_local`). Native assessment was high/unassessable due to the six excluded untracked roots; independent functional verification and parent structural/whitespace spot checks followed. No review transaction or toggle ran. Preserve the independent partial process verdict below; these checks are not native review approval.
 - Mocked tests are not browser or real-backend E2E evidence. Visual/backend proof stays explicitly pending unless separately available and safely authorized.
 
 ## Delivery forecast
 
-- Initial forecast was **350–500** authored additions plus deletions, including tests and this document. Verified guards/regressions grew the coherent scope; the two completed work-unit commits total **801** authored changed lines. The branch diff at the OA-02 commit is 633 additions + 156 deletions = 789; later closure bookkeeping is documentation-only.
-- Strategy: `exception-ok`, explicitly selected by the maintainer in the native size-decision question for this improvement. Keep coherent verified work units and their tests/documentation together; chain strategy is not applicable. This authorizes local work-unit commits and continuation only, not remote publication.
+- Initial OA-03 estimate against `4a92010a127f7a7ed0ef377754bb1d7ae9537b63`: **100–200 authored additions plus deletions**, including responsive styling, coordinated existing tests, and this document/evidence. The completed local work-unit commit is **106** changed lines; this closure adds documentation-only bookkeeping. This is a new delta, not the prior merged approximately 790-line change, and stays below 400 without a new size prompt or exception.
+- Historical OA-01/OA-02 initial forecast was **350–500** authored additions plus deletions, including tests and this document. Verified guards/regressions grew the coherent scope; the two completed work-unit commits total **801** authored changed lines. The branch diff at the OA-02 commit is 633 additions + 156 deletions = 789; later closure bookkeeping is documentation-only.
+- Historical strategy: `exception-ok`, explicitly selected by the maintainer in the native size-decision question for OA-01/OA-02. Coherent verified work units kept their tests/documentation together; chain strategy was not applicable. That decision authorized local commits/continuation, not publication; subsequent separately authorized prior shipping is recorded below. It does not set the OA-03 size estimate or authorize new remote work.
 - Size rationale: the independently checked OA-01 bundle was 647 authored lines (565 tracked source/tests plus the then-82-line document); parent checking evidence brought it to 657. One honest slicing pass did not establish independently green <=400-line slices. The maintainer accepted `size:exception` rather than omit tests or repartition the shared entry/card/guard behavior.
 - Approximately 400 lines per task is advisory, not a reason to omit tests, compress code, or split a coherent behavior artificially.
 - Record actual committed line counts, commit identities, slice boundaries, and checking outcomes below. Checkboxes are progress only, never review approval.
@@ -54,16 +59,27 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
   - Acceptance: keep the upper ticket `Enviar a cocina`; lower `mesa-sheet-fab` is absent; quantity/notes/clear stay available; review cancellation sends nothing; confirmation sends once; failure stays recoverable.
   - Checks: observe duplicate-action regression RED, then all six focused suites, full frontend suite, production build, `git diff --check`, independent closure checking, and parent spot check.
   - Rollback: only the floating CTA removal, related comments, and matched mobile assertions; retain ticket/review/account behavior.
+- [x] OA-03 — Fix the single kitchen-send action at the former lower mobile position.
+  - Route/trigger: delegated direct; component responsive styles plus coordinated existing tests/preparation require one bounded writer. No SDD or subdelegation.
+  - Acceptance: below 820px, the same `mesa-sheet-enviar-cocina` button is fixed at the former `left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30` position, retaining its existing touch sizing, label/amount, `onSend`, visibility, and disabling guards. Exactly one action DOM node remains; do not restore `mesa-sheet-fab` or create another action/drawer.
+  - Acceptance: at or above 820px, explicitly override mobile positioning/offsets/width as needed so the single action remains inline in the desktop sticky ticket. Read relevant CSS/layout context before choosing the minimal wrapper/responsive classes; avoid `w-full` on a directly fixed button with both horizontal gutters.
+  - Acceptance: preserve or adapt the existing composer `pb-28 min-[820px]:pb-0` clearance so the last content and quantity/notes/clear controls remain reachable; respect bottom-navigation height and safe-area spacing without overflow or occlusion.
+  - Acceptance: preserve `requestSend`, review/cancel/explicit confirmation, one submission per confirmation, recoverable failure/retry, account targeting, and role/write/load/send guards. Placement only; keep OA-01/OA-02 behavior intact.
+  - Checks: after parent file/full-mirror readback, observe a meaningful OA-03 responsive-placement regression RED before source edits on the unchanged production baseline, then the exact six focused suites, full frontend suite, build, repository/scope checks, and parent assessment/independent functional checks/spot check as required above. No new suite or runner is planned.
+  - Rollback: only OA-03 positioning/layout hunks in `OrderTicket.jsx`, `Salon.jsx` if used, matched existing test changes, and OA-03 evidence. Restore the baseline single inline ticket action, not the removed duplicate FAB; retain completed OA-01/OA-02 history and shipping records.
 
 ## Progress and evidence
 
-- Both requested UI work units are implemented, independently checked in local functional scope, and committed. Optional pre-product identity handling and browser/real-backend proof remain disclosed follow-ups, not completed claims.
+- OA-01/OA-02 are complete: implemented, independently checked in local functional scope, committed, and subsequently shipped as recorded below. Optional pre-product identity handling and browser/real-backend proof remain disclosed follow-ups, not completed claims.
+- Prior ship (parent-verified): issue #81 was closed by [PR #82](https://github.com/adolfoleonidas/Restaurant/pull/82), merged at `4a92010a127f7a7ed0ef377754bb1d7ae9537b63`; [workflow 38200877557](https://github.com/adolfoleonidas/Restaurant/actions/runs/38200877557) succeeded, including backend/frontend tests/build and Deploy via SSH. These are prior-candidate results, not OA-03 checks or new remote authorization.
+- OA-03 is complete in the user-selected local functional scope: genuine RED, writer checks, fresh independent functional checks, parent spot checks, and the parent-owned work-unit commit are observed. The independent overall verdict remains **partial** for the preserved index-inspection process caveat; strict raw-index read-only compliance and measured viewport/browser/backend proof are not certified. This is not broad approval or a production-readiness claim.
 - Account cards need a coherent additions path when no drafts exist; broadening only the fresh-order button would remove functionality.
 - Prototype comparisons: `restoflow.html:611–614,921–925` clean new draft; `594,941–945` optional card naming; `790–806` simplified ticket model differs from application billing; `633,1011–1015` immediate send must not replace application's review.
 - File/memory mirror: this document is the local recovery record; mirror verification follows creation and each observed work-unit update.
 - OA-01 work-unit commit: `92225dbcc8992b861887d433e19f4ef7b8d106eb` (`fix(salon): make new orders independent and keep card editing`), 541 additions + 117 deletions = 658 authored lines including tests and the task document. Post-commit tracked worktree was clean; no source-mutating hook change was observed. RDD outcome: off/unmanaged, with high/unassessable assessment and independent functional checking, not review approval.
 - OA-02 work-unit commit: `db48f4080cc86f40fd152964a90456d3eb346661` (`fix(salon): keep a single composer kitchen-send action`), 98 additions + 45 deletions = 143 authored lines including prior progress and tests. Post-commit tracked worktree was clean; no source-mutating hook change was observed. RDD outcome: off/unmanaged; independent functional checks were used, not review approval.
-- Next: optional safe mobile/desktop visual review and separately authorized real-backend E2E. Publishing, merging, deploying, or fixing the inherited pre-product identity issue needs its own authorized scope. No remote action was performed for this feature.
+- OA-03 parent-owned local work-unit commit: `4050681f252f40987bcf396bfb1d3ccd20457e17` (`fix(salon): pin the single kitchen-send action on mobile`), 94 additions + 12 deletions = **106** authored changed lines across `OrderTicket.jsx`, `SalonComposerProto.test.js`, and this document. Local log/status readback confirms the commit/count and post-commit clean tracked/staged scope with the same six excluded untracked roots; no raw-index byte-identity claim is made.
+- Next: parent structurally reads this closure document and full mirror and may commit this documentation-only update under ordinary policy. Optional mobile/desktop visual review, real-backend E2E, and the inherited pre-product name/shared reset remain separate follow-ups. OA-03 has not been pushed, merged, or deployed; any publication needs new separate permission. Prior PR #82 shipping is not OA-03 proof or authority.
 
 ### OA-01 local writer evidence
 
@@ -118,3 +134,33 @@ Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the s
 - Targeted inspection confirms the ticket's sole composer send action still opens review, cancellation preserves drafts without posting, explicit confirmation posts once, failure stays recoverable, and account/role/context guards remain covered. Only the duplicate lower button and obsolete comments changed in production.
 - The inherited pre-first-product name/shared-input issue remains an unfixed follow-up; existing-card naming passes. DOM/mock checks do not prove viewport scrolling/occlusion, real-backend persistence, or concurrency/idempotency. Existing nonfailing Radix/Node/LF-to-CRLF diagnostics remain.
 - Parent structural readback and whitespace spot check passed; scope remained the four intended files. Functional scope is verified, and OA-02 closed with the local work-unit commit recorded above. Browser and real-backend proof remain pending; final bookkeeping changes documentation only.
+
+The following two OA-03 sections are preserved pre-commit handoff snapshots. Their pending/unchecked statements and working-diff counts describe those phases, not current closure status; the subsequent local commit is recorded above.
+
+### OA-03 local writer evidence
+
+Styled the existing ticket send button directly: fixed below 820px at the former lower offset, auto width between the gutters, wrapped label, and explicit static/inset/z/width desktop overrides. The same button, testid, label/amount, visibility, and `onSend` are retained; no FAB, drawer, or business logic was added.
+
+| Check | Observed result |
+|-------|-----------------|
+| Exact six-suite runner in Implementation and checking | Genuine RED before production edits on `4a92010a127f7a7ed0ef377754bb1d7ae9537b63`: 1 failed / 5 passed suites; 2 failed / 111 passed tests (113 total), only the new mobile-fixed and desktop-override contracts. After the class-only fix: GREEN, 6 suites / 113 tests passed; no snapshots. |
+| `npm.cmd test -- --watchAll=false --runInBand` | 61 suites / 438 tests passed; no snapshots. |
+| `npm.cmd run build` | Compiled successfully in one foreground attempt with a 300-second tool limit; no timeout or retry. All frontend checks used `CI=true` and `ENABLE_HEALTH_CHECK=false`. |
+| Repository checks | `git diff --check` passed; status/stat/numstat/name-only showed only `OrderTicket.jsx`, `SalonComposerProto.test.js`, and this document changed, unstaged. The six unrelated untracked roots remain excluded. |
+
+- Layout: retained existing Salon `pb-28 min-[820px]:pb-0`, desktop sticky ticket, and AppShell bottom-nav/safe-area spacing without editing Salon or global CSS. `w-auto`, `min-w-0`, and `whitespace-normal` avoid a directly fixed full-width/nowrap contract.
+- Coverage: mobile offset/gutters/z/touch-size/width/wrapping and scroll-padding contracts; desktop static/inset/z/width overrides and sticky context; same node after rerender and review cancellation. Existing single-action/no-FAB/no-drawer, quantity/notes/clear, review/one-confirmation-send/retry, identity/account/context/role/write/load/send assertions remain active; none were skipped or weakened.
+- Authored boundary against `4a92010`: source +3/-1 and existing tests +37/-0 = 41 changed lines; complete working delta including this document is +85/-12 = 97. Inherited parent preparation was documentation-only +26/-11 = 37; current document is +45/-11 = 56. Preparation/continuation replace overlapping document lines, so phase counts are not additive.
+- Normalization: existing frontend scripts/config expose no applicable source-mutating normalization; no formatter/dependency was installed. Production/tests were not changed after final functional checks; subsequent bookkeeping is documentation-only.
+- Nonfailing output: existing Radix dialog-description warnings and full-suite dialog-title diagnostics; build Node `DEP0176` (`fs.F_OK`); Git LF-to-CRLF warnings.
+- Rollback: restore only this responsive class hunk in `OrderTicket.jsx`, the two new contract tests and review-node assertion in `SalonComposerProto.test.js`, and OA-03 writer evidence/progress. Keep parent preparation, completed OA-01/OA-02 behavior/proofs, and PR #82 history; do not restore the duplicate FAB.
+- Proof boundary: mocked DOM/CSS contracts and production compilation, not measured viewport scrolling/occlusion, browser/device safe-area behavior, real-backend persistence, or concurrency/idempotency. Parent assessment/independent checks/spot check/commit remain pending; OA-03 stays unchecked. RDD stayed off; no staging, commit, remote action, or subdelegation occurred.
+
+### OA-03 parent and independent checking
+
+- Native assessment returned high/unassessable because the unrelated untracked inventory needs declaration. RDD remained off; no review transaction or toggle ran. A fresh independent functional verifier followed the high/unassessable checking branch.
+- Independently reran the exact six-suite command: 6 suites / 113 tests passed; full frontend command: 61 suites / 438 tests passed; production build: compiled successfully in one 300-second-bounded attempt; whitespace checks passed. No required check failed or was unavailable and no candidate-caused functional failure was reproduced.
+- Independent overall verdict remains **partial** for a process caveat, while local functional scope is verified: the verifier accidentally ran the write-capable `git write-tree --missing-ok` once during its index check. It returned the baseline tree, source blob hashes and subsequent index entries remained unchanged, but no raw pre-invocation index fingerprint exists; strict byte-for-byte read-only compliance is not certified.
+- Parent subsequently confirmed exactly the same three intended modified paths, empty staged diff, unchanged HEAD, unchanged responsive source hunk, and a passing whitespace spot check. No compensating reset or extra source edit was performed; do not claim the raw index bytes never changed.
+- Exactly one send node, mobile offset/gutters/auto width/wrapping, desktop overrides, existing content padding, and review/cancel/single-send behavior pass DOM/style contracts. These checks do not certify measured scrolling/occlusion or device safe-area geometry; real-browser and backend proof remain unavailable. Existing nonfailing Radix/Node/LF-to-CRLF diagnostics persist.
+- OA-03 remains unchecked until its local work-unit commit; preserve the partial process verdict and proof limits rather than projecting broad approval. The inherited pre-product identity follow-up and prior PR #82 shipping history are unchanged.
