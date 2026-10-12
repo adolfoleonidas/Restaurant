@@ -7,6 +7,7 @@ import { fmtMoney, fmtTime } from '@/lib/format';
 import { PlusCircle, MinusCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function MovementCard({ register, onAdded, runMutation }) {
     const [type, setType] = useState('ingreso');
@@ -20,7 +21,7 @@ export default function MovementCard({ register, onAdded, runMutation }) {
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
     };
     return (
         <Card><CardContent className="p-5">

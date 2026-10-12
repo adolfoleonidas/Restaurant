@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function Disponibilidad() {
     const { generation } = useNotify();
@@ -31,7 +32,7 @@ export default function Disponibilidad() {
             }
             await refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo actualizar');
+            toast.error(apiErrorMessage(e, 'No se pudo actualizar'));
         }
     };
 

@@ -9,6 +9,7 @@ import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { round2 } from '@/lib/cash';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }) {
     const [closing, setClosing] = useState('');
@@ -30,7 +31,7 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
             onOpenChange(false);
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
     };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

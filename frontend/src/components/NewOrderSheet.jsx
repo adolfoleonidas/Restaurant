@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import { PersonOrderSummary } from '@/components/OrderSummary';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Compositor único de "Nuevo pedido": las cuatro áreas de venta son pestañas del
@@ -88,7 +89,7 @@ export default function NewOrderSheet({
             await reload(orderId);
             onCreated?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo agregar el producto'));
         } finally {
             setSavingItem(false);
         }
@@ -103,7 +104,7 @@ export default function NewOrderSheet({
             await reload(order.id);
             onCreated?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+            toast.error(apiErrorMessage(e, 'No se pudo cambiar la cantidad'));
         }
     };
 
@@ -115,7 +116,7 @@ export default function NewOrderSheet({
             onCreated?.();
             onOpenChange?.(false);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
         }
     };
 

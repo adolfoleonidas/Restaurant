@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { transferTable } from '@/lib/api/tables';
 import { transferCandidates, transferProblem } from '@/lib/tableGroups';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /** "Mover pedido": relocate the open visit of a table to another free table. */
 export default function useVisitTransfer({
@@ -31,7 +32,7 @@ export default function useVisitTransfer({
             setTransferSource(null);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover el pedido');
+            toast.error(apiErrorMessage(e, 'No se pudo mover el pedido'));
             refreshAll();
         } finally {
             setMovingVisit(false);

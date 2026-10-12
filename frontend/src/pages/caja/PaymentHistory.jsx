@@ -16,6 +16,7 @@ import { ACTIONS, can } from '@/lib/permissions';
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import { accountLabel } from '@/lib/cash';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     const { user } = useAuth();
@@ -75,7 +76,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
             setVoidReason('');
             setReload((n) => n + 1);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo registrar');
+            toast.error(apiErrorMessage(e, 'No se pudo registrar'));
         }
     };
 

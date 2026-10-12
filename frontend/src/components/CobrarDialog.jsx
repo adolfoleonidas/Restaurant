@@ -28,6 +28,7 @@ import HelpDialog from '@/components/cobro/HelpDialog';
 import QrDialog from '@/components/cobro/QrDialog';
 import HistoryDialog from '@/components/cobro/HistoryDialog';
 import '@/styles/cobro.css';
+import { apiErrorMessage } from '@/lib/apiError';
 
 function mediaMatches(query) {
     return typeof window.matchMedia === 'function' ? window.matchMedia(query).matches : false;
@@ -228,7 +229,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
                 if (e.response?.status === 409 && detail?.code === 'account_changed') {
                     setStale(detail);
                 } else {
-                    toast.error(typeof detail === 'string' ? detail : (detail?.message || 'No se pudo registrar el pago. Revisá tu conexión y reintentá.'));
+                    toast.error(apiErrorMessage(e, 'No se pudo registrar el pago. Revisá tu conexión y reintentá.'));
                     form.rotateIdempotencyKey();
                 }
             }

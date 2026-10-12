@@ -1,0 +1,57 @@
+# Usability fixes (audit stage 4)
+
+## Objective and problem
+
+The browser UX/UI audit of 2026-10-12 (ux-ui-audit protocol, isolated stack at `localhost:8082`, branch `feat/usability`) found 2 critical, 10 major, 8 accessibility, and 4 note findings. Two critical defects block or mislead users: any 422 validation error crashes the screen (66 call sites render `detail` raw, and stage 2 added more 422 paths), and the public checkout claims "Pago confirmado" for unpaid orders. This stage fixes them in impact-per-effort order while extending, not restyling, the existing design system (`docs/design-system.md`, tokens in `frontend/src/index.css`).
+
+## Scope and authority
+
+- Branch: `feat/usability` = `refactor/backend-core` merged with `refactor/frontend-core` (merge `4484600`). Chain: production-blockers → backend-core → frontend-core → usability.
+- User authorized stage 4 and the UX/UI skills (`ux-ui-audit`, `frontend-design`) in chat on 2026-10-12.
+- Frontend `frontend/src` plus `backend/seed.py` (and its tests) for UX-06 only.
+- UI copy is Spanish. The register (tuteo, voseo, or usted) is a pending product decision; UX-07 waits for it.
+- Design rules (frontend-design): one action keeps one name through the flow (button "Cobrar" → toast "Cobrado"); errors say what happened and how to fix it, never vague; empty states offer the next action; sentence case; no new decoration; extend existing tokens.
+- Test stack: `docker compose -p restaurant-stage4` with env in the session scratchpad, port 8082. Disposable data.
+- No push, PR, merge, deploy, or remote operation without a separate user decision.
+
+## Implementation and checking
+
+- Route: delegated direct, one bounded writer (many files).
+- TDD: **on**, source: global user configuration. RED before each behavior change.
+- Frontend (`frontend/`): `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false` (baseline 69 suites / 589 tests) and `npx craco build`.
+- Backend (repo root): `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` (baseline 511 passed).
+- Integration (`API_BASE=http://localhost:8082/api`, `-m integration`): baseline 42 failures, identical on `main`; UX-06 is expected to reduce them.
+- Browser re-check of each critical/major finding on the rebuilt stack after the writer finishes.
+- RDD: **off** (`clone_local`).
+
+## Tasks (audit finding numbers in brackets)
+
+- [x] **UX-01 Never crash on API errors [01].** One `apiErrorMessage(error, fallback)` helper in `lib/` that turns a string `detail`, a FastAPI 422 `detail` array (field + message, Spanish), or a network error into one readable sentence. Replace all 66 `toast.error(e.response?.data?.detail …)` call sites. User create form: `minLength={8}` plus a visible hint "Mínimo 8 caracteres". Test: a 422 array renders a sentence, never an object.
+- [ ] **UX-02 Honest checkout [02, 10].** `pages/Checkout.jsx:362` heading follows `payment_status`, not `wentToKitchen` (paid → "Pago confirmado", pending pay-at-end → "Pedido enviado a cocina"). The review shows the table selected in the picker, not "Sin definir".
+- [ ] **UX-03 Charge dialog closes and adds up [03].** "Finalizar" closes `CobrarDialog` after a registered payment; the receipt "Total pagado" equals the paid amount; the method picker is disabled once paid.
+- [ ] **UX-04 Salón numbers tell the truth [05, 06].** `pages/salon/selectors.js` excludes `borrador` items from "En cocina" and "Por cobrar"; header and chips count the same unit and say which. `MesaCard` "Debe" sums all open orders of the table. The table sheet status follows live data.
+- [ ] **UX-05 Remove placeholder copy [09].** `TransferPanel` bank data and the receipt restaurant name come from restaurant settings; the transfer panel is hidden until bank data is configured; no hardcoded "Sabor Peruano". Seed product names must not contain "test".
+- [ ] **UX-06 First run works for staff [04].** The seed creates a default branch and assigns seeded tables and non-admin users to it. When a staff call returns 403 with a `detail`, Salón shows that detail; the notification stream stops retrying on 403.
+- [ ] **UX-07 One voice, one glossary [07, 08, 11].** Blocked on the register decision. One glossary in `constants/` (serve, kitchen, cancel, shift, menu, team), accents fixed, plural-aware counts, no raw English labels in Configuración, one date format via `lib/format.js`.
+- [ ] **UX-08 Labelled controls [13, 14, 16, 19].** `htmlFor`/`id` on every visible label-input pair; Reportes branch select labelled by `label[for]`; Equipo switches named "Activo: <nombre>"; a skip link to `main`; distinct names for the two Pedidos "Ver" links.
+- [ ] **UX-09 Focus, size, contrast, danger [12, 15, 17, 18, 20].** One focus ring token for buttons, links, and card buttons (≥3:1). Touch targets ≥44 px for steppers, quick-note chips, filter chips, and "Cobrar" on touch layouts. Dark-theme tokens for muted text, destructive red, and success meet 4.5:1. "Anular pedido" uses the destructive style. Quick-note chips filtered by product category.
+- [ ] **UX-10 No silent failures, no native dialogs [lead 1, 20].** Caja shows its polling error with "Reintentar"; `window.confirm` in `PrepayQueue.jsx` and `TableQrActions.jsx` becomes the shared AlertDialog.
+
+## Deferred / separate
+
+- Integration suite refresh (42 stale failures that also fail on `main`).
+- Notes N1–N4 from the audit (request fan-out, expected cash shown before counting, "SALÓN" link on public header, `reports/sales` open to mozo).
+
+## Delivery forecast
+
+About 800 to 1200 authored changed lines (UX-01 alone touches ~25 files mechanically). Strategy: `feature-branch-chain`; slice into PRs by task group.
+
+## Progress and evidence
+
+- 2026-10-12: stack built from `feat/usability`; backup and restore validated (40 documents restored, counts equal); integration failures shown identical to `main`; browser audit completed; critical findings 01 and 02 spot-checked in code by the parent.
+
+- UX-01 (writer): RED `craco test src/__tests__/apiError.test.js`: suite failed (module `@/lib/apiError` not found); new `UsuariosValidation.test.js` password test RED (`minlength` null). GREEN: apiError 9/9; full suite 71 suites / 600 tests passed. 76 call sites now use `apiErrorMessage(error, fallback)` (`rg "response\?\.data\?\.detail"` leaves only the `account_changed` 409 check in CobrarDialog). Network errors (no response) read "Sin conexión con el servidor. Reintentar."; password field has `minLength={8}` and the hint "Mínimo 8 caracteres". Commit: see log (`feat(ux): ...apiErrorMessage`).
+
+## Next step
+
+Writer implements UX-01 to UX-06 and UX-08 to UX-10; UX-07 after the register decision.

@@ -12,6 +12,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
+import { apiErrorMessage } from '@/lib/apiError';
 
 function itemStage(it) {
     const st = it.status || 'pendiente';
@@ -225,7 +226,7 @@ export default function Cocina() {
             await bumpOrder(order.id, { from_status });
             await refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo avanzar');
+            toast.error(apiErrorMessage(e, 'No se pudo avanzar'));
         }
     };
 
@@ -234,7 +235,7 @@ export default function Cocina() {
             await setOrderItemStatus(order.id, item.id, { status: 'listo' });
             await refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo marcar');
+            toast.error(apiErrorMessage(e, 'No se pudo marcar'));
         }
     };
 

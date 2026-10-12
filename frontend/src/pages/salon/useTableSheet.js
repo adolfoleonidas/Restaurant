@@ -19,6 +19,7 @@ import {
 import { draftCount } from '@/lib/orderDraft';
 import { groupAccountTables } from '@/lib/tableGroups';
 import { isComposingDraft } from '@/pages/salon/selectors';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * State and actions of the table sheet: the open table, the account in view, the
@@ -117,7 +118,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron fusionar las cuentas');
+            toast.error(apiErrorMessage(e, 'No se pudieron fusionar las cuentas'));
         }
     };
 
@@ -131,7 +132,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover la cuenta');
+            toast.error(apiErrorMessage(e, 'No se pudo mover la cuenta'));
         }
     };
 
@@ -146,7 +147,7 @@ export default function useTableSheet({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo dividir la cuenta');
+            toast.error(apiErrorMessage(e, 'No se pudo dividir la cuenta'));
         }
     };
 
@@ -196,7 +197,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo agregar el producto'));
         } finally {
             setSavingItem(false);
         }
@@ -212,7 +213,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
+            toast.error(apiErrorMessage(e, 'No se pudo cambiar la cantidad'));
         }
     };
 
@@ -232,7 +233,7 @@ export default function useTableSheet({
             await updateOrderItem(orderId, item.id, { notes });
             await reloadCurrentOrder(orderId);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la observación'));
         }
     };
 
@@ -246,7 +247,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo anular el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo anular el producto'));
         }
     };
 
@@ -282,7 +283,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la observación'));
         }
     };
 
@@ -298,7 +299,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo mover el producto');
+            toast.error(apiErrorMessage(e, 'No se pudo mover el producto'));
         }
     };
 
@@ -347,7 +348,7 @@ export default function useTableSheet({
             }
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
         }
     };
 
@@ -360,7 +361,7 @@ export default function useTableSheet({
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar el alias'));
         }
     };
 

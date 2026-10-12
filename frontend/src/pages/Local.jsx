@@ -17,6 +17,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Local — structural master data of the venue (sede → zona → mesa).
@@ -32,7 +33,7 @@ export function SucursalesPanel() {
     const load = async () => {
         setLoading(true);
         try { const { data } = await listBranches(); setBranches(Array.isArray(data) ? data : []); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales')); }
         finally { setLoading(false); }
     };
     useEffect(() => { load(); }, []);
@@ -43,7 +44,7 @@ export function SucursalesPanel() {
             await createBranch(draft);
             setDraft({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
             toast.success('Sucursal creada'); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear la sucursal'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo crear la sucursal')); }
         finally { setSaving(false); }
     };
     const save = async (branch) => {
@@ -56,7 +57,7 @@ export function SucursalesPanel() {
                 pickup_enabled: Boolean(branch.pickup_enabled),
             });
             toast.success('Sucursal guardada'); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la sucursal'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la sucursal')); }
         finally { setSaving(false); }
     };
     const fields = (value, onChange, prefix) => (
@@ -135,12 +136,12 @@ export function ZonasPanel() {
             if (editing) await updateZone(editing.id, payload);
             else await createZone(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
     };
 
     const doDelete = async (z) => {
         try { await deleteZone(z.id); toast.success('Zona eliminada'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
     };
 
     const getBranchName = (id) => {
@@ -288,7 +289,7 @@ export function TablesManager() {
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
-            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
+            toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales'));
         } finally { setBranchesLoading(false); }
     };
     useEffect(() => { loadBranches(); }, []);
@@ -305,7 +306,7 @@ export function TablesManager() {
             if (editing) await updateTable(editing.id, payload);
             else await createTable(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (t) => {
@@ -353,7 +354,7 @@ export function TablesManager() {
             }
             toast.success(done === 1 ? 'Mesa asignada' : `${done} mesas asignadas`);
         } catch (e) {
-            const detail = e.response?.data?.detail;
+            const detail = apiErrorMessage(e, '');
             toast.error(done > 0
                 ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintentá con el resto.'}`
                 : (detail || 'No se pudieron asignar las mesas'));
