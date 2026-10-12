@@ -48,7 +48,7 @@ About 800 to 1200 authored changed lines (UX-01 alone touches ~25 files mechanic
 
 ## Progress and evidence
 
-- Commits (feat/usability): UX-01 `596c7af`, UX-02 `024119a`, UX-03 `40de216`, UX-04 `f928b26`, UX-06 `92125cc`, UX-05 `79892b2`, UX-10 `78d2f2b`, UX-08 `a04680a`, UX-09 `d278a1a`; UX-07 in the commit that follows them.
+- Commits (feat/usability): UX-01 `596c7af`, UX-02 `024119a`, UX-03 `40de216`, UX-04 `f928b26`, UX-06 `92125cc`, UX-05 `79892b2`, UX-10 `78d2f2b`, UX-08 `a04680a`, UX-09 `d278a1a`; UX-07 `bbd729b`.
 - 2026-10-12: stack built from `feat/usability`; backup and restore validated (40 documents restored, counts equal); integration failures shown identical to `main`; browser audit completed; critical findings 01 and 02 spot-checked in code by the parent.
 
 - UX-01 (writer): RED `craco test src/__tests__/apiError.test.js`: suite failed (module `@/lib/apiError` not found); new `UsuariosValidation.test.js` password test RED (`minlength` null). GREEN: apiError 9/9; full suite 71 suites / 600 tests passed. 79 call sites now use `apiErrorMessage(error, fallback)` (`rg "response\?\.data\?\.detail"` leaves only the `account_changed` 409 check in CobrarDialog). Network errors (no response) read "Sin conexión con el servidor. Reintentar."; password field has `minLength={8}` and the hint "Mínimo 8 caracteres". Commit: see log (`feat(ux): ...apiErrorMessage`).
