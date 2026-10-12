@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getPublicRestaurant } from '@/lib/api/public';
+import { getRestaurant } from '@/lib/api/restaurant';
 
 const themes = [
   { id: 'fresco', name: 'Fresco', description: 'Azul/Blanco - Profesional y limpio' },
@@ -69,8 +70,8 @@ export function ThemeProvider({ children }) {
         // endpoint público, que también devuelve theme_id.
         const hasSession = typeof localStorage !== 'undefined' && !!localStorage.getItem('token');
         const { data } = hasSession
-          ? await api.get('/restaurants/current')
-          : await api.get('/public/restaurant');
+          ? await getRestaurant()
+          : await getPublicRestaurant();
         const restaurantTheme = data.theme_id || 'fresco';
         const localOverride = localStorage.getItem('restaurant-theme');
         

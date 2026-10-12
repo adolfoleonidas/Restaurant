@@ -8,7 +8,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/lib/format';
 import { homeFor } from '@/lib/home';
-import { api } from '@/lib/api';
+import { getPublicRestaurant } from '@/lib/api/public';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -32,7 +32,7 @@ export default function Login() {
 
     useEffect(() => {
         let active = true;
-        api.get('/public/restaurant').then(({ data }) => {
+        getPublicRestaurant().then(({ data }) => {
             if (active) setRestaurant(data);
         }).catch(() => {});
         return () => { active = false; };

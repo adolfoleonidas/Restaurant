@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getRestaurant } from '@/lib/api/restaurant';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_FEATURES, mergeFeatures, subscribeFeatures } from '@/lib/features';
 
@@ -17,7 +17,7 @@ export default function useRestaurantFeatures() {
             return undefined;
         }
         let active = true;
-        const load = () => api.get('/restaurants/current')
+        const load = () => getRestaurant()
             .then(({ data }) => { if (active) setFeatures(mergeFeatures(data?.features)); })
             .catch(() => { /* keep the current flags */ });
         load();

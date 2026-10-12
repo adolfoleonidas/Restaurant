@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { listCategories } from '@/lib/api/categories';
+import { createOrder, sendOrderToKitchen } from '@/lib/api/orders';
+import { listProducts } from '@/lib/api/products';
+import { listTables, releaseTable } from '@/lib/api/tables';
 import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,9 +31,9 @@ export default function PedidoNuevo() {
     const [loading, setLoading] = useState(false);
     const { generation } = useNotify();
 
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 8000, [generation]);
-    const { data: categories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
-    const { data: products } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 8000, [generation]);
+    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000);
+    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [generation]);
 
     useEffect(() => {
         if (lockedTableId) setTableId(lockedTableId);
@@ -77,7 +80,7 @@ export default function PedidoNuevo() {
     const discard = async () => {
         if (lockedTableId) {
             try {
-                await api.post(`/tables/${lockedTableId}/release`);
+                await releaseTable(lockedTableId);
             } catch (e) {
                 const msg = e.response?.data?.detail;
                 if (msg) toast.error(msg);
@@ -102,8 +105,8 @@ export default function PedidoNuevo() {
                 ...(customerPhone.trim() ? { customer_phone: customerPhone.trim() } : {}),
                 ...(orderType === 'delivery' ? { customer_address: customerAddress.trim() } : {}),
             };
-            const { data: order } = await api.post('/orders', payload);
-            await api.post(`/orders/${order.id}/send-to-kitchen`);
+            const { data: order } = await createOrder(payload);
+            await sendOrderToKitchen(order.id);
             const where = isTableOrder ? `Mesa ${table?.number || ''}` : (ORDER_TYPE_LABELS[orderType] || 'Pedido');
             toast.success(`${where.trim()} enviado a cocina`);
             navigate('/salon', { replace: true });

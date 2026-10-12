@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
-import { api } from '@/lib/api';
+import { addOrderItems, createOrder, getOrder, removeOrderItem, sendOrderToKitchen, updateOrderItem } from '@/lib/api/orders';
 import { toast } from 'sonner';
 import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
@@ -55,7 +55,7 @@ export default function NewOrderSheet({
 
     const reload = async (orderId) => {
         try {
-            const { data } = await api.get(`/orders/${orderId}`);
+            const { data } = await getOrder(orderId);
             setOrder(data);
         } catch { /* la recarga es best-effort */ }
     };
@@ -73,7 +73,7 @@ export default function NewOrderSheet({
             }
             payload.customer_address = customerAddress.trim();
         }
-        const { data } = await api.post('/orders', payload);
+        const { data } = await createOrder(payload);
         setOrder(data);
         return data.id;
     };
@@ -84,7 +84,7 @@ export default function NewOrderSheet({
         try {
             const orderId = await ensureOrder();
             if (!orderId) return;
-            await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+            await addOrderItems(orderId, [{ product_id: product.id, quantity: 1 }]);
             await reload(orderId);
             onCreated?.();
         } catch (e) {
@@ -98,8 +98,8 @@ export default function NewOrderSheet({
         if (!order?.id || !canTake) return;
         const next = Number(item.quantity || 1) + delta;
         try {
-            if (next <= 0) await api.delete(`/orders/${order.id}/items/${item.id}`);
-            else await api.patch(`/orders/${order.id}/items/${item.id}`, { quantity: next });
+            if (next <= 0) await removeOrderItem(order.id, item.id);
+            else await updateOrderItem(order.id, item.id, { quantity: next });
             await reload(order.id);
             onCreated?.();
         } catch (e) {
@@ -110,7 +110,7 @@ export default function NewOrderSheet({
     const sendToKitchen = async () => {
         if (!order?.id || !canTake) return;
         try {
-            await api.post(`/orders/${order.id}/send-to-kitchen`);
+            await sendOrderToKitchen(order.id);
             toast.success('Enviado a cocina');
             onCreated?.();
             onOpenChange?.(false);

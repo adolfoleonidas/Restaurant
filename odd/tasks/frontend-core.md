@@ -1,0 +1,88 @@
+# Frontend core consolidation (audit stage 3)
+
+## Objective and problem
+
+The 2026-10-12 audit (Engram `audit/full-2026-10`) found the frontend mixing data fetching, state, and markup in giant pages (`Salon.jsx` 2625 lines, `CobrarDialog.jsx` 1152, `Caja.jsx` 1140), about 214 inline `api.*` calls with no per-resource API layer, and status labels, date formatting, and role checks duplicated across files. This stage creates one home for each concern and splits the giant pages, without changing what the user sees or does. Usability changes are stage 4 and build on this structure.
+
+## Scope and authority
+
+- Worktree: `C:/Users/adolf/Downloads/07_Proyectos-Codigo/Restaurant-worktrees/frontend-core`, branch `refactor/frontend-core`, from `fix/production-blockers` (`3ec5fe9`). Runs in parallel with stage 2 (`refactor/backend-core`, backend only); no shared files.
+- User authorized stage 3 and the parallel worktree in chat on 2026-10-12.
+- Frontend only (`frontend/src`) plus this document. No backend changes.
+- Behavior-preserving: same rendered text, same `data-testid`s, same API requests and payloads, same navigation. Any existing mismatch found (e.g. nav roles vs. route guards) is documented for stage 4, not fixed here.
+- `frontend/node_modules` is a junction to the main checkout's install. Do not install or modify packages.
+- No push, PR, merge, deploy, or remote operation without a separate user decision.
+
+## Implementation and checking
+
+- Route: delegated direct, one bounded writer in this worktree.
+- TDD: **on**, source: global user configuration. New modules get direct unit tests first (RED, then GREEN). Pure extractions are proven by the existing suite staying green; add a characterization test first where an extracted behavior has no coverage.
+- Frontend runner (from `frontend/`): `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false`. Baseline on this branch: 52 suites, 321 tests passed. Build check: `npx craco build`.
+- RDD: **off** (`clone_local`).
+
+## Tasks
+
+- [x] **FC-01 Shared status constants.** Labels, colors, and step order live in `pages/Comprobantes.jsx:38`, `pages/Caja.jsx:243`, `pages/PedidoTracking.jsx:33`, `components/ProductCard.jsx:9`, and `components/StateBadge.jsx`. Create one `constants/status.js` and consume it everywhere, keeping today's exact labels.
+- [x] **FC-02 Complete date and money formatting helpers.** Add the missing helpers to `lib/format.js` (e.g. `fmtDate`) and replace bypasses in `components/AccountPaymentAudit.jsx:95`, `pages/Configuracion.jsx:366`, `pages/Caja.jsx:467`, `lib/printReceipt.js:30`. Output must be identical.
+- [x] **FC-03 Per-resource API modules.** Create `lib/api/` modules (orders, tables, payments, products, cash, and others as needed) wrapping the existing axios instance. Migrate every call site in the pages and components touched by FC-04 and FC-05, plus any other file where it is mechanical. Request URLs, params, and payloads stay identical.
+- [x] **FC-04 Split `Salon.jsx`.** Extract data and state hooks (e.g. `useSalonOrders`, branch scope), pure selectors (balance and debt calculations), and presentational subcomponents into a `pages/salon/` folder. `Salon.jsx` becomes a thin container. All existing Salon test suites stay green.
+- [x] **FC-05 Shared payment form for `CobrarDialog` and `Caja`.** Extract the shared payment-method, proof, and amount logic into a hook (`usePaymentForm`) and shared presentational components; both screens consume it.
+- [x] **FC-06 Single role and permission source.** Create `lib/permissions.js` (`can(user, action)` plus the role-to-route map) and make `App.js` route guards and `AppShell.jsx` nav read from it, preserving today's exact access. Record every existing nav-vs-guard mismatch in this document for stage 4.
+
+## Delivery forecast
+
+Likely 1500+ authored changed lines, mostly moved code. Strategy: `feature-branch-chain`, one PR slice per task where practical.
+
+## Progress and evidence
+
+- 2026-10-12: worktree, branch, and document created; CodeGraph index initialized for the worktree.
+- FC-01 (route: delegated direct, single writer). RED: `craco test --runTestsByPath src/__tests__/status.test.js` failed (module `@/constants/status` not found). GREEN after `constants/status.js`. Consumers migrated: Comprobantes, Caja, PedidoTracking, ProductCard, StateBadge, AccountPaymentAudit, CartPanel, PublicLayout, TableSessionPanel, Salon, Local. `ORDER_STATUS_LABELS`/`TABLE_STATUS_LABELS` moved out of `lib/format.js`. Full suite: 53 suites / 329 tests passed (the first run had one timing flake in `MesasMultiCuenta`, which passed alone and on the rerun). Commit: d67f153.
+- FC-02. RED: `craco test --runTestsByPath src/__tests__/format.test.js` failed (3 of 5: `fmtDateFull`, `fmtDateTimeShort`, `fmtDayLabel` not functions). GREEN after adding them to `lib/format.js`. Bypasses replaced in AccountPaymentAudit, Configuracion (local `fmtServerTime` removed), Caja, printReceipt. Full suite: 54 suites / 334 tests; a first parallel run showed 3 load-related timeouts (PedidoDetalleCollection, BranchAssignment, CajaPaymentProof) that all pass on rerun (45/45). Commit: 35db358.
+
+- FC-03. RED: `craco test --runTestsByPath src/__tests__/apiModules.test.js` failed (modules missing). GREEN: 104 table-driven cases assert each wrapper forwards the exact axios method, URL, body and config. New `lib/api/` modules: `request` (get/post/patch/put/del that drop trailing `undefined`, so call shapes equal hand-written axios calls), `orders`, `tables`, `zones`, `branches`, `payments` (also approvals and public prepay), `cash`, `products`, `categories`, `users`, `restaurant`, `reports`, `auth`, `public`. All 190 inline `api.*` call sites outside `lib/api` were migrated (the only `@/lib/api` imports left outside the layer are `API` in `NotifyContext` and `usePublicStream` for the SSE `fetch`). Several existing suites identified the `usePolling` fetcher by its source text (`api.get('/tables')`); those sniffers were updated to the new wrapper names (`listTables`, `listProducts`, `listCategories`, `listOrders`, `getOrder`) in 15 test files, keeping each one as selective as before (the legacy-tables poller is still excluded). Full suite: 55 suites / 438 tests passed. `craco build`: Compiled successfully (no warnings). Commit: 8eeafa2.
+
+- FC-04. `pages/Salon.jsx` 1890 -> 361 lines (the audit's 2625 figure was stale). New `pages/salon/`: `selectors.js` (floor state, tallies, decorate/units/filters, sheet model, mini player), hooks `useBranchScope`, `useSalonData`, `useTableSheet`, `useTableSelection`, `useVisitTransfer`, `useFloorActions`, and presentational components `SalonHeader`, `JoinBar`, `FloorFilters`, `SalonAlerts`, `FloorGrid`, `PickupSections`, `TableSheet` (+ `TableSheetContent`, `TableGroupPanel`, `TableHistory`, `TableSheetFooter`), `MoveVisitDialog`, `MoveAccountDialog`, `MiniOrderBar`. Hooks never import router or auth: the container passes `navigate`/permissions. TDD: `salonSelectors.test.js` (34), `useBranchScope` (4), `useSalonData` (6), `useTableSheet` (18), `useTableSelection` (8), `useVisitTransfer` (5), `useFloorActions` (6) were written first; RED observed with the module absent (selectors by temporarily moving the file), then GREEN. Existing Salon suites (SalonBranchScope, SalonTableGroups, SalonActiveOrderBar, Mesas*, MesaCard*, Servicio*, NuevoPedidoInline, SalesAreas) stayed green after every step. Full suite 62 suites / 519 tests passed; `craco build`: Compiled successfully. Commits: cf5d094 (selectors and hooks), 32d8168 (components).
+
+- FC-05 (part 1). Finding: `Caja.jsx` has no payment form of its own; it hosts `CobrarDialog` for every charge. The logic the two screens really share is the method mapping, the cash/digital method lists, and reading a payment proof. So the shared module set is: `lib/paymentMethods.js` (ids, backend mapping, `DIGITAL_METHODS`), `lib/paymentForm.js` (pure totals, change, mixed lines, payload, copy), `lib/clipboard.js`, hooks `usePaymentForm`, `usePaymentProof` (used by `CobrarDialog`) and `useOrderProof` + `components/ProofPreview` (used twice by `Caja`: web orders and prepay checks), and `components/cobro/*` presentational pieces. TDD (tests first, RED observed by moving the module away, then GREEN): `paymentForm.test.js` (23), `usePaymentForm.test.js` (10), `usePaymentProof.test.js` (12), `clipboard.test.js` (4), `useOrderProof.test.js` (7), `ProofPreview.test.js` (3). `CobrarDialog.jsx` 1142 -> 464 lines; behavior and test ids unchanged, the existing CobrarDialog suites (CajaPaymentProof, OrdersCashUI, PedidoDetalleCollection, CajaBranchSelection, AccountPaymentAudit) stayed green. Full suite 68 suites / 578 tests passed. Commit: e8f4fd6.
+
+- FC-05 (part 2). `pages/Caja.jsx` 1084 -> 109 lines: its ten in-file components moved unchanged to `pages/caja/` (`WebOrderRow`, `PrepayQueue`, `PaymentHistory`, `SoldDishes`, `CashHistory`, `OpenCajaCard`, `CloseCajaDialog`, `MovementCard`, `CajaWorkspace`, `ConsolidatedCashView`); `Caja.jsx` keeps the owner branch context and remains the route entry. The dead `statusGroups` memo of `PaymentHistory` was dropped. Full suite 68 suites / 578 tests passed. Commit: bde3796.
+
+- FC-06. RED: `permissions.test.js` failed with the module absent. `lib/permissions.js` now holds `ROUTE_ROLES` (the role guard of each route), `NAV_ITEMS` + `navItemsFor` (the menu, with icon keys), and `can(user, action)` with 13 actions (`owner`, `salon.*`, `cash.*`, `order.*`). `App.js` builds every guard with `routeRoles(path)`; `AppShell.jsx` draws `navItemsFor` and maps icon keys to lucide icons; the inline role checks of Salon, CobrarDialog, Caja (owner, void), PaymentHistory, Dashboard, Reportes, PedidoDetalle and Pedidos read `can`. The test embeds the previous nav and every previous inline expression as an oracle and compares them over 4 roles x 8 function sets x 2 discount flags (64 users): identical output. Kept as they were: the notification and assistant surfaces that gate on a role list (`KitchenAlerts`, `AssistantBar`, `RoleInbox`) and the `Dashboard` home redirects. Full suite 69 suites / 589 tests passed. Commit: 0a797f7.
+
+
+## Stage 4 findings
+
+Existing inconsistencies found while consolidating. All are preserved as they were; each is pinned by a test where noted.
+
+Navigation vs. route guards (pinned in `permissions.test.js`):
+
+1. `/cocina`: the guard admits `mozo` (and Salón shows a "Cocina (n)" button), but the menu lists Cocina only for `cocina` and `admin` (or anyone with the `preparacion` function).
+2. `/combos` and `/categorias`: guarded for `admin` but with no menu entry by design (reached from Carta).
+3. `/usuarios`: the menu hides it from every non-admin role even with the `administracion` function, while the guard (`canAccessRole`) lets any user with that function open it by URL.
+4. `/dashboard`: no role guard at all; `Dashboard.jsx` redirects `mozo`, `cocina` and `cajero` to their home, and only owners see it in the menu.
+5. `canAccessRole` admits any user with the `administracion` function to every guarded route; the menu grants only the entries listed for their roles and functions.
+
+Behavior quirks (characterized, not fixed):
+
+6. Table sheet: `activeOrders` is keyed by table id, but the sheet looks accounts up by order id (`activeOrders[o.id] || o`), so the lookup always falls back to the account itself.
+7. First send to the kitchen can toast "Enviados N adicionales": the draft count uses the response status with the pre-send items (`useTableSheet.test.js`).
+8. Owner checks were spelled two ways (`functions?.includes('administracion')` vs `hasFn`); proven equivalent for every role and function set, now one `isOwner`.
+9. `CobrarDialog` ships placeholder copy: transfer data reads "Banco de muestra / Configura los datos de tu negocio / Sabor Peruano S.A.C.", and receipts default to the name "Sabor Peruano".
+10. Payment state wording exists in four places with different text: `PAYMENT_STATE_LABELS` (tracking, now in `constants/status.js`), `PAYMENT_STATE_INFO` in `Checkout.jsx`, `PREPAY_STATE_LABELS` in `pages/caja/PrepayQueue.jsx`, and `ORDER_PAYMENT_LABELS` ("Pendiente de revisión" vs "Comprobante pendiente de revisión"). Only the first and last were centralized.
+11. `TableQrActions.statusLabels` was left out of `constants/status.js` (QR specific).
+12. Fifteen test files identified `usePolling` fetchers by their source text (`api.get('/tables')`). They were updated to wrapper names; a `label` option on `usePolling` would remove the coupling.
+13. The audit's line counts were stale: `Salon.jsx` was 1890 lines, `CobrarDialog.jsx` 1142 and `Caja.jsx` 1084 at the branch point.
+14. A full parallel run on a loaded machine showed intermittent timeouts in a few suites (`MesasMultiCuenta`, `PedidoDetalleCollection`, `BranchAssignment`, `CajaPaymentProof`); each passes alone and the full suite is stable with `--maxWorkers=4`.
+15. `CRA`'s ESLint is configured with only the react-hooks rules, so unused imports and undefined identifiers are not reported by `craco build`; the stage was checked with a throwaway ESLint config (`no-undef`, `no-unused-vars`, `react/jsx-no-undef`), which found no undefined identifiers in `src`.
+
+## Final verification (2026-10-12)
+
+- `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false`: 69 suites / 589 tests passed (baseline 52 / 321; +17 suites and +268 tests, no previously passing test changed except the fetcher-source sniffers listed under FC-03).
+- `npx craco build`: Compiled successfully, no warnings.
+- `git diff --check 3ec5fe9..HEAD`: clean.
+- Line counts, before -> after: `pages/Salon.jsx` 1890 -> 361, `components/CobrarDialog.jsx` 1142 -> 464, `pages/Caja.jsx` 1084 -> 109.
+- Commits: d67f153 (FC-01), 35db358 (FC-02), 8eeafa2 (FC-03), cf5d094 and 32d8168 (FC-04), e8f4fd6 and bde3796 (FC-05), 0a797f7 (FC-06), f81797d (hook dependency warning fix found by the final build).
+
+## Next step
+
+Review the branch. Push, pull requests (one slice per task under `feature-branch-chain`) and merge are separate user decisions. Stage 4 starts from the findings above.

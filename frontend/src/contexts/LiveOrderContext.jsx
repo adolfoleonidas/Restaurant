@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { addPublicOrderItem, getPublicOrder, removePublicOrderItem, updatePublicOrderItem } from '@/lib/api/public';
 import usePolling from '@/hooks/usePolling';
 import usePublicStream from '@/hooks/usePublicStream';
 
@@ -33,7 +33,7 @@ export const LiveOrderProvider = ({ children }) => {
 
     const fetcher = useCallback(() => {
         if (!meta?.tracking_code) return Promise.resolve(null);
-        return api.get(`/public/orders/${meta.tracking_code}`).then((r) => r.data).catch((e) => {
+        return getPublicOrder(meta.tracking_code).then((r) => r.data).catch((e) => {
             if (e.response?.status === 404) clearMeta();
             return null;
         });
@@ -69,7 +69,7 @@ export const LiveOrderProvider = ({ children }) => {
         if (!order) return;
         setBusy((b) => ({ ...b, [product.id]: true }));
         try {
-            await api.post(`/public/orders/${order.tracking_code}/items`, {
+            await addPublicOrderItem(order.tracking_code, {
                 items: [{ product_id: product.id, quantity: qty }],
             });
             await refetch();
@@ -88,9 +88,9 @@ export const LiveOrderProvider = ({ children }) => {
         setBusy((b) => ({ ...b, [line.product_id]: true }));
         try {
             if (line.quantity > 1) {
-                await api.patch(`/public/orders/${order.tracking_code}/items/${line.id}`, { quantity: line.quantity - 1 });
+                await updatePublicOrderItem(order.tracking_code, line.id, { quantity: line.quantity - 1 });
             } else {
-                await api.delete(`/public/orders/${order.tracking_code}/items/${line.id}`);
+                await removePublicOrderItem(order.tracking_code, line.id);
             }
             await refetch();
         } catch (e) {
