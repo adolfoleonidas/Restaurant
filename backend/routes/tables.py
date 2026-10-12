@@ -8,7 +8,7 @@ from models import TableCreate, TableTransfer, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
 from attention import AttentionBlocked, open_table_attention, recover_opening_intent
-from branch_access import read_branch_filter, record_branch_filter, record_lookup_scope
+from branch_access import assert_owned_branch, read_branch_filter, record_branch_filter, record_lookup_scope
 from routes.table_groups import attach_groups, record_audit
 
 router = APIRouter()
@@ -30,13 +30,6 @@ def _table_response(table: dict) -> dict:
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
-
-async def _validate_branch(restaurant_id: str, branch_id: str | None):
-    if branch_id is None:
-        return
-    branch = await db.branches.find_one({"id": branch_id, "restaurant_id": restaurant_id}, {"_id": 0, "id": 1})
-    if not branch:
-        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
 
 async def _resolve_area(restaurant_id: str, area: str, branch_id: str | None = None) -> tuple[str, dict | None]:
     """Validate an area and return the zone that gives it its branch.
@@ -129,7 +122,7 @@ async def list_tables(
 
 @router.post("")
 async def create_table(data: TableCreate, user: dict = Depends(require_roles(["admin"]))):
-    await _validate_branch(user["restaurant_id"], data.branch_id)
+    await assert_owned_branch(db.branches, user["restaurant_id"], data.branch_id)
     area, zone = await _resolve_area(user["restaurant_id"], data.area, data.branch_id)
 
     # Determine branch_id: explicit > zone's branch_id > None
@@ -330,7 +323,7 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
             if inherited is not None:
                 update["branch_id"] = inherited
     if "branch_id" in update:
-        await _validate_branch(user["restaurant_id"], update["branch_id"])
+        await assert_owned_branch(db.branches, user["restaurant_id"], update["branch_id"])
         table = await db.tables.find_one(scope, {"_id": 0})
         if not table:
             raise HTTPException(status_code=404, detail="Mesa no encontrada")

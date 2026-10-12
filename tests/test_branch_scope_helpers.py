@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from branch_access import (
+    assert_owned_branch,
     branch_query,
     read_branch_filter,
     record_lookup_scope,
@@ -117,3 +118,24 @@ def test_branch_query():
     assert branch_query(None) == {}
     assert branch_query(None, legacy=True) == {"branch_id": None}
     assert branch_query("b1", legacy=True) == {"branch_id": "b1"}
+
+
+# --- assert_owned_branch (BC-04) --------------------------------------------------------
+
+def test_owned_branch_accepts_none_by_default_and_registered_branches():
+    branches = _Branches("b1")
+    _run(assert_owned_branch(branches, RID, None))
+    _run(assert_owned_branch(branches, RID, "b1"))
+    assert _status(assert_owned_branch(branches, RID, "b9")) == (404, "Sucursal no encontrada")
+    # Lenient mode looks up even an empty id, as zones and tables always did.
+    assert _status(assert_owned_branch(branches, RID, "")) == (404, "Sucursal no encontrada")
+
+
+def test_owned_branch_strict_mode_rejects_blank_and_missing_ids_first():
+    branches = _Branches("b1")
+    _run(assert_owned_branch(branches, RID, "b1", require_valid=True))
+    for bad in (None, "", "   ", 7):
+        assert _status(assert_owned_branch(branches, RID, bad, require_valid=True)) == (
+            400, "Debe indicar una sucursal válida")
+    assert _status(assert_owned_branch(branches, RID, "b9", require_valid=True)) == (
+        404, "Sucursal no encontrada")

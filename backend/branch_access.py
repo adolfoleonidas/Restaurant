@@ -40,6 +40,24 @@ async def validate_user_branch(user: dict, branches) -> str | None:
     return branch_id
 
 
+async def assert_owned_branch(
+    branches, restaurant_id: str, branch_id: str | None, *, require_valid: bool = False
+) -> None:
+    """Ensure `branch_id` names a branch of this restaurant.
+
+    By default `None` means "no branch" and passes. With `require_valid` the id is
+    mandatory: a missing, non-string or blank value is a 400 before the lookup.
+    """
+    if require_valid:
+        if not isinstance(branch_id, str) or not branch_id.strip():
+            raise HTTPException(status_code=400, detail="Debe indicar una sucursal válida")
+    elif branch_id is None:
+        return
+    branch = await branches.find_one({"id": branch_id, "restaurant_id": restaurant_id}, {"_id": 0, "id": 1})
+    if not branch:
+        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
+
+
 async def tenant_branch_scope(user: dict, branches, **match) -> dict:
     """Query scope for one tenant: `match` plus the branch of staff bound to one.
 
