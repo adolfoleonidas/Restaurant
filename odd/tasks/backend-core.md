@@ -6,7 +6,7 @@ The 2026-10-12 audit (Engram `audit/full-2026-10`) found money math and branch-s
 
 ## Scope and authority
 
-- Branch: `refactor/backend-core`, stacked on `fix/production-blockers` (stage 1, not yet merged). Delivery strategy: `feature-branch-chain` (stage 1 PR first, this one on top).
+- Branch: `refactor/backend-core`, stacked on `fix/production-blockers` (stage 1, not yet merged), both rebased onto `origin/main` `ec3c303` on 2026-10-12. Delivery strategy: `feature-branch-chain` (stage 1 PR first, this one on top).
 - User authorized stage 2 in chat on 2026-10-12.
 - Backend only (`backend/`, `tests/`) plus this document. No frontend changes.
 - Behavior-preserving refactor: characterization tests first; API responses, status codes, and stored documents stay identical unless a task says otherwise.
@@ -60,6 +60,24 @@ About 350 to 500 authored changed lines across five work-unit commits. Strategy:
   - RED: `tests/test_input_validation.py` 7 failed before the model changes. GREEN: 7 passed after.
   - Contract change: invalid input now returns 422. Existing tests that built users with a 6-character password (`tests/test_user_branch_assignment.py`, 3 lines) now use `secret-pass` because of the new minimum. The frontend was not inspected or changed; its user form and any field longer than these limits will now get 422.
   - Suite: 511 passed, 49 deselected; the `regex` deprecation warnings are gone.
+
+## Rebase onto origin/main (2026-10-12)
+
+New base: stage 1 (`fix/production-blockers`, `42bfbb9`) on `origin/main` `ec3c303` (merged PRs #77 financial integrity chain, #80, #82, #84). Backup of the pre-rebase branch: `backup/refactor/backend-core` (`06b812c`). Replayed with `git rebase --onto fix/production-blockers backup/fix/production-blockers`.
+
+Conflicts (all in routes touched by origin/main; origin/main behavior kept verbatim, our intent re-applied on top):
+
+- BC-01 `476e716` -> `f90e2f7`: `routes/orders.py` import block. origin/main added `OrderNotes` to the models import; kept it, and kept our `from billing import assert_can_cancel, guarded_totals` (no `BillError`). No other `BillError` / `_apply_bill` user exists in the new origin/main code.
+- BC-02 `4fa90e2` -> `918339c`: `routes/orders.py` imports plus the split endpoint, and `routes/payments.py` imports plus `create_payment`. origin/main rewrote split (fixed child identities, resumable `account_operation`) and payments (`payment_operation`, `_resume_payment_operation`, `method_amounts`). Kept origin/main's bodies; the split now calls `billing.split_group_totals` instead of the local `_split_total` (identical formula: sum of line subtotals rounded to cents, no discount or tip); the new `"remaining"` payload in the resumable payment path now uses `billing.remaining_due(bill_total, new_paid)` (same expression `round(max(0.0, total - paid), 2)`); the import adds `method_amounts` to our helper list. No computed amount changed.
+- BC-03 `9239602` -> `0df0432`: `routes/orders.py` merge and split endpoints. origin/main made them resumable (`_resume_merge_operation`, `account_operation`); kept those bodies and replaced `_order_lookup_scope(id, user)` with `record_lookup_scope(user, db.branches, id)`, including the new `target_filter` in merge. All other conflicting-free hunks applied unchanged.
+- BC-04 `03e8148` -> `b980410`, BC-05 `c07cf73` -> `7483ff1`, docs `06b812c` -> `9f65e0d`: applied cleanly. `OrderNotes` already carries `max_length=500` upstream, so no new bound was needed.
+
+Follow-ups (not done, left in place on purpose):
+
+- origin/main's new money math in `create_payment` (split/change/tender arithmetic with `round(...)`, `paid_so_far + amount`, `line_total` rounding around `routes/payments.py` lines 515-560) is still inline. It is not a pure move and carries the #77 idempotency and split logic, so it was not routed through `billing.py`; candidate for a separate characterized refactor.
+- A few `validate_user_branch(...)` calls remain in `orders.py` (list and kitchen filters), `payments.py`, `notifications.py`, `table_groups.py`, `zones.py`; these are direct validations, not duplicated scope builders.
+
+Checks after rebase: backend hermetic suite 543 passed, 49 deselected (origin/main baseline 492 passed, 49 deselected; delta = new tests of both stages); pyflakes reports no undefined names in `backend/*.py` and `backend/routes/*.py`.
 
 ## Next step
 
