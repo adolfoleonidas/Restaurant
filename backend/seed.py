@@ -177,6 +177,20 @@ async def run_seed():
     }
     await db.restaurants.insert_one(restaurant)
 
+    # Default branch: staff and tables are branch-bound, so a first run without
+    # one would answer 403 to every non-admin call.
+    branch_id = _id()
+    await db.branches.insert_one({
+        "id": branch_id,
+        "restaurant_id": restaurant_id,
+        "name": "Sucursal principal",
+        "timezone": restaurant["timezone"],
+        "business_day_cutoff": "04:00",
+        "pickup_enabled": True,
+        "created_at": _now(),
+        "updated_at": _now(),
+    })
+
     # Default payment config (no QR uploaded yet; admin completes from UI)
     await db.payment_configs.insert_one({
         "id": _id(),
@@ -224,6 +238,7 @@ async def run_seed():
             "full_name": u["full_name"],
             "role": u["role"],
             "phone": None,
+            **({} if u["role"] == "admin" else {"branch_id": branch_id}),
             "status": "active",
             "can_discount": u["role"] == "admin",
             "can_void": u["role"] == "admin",
@@ -292,6 +307,7 @@ async def run_seed():
         await db.zones.insert_one({
             "id": _id(),
             "restaurant_id": restaurant_id,
+            "branch_id": branch_id,
             "name": name,
             "sort_order": i,
             "created_at": _now(),
@@ -312,9 +328,10 @@ async def run_seed():
             "name": f"Mesa {num}",
             "capacity": cap,
             "area": area,
+            "branch_id": branch_id,
             "status": "disponible",
             "created_at": _now(),
             "updated_at": _now(),
         })
 
-    logger.info("Seed completed: 1 restaurant, 4 users, 5 categories, 14 products, 3 zones, 12 tables")
+    logger.info("Seed completed: 1 restaurant, 1 branch, 4 users, 5 categories, 14 products, 3 zones, 12 tables")
