@@ -12,7 +12,7 @@ import string
 from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
-from billing import BillError, guarded_totals
+from billing import guarded_totals
 from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
@@ -248,13 +248,6 @@ async def _save_public_order(order: dict, fields: dict):
         await claim_order(db.orders, order, fields)
     except VersionError:
         raise HTTPException(status_code=409, detail=version_conflict(order))
-
-
-def _money_totals(order: dict, items: list, removed_item: dict = None):
-    try:
-        return guarded_totals(order, items, removed_item=removed_item)
-    except BillError as exc:
-        raise HTTPException(status_code=400, detail=exc.detail)
 
 
 async def _get_restaurant():
@@ -883,7 +876,7 @@ async def public_add_items(tracking_code: str, data: PublicItemsAdd, request: Re
     _public_mutate_guard(o, request)
     enriched, _ = await _enrich_items(data.items, r)
     combined = list(o.get("items") or []) + enriched
-    subtotal, total = _money_totals(o, combined)
+    subtotal, total = guarded_totals(o, combined)
     new_status = _derive_kitchen_status(combined, o["status"])
     if o["status"] == "entregado":
         new_status = "enviado_cocina"
@@ -922,7 +915,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
         raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés modificarlo.")
     target["quantity"] = data.quantity
     target["subtotal"] = target["unit_price"] * data.quantity
-    subtotal, total = _money_totals(o, items)
+    subtotal, total = guarded_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     await _save_public_order(o, {
         "items": items, "subtotal": subtotal, "total": total, "status": new_status,
@@ -956,7 +949,7 @@ async def public_remove_item(tracking_code: str, item_id: str, request: Request)
     if target.get("status") not in ("pendiente", None):
         raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés quitarlo.")
     items = [i for i in items if i["id"] != item_id]
-    subtotal, total = _money_totals(o, items, removed_item=target)
+    subtotal, total = guarded_totals(o, items, removed_item=target)
     new_status = _derive_kitchen_status(items, o["status"])
     await _save_public_order(o, {
         "items": items, "subtotal": subtotal, "total": total, "status": new_status,
