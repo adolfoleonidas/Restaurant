@@ -179,7 +179,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order, loading, result, proofSending, onOpenChange]);
+    }, [open, showVerify, showHelp, showHistory, showQr, method, proofIntent, proofSent, live, order, loading, result, proofSending, onOpenChange, setMethod, setSelectedProof]);
 
     // El foco entra al diálogo al abrirlo y vuelve al botón que lo abrió al
     // cerrarlo (antes quedaba en el botón "Cobrar", que queda detrás del
