@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { countOf, fmtMoney } from '@/lib/format';
 
-export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, selectMode, startSelection, openAreas }) {
+export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, canGoKitchen, selectMode, startSelection, openAreas }) {
     return (
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <div>
@@ -37,7 +37,7 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                     <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
                     <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
                 </div>
-                {summary.toPrep > 0 && (
+                {canGoKitchen && summary.toPrep > 0 && (
                     <Button variant="outline" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
                         Cocina ({summary.toPrep})
                     </Button>
