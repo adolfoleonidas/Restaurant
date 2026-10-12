@@ -34,7 +34,7 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
 
 ## Delivery forecast
 
-- Estimated authored additions plus deletions, including tests and this document: **350–500** across the two work units. This may exceed the approximately 400-line delivery budget.
+- Initial forecast was **350–500** authored additions plus deletions, including tests and this document. Verified guards/regressions grew the coherent scope; the two completed work-unit commits total **801** authored changed lines. The branch diff at the OA-02 commit is 633 additions + 156 deletions = 789; later closure bookkeeping is documentation-only.
 - Strategy: `exception-ok`, explicitly selected by the maintainer in the native size-decision question for this improvement. Keep coherent verified work units and their tests/documentation together; chain strategy is not applicable. This authorizes local work-unit commits and continuation only, not remote publication.
 - Size rationale: the independently checked OA-01 bundle was 647 authored lines (565 tracked source/tests plus the then-82-line document); parent checking evidence brought it to 657. One honest slicing pass did not establish independently green <=400-line slices. The maintainer accepted `size:exception` rather than omit tests or repartition the shared entry/card/guard behavior.
 - Approximately 400 lines per task is advisory, not a reason to omit tests, compress code, or split a coherent behavior artificially.
@@ -49,7 +49,7 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
   - Acceptance: loading, write, and send guards prevent switching targets mid-operation; fresh composition resets stale editor/group-follow state without destructive discard.
   - Checks: observed new-order/card/snapshot/permission regressions RED, then the six focused suites GREEN and `git diff --check`; independent functional checking as required.
   - Rollback: only the matching Salon entry/card/snapshot hunks and their tests; no backend or financial changes.
-- [ ] OA-02 — Keep one kitchen-send action in the mobile composer.
+- [x] OA-02 — Keep one kitchen-send action in the mobile composer.
   - Route: delegated writer; remove the lower floating CTA and update visible mobile interaction tests.
   - Acceptance: keep the upper ticket `Enviar a cocina`; lower `mesa-sheet-fab` is absent; quantity/notes/clear stay available; review cancellation sends nothing; confirmation sends once; failure stays recoverable.
   - Checks: observe duplicate-action regression RED, then all six focused suites, full frontend suite, production build, `git diff --check`, independent closure checking, and parent spot check.
@@ -57,12 +57,13 @@ Make each action's target explicit: `Nuevo pedido` starts an independent order f
 
 ## Progress and evidence
 
-- Mapping and prototype comparison completed. OA-01 is committed; OA-02 implementation and local writer/independent functional checks have completed, with its work-unit commit pending.
+- Both requested UI work units are implemented, independently checked in local functional scope, and committed. Optional pre-product identity handling and browser/real-backend proof remain disclosed follow-ups, not completed claims.
 - Account cards need a coherent additions path when no drafts exist; broadening only the fresh-order button would remove functionality.
 - Prototype comparisons: `restoflow.html:611–614,921–925` clean new draft; `594,941–945` optional card naming; `790–806` simplified ticket model differs from application billing; `633,1011–1015` immediate send must not replace application's review.
 - File/memory mirror: this document is the local recovery record; mirror verification follows creation and each observed work-unit update.
 - OA-01 work-unit commit: `92225dbcc8992b861887d433e19f4ef7b8d106eb` (`fix(salon): make new orders independent and keep card editing`), 541 additions + 117 deletions = 658 authored lines including tests and the task document. Post-commit tracked worktree was clean; no source-mutating hook change was observed. RDD outcome: off/unmanaged, with high/unassessable assessment and independent functional checking, not review approval.
-- Next: close the verified OA-02 work-unit commit and persist final progress. Browser and real-backend proof remain unavailable; no remote action.
+- OA-02 work-unit commit: `db48f4080cc86f40fd152964a90456d3eb346661` (`fix(salon): keep a single composer kitchen-send action`), 98 additions + 45 deletions = 143 authored lines including prior progress and tests. Post-commit tracked worktree was clean; no source-mutating hook change was observed. RDD outcome: off/unmanaged; independent functional checks were used, not review approval.
+- Next: optional safe mobile/desktop visual review and separately authorized real-backend E2E. Publishing, merging, deploying, or fixing the inherited pre-product identity issue needs its own authorized scope. No remote action was performed for this feature.
 
 ### OA-01 local writer evidence
 
@@ -94,7 +95,7 @@ Selected-table `Nuevo pedido` now clears the composition target without deleting
 
 ### OA-02 local writer evidence
 
-Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the sole composer send action, with unchanged `requestSend`, explicit review/confirmation, account targeting, and draft controls. OA-02 remains unchecked and uncommitted for parent-owned independent checks and commit handling.
+Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the sole composer send action, with unchanged `requestSend`, explicit review/confirmation, account targeting, and draft controls. At the writer handoff, OA-02 was unchecked/uncommitted; subsequent parent checks and commit are recorded separately.
 
 | Check | Observed result |
 |-------|-----------------|
@@ -108,7 +109,7 @@ Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the s
 - Scope: production changes are only the duplicate button removal and two obsolete comments. OA-01 account behavior, its checked checkbox/commit evidence, the inherited pre-product identity disclosure, and the parent's pre-existing document changes are preserved. No mirror update, staging, commit, review operation, or remote action was performed.
 - Authored boundary: OA-02 contributes 105 source/test changed lines plus this 18-line evidence section = 123 lines (+84/-39). The complete working diff also includes 10 pre-existing parent document changed lines (+5/-5), for 133 lines (+89/-44); do not attribute those parent changes to this writer.
 - Rollback: restore only the lower floating button/comment hunks in `Salon.jsx`, their matched OA-02 test changes in the two suites, and this evidence section. Keep the retained ticket/review/account behavior and every parent document update intact.
-- Proof boundary: mocked frontend functional tests and compilation only, not browser or real-backend E2E. Parent native assessment, independent closure/spot checks, mirror reconciliation, task check-off, and commit remain pending.
+- Writer proof boundary: mocked frontend functional tests and compilation only, not browser or real-backend E2E. Parent assessment, independent closure/spot checks and commit were pending at that handoff; their later outcomes follow below.
 
 ### OA-02 independent closure
 
@@ -116,4 +117,4 @@ Removed the lower `mesa-sheet-fab` entirely. The upper inline ticket keeps the s
 - Independently reran the exact six-suite command: 6 suites / 111 tests passed; full frontend suite: 61 suites / 436 tests passed; production build: compiled successfully in one bounded attempt; `git diff --check`: passed. No required command failed or was unavailable, and no candidate-caused functional defect was reproduced.
 - Targeted inspection confirms the ticket's sole composer send action still opens review, cancellation preserves drafts without posting, explicit confirmation posts once, failure stays recoverable, and account/role/context guards remain covered. Only the duplicate lower button and obsolete comments changed in production.
 - The inherited pre-first-product name/shared-input issue remains an unfixed follow-up; existing-card naming passes. DOM/mock checks do not prove viewport scrolling/occlusion, real-backend persistence, or concurrency/idempotency. Existing nonfailing Radix/Node/LF-to-CRLF diagnostics remain.
-- Parent structural readback and whitespace spot check passed; scope remained the four intended files. Functional scope is verified, while browser and real-backend proof remain pending. The local work-unit commit is the remaining closure step.
+- Parent structural readback and whitespace spot check passed; scope remained the four intended files. Functional scope is verified, and OA-02 closed with the local work-unit commit recorded above. Browser and real-backend proof remain pending; final bookkeeping changes documentation only.
