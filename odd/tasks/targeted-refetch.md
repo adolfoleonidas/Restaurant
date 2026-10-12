@@ -93,8 +93,8 @@ Not subscribed (not live today either): Local (zones / tables admin), Categorias
 - TR-01 GREEN: same file -> 29 passed; full backend `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` -> 581 passed, 49 deselected. Commit `be5e330`.
 - TR-02 RED (context): `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false NotifyTopics` with the old `NotifyContext` -> 12 failed, 12 total (`useRealtimeGeneration` did not exist). Unknown-topic safeguard RED: 1 failed, 12 passed, then GREEN.
 - TR-02 RED (screens): `RealtimeTargetedRefetch` against the pre-migration consumers (restored temporarily) -> 13 failed, 6 passed; GREEN on the migrated ones -> 19 passed.
-- TR-02 GREEN: full frontend `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4` -> 116 suites / 1001 tests passed (baseline 114 / 970); `CI=true npx craco build` -> exit 0.
-- TR-02 commit `3aadde6`.
+- TR-02 GREEN: full frontend `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4` -> 116 suites / 1002 tests passed (baseline 114 / 970, final run after the unknown-topic safeguard); `CI=true npx craco build` -> exit 0.
+- TR-02 commit `3aadde6`; TR-03 commit `ba98310`. `git diff --check` clean.
 - TR-03 RED: `python -m pytest tests/test_catalog_floor_events.py -q` -> 13 failed, 3 passed (no events; the 3 that pass assert that failed calls publish nothing). GREEN: 16 passed; full backend `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` -> 597 passed, 49 deselected (baseline 552).
 - Existing tests touched: 32 files that mocked `NotifyContext` with only `useNotify` now also mock `useRealtimeGeneration: () => 0`; `useSalonData.test.js` mocks the context and drops the removed `generation` prop.
 
