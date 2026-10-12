@@ -3,6 +3,7 @@ import { api } from '@/lib/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { PAYMENT_RECORD_STATUS_LABELS, ORDER_PAYMENT_LABELS } from '@/constants/status';
 
 const EMPTY_SCOPE_PARAMS = {};
 const PAYMENT_STATUSES = new Set(['completed', 'voiding', 'voided', 'refunded']);
@@ -10,13 +11,6 @@ const ORDER_PAYMENT_STATUSES = new Set([
     'pendiente', 'parcial', 'pagado', 'comprobante_subido', 'confirmado', 'cancelado', 'anulado', 'voided', 'refunded',
 ]);
 const PAYMENT_METHODS = new Set(['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto']);
-const PAYMENT_STATUS_LABELS = {
-    completed: 'Completado', voiding: 'Anulación en curso', voided: 'Anulado', refunded: 'Devuelto',
-};
-const ORDER_PAYMENT_LABELS = {
-    pendiente: 'Pendiente', parcial: 'Parcial', pagado: 'Pagado', comprobante_subido: 'Comprobante pendiente de revisión',
-    confirmado: 'Confirmado', cancelado: 'Cancelado', anulado: 'Anulado', voided: 'Anulado', refunded: 'Devuelto',
-};
 
 function isAmount(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -173,7 +167,7 @@ export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_P
                                             {current.payments.map((payment) => (
                                                 <li key={payment.id} className="space-y-1 p-3 text-sm">
                                                     <div className="flex flex-wrap justify-between gap-2">
-                                                        <span>{PAYMENT_STATUS_LABELS[payment.status]}</span>
+                                                        <span>{PAYMENT_RECORD_STATUS_LABELS[payment.status]}</span>
                                                         <span>{fmtMoney(payment.amount)}</span>
                                                     </div>
                                                     <div className="text-muted-foreground">{PAYMENT_LABELS[payment.method] || payment.method} · {dateLabel(payment.created_at)}</div>
