@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
-import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtDateTime, fmtDayLabel, elapsedMinutes, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
 import { PAYMENT_RECORD_STATUS_LABELS } from '@/constants/status';
 import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, Printer, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -462,9 +462,7 @@ function CashHistory({ refreshKey, scopeParams = {} }) {
     const grouped = useMemo(() => {
         const map = {};
         for (const r of data?.registers || []) {
-            const key = r.opened_at
-                ? new Date(r.opened_at).toLocaleDateString('es-PE', { weekday: 'short', day: '2-digit', month: 'short' })
-                : '—';
+            const key = fmtDayLabel(r.opened_at);
             if (!map[key]) map[key] = [];
             map[key].push(r);
         }
