@@ -153,6 +153,8 @@ async def create_table(data: TableCreate, user: dict = Depends(require_roles(["a
     if branch_id is not None:
         t["branch_id"] = branch_id
     await db.tables.insert_one(t)
+    # CRUD events carry no `status`: only seat / release / bill events do.
+    emit_notice(user["restaurant_id"], "table", table_id=t["id"], branch_id=branch_id, change="created")
     return {k: v for k, v in t.items() if k != "_id"}
 
 
@@ -171,7 +173,7 @@ def _qr_payload(table: dict, nonce: str) -> dict:
 async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
     table = await db.tables.find_one(
         await record_lookup_scope(user, db.branches, table_id),
-        {"_id": 0, "id": 1, "number": 1, "qr_nonce": 1, "qr_revoked": 1},
+        {"_id": 0, "id": 1, "number": 1, "qr_nonce": 1, "qr_revoked": 1, "branch_id": 1},
     )
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -184,6 +186,9 @@ async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin",
             await record_lookup_scope(user, db.branches, table_id),
             {"$set": {"qr_nonce": nonce, "updated_at": _now()}},
         )
+        # The first link turns the table's `qr_status` from none to active.
+        emit_notice(user["restaurant_id"], "table", table_id=table_id,
+                    branch_id=table.get("branch_id"), change="qr_created")
     return _qr_payload(table, nonce)
 
 
@@ -191,7 +196,7 @@ async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin",
 async def rotate_qr(table_id: str, user: dict = Depends(require_roles(["admin"]))):
     table = await db.tables.find_one(
         {"id": table_id, "restaurant_id": user["restaurant_id"]},
-        {"_id": 0, "id": 1, "number": 1},
+        {"_id": 0, "id": 1, "number": 1, "branch_id": 1},
     )
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -200,6 +205,8 @@ async def rotate_qr(table_id: str, user: dict = Depends(require_roles(["admin"])
         {"id": table_id, "restaurant_id": user["restaurant_id"]},
         {"$set": {"qr_nonce": nonce, "qr_revoked": False, "updated_at": _now()}},
     )
+    emit_notice(user["restaurant_id"], "table", table_id=table_id,
+                branch_id=table.get("branch_id"), change="qr_rotated")
     return _qr_payload(table, nonce)
 
 
@@ -211,6 +218,11 @@ async def revoke_qr(table_id: str, user: dict = Depends(require_roles(["admin"])
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    table = await db.tables.find_one(
+        {"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "id": 1, "branch_id": 1}
+    )
+    emit_notice(user["restaurant_id"], "table", table_id=table_id,
+                branch_id=(table or {}).get("branch_id"), change="qr_revoked")
     return {"ok": True, "qr_status": "revoked"}
 
 
@@ -365,19 +377,27 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
             raise HTTPException(status_code=409, detail="La mesa cambió; vuelve a cargarla")
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
     result = await db.tables.find_one({"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
+    # Both branches hear about it: the old one must drop the table, the new one show it.
+    branches = [result.get("branch_id")]
+    if table is not None and table.get("branch_id") != result.get("branch_id"):
+        branches.append(table.get("branch_id"))
+    for branch_id in branches:
+        emit_notice(user["restaurant_id"], "table", table_id=table_id, branch_id=branch_id, change="updated")
     return _table_response(result)
 
 
 @router.delete("/{table_id}")
 async def delete_table(table_id: str, user: dict = Depends(require_roles(["admin"]))):
     grouped = await db.tables.find_one(
-        {"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "group_id": 1}
+        {"id": table_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "group_id": 1, "branch_id": 1}
     )
     if grouped and grouped.get("group_id"):
         raise HTTPException(status_code=409, detail="Sepárala del grupo de mesas antes de eliminarla")
     res = await db.tables.delete_one({"id": table_id, "restaurant_id": user["restaurant_id"], "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    emit_notice(user["restaurant_id"], "table", table_id=table_id,
+                branch_id=(grouped or {}).get("branch_id"), change="deleted")
     return {"ok": True}
 
 

@@ -23,7 +23,7 @@ After #91, a composer tap still triggers about 4 GETs within 2 s, because every 
 
 - [x] **TR-01 Event topic map.** Inventory every backend `publish`/`emit_order`/`emit_notice` call and its payload fields; define a small topic vocabulary (e.g. `orders`, `kitchen`, `tables`, `payments`, `cash`, `catalog`, `prepay`, `notices`) and make every event carry its topic (and `order_id`, `table_id`, `branch_id` when known), keeping existing fields for compatibility. Document the map in this file.
 - [x] **TR-02 Topic-scoped refresh on the client.** `NotifyContext` keeps per-topic generations (coalesced like today); a hook such as `useRealtimeGeneration(['orders', 'tables'])` changes only when one of those topics fires. Reconnect, wake, and unknown/legacy events bump every topic. Migrate each consumer to the topics it actually renders; a screen showing one order may also ignore order events for other orders.
-- [ ] **TR-03 Catalog and floor CRUD go live.** Product, category, availability, table, and zone create/update/delete publish `catalog` or `tables` events so menus and floor maps update without waiting for slow polls.
+- [x] **TR-03 Catalog and floor CRUD go live.** Product, category, availability, table, and zone create/update/delete publish `catalog` or `tables` events so menus and floor maps update without waiting for slow polls.
 
 ## Topic map (TR-01)
 
@@ -43,6 +43,20 @@ Every SSE event keeps its legacy fields (`type`, `order_id`, `status`, `branch_i
 Extra fields: `order_id`, `table_id`, `branch_id`, `restaurant_id` when known; `related_order_ids` on `merged` (the cancelled source) and `split` (the child orders) so a screen on another order of the operation still refreshes. Public stream (`public_allowed`) also lets `category` through to the menu.
 
 Action to topics: order create / add lines (public) / bump / serve / send-to-kitchen / void line -> orders+kitchen; staff add/edit/remove draft line -> orders; charge, void, refund, proof -> orders+kitchen+payments (+prepay); seat / release / transfer / group -> tables; cash open/close/movement -> cash; approval request/decision -> approvals.
+
+## Catalog and floor CRUD events (TR-03)
+
+| Action | Event (`type`, `topics`) | Fields |
+|---|---|---|
+| product create / update / delete / import / availability | `product`, `catalog` | `product_id`, `change` (`created`, `updated`, `deleted`, `imported` + `count`, `availability` + `is_available`) |
+| category create / update / delete | `category`, `catalog` | `category_id`, `change` |
+| catalog reset (`/data/catalog`) | `product` and `category`, `catalog` | `change: reset` |
+| table create / update / delete | `table`, `tables` | `table_id`, `branch_id`, `change`; a branch move notifies the old and the new branch |
+| table QR rotate / revoke / first link | `table`, `tables` | `table_id`, `branch_id`, `change` (`qr_rotated`, `qr_revoked`, `qr_created`), because the list shows `qr_status` |
+| zone create / update / delete | `zone`, `tables` | `zone_id`, `branch_id`, `change`; not branch-filtered because a rename or re-branch moves tables of several floors |
+| operational reset (`/data/reset`) | `data_reset`, no topic | every client refreshes everything |
+
+CRUD events deliberately carry no `status`: the voice assistant announces a `table` event with `status: esperando_pago`, so a rename must not look like a bill request. Failed or no-op calls (404, in use, nothing imported) publish nothing. The staff stream still branch-filters `table` events; the public stream lets `product`, `category` and `table` through.
 
 ## Client subscriptions (TR-02)
 
@@ -80,8 +94,10 @@ Not subscribed (not live today either): Local (zones / tables admin), Categorias
 - TR-02 RED (context): `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false NotifyTopics` with the old `NotifyContext` -> 12 failed, 12 total (`useRealtimeGeneration` did not exist). Unknown-topic safeguard RED: 1 failed, 12 passed, then GREEN.
 - TR-02 RED (screens): `RealtimeTargetedRefetch` against the pre-migration consumers (restored temporarily) -> 13 failed, 6 passed; GREEN on the migrated ones -> 19 passed.
 - TR-02 GREEN: full frontend `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4` -> 116 suites / 1001 tests passed (baseline 114 / 970); `CI=true npx craco build` -> exit 0.
+- TR-02 commit `3aadde6`.
+- TR-03 RED: `python -m pytest tests/test_catalog_floor_events.py -q` -> 13 failed, 3 passed (no events; the 3 that pass assert that failed calls publish nothing). GREEN: 16 passed; full backend `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` -> 597 passed, 49 deselected (baseline 552).
 - Existing tests touched: 32 files that mocked `NotifyContext` with only `useNotify` now also mock `useRealtimeGeneration: () => 0`; `useSalonData.test.js` mocks the context and drops the removed `generation` prop.
 
 ## Next step
 
-Writer implements TR-03; then the parent re-runs the Playwright before/after comparison.
+The parent re-runs the Playwright before/after comparison (GETs and commits per composer tap), reviews, and decides push / PR.

@@ -4,6 +4,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import CategoryCreate, CategoryUpdate
+from notify import emit_notice
 
 router = APIRouter()
 
@@ -33,6 +34,7 @@ async def create_category(data: CategoryCreate, user: dict = Depends(require_rol
         "updated_at": _now(),
     }
     await db.categories.insert_one(c)
+    emit_notice(user["restaurant_id"], "category", category_id=c["id"], change="created")
     return {k: v for k, v in c.items() if k != "_id"}
 
 
@@ -46,6 +48,7 @@ async def update_category(cat_id: str, data: CategoryUpdate, user: dict = Depend
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    emit_notice(user["restaurant_id"], "category", category_id=cat_id, change="updated")
     return await db.categories.find_one({"id": cat_id}, {"_id": 0})
 
 
@@ -57,4 +60,5 @@ async def delete_category(cat_id: str, user: dict = Depends(require_roles(["admi
     res = await db.categories.delete_one({"id": cat_id, "restaurant_id": user["restaurant_id"]})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    emit_notice(user["restaurant_id"], "category", category_id=cat_id, change="deleted")
     return {"ok": True}
