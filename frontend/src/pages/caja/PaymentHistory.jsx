@@ -53,7 +53,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                 ? p.lines.map((l) => ({ product_name: l.name, quantity: l.quantity, unit_price: 0, pay_qty: l.quantity }))
                 : order?.items,
         });
-        if (!ok) toast.error('El navegador bloqueó la ventana. Permití popups para imprimir.');
+        if (!ok) toast.error('El navegador bloqueó la ventana. Permite popups para imprimir.');
     };
 
     const submitVoid = async () => {

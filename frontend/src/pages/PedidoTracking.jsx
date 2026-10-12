@@ -101,7 +101,7 @@ export default function PedidoTracking() {
     const upload = async () => {
         setUploading(true);
         try { await uploadPublicOrderProof(code, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo enviar el comprobante. Revisa tu conexión y reintenta.')); }
         finally { setUploading(false); }
     };
     const needsProof = !order.has_proof && ['yape', 'plin', 'transferencia'].includes(order.payment_method_choice);
@@ -147,7 +147,7 @@ export default function PedidoTracking() {
                     <p className="mt-1 opacity-90">
                         {waitingForPayment
                             ? 'Tu pedido queda guardado y todavía no entra a cocina. Cuando el restaurante confirme el pago, empieza la preparación.'
-                            : 'No se pudo verificar el pago. Probá de nuevo o consultá al personal del local.'}
+                            : 'No se pudo verificar el pago. Prueba de nuevo o consulta al personal del local.'}
                     </p>
                 </div>
             )}
@@ -157,7 +157,7 @@ export default function PedidoTracking() {
                     {cancelled ? (
                         <div className="text-center py-6">
                             <div className="h-14 w-14 rounded-full bg-destructive/10 text-destructive mx-auto flex items-center justify-center mb-2"><Clock className="h-7 w-7" /></div>
-                            <div className="font-display text-lg font-semibold">Pedido cancelado</div>
+                            <div className="font-display text-lg font-semibold">Pedido anulado</div>
                             <div className="text-sm text-muted-foreground">Contacta al restaurante para más información</div>
                         </div>
                     ) : (

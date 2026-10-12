@@ -12,7 +12,7 @@ export default function PaymentErrors({
             {/* Errors */}
             {netError && (
                 <div className="net-error" data-testid="caja-red-error">
-                    Se corto la conexion. El pago puede haberse registrado. No inicies otro cobro: reintentá esta misma operacion.
+                    Se cortó la conexión. El pago puede haberse registrado. No inicies otro cobro: reintenta esta misma operación.
                 </div>
             )}
             {stale && (

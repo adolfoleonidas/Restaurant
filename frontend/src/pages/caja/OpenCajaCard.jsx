@@ -22,7 +22,7 @@ export default function OpenCajaCard({ onOpened, branchId, canOpen = true, runMu
             }));
             toast.success('Caja abierta');
             onOpened && onOpened();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisa tu conexión y reintenta.')); }
         finally { setLoading(false); }
     };
     return (

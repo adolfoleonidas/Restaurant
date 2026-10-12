@@ -136,12 +136,12 @@ export function ZonasPanel() {
             if (editing) await updateZone(editing.id, payload);
             else await createZone(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const doDelete = async (z) => {
         try { await deleteZone(z.id); toast.success('Zona eliminada'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const getBranchName = (id) => {
@@ -159,10 +159,10 @@ export function ZonasPanel() {
                 <h2 className="font-display text-lg font-semibold flex items-center gap-2"><MapPin className="h-5 w-5" /> Zonas del salón</h2>
                 <Button onClick={openNew} data-testid="zona-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva zona</Button>
             </div>
-            <p className="text-xs text-muted-foreground mb-4">Asigná una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
+            <p className="text-xs text-muted-foreground mb-4">Asigna una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
 
             {zones.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Sin zonas. Creá una para agrupar las mesas (ej: Salón, Terraza).</p>
+                <p className="text-sm text-muted-foreground py-2">Sin zonas. Crea una para agrupar las mesas (ej: Salón, Terraza).</p>
             ) : (
                 <div className="space-y-3">
                     {zones.map((z) => {
@@ -306,7 +306,7 @@ export function TablesManager() {
             if (editing) await updateTable(editing.id, payload);
             else await createTable(payload);
             toast.success('Guardado'); setDlg(false); await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (t) => {
@@ -356,7 +356,7 @@ export function TablesManager() {
         } catch (e) {
             const detail = apiErrorMessage(e, '');
             toast.error(done > 0
-                ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintentá con el resto.'}`
+                ? `${done} de ${missingBranch.length} mesas asignadas. ${detail || 'Reintenta con el resto.'}`
                 : (detail || 'No se pudieron asignar las mesas'));
         } finally {
             setAssigning(false);
@@ -372,7 +372,7 @@ export function TablesManager() {
                 <Button className="h-11 sm:h-10" onClick={openNew} data-testid="mesa-config-nueva"><Plus className="h-4 w-4 mr-2" />Nueva mesa</Button>
             </div>
             <p className="text-xs text-muted-foreground mb-4">
-                Las mesas heredan la sucursal de su zona. Podés asignar una sucursal diferente individualmente si es necesario.
+                Las mesas heredan la sucursal de su zona. Puedes asignar una sucursal diferente individualmente si es necesario.
             </p>
             {missingBranch.length > 0 && (
                 <div
@@ -385,7 +385,7 @@ export function TablesManager() {
                     </p>
                     <p className="mt-1 text-muted-foreground">
                         El mozo, la caja y la cocina solo ven las mesas de su sucursal: estas mesas no
-                        aparecen en su salón. Asigná la sucursal de la zona (pestaña Zonas) o elegila acá.
+                        aparecen en su salón. Asigna la sucursal de la zona (pestaña Zonas) o elígela acá.
                     </p>
                     {branches.length > 0 ? (
                         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -397,7 +397,7 @@ export function TablesManager() {
                                 aria-label="Sucursal para las mesas sin sucursal"
                                 data-testid="mesa-sin-sucursal-branch"
                             >
-                                <option value="">Elegí una sucursal</option>
+                                <option value="">Elige una sucursal</option>
                                 {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                             </select>
                             <Button
@@ -411,7 +411,7 @@ export function TablesManager() {
                         </div>
                     ) : (
                         <p className="mt-2 text-muted-foreground">
-                            Todavía no hay sucursales: creá una en la pestaña Sucursales para poder asignarlas.
+                            Todavía no hay sucursales: crea una en la pestaña Sucursales para poder asignarlas.
                         </p>
                     )}
                 </div>
@@ -478,7 +478,7 @@ export function TablesManager() {
                                 const newBranchId = (!editing || !editing.branch_id) ? (zoneBranch || '') : form.branch_id;
                                 setForm({ ...form, area: v, branch_id: newBranchId });
                             }}>
-                                <SelectTrigger id="mesa-form-zona" data-testid="mesa-form-area"><SelectValue placeholder="Elegí una zona" /></SelectTrigger>
+                                <SelectTrigger id="mesa-form-zona" data-testid="mesa-form-area"><SelectValue placeholder="Elige una zona" /></SelectTrigger>
                                 <SelectContent>
                                     {zones.map((z) => <SelectItem key={z.id} value={z.name}>{z.name}</SelectItem>)}
                                 </SelectContent>

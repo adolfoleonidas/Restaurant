@@ -24,14 +24,14 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
     const by = register.by_method || {};
     const digital = DIGITAL_METHODS.filter((m) => Number(by[m] || 0) > 0);
     const submit = async () => {
-        if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indicá el efectivo contado'); return; }
+        if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indica el efectivo contado'); return; }
         try {
             const { data } = await runMutation(() => closeCash({ closing_amount: Number(closing), notes }));
             const delta = Number(data.difference || 0);
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
             onOpenChange(false);
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisa tu conexión y reintenta.')); }
     };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

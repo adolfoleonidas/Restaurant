@@ -184,12 +184,12 @@ export function accountTally(order) {
     };
 }
 
-/** Texto corto del estado agregado ("Listo para servir · 2"). */
+/** Texto corto del estado agregado ("Listo para entregar · 2"). */
 export function tallyLabel(tally) {
-    if (tally.ready > 0) return `Listo para servir · ${tally.ready}`;
+    if (tally.ready > 0) return `Listo para entregar · ${tally.ready}`;
     if (tally.drafts > 0) return `Por enviar · ${tally.drafts}`;
     if (tally.kitchen > 0) return `En cocina · ${tally.kitchen}`;
-    if (tally.served > 0) return `Servido · ${tally.served}`;
+    if (tally.served > 0) return `Entregado · ${tally.served}`;
     return 'Sin platos todavía';
 }
 

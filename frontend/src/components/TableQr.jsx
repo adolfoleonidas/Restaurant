@@ -126,7 +126,7 @@ export function QrActions({ value, name, url, disabled = false }) {
             await navigator.clipboard.writeText(url);
             setStatus('Enlace copiado.');
         } catch {
-            setStatus('No se pudo copiar. Seleccioná el enlace para copiarlo a mano.');
+            setStatus('No se pudo copiar. Selecciona el enlace para copiarlo a mano.');
         }
     };
 

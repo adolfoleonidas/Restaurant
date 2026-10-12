@@ -574,7 +574,7 @@ export default function useTableSheet({
     // producto. No navega a /pedidos.
     const takeOrderInline = async (t) => {
         if (!canTake) { toast.info('Solo el mozo puede tomar la mesa'); return; }
-        if (t.status === 'pagada') { toast.info('Liberá la mesa pagada antes de tomar pedido'); return; }
+        if (t.status === 'pagada') { toast.info('Libera la mesa pagada antes de tomar pedido'); return; }
         await openSheet(t);
     };
 

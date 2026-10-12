@@ -48,7 +48,7 @@ export default function Login() {
     const submit = async (e) => {
         e.preventDefault();
         if (!email || !password) {
-            setFormError('Ingresá tu correo y tu contraseña para entrar.');
+            setFormError('Ingresa tu correo y tu contraseña para entrar.');
             return;
         }
         setFormError('');
@@ -59,7 +59,7 @@ export default function Login() {
             const fallback = homeFor(logged);
             navigate(from && from !== '/login' ? from : fallback, { replace: true });
         } catch (err) {
-            const message = apiErrorMessage(err, 'No se pudo iniciar sesión. Revisá tu correo y tu contraseña.');
+            const message = apiErrorMessage(err, 'No se pudo iniciar sesión. Revisa tu correo y tu contraseña.');
             setFormError(message);
             toast.error(message);
         } finally {

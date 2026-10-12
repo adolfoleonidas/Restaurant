@@ -3,7 +3,7 @@
  * payload and the copy that depends on them. No React and no I/O, so the dialog
  * and its tests read the same numbers.
  */
-import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { equalShare, parseAmount, round2 } from '@/lib/cash';
 import { METHOD_MAP, METHOD_REV } from '@/lib/paymentMethods';
 
@@ -112,11 +112,16 @@ export function mixedPaymentData({ splits, chargeAmount }) {
     };
 }
 
+/** "1 de 3 ítems": how many of the open lines are picked, with the noun in agreement. */
+export function unpaidItemsLabel(picked, unpaid) {
+    return `${picked} de ${countOf(unpaid, 'ítem', 'ítems')}`;
+}
+
 export function paymentScopeCaption({
     payMode, unpaidItems, pickedLines, part, people,
 }) {
     if (payMode === 'items') {
-        return unpaidItems.length ? `${pickedLines.length} de ${unpaidItems.length} ítems` : 'Selecciona al menos un ítem';
+        return unpaidItems.length ? unpaidItemsLabel(pickedLines.length, unpaidItems.length) : 'Selecciona al menos un ítem';
     }
     if (payMode === 'equal') return `Parte ${part + 1} de ${people}`;
     return '';
@@ -200,7 +205,7 @@ export function footerNote({
     if (result) return '';
     if (tipInvalid) return 'Corrige la propina para continuar';
     if (!canRegister) {
-        if (method === 'cash' && !r) return 'Monto exacto · escribí el efectivo recibido si te dan un billete mayor';
+        if (method === 'cash' && !r) return 'Monto exacto · escribe el efectivo recibido si te dan un billete mayor';
         if (method === 'cash' && r < chargeAmount) return 'El efectivo recibido no cubre el total';
         if (method === 'mixed') return 'Completa los montos del pago mixto';
         if (chargeAmount <= 0) return 'Selecciona al menos un ítem';

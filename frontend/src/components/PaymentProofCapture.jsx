@@ -56,7 +56,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
     const acceptFile = (file) => {
         if (!file) return;
         if (!IMAGE_TYPES.has(file.type)) {
-            setMessage('Seleccione una imagen PNG, JPEG o WebP.');
+            setMessage('Selecciona una imagen PNG, JPEG o WebP.');
             return;
         }
         if (file.size > MAX_PROOF_BYTES) {
@@ -75,7 +75,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
             onProof(value);
         };
         reader.onerror = () => {
-            if (mountedRef.current && activeRef.current) setMessage('No se pudo leer la imagen. Inténtelo de nuevo.');
+            if (mountedRef.current && activeRef.current) setMessage('No se pudo leer la imagen. Inténtalo de nuevo.');
         };
         reader.readAsDataURL(file);
     };
@@ -85,7 +85,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
         setMessage('');
         const getUserMedia = navigator.mediaDevices?.getUserMedia;
         if (!getUserMedia) {
-            setMessage('La cámara no está disponible. Adjunte una imagen.');
+            setMessage('La cámara no está disponible. Adjunta una imagen.');
             return;
         }
         setCameraLoading(true);
@@ -101,7 +101,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
             streamRef.current = stream;
             setCameraOn(true);
         } catch {
-            if (mountedRef.current) setMessage('No se pudo abrir la cámara. Adjunte una imagen.');
+            if (mountedRef.current) setMessage('No se pudo abrir la cámara. Adjunta una imagen.');
         } finally {
             if (mountedRef.current) setCameraLoading(false);
         }
@@ -118,7 +118,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
         canvas.height = Math.round(sourceHeight * scale);
         const context = canvas.getContext('2d');
         if (!context) {
-            setMessage('No se pudo procesar la foto. Adjunte una imagen.');
+            setMessage('No se pudo procesar la foto. Adjunta una imagen.');
             return;
         }
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -128,7 +128,7 @@ export default function PaymentProofCapture({ proof, onProof, disabled = false, 
             if (dataUrlBytes(value) <= MAX_PROOF_BYTES) break;
         }
         if (!value.startsWith('data:image/jpeg;base64,') || dataUrlBytes(value) > MAX_PROOF_BYTES) {
-            setMessage('La foto supera el tamaño permitido. Adjunte una imagen más pequeña.');
+            setMessage('La foto supera el tamaño permitido. Adjunta una imagen más pequeña.');
             return;
         }
         onProof(value);

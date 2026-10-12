@@ -32,11 +32,11 @@ export default function Categorias() {
             if (editing) { await updateCategory(editing.id, payload); toast.success('Actualizado'); }
             else { await createCategory(payload); toast.success('Creado'); }
             setDlg(false); await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.')); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.')); }
     };
     const doDelete = async (c) => {
         try { await deleteCategory(c.id); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisá tu conexión y reintentá.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.')); }
     };
 
     return (
@@ -45,7 +45,7 @@ export default function Categorias() {
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="min-w-0">
                     <h1 className="font-display italic text-3xl font-semibold flex items-center gap-2 min-w-0"><Tags className="h-6 w-6 text-primary shrink-0" /> <span className="truncate">Categorías</span></h1>
-                    <p className="text-muted-foreground text-sm">Organizá los platos de la carta en grupos.</p>
+                    <p className="text-muted-foreground text-sm">Organiza los platos de la carta en grupos.</p>
                 </div>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
             </div>

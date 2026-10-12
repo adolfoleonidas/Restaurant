@@ -173,7 +173,7 @@ export default function PedidoDetalle() {
     const serve = async () => {
         try {
             await serveOrder(order.id);
-            toast.success('Servido. La cuenta sigue abierta.');
+            toast.success('Entregado. La cuenta sigue abierta.');
             await refetch();
         } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
@@ -199,7 +199,7 @@ export default function PedidoDetalle() {
         try {
             await setOrderStatus(order.id, { status: 'cancelado', reason: cancelReason });
             setCancelDlg(false);
-            toast.success('Pedido cancelado');
+            toast.success('Pedido anulado');
             navigate('/salon');
         } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
@@ -240,7 +240,7 @@ export default function PedidoDetalle() {
         entregado: 'Entregado',
         pendiente_pago: 'Cuenta solicitada',
         pagado: 'Pagado',
-        cancelado: 'Cancelado',
+        cancelado: 'Anulado',
     }[order.status] || order.status;
 
     return (

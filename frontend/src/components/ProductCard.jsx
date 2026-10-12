@@ -50,7 +50,7 @@ export function ProductCard({ product, children }) {
                         </div>
                     )}
                     {billPending && qty > 0 && (
-                        <div className="text-xs text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
+                        <div className="text-xs text-amber-700 font-medium">Cuenta solicitada: pide al mozo para agregar más.</div>
                     )}
                     <div className="mt-auto pt-2 flex items-center justify-between gap-3">
                         <div className="font-mono text-primary font-bold tabular-nums text-lg">{fmtMoney(product.price)}</div>

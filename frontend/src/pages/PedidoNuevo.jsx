@@ -93,7 +93,7 @@ export default function PedidoNuevo() {
     const submit = async () => {
         if (isTableOrder && !tableId) { toast.error('Falta la mesa'); return; }
         if (orderType === 'delivery' && !customerAddress.trim()) { toast.error('Falta la dirección del envío'); return; }
-        if (cart.length === 0) { toast.error('Agregá al menos un plato'); return; }
+        if (cart.length === 0) { toast.error('Agrega al menos un plato'); return; }
         setLoading(true);
         try {
             const items = cart.map((it) => ({ product_id: it.product.id, quantity: it.quantity, notes: it.notes || null }));
@@ -130,7 +130,7 @@ export default function PedidoNuevo() {
                         <h1 className="font-display text-3xl font-semibold" data-testid="pedido-nuevo-titulo">
                             {!isTableOrder
                                 ? (ORDER_TYPE_LABELS[orderType] || 'Pedido')
-                                : (table ? `Mesa ${table.number}` : 'Elegí una mesa')}
+                                : (table ? `Mesa ${table.number}` : 'Elige una mesa')}
                         </h1>
                     </div>
                 </div>
