@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listOrders } from '@/lib/api/orders';
 import { buildRoleNotifications } from '@/lib/roleNotifications';
 import { fmtElapsed } from '@/lib/format';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -38,7 +38,7 @@ export function RoleInbox() {
     const { generation } = useNotify();
 
     const { data: orders } = usePolling(
-        () => api.get('/orders', { params: { active_only: true, limit: 80 } }).then((r) => r.data),
+        () => listOrders({ active_only: true, limit: 80 }).then((r) => r.data),
         20000,
         [user?.id, generation]
     );

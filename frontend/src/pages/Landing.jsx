@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getPublicCategories, getPublicProducts, getPublicRestaurant } from '@/lib/api/public';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
@@ -70,11 +70,11 @@ export default function Landing() {
         // restaurante: el stream ya recarga categorías y platos con
         // `generation`, así que no se duplica el tráfico.
         const requests = restaurant
-            ? api.get('/public/restaurant').then((r) => [r.data, categories, products])
+            ? getPublicRestaurant().then((r) => [r.data, categories, products])
             : Promise.all([
-                api.get('/public/restaurant').then((r) => r.data),
-                api.get('/public/categories').then((r) => r.data),
-                api.get('/public/products').then((r) => r.data),
+                getPublicRestaurant().then((r) => r.data),
+                getPublicCategories().then((r) => r.data),
+                getPublicProducts().then((r) => r.data),
             ]);
         requests.then(([r, c, p]) => {
             if (!active) return;
@@ -90,7 +90,7 @@ export default function Landing() {
 
     useEffect(() => {
         if (!generation || !restaurant?.id) return;
-        api.get('/public/products').then((r) => setProducts(r.data));
+        getPublicProducts().then((r) => setProducts(r.data));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [generation]);
 

@@ -17,7 +17,7 @@ import {
     Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe, MoreHorizontal,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
-import { api } from '@/lib/api';
+import { getRestaurant } from '@/lib/api/restaurant';
 
 // Cuántos destinos caben en la barra inferior del móvil. El resto queda a un
 // toque, en la misma hoja lateral que abre la hamburguesa ("Más").
@@ -223,7 +223,7 @@ export const AppShell = () => {
 
     useEffect(() => {
         let active = true;
-        api.get('/restaurants/current').then(({ data }) => {
+        getRestaurant().then(({ data }) => {
             if (active) setRestaurant(data);
         }).catch(() => {});
         return () => { active = false; };

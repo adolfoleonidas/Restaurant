@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { getTodayReport } from '@/lib/api/reports';
+import { listBranches } from '@/lib/api/branches';
+import { decideApproval } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -39,7 +41,7 @@ function DashboardContext({ user, userKey, isOwner }) {
 
         let active = true;
         setBranchState({ userKey, branches: [], loading: true, error: false });
-        api.get('/branches').then(({ data }) => {
+        listBranches().then(({ data }) => {
             if (!active) return;
             const branches = Array.isArray(data) ? data : [];
             setBranchState({ userKey, branches, loading: false, error: false });
@@ -132,9 +134,7 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
     const [note, setNote] = useState('');
 
     const { data, error } = usePolling(
-        () => Object.keys(scopeParams).length
-            ? api.get('/reports/today', { params: scopeParams }).then((r) => r.data)
-            : api.get('/reports/today').then((r) => r.data),
+        () => getTodayReport(Object.keys(scopeParams).length ? scopeParams : undefined).then((r) => r.data),
         12000,
         [generation, scopeKey]
     );
@@ -167,7 +167,7 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
     const decide = async (action) => {
         if (!approval?.id) return;
         try {
-            await api.post(`/approvals/${approval.id}/decide`, { action, note: note.trim() || undefined });
+            await decideApproval(approval.id, { action, note: note.trim() || undefined });
             toast.success(action === 'approve' ? 'Autorizado. El solicitante ve el resultado en el historial.' : 'Solicitud rechazada.');
             setApproval(null);
             setNote('');

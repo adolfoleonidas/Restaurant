@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listOrders } from '@/lib/api/orders';
+import { listTables } from '@/lib/api/tables';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
@@ -37,14 +38,14 @@ export default function Pedidos() {
             const params = {};
             if (filter === 'activos') params.active_only = true;
             else if (filter !== 'all') params.status = filter;
-            return api.get('/orders', { params }).then((r) => r.data);
+            return listOrders(params).then((r) => r.data);
         },
         12000,
         [filter, generation]
     );
 
     // Only the sales-area dialog needs the floor, to offer the free tables.
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 15000);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 15000);
 
     // Orders start from the same sales-area decision as the floor: "Nuevo pedido"
     // must not drop the waiter into the composer with the area already assumed.

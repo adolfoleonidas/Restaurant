@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api } from '@/lib/api';
+import { listCategories } from '@/lib/api/categories';
+import { createProduct, deleteProduct, importProducts, listProducts, setProductAvailability, updateProduct } from '@/lib/api/products';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -131,7 +132,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
     const importNow = async () => {
         setBusy(true);
         try {
-            const { data } = await api.post('/products/import', { items: validRows });
+            const { data } = await importProducts({ items: validRows });
             const skipped = data.skipped?.length || 0;
             toast.success(
                 skipped > 0
@@ -229,7 +230,7 @@ export default function Productos({ section = 'platos' }) {
     const [confirmDel, setConfirmDel] = useState(null);
 
     const load = async () => {
-        const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
+        const [p, c] = await Promise.all([listProducts(), listCategories()]);
         setProducts(p.data); setCategories(c.data);
     };
     const { generation } = useNotify();
@@ -286,10 +287,10 @@ export default function Productos({ section = 'platos' }) {
                 combo_items: form.is_combo ? (form.combo_items || []).filter((c) => c.product_id && Number(c.quantity) > 0) : [],
             };
             if (editing) {
-                await api.patch(`/products/${editing.id}`, payload);
+                await updateProduct(editing.id, payload);
                 toast.success(form.is_combo ? 'Combo actualizado' : 'Producto actualizado');
             } else {
-                await api.post('/products', payload);
+                await createProduct(payload);
                 toast.success(form.is_combo ? 'Combo creado' : 'Producto creado');
             }
             setOpenDlg(false);
@@ -298,13 +299,13 @@ export default function Productos({ section = 'platos' }) {
     };
 
     const doDelete = async (p) => {
-        try { await api.delete(`/products/${p.id}`); toast.success('Eliminado'); await load(); }
+        try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const toggleAvail = async (p) => {
         try {
-            const { data } = await api.post(`/products/${p.id}/availability`, { is_available: !p.is_available });
+            const { data } = await setProductAvailability(p.id, { is_available: !p.is_available });
             if (!data.product.is_available) {
                 setPendingAvail({ name: data.product.name, orders: data.pending_orders || [] });
                 toast.success(`${data.product.name} agotado. Los pedidos ya aceptados siguen.`);

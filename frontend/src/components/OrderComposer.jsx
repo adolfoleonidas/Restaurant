@@ -3,7 +3,7 @@ import { Search, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { api } from '@/lib/api';
+import { setOrderNotes } from '@/lib/api/orders';
 import { toast } from 'sonner';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
@@ -31,7 +31,7 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
         const next = noteDraft.trim();
         if (next === String(order.notes || '').trim()) return;
         try {
-            await api.patch(`/orders/${order.id}/notes`, { notes: next });
+            await setOrderNotes(order.id, { notes: next });
         } catch (e) {
             setNoteDraft(order.notes || '');
             toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');

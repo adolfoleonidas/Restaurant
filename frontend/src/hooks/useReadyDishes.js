@@ -1,5 +1,5 @@
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listOrders } from '@/lib/api/orders';
 
 /**
  * Platos listos para servir en el piso, para el badge de la navegación.
@@ -23,7 +23,7 @@ export function readyDishes(orders = []) {
 export default function useReadyDishes(enabled = true) {
     const { data } = usePolling(
         () => (enabled
-            ? api.get('/orders', { params: { active_only: true } }).then((r) => r.data)
+            ? listOrders({ active_only: true }).then((r) => r.data)
             : Promise.resolve(null)),
         25000,
         [enabled]

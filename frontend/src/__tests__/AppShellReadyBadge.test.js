@@ -28,7 +28,7 @@ jest.mock('react-router-dom', () => ({
 }));
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
-    default: (fetcher) => (fetcher.toString().includes("api.get('/orders'")
+    default: (fetcher) => (fetcher.toString().includes('listOrders')
         ? { data: mockOrders, refetch: jest.fn() }
         : { data: null, refetch: jest.fn() }),
 }));

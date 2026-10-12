@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getPaymentConfig, updatePaymentConfig } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +25,7 @@ export default function Pagos() {
     const [cfg, setCfg] = useState(null);
     const [tab, setTab] = useState('yape');
 
-    const load = async () => { const { data } = await api.get('/payment-config'); setCfg(data); };
+    const load = async () => { const { data } = await getPaymentConfig(); setCfg(data); };
     useEffect(() => { load(); }, []);
 
     const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
@@ -39,7 +39,7 @@ export default function Pagos() {
     };
 
     const save = async () => {
-        try { const { data } = await api.patch('/payment-config', cfg); setCfg(data); toast.success('Configuración guardada'); }
+        try { const { data } = await updatePaymentConfig(cfg); setCfg(data); toast.success('Configuración guardada'); }
         catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
     };
 
