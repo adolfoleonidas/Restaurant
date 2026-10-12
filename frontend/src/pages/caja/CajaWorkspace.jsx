@@ -42,10 +42,10 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         const options = scopeOptions(baseParams);
         return apiGet(path, options);
     }, [scopeOptions]);
-    const { data: register, loading, refetch: refetchReg } = usePolling(
+    const { data: register, error: registerError, loading, refetch: refetchReg } = usePolling(
         () => scopedGet('/cash/current').then((r) => r.data), 12000, [generation, contextKey]
     );
-    const { data: pending, refetch: refetchPending } = usePolling(
+    const { data: pending, error: pendingError, refetch: refetchPending } = usePolling(
         () => scopedGet('/orders', { active_only: true }).then((r) => r.data),
         12000,
         [generation, contextKey]
@@ -124,6 +124,25 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         );
     }
 
+    const loadFailure = registerError || pendingError;
+    const retryLoad = () => { refetchReg(); refetchPending(); };
+    const loadErrorBanner = loadFailure ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" data-testid="caja-error">
+            <span className="font-medium">
+                No se pudo leer la caja. {(loadFailure.response && apiErrorMessage(loadFailure, '')) || 'Los datos pueden estar desactualizados.'}
+            </span>
+            <Button variant="outline" className="h-11" onClick={retryLoad} data-testid="caja-error-reintentar">Reintentar</Button>
+        </div>
+    ) : null;
+
+    // Sin poder leer la caja no se sabe si está abierta: ofrecer "abrir caja" sería mentir.
+    if (!register && registerError) return (
+        <div className="space-y-4" data-testid="caja-root">
+            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+            {loadErrorBanner}
+        </div>
+    );
+
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
             <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
@@ -156,6 +175,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
 
     return (
         <div className="space-y-5" data-testid="caja-root">
+            {loadErrorBanner}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
