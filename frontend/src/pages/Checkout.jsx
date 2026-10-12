@@ -352,6 +352,10 @@ export default function Checkout() {
             && paymentState !== 'confirmado' && paymentState !== 'rechazado' && paymentState !== 'expirado';
         const showProofBox = RECEIPT_METHODS.includes(confirmed.payment_method) && !confirmed.pay_at_counter;
         const wentToKitchen = !waiting && confirmed.sent_to_kitchen !== false;
+        // "Pago confirmado" solo si alguien pagó; un pedido que va a cocina y se
+        // cobra al final no ha pagado nada todavía.
+        const isPaid = paymentState === 'confirmado'
+            || ['pagado', 'confirmado'].includes(confirmed.payment_status);
         return (
             <div className="max-w-2xl mx-auto px-4 py-10 space-y-5" data-testid="checkout-confirmed-root">
                 <Card>
@@ -360,7 +364,7 @@ export default function Checkout() {
                             {wentToKitchen ? <CheckCircle2 className="h-9 w-9" /> : <Clock className="h-9 w-9" />}
                         </div>
                         <h1 className="font-display text-3xl font-bold" data-testid="checkout-result-title">
-                            {wentToKitchen ? 'Pago confirmado ✓' : waiting ? 'Pendiente de pago' : 'Pedido guardado'}
+                            {isPaid ? 'Pago confirmado ✓' : wentToKitchen ? 'Pedido enviado a cocina' : waiting ? 'Pendiente de pago' : 'Pedido guardado'}
                         </h1>
                         <p className="text-muted-foreground mt-1">
                             {wentToKitchen
@@ -448,7 +452,7 @@ export default function Checkout() {
 
     // ---- Paso de revisión: el cliente ve exactamente qué está pagando ----
     if (reviewing) {
-        const tableLabel = tableInfo?.number || contextTable?.number;
+        const tableLabel = tableInfo?.number || contextTable?.number || tables.find((t) => t.id === tableId)?.number;
         return (
             <div className="max-w-2xl mx-auto px-4 py-8 pb-32 space-y-5" data-testid="checkout-review-root">
                 <Button variant="ghost" size="sm" onClick={() => setReviewing(false)} data-testid="checkout-review-back">
