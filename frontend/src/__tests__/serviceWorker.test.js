@@ -76,4 +76,70 @@ describe('registro del service worker', () => {
         listeners.controllerchange();
         expect(reload).not.toHaveBeenCalled();
     });
+
+    describe('búsqueda de versiones nuevas con la app abierta', () => {
+        // El navegador solo busca un service worker nuevo al navegar o cada 24 h:
+        // una app que el mozo deja abierta todo el turno seguía en la build vieja.
+        let registration;
+        let visibility;
+
+        async function registerWithUpdate() {
+            setupNavigator({});
+            registration = { update: jest.fn().mockResolvedValue(undefined) };
+            sw.register.mockResolvedValue(registration);
+            registerServiceWorker();
+            window.dispatchEvent(new Event('load'));
+            await Promise.resolve();
+            await Promise.resolve();
+        }
+
+        function setVisibility(state) {
+            visibility = state;
+            document.dispatchEvent(new Event('visibilitychange'));
+        }
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            visibility = 'visible';
+            Object.defineProperty(document, 'visibilityState', {
+                configurable: true,
+                get: () => visibility,
+            });
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+            delete document.visibilityState;
+        });
+
+        it('al volver a primer plano pide al navegador que busque una versión nueva', async () => {
+            await registerWithUpdate();
+            setVisibility('hidden');
+            expect(registration.update).not.toHaveBeenCalled();
+            setVisibility('visible');
+            expect(registration.update).toHaveBeenCalledTimes(1);
+        });
+
+        it('con la app abierta busca una versión nueva cada 15 minutos', async () => {
+            await registerWithUpdate();
+            jest.advanceTimersByTime(15 * 60 * 1000);
+            expect(registration.update).toHaveBeenCalledTimes(1);
+            jest.advanceTimersByTime(15 * 60 * 1000);
+            expect(registration.update).toHaveBeenCalledTimes(2);
+        });
+
+        it('en segundo plano no gasta datos buscando versiones', async () => {
+            await registerWithUpdate();
+            visibility = 'hidden';
+            jest.advanceTimersByTime(15 * 60 * 1000);
+            expect(registration.update).not.toHaveBeenCalled();
+        });
+
+        it('un fallo de red al buscar la versión no rompe la app', async () => {
+            await registerWithUpdate();
+            registration.update.mockRejectedValue(new Error('offline'));
+            expect(() => setVisibility('visible')).not.toThrow();
+            await Promise.resolve();
+        });
+    });
 });
