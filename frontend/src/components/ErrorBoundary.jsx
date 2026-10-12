@@ -35,7 +35,7 @@ export default class ErrorBoundary extends React.Component {
                 <div className="w-full max-w-lg space-y-3 rounded-xl border border-destructive/40 bg-destructive/5 p-5">
                     <h2 className="font-display text-xl font-semibold">Algo salió mal en esta pantalla</h2>
                     <p className="text-sm text-muted-foreground">
-                        Hubo un error al dibujar la pantalla. Reintentá; si vuelve a pasar, pasanos este detalle.
+                        Hubo un error al dibujar la pantalla. Reintenta; si vuelve a pasar, pasanos este detalle.
                     </p>
                     <pre
                         className="whitespace-pre-wrap break-words rounded-lg border border-border bg-background/60 p-3 text-xs"

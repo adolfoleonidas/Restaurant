@@ -193,7 +193,7 @@ export default function Landing() {
             {tableError && (
                 <div className="border-b border-destructive/40 bg-destructive/10" role="alert" data-testid="public-table-context-error">
                     <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center gap-3 text-sm">
-                        <span className="min-w-0 flex-1">{tableError} Pedí el QR otra vez o avisá al personal.</span>
+                        <span className="min-w-0 flex-1">{tableError} Pide el QR otra vez o avisa al personal.</span>
                         <button type="button" onClick={clearTable} className="h-9 shrink-0 rounded-md border px-3 text-xs">Descartar</button>
                     </div>
                 </div>
@@ -297,7 +297,7 @@ export default function Landing() {
                         )}
                         {!loading && loadError && (
                             <div className="py-16 text-center" data-testid="landing-load-error">
-                                <p className="text-muted-foreground">Revisá tu conexión y volvé a intentar.</p>
+                                <p className="text-muted-foreground">Revisa tu conexión y vuelve a intentar.</p>
                                 <Button type="button" variant="outline" className="mt-3" onClick={() => setReloadToken((n) => n + 1)} data-testid="landing-retry">
                                     Reintentar
                                 </Button>

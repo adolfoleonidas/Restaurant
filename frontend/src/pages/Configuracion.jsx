@@ -11,11 +11,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import { FEATURE_DEFS, mergeFeatures, notifyFeaturesChanged } from '@/lib/features';
-import { fmtDateTimeShort } from '@/lib/format';
+import { fmtDateTimeShort, countOf } from '@/lib/format';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
+import { ENVIRONMENT_LABELS, RECORD_LABELS } from '@/constants/glossary';
 
 export function Temas() {
     const { theme, setTheme, clearThemeOverride, themes } = useTheme();
@@ -34,7 +36,7 @@ export function Temas() {
             setTheme(themeId);
             toast.success('Tema guardado para todo el restaurante');
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'Error al guardar el tema');
+            toast.error(apiErrorMessage(e, 'Error al guardar el tema'));
         } finally {
             setSaving(false);
         }
@@ -103,7 +105,7 @@ function Restaurante() {
     useEffect(() => { getRestaurant().then((res) => setR(res.data)); }, []);
     const save = async () => {
         try { const { data } = await updateRestaurant(r); setR(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar la configuración. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la configuración. Revisa tu conexión y reintenta.')); }
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (
@@ -116,17 +118,17 @@ function Restaurante() {
             <div><Label htmlFor="zona-horaria">Zona horaria</Label><Input id="zona-horaria" value={r.timezone || ''} onChange={(e) => setR({ ...r, timezone: e.target.value })} /></div>
             <div><Label htmlFor="horario">Horario</Label><Input id="horario" value={r.opening_hours || ''} onChange={(e) => setR({ ...r, opening_hours: e.target.value })} /></div>
             <div className="md:col-span-2">
-                <Label>Seguimiento de preparación</Label>
+                <Label htmlFor="config-prep-mode">Seguimiento de preparación</Label>
                 <Select value={r.prep_mode || 'detailed'} onValueChange={(v) => setR({ ...r, prep_mode: v })}>
                     {/* El botón de Radix toma su nombre del valor elegido; si el
                         ajuste llega vacío, el disparador queda sin nombre. */}
-                    <SelectTrigger aria-label="Seguimiento de preparación"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="config-prep-mode"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="simple">Sencillo — Pendiente → Servido</SelectItem>
+                        <SelectItem value="simple">Sencillo — Pendiente → Entregado</SelectItem>
                         <SelectItem value="detailed">Detallado — Enviado → Preparando → Listo → Entregado</SelectItem>
                     </SelectContent>
                 </Select>
-                <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con servido. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
+                <p className="text-xs text-muted-foreground mt-1">No mezcla cobrado con entregado. Se aplica a cómo trabajan, no cambia los pedidos ya tomados.</p>
             </div>
             <div className="md:col-span-2">
                 <label className="flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:min-h-0">
@@ -137,9 +139,9 @@ function Restaurante() {
             </div>
             <div className="md:col-span-2 border-t pt-4 space-y-3">
                 <div>
-                    <Label>Cobro de pedidos hechos por el cliente (QR, web)</Label>
+                    <Label htmlFor="config-prepay-mode">Cobro de pedidos hechos por el cliente (QR, web)</Label>
                     <Select value={r.table_prepay_mode || 'never'} onValueChange={(v) => setR({ ...r, table_prepay_mode: v })}>
-                        <SelectTrigger aria-label="Cuándo se cobra un pedido hecho por el cliente" data-testid="config-prepay-mode"><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="config-prepay-mode" data-testid="config-prepay-mode"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="never">Pago al finalizar — se cocina y se cobra al terminar</SelectItem>
                             <SelectItem value="always">Prepago obligatorio — nada se cocina sin pago confirmado</SelectItem>
@@ -195,7 +197,7 @@ function Marca() {
             });
             setR(data);
             toast.success('Marca guardada');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error al guardar la marca'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error al guardar la marca')); }
         finally { setSaving(false); }
     };
 
@@ -264,8 +266,9 @@ function Marca() {
             </div>
 
             <div>
-                <Label>Descripción pública</Label>
+                <Label htmlFor="marca-descripcion">Descripción pública</Label>
                 <Textarea
+                    id="marca-descripcion"
                     value={r.public_description || ''}
                     onChange={(e) => set({ public_description: e.target.value })}
                     placeholder="Cocina peruana de autor con productos frescos…"
@@ -283,7 +286,7 @@ function Marca() {
             <div className="rounded-xl border border-border p-3 space-y-2">
                 <div className="page-kicker">Página web pública</div>
                 <p className="text-xs text-muted-foreground">
-                    Es el link que compartís con tus clientes para ver la carta, pedir delivery o pasar a recoger.
+                    Es el link que compartes con tus clientes para ver la carta, pedir delivery o pasar a recoger.
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                     <code className="flex-1 min-w-[14rem] truncate rounded-md bg-secondary px-3 py-2 text-xs" data-testid="marca-web-url">{publicUrl}</code>
@@ -316,7 +319,7 @@ function Funciones() {
             notifyFeaturesChanged();
             toast.success('Funciones guardadas');
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron guardar las funciones');
+            toast.error(apiErrorMessage(e, 'No se pudieron guardar las funciones'));
         } finally {
             setSaving(false);
         }
@@ -333,7 +336,7 @@ function Funciones() {
                 </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-                Activá solo lo que vas a usar. Lo que está apagado no se muestra, no se ejecuta ni consume.
+                Activa solo lo que vas a usar. Lo que está apagado no se muestra, no se ejecuta ni consume.
             </p>
             <div className="space-y-2" data-testid="funciones-lista">
                 {FEATURE_DEFS.map((def) => (
@@ -413,7 +416,7 @@ function Datos() {
             setPassword('');
             loadInfo();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo restablecer los datos');
+            toast.error(apiErrorMessage(e, 'No se pudo restablecer los datos'));
         } finally {
             setLoading(false);
         }
@@ -432,13 +435,13 @@ function Datos() {
         try {
             const { data } = await resetCatalogRequest({ confirm: catalogConfirm.trim(), password: catalogPassword });
             const cleared = data?.cleared || {};
-            toast.success(`Carta vaciada: ${cleared.products ?? 0} platos y ${cleared.categories ?? 0} categorías`);
+            toast.success(`Carta vaciada: ${countOf(cleared.products ?? 0, 'plato', 'platos')} y ${countOf(cleared.categories ?? 0, 'categoría', 'categorías')}`);
             setCatalogOpen(false);
             setCatalogConfirm('');
             setCatalogPassword('');
             loadInfo();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo vaciar la carta');
+            toast.error(apiErrorMessage(e, 'No se pudo vaciar la carta'));
         } finally {
             setCatalogLoading(false);
         }
@@ -466,7 +469,7 @@ function Datos() {
                 <>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4" data-testid="system-info">
                         <SystemItem label="Versión" value={info.app_version} />
-                        <SystemItem label="Entorno" value={info.environment} />
+                        <SystemItem label="Entorno" value={ENVIRONMENT_LABELS[info.environment] || info.environment} />
                         <SystemItem label="Base de datos" value={`${info.database?.name} · ${info.database?.connected ? 'conectada' : 'sin conexión'}`} />
                         <SystemItem label="Restaurante" value={info.restaurant?.name || '—'} />
                         <SystemItem label="Zona horaria" value={info.restaurant?.timezone || '—'} />
@@ -477,7 +480,7 @@ function Datos() {
                         <SystemItem
                             label="Claves demo activas"
                             value={(info.demo_password_accounts || []).length
-                                ? `${info.demo_password_accounts.length} cuenta(s)`
+                                ? countOf(info.demo_password_accounts.length, 'cuenta', 'cuentas')
                                 : 'Ninguna'}
                         />
                     </div>
@@ -487,9 +490,9 @@ function Datos() {
                             className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
                             data-testid="demo-passwords-warning"
                         >
-                            Hay {info.demo_password_accounts.length} cuenta(s) con contraseña demo
+                            Hay {countOf(info.demo_password_accounts.length, 'cuenta', 'cuentas')} con contraseña demo
                             ({info.demo_password_accounts.join(', ')}).
-                            Cambialas en <strong>Equipo</strong> antes de abrir el local.
+                            Cámbialas en <strong>Equipo</strong> antes de abrir el local.
                         </p>
                     )}
                     <div className="mt-5 border-t pt-4" data-testid="system-counts">
@@ -497,7 +500,7 @@ function Datos() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             {Object.entries(info.counts || {}).map(([key, value]) => (
                                 <div key={key} className="rounded-lg border border-border px-3 py-2">
-                                    <div className="text-xs text-muted-foreground capitalize">{key}</div>
+                                    <div className="text-xs text-muted-foreground">{RECORD_LABELS[key] || key}</div>
                                     <div className="font-mono font-semibold tabular-nums">{value}</div>
                                 </div>
                             ))}
@@ -542,15 +545,15 @@ function Datos() {
                             registrados conservan su detalle. Esta acción <strong>no se puede deshacer</strong>.
                         </p>
                         <p className="text-muted-foreground">
-                            Si hay pedidos activos el sistema lo rechaza: cerralos o restablecé primero los datos operativos.
+                            Si hay pedidos activos el sistema lo rechaza: ciérralos o restablece primero los datos operativos.
                         </p>
                         <div>
-                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
-                            <Input value={catalogConfirm} onChange={(e) => setCatalogConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="catalog-reset-confirm" />
+                            <Label htmlFor="catalog-reset-confirm">Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input id="catalog-reset-confirm" value={catalogConfirm} onChange={(e) => setCatalogConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="catalog-reset-confirm" />
                         </div>
                         <div>
-                            <Label>Contraseña de administrador</Label>
-                            <Input type="password" value={catalogPassword} onChange={(e) => setCatalogPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="catalog-reset-password" />
+                            <Label htmlFor="catalog-reset-password">Contraseña de administrador</Label>
+                            <Input id="catalog-reset-password" type="password" value={catalogPassword} onChange={(e) => setCatalogPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="catalog-reset-password" />
                         </div>
                     </div>
                     <AlertDialogFooter>
@@ -579,12 +582,12 @@ function Datos() {
                             <strong> se conservan</strong>. Esta acción no se puede deshacer.
                         </p>
                         <div>
-                            <Label>Escribe <strong>ELIMINAR</strong> para confirmar</Label>
-                            <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="data-reset-confirm" />
+                            <Label htmlFor="data-reset-confirm">Escribe <strong>ELIMINAR</strong> para confirmar</Label>
+                            <Input id="data-reset-confirm" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="ELIMINAR" className="mt-1" data-testid="data-reset-confirm" />
                         </div>
                         <div>
-                            <Label>Contraseña de administrador</Label>
-                            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="data-reset-password" />
+                            <Label htmlFor="data-reset-password">Contraseña de administrador</Label>
+                            <Input id="data-reset-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="mt-1" data-testid="data-reset-password" />
                         </div>
                     </div>
                     <AlertDialogFooter>

@@ -50,36 +50,87 @@ describe('compositor · paridad del prototipo (Slice 3)', () => {
         document.body.innerHTML = '';
     });
 
-    it('S3-1 muestra el badge de cantidad cuando hay unidades, sin tocar el stepper', async () => {
+    it('UX-13 shows an inline stepper instead of the badge when the product has units', async () => {
         const order = { id: 'o1', order_number: 9, status: 'nuevo', total: 76 };
         const items = [item('i1', 'p1', 'Sopa', 2, 38)];
         ({ host, root } = await mountComposer({
             order, items, products: [product('p1', 'Sopa', 38)], showKitchen: true, testIdPrefix: 'mesa-sheet',
         }));
 
-        const badge = host.querySelector('[data-testid="mesa-sheet-producto-badge-p1"]');
-        expect(badge).not.toBeNull();
-        expect(badge.textContent).toBe('2');
-        // Contratos del stepper intactos: cantidad, − y + siguen ahí.
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').textContent).toBe('2');
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]')).not.toBeNull();
-        // S9b: el mockup no muestra el stepper en la tarjeta (la resta vive en
-        // el ticket), así que la fila queda oculta pero con sus testids.
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]').closest('.hidden')).not.toBeNull();
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').closest('.hidden')).not.toBeNull();
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-p1"]')).not.toBeNull();
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-badge-p1"]')).toBeNull();
+        const qty = host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]');
+        expect(qty.textContent).toBe('2');
+        const minus = host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]');
+        const plus = host.querySelector('[data-testid="mesa-sheet-producto-p1"]');
+        expect(minus.getAttribute('aria-label')).toBe('Quitar uno de Sopa');
+        expect(plus.getAttribute('aria-label')).toBe('Agregar uno de Sopa');
+        expect(minus.className).toContain('touch-target-coarse');
+        expect(plus.className).toContain('touch-target-coarse');
+        // Visible: no ancestor hides it.
+        expect(minus.closest('.hidden, .invisible')).toBeNull();
+        expect(qty.closest('.hidden, .invisible')).toBeNull();
         expect(host.querySelector('[data-testid="mesa-sheet-producto-nombre-p1"]')).not.toBeNull();
         expect(host.querySelector('[data-testid="mesa-sheet-producto-fila-p1"]')).not.toBeNull();
     });
 
-    it('S3-1 no muestra badge sin unidades', async () => {
+    it('UX-13 reserves the stepper space without showing it when there are no units', async () => {
         const order = { id: 'o1', order_number: 9, status: 'nuevo', total: 0 };
         ({ host, root } = await mountComposer({
             order, items: [], products: [product('p1', 'Sopa', 38)], showKitchen: true, testIdPrefix: 'mesa-sheet',
         }));
 
         expect(host.querySelector('[data-testid="mesa-sheet-producto-badge-p1"]')).toBeNull();
-        expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').textContent).toBe('0');
+        const qty = host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]');
+        expect(qty.textContent).toBe('0');
+        // Same height as with units (no layout jump), but invisible and unfocusable.
+        expect(qty.closest('.invisible')).not.toBeNull();
+        expect(qty.closest('.hidden')).toBeNull();
+    });
+
+    it('UX-13 the + and - buttons reuse the draft callbacks and never trigger the card add twice', async () => {
+        const order = { id: 'o1', order_number: 9, status: 'nuevo', total: 76 };
+        const items = [item('i1', 'p1', 'Sopa', 2, 38)];
+        const onAddProduct = jest.fn();
+        const onRemoveProduct = jest.fn();
+        const p1 = product('p1', 'Sopa', 38);
+        ({ host, root } = await mountComposer({
+            order, items, products: [p1], showKitchen: true, testIdPrefix: 'mesa-sheet', onAddProduct, onRemoveProduct,
+        }));
+
+        await act(async () => host.querySelector('[data-testid="mesa-sheet-producto-p1"]').click());
+        expect(onAddProduct).toHaveBeenCalledTimes(1);
+        expect(onAddProduct).toHaveBeenCalledWith(p1);
+        await act(async () => host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]').click());
+        expect(onRemoveProduct).toHaveBeenCalledTimes(1);
+        expect(onRemoveProduct.mock.calls[0][1].id).toBe('i1');
+        expect(onAddProduct).toHaveBeenCalledTimes(1);
+
+        // Tapping the card still adds one.
+        await act(async () => host.querySelector('[data-testid="mesa-sheet-producto-nombre-p1"]').click());
+        expect(onAddProduct).toHaveBeenCalledTimes(2);
+    });
+
+    it('UX-13 the card stepper only removes draft lines: sent units disable the minus', async () => {
+        const order = { id: 'o1', order_number: 9, status: 'en_preparacion', total: 76 };
+        const items = [item('i1', 'p1', 'Sopa', 2, 38, 'pendiente')];
+        const onRemoveProduct = jest.fn();
+        ({ host, root } = await mountComposer({
+            order, items, products: [product('p1', 'Sopa', 38)], showKitchen: true, testIdPrefix: 'mesa-sheet', onRemoveProduct,
+        }));
+
+        const minus = host.querySelector('[data-testid="mesa-sheet-producto-menos-p1"]');
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-cantidad-p1"]').textContent).toBe('2');
+        expect(minus.disabled).toBe(true);
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-p1"]').disabled).toBe(false);
+    });
+
+    it('UX-13 an unavailable product has no usable +', async () => {
+        const order = { id: 'o1', order_number: 9, status: 'nuevo', total: 0 };
+        ({ host, root } = await mountComposer({
+            order, items: [], products: [{ ...product('p1', 'Sopa', 38), is_available: false }], showKitchen: true, testIdPrefix: 'mesa-sheet',
+        }));
+
+        expect(host.querySelector('[data-testid="mesa-sheet-producto-p1"]').disabled).toBe(true);
     });
 
     it('S3-2 el primer envío lleva el total de la comanda', async () => {

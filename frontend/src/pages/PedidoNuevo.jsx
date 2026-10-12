@@ -13,6 +13,7 @@ import { Plus, Minus, Search, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { useNotify } from '@/contexts/NotifyContext';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function PedidoNuevo() {
     const navigate = useNavigate();
@@ -82,7 +83,7 @@ export default function PedidoNuevo() {
             try {
                 await releaseTable(lockedTableId);
             } catch (e) {
-                const msg = e.response?.data?.detail;
+                const msg = apiErrorMessage(e, '');
                 if (msg) toast.error(msg);
             }
         }
@@ -92,7 +93,7 @@ export default function PedidoNuevo() {
     const submit = async () => {
         if (isTableOrder && !tableId) { toast.error('Falta la mesa'); return; }
         if (orderType === 'delivery' && !customerAddress.trim()) { toast.error('Falta la dirección del envío'); return; }
-        if (cart.length === 0) { toast.error('Agregá al menos un plato'); return; }
+        if (cart.length === 0) { toast.error('Agrega al menos un plato'); return; }
         setLoading(true);
         try {
             const items = cart.map((it) => ({ product_id: it.product.id, quantity: it.quantity, notes: it.notes || null }));
@@ -111,7 +112,7 @@ export default function PedidoNuevo() {
             toast.success(`${where.trim()} enviado a cocina`);
             navigate('/salon', { replace: true });
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar'));
         } finally {
             setLoading(false);
         }
@@ -129,7 +130,7 @@ export default function PedidoNuevo() {
                         <h1 className="font-display text-3xl font-semibold" data-testid="pedido-nuevo-titulo">
                             {!isTableOrder
                                 ? (ORDER_TYPE_LABELS[orderType] || 'Pedido')
-                                : (table ? `Mesa ${table.number}` : 'Elegí una mesa')}
+                                : (table ? `Mesa ${table.number}` : 'Elige una mesa')}
                         </h1>
                     </div>
                 </div>

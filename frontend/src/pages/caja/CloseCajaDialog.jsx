@@ -9,6 +9,7 @@ import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { round2 } from '@/lib/cash';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }) {
     const [closing, setClosing] = useState('');
@@ -23,14 +24,14 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
     const by = register.by_method || {};
     const digital = DIGITAL_METHODS.filter((m) => Number(by[m] || 0) > 0);
     const submit = async () => {
-        if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indicá el efectivo contado'); return; }
+        if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indica el efectivo contado'); return; }
         try {
             const { data } = await runMutation(() => closeCash({ closing_amount: Number(closing), notes }));
             const delta = Number(data.difference || 0);
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
             onOpenChange(false);
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisa tu conexión y reintenta.')); }
     };
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -53,8 +54,8 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
                         </div>
                     )}
                     <div>
-                        <Label>Efectivo contado (S/)</Label>
-                        <Input type="number" min="0" step="0.01" value={closing} onChange={(e) => setClosing(e.target.value)} className="h-11" data-testid="caja-cierre-monto" />
+                        <Label htmlFor="caja-cierre-contado">Efectivo contado (S/)</Label>
+                        <Input id="caja-cierre-contado" type="number" min="0" step="0.01" value={closing} onChange={(e) => setClosing(e.target.value)} className="h-11" data-testid="caja-cierre-monto" />
                     </div>
                     {diff != null && (
                         <div className={`rounded-xl p-3 ${diff < 0 ? 'bg-destructive/10' : 'bg-primary/10'}`} data-testid="caja-cierre-diferencia">
@@ -62,7 +63,7 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
                             <div className="font-display text-2xl font-semibold tabular-nums">{fmtMoney(Math.abs(diff))}</div>
                         </div>
                     )}
-                    <div><Label>Notas</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+                    <div><Label htmlFor="caja-cierre-notas">Notas</Label><Textarea id="caja-cierre-notas" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

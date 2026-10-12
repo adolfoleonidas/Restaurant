@@ -50,7 +50,7 @@ export function ProductCard({ product, children }) {
                         </div>
                     )}
                     {billPending && qty > 0 && (
-                        <div className="text-xs text-amber-700 font-medium">Cuenta solicitada: pedí al mozo para agregar más.</div>
+                        <div className="text-xs text-amber-700 font-medium">Cuenta solicitada: pide al mozo para agregar más.</div>
                     )}
                     <div className="mt-auto pt-2 flex items-center justify-between gap-3">
                         <div className="font-mono text-primary font-bold tabular-nums text-lg">{fmtMoney(product.price)}</div>
@@ -65,10 +65,10 @@ export function ProductCard({ product, children }) {
                                 {agotado ? <span className="sr-only">Agotado</span> : <Plus className="h-4 w-4" />}
                             </Button>
                         ) : (
-                            <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-live-${product.id}`}>
+                            <div className="flex items-center h-11 rounded-full border border-primary/40 bg-card" data-testid={`landing-live-${product.id}`}>
                                 <button
                                     type="button"
-                                    className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
+                                    className="h-11 w-11 flex items-center justify-center text-primary disabled:opacity-40"
                                     onClick={() => decLive(product).catch((e) => toast.error(e.message))}
                                     disabled={pending}
                                     data-testid={`landing-livedec-${product.id}`}
@@ -79,7 +79,7 @@ export function ProductCard({ product, children }) {
                                 <span className="flex-1 text-center font-mono font-semibold tabular-nums">{qty}</span>
                                 <button
                                     type="button"
-                                    className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
+                                    className="h-11 w-11 flex items-center justify-center text-primary disabled:opacity-40"
                                     onClick={() => addLive(product, 1).catch((e) => toast.error(e.message))}
                                     disabled={pending || billPending || agotado}
                                     data-testid={`landing-liveinc-${product.id}`}
@@ -126,10 +126,10 @@ export function ProductCard({ product, children }) {
                             {agotado ? <span className="sr-only">Agotado</span> : <Plus className="h-4 w-4" />}
                         </Button>
                     ) : (
-                        <div className="flex items-center h-10 rounded-full border border-primary/40 bg-card" data-testid={`landing-qty-${product.id}`}>
+                        <div className="flex items-center h-11 rounded-full border border-primary/40 bg-card" data-testid={`landing-qty-${product.id}`}>
                             <button
                                 type="button"
-                                className="h-10 w-10 flex items-center justify-center text-primary"
+                                className="h-11 w-11 flex items-center justify-center text-primary"
                                 onClick={() => updateQty(product.id, cartQty - 1)}
                                 data-testid={`landing-dec-${product.id}`}
                                 aria-label="Quitar"
@@ -139,7 +139,7 @@ export function ProductCard({ product, children }) {
                             <span className="flex-1 text-center font-mono font-semibold tabular-nums">{cartQty}</span>
                             <button
                                 type="button"
-                                className="h-10 w-10 flex items-center justify-center text-primary disabled:opacity-40"
+                                className="h-11 w-11 flex items-center justify-center text-primary disabled:opacity-40"
                                 onClick={() => updateQty(product.id, cartQty + 1)}
                                 disabled={agotado}
                                 data-testid={`landing-inc-${product.id}`}

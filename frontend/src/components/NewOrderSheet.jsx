@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
-import { addOrderItems, createOrder, getOrder, removeOrderItem, sendOrderToKitchen, updateOrderItem } from '@/lib/api/orders';
+import { createOrder, getOrder, sendOrderToKitchen } from '@/lib/api/orders';
+import useOrderLineSync from '@/hooks/useOrderLineSync';
 import { toast } from 'sonner';
 import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import { PersonOrderSummary } from '@/components/OrderSummary';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Compositor único de "Nuevo pedido": las cuatro áreas de venta son pestañas del
@@ -31,7 +33,8 @@ export default function NewOrderSheet({
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
-    const [savingItem, setSavingItem] = useState(false);
+    // Account created by the queue that the state has not shown yet.
+    const createdOrderRef = useRef(null);
 
     const availableTables = useMemo(
         () => (tables || [])
@@ -48,21 +51,29 @@ export default function NewOrderSheet({
         setCustomerName('');
         setCustomerPhone('');
         setCustomerAddress('');
+        createdOrderRef.current = null;
     }, [open]);
 
-    const items = (order?.items || []).filter((i) => i.status !== 'cancelado');
     const isTable = type === 'mesa';
 
-    const reload = async (orderId) => {
+    // Re-reads the order into the sheet; the sync queue asks it to throw on a
+    // dead network, the other callers do not care.
+    const reload = async (orderId, { strict = false } = {}) => {
         try {
             const { data } = await getOrder(orderId);
+            if (data?.id !== orderId) return null;
             setOrder(data);
-        } catch { /* la recarga es best-effort */ }
+            return data;
+        } catch (e) {
+            if (strict) throw e;
+            return null; /* la recarga es best-effort */
+        }
     };
 
     // La orden nace con el primer producto, igual que en la mesa.
     const ensureOrder = async () => {
         if (order?.id) return order.id;
+        if (createdOrderRef.current) return createdOrderRef.current;
         const payload = { order_type: type };
         if (customerName.trim()) payload.customer_name = customerName.trim();
         if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
@@ -74,48 +85,66 @@ export default function NewOrderSheet({
             payload.customer_address = customerAddress.trim();
         }
         const { data } = await createOrder(payload);
+        createdOrderRef.current = data.id;
         setOrder(data);
         return data.id;
     };
 
-    const addProduct = async (product) => {
-        if (!canTake || savingItem) return;
-        setSavingItem(true);
-        try {
-            const orderId = await ensureOrder();
-            if (!orderId) return;
-            await addOrderItems(orderId, [{ product_id: product.id, quantity: 1 }]);
-            await reload(orderId);
-            onCreated?.();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo agregar el producto');
-        } finally {
-            setSavingItem(false);
-        }
+    // Taps update the screen at once and reach the server through a serial queue
+    // (see `useOrderLineSync`), so a quick "+ + +" never loses a unit.
+    const emptyOrder = useMemo(() => ({
+        id: null, status: 'nuevo', items: [], total: 0,
+    }), []);
+    const sync = useOrderLineSync({
+        order,
+        placeholder: emptyOrder,
+        ensureOrderId: ensureOrder,
+        loadOrder: (orderId) => reload(orderId, { strict: true }),
+        onError: (error, entry) => {
+            toast.error(apiErrorMessage(
+                error,
+                entry.kind === 'new' && !entry.lineId ? 'No se pudo agregar el producto' : 'No se pudo cambiar la cantidad'
+            ));
+            if (entry.orderId) void reload(entry.orderId);
+        },
+        onSynced: () => onCreated?.(),
+    });
+    // The order as the waiter sees it: confirmed lines plus the taps on their way.
+    const shownOrder = sync.order;
+    const items = (shownOrder?.items || []).filter((i) => i.status !== 'cancelado');
+
+    const addProduct = (product) => {
+        if (!canTake) return Promise.resolve();
+        return sync.tap(product, 1);
     };
 
-    const changeQty = async (item, delta) => {
-        if (!order?.id || !canTake) return;
-        const next = Number(item.quantity || 1) + delta;
-        try {
-            if (next <= 0) await removeOrderItem(order.id, item.id);
-            else await updateOrderItem(order.id, item.id, { quantity: next });
-            await reload(order.id);
-            onCreated?.();
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo cambiar la cantidad');
-        }
+    const removeProduct = (product, item) => {
+        if (!canTake || !item) return Promise.resolve();
+        return sync.tap(product, -1);
+    };
+
+    const changeQty = (item, delta) => {
+        if (!canTake) return Promise.resolve();
+        return sync.changeLine(item, delta, shownOrder?.id || order?.id || null);
     };
 
     const sendToKitchen = async () => {
-        if (!order?.id || !canTake) return;
+        if (!canTake) return;
+        // Never send a stale draft: wait for the taps still on their way.
+        if (sync.busy()) {
+            const failedBefore = sync.failures();
+            await sync.flush();
+            if (sync.failures() > failedBefore) return;
+        }
+        const orderId = sync.latest()?.id || order?.id;
+        if (!orderId) return;
         try {
-            await sendOrderToKitchen(order.id);
+            await sendOrderToKitchen(orderId);
             toast.success('Enviado a cocina');
             onCreated?.();
             onOpenChange?.(false);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar a cocina');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar a cocina'));
         }
     };
 
@@ -136,7 +165,7 @@ export default function NewOrderSheet({
                                 key={area.key}
                                 type="button"
                                 onClick={() => setType(area.key)}
-                                disabled={Boolean(order) && area.key !== type}
+                                disabled={Boolean(shownOrder) && area.key !== type}
                                 aria-pressed={type === area.key}
                                 data-testid={`nuevo-pedido-tipo-${area.key}`}
                                 className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
@@ -208,24 +237,26 @@ export default function NewOrderSheet({
                                 </div>
                             </details>
                             <OrderComposer
-                                order={order}
+                                order={shownOrder}
                                 items={items}
                                 products={products}
                                 categories={categories}
-                                savingItem={savingItem}
                                 canCompose={canTake}
-                                showKitchen={Boolean(order) && order.status === 'nuevo' && items.length > 0}
+                                showKitchen={Boolean(shownOrder) && shownOrder.status === 'nuevo' && items.length > 0}
                                 testIdPrefix="nuevo-pedido"
                                 onAddProduct={addProduct}
+                                onRemoveProduct={removeProduct}
                                 onSendToKitchen={sendToKitchen}
                             />
-                            {order && (
+                            {shownOrder && (
                                 <PersonOrderSummary
-                                    items={order.items || []}
-                                    orderStatus={order.status}
+                                    items={shownOrder.items || []}
+                                    orderStatus={shownOrder.status}
                                     canEdit={canTake}
-                                    saving={savingItem}
+                                    saving={false}
                                     onChangeQty={changeQty}
+                                    products={products}
+                                    categories={categories}
                                     testIdPrefix="nuevo-pedido"
                                 />
                             )}

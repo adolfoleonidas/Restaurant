@@ -56,7 +56,7 @@ describe('configuration table guest links', () => {
                     : path === '/restaurants/current' ? { name: 'Restaurant' } : null,
         }));
         api.post.mockReset().mockResolvedValue({ data: { ok: true, qr_status: 'revoked' } });
-        confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+        confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true); // must not be used any more
     });
     afterEach(async () => {
         for (const view of [...mountedViews]) await cleanup(view);
@@ -129,11 +129,15 @@ describe('configuration table guest links', () => {
         const view = await renderPage();
         await click('mesa-qr-link-table-a');
         await click('mesa-qr-rotate-table-a');
-        expect(confirmSpy).toHaveBeenCalled();
+        expect(api.post).not.toHaveBeenCalled();
+        expect(document.body.querySelector('[data-testid="confirm-dialog"]')).not.toBeNull();
+        await click('confirm-dialog-confirm');
+        expect(confirmSpy).not.toHaveBeenCalled();
         expect(api.post).toHaveBeenCalledWith('/tables/table-a/qr/rotate');
         expect(document.body.querySelector('[data-testid="mesa-qr-url-table-a"]').value).toContain('new-token');
         expect(document.body.innerHTML).not.toContain('old-token');
         await click('mesa-qr-rotate-table-a');
+        await click('confirm-dialog-confirm');
         expect(document.body.querySelector('[data-testid="mesa-qr-url-table-a"]')).toBeNull();
         expect(document.body.querySelector('[data-testid="mesa-qr-error-table-a"]')).not.toBeNull();
         await cleanup(view);
@@ -147,11 +151,12 @@ describe('configuration table guest links', () => {
         }));
         const view = await renderPage();
         await click('mesa-qr-link-table-a');
-        confirmSpy.mockReturnValueOnce(false);
         await click('mesa-qr-revoke-table-a');
+        await click('confirm-dialog-cancel');
         expect(api.post).not.toHaveBeenCalled();
-        confirmSpy.mockReturnValueOnce(true);
         await click('mesa-qr-revoke-table-a');
+        await click('confirm-dialog-confirm');
+        expect(confirmSpy).not.toHaveBeenCalled();
         expect(api.post).toHaveBeenCalledWith('/tables/table-a/qr/revoke');
         expect(document.body.querySelector('[data-testid="mesa-qr-url-table-a"]')).toBeNull();
         expect(document.body.querySelector('[data-testid="mesa-qr-status-table-a"]').textContent).toContain('QR revocado');

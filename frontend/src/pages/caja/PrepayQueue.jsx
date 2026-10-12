@@ -4,8 +4,10 @@ import useOrderProof from '@/hooks/useOrderProof';
 import ProofPreview from '@/components/ProofPreview';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/apiError';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 const PREPAY_STATE_LABELS = {
     pendiente: 'Esperando el pago del cliente',
@@ -24,6 +26,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
     const [rows, setRows] = useState([]);
     const [loaded, setLoaded] = useState(false);
     const [busy, setBusy] = useState('');
+    const [rejecting, setRejecting] = useState(null);
     const { proof, openProof, closeProof } = useOrderProof();
     const [load, setLoad] = useState(0);
 
@@ -39,7 +42,6 @@ export default function PrepayQueue({ runMutation, onChanged }) {
     const reload = () => setLoad((n) => n + 1);
 
     const decide = async (row, action) => {
-        if (action === 'reject' && !window.confirm(`¿Rechazar el pago del pedido #${row.order_number}? El pedido no va a cocina.`)) return;
         setBusy(`${action}-${row.id}`);
         try {
             await runMutation(() => runPrepayAction(row.id, action));
@@ -49,7 +51,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
             reload();
             onChanged?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo completar la acción');
+            toast.error(apiErrorMessage(e, 'No se pudo completar la acción'));
         } finally {
             setBusy('');
         }
@@ -62,7 +64,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
             <CardContent className="p-4">
                 <h2 className="font-display text-lg font-semibold mb-1">Prepagos por verificar ({rows.length})</h2>
                 <p className="text-xs text-muted-foreground mb-3">
-                    Verificá el pago en tu app antes de confirmar: recién ahí el pedido entra a cocina.
+                    Verifica el pago en tu app antes de confirmar: recién ahí el pedido entra a cocina.
                 </p>
                 <div className="divide-y">
                     {rows.map((row) => (
@@ -75,7 +77,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
                                 </div>
                                 <div className="text-xs text-muted-foreground">
                                     {PREPAY_STATE_LABELS[row.payment_state] || row.payment_state}
-                                    {' · '}{(row.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} ítems
+                                    {' · '}{countOf((row.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 'ítem', 'ítems')}
                                     {row.customer_name ? ` · ${row.customer_name}` : ''}
                                 </div>
                             </div>
@@ -87,7 +89,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
                                 <Button size="sm" className="h-11 w-full" disabled={!!busy} onClick={() => decide(row, 'confirm')} data-testid={`caja-prepago-confirmar-${row.order_number}`}>
                                     {busy === `confirm-${row.id}` ? 'Registrando…' : 'Confirmar pago'}
                                 </Button>
-                                <Button size="sm" variant="outline" className="h-11 w-full" disabled={!!busy} onClick={() => decide(row, 'reject')} data-testid={`caja-prepago-rechazar-${row.order_number}`}>Rechazar</Button>
+                                <Button size="sm" variant="outline" className="h-11 w-full" disabled={!!busy} onClick={() => setRejecting(row)} data-testid={`caja-prepago-rechazar-${row.order_number}`}>Rechazar</Button>
                             </div>
                         </div>
                     ))}
@@ -102,6 +104,14 @@ export default function PrepayQueue({ runMutation, onChanged }) {
                     </div>
                 )}
             </CardContent>
+            <ConfirmDialog
+                open={Boolean(rejecting)}
+                title={`¿Rechazar el pago del pedido #${rejecting?.order_number}?`}
+                description="El pedido no va a cocina."
+                confirmLabel="Rechazar"
+                onCancel={() => setRejecting(null)}
+                onConfirm={() => { const row = rejecting; setRejecting(null); decide(row, 'reject'); }}
+            />
         </Card>
     );
 }

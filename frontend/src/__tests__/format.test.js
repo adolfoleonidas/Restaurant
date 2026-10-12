@@ -17,14 +17,14 @@ describe('format helpers', () => {
         expect(fmtTime(ISO)).toBe(new Date(ISO).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }));
     });
 
-    test('fmtDateFull is the plain es-PE locale string and accepts a Date', () => {
-        expect(fmtDateFull(ISO)).toBe(new Date(ISO).toLocaleString('es-PE'));
+    test('fmtDateFull shares the single date-time format and accepts a Date', () => {
+        expect(fmtDateFull(ISO)).toBe(fmtDateTime(ISO));
         const now = new Date();
-        expect(fmtDateFull(now)).toBe(now.toLocaleString('es-PE'));
+        expect(fmtDateFull(now)).toBe(fmtDateTime(now));
     });
 
-    test('fmtDateTimeShort uses short date and medium time, dash when empty', () => {
-        expect(fmtDateTimeShort(ISO)).toBe(new Date(ISO).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }));
+    test('fmtDateTimeShort shares the single date-time format, dash when empty', () => {
+        expect(fmtDateTimeShort(ISO)).toBe(fmtDateTime(ISO));
         expect(fmtDateTimeShort(null)).toBe('—');
         expect(fmtDateTimeShort('')).toBe('—');
     });

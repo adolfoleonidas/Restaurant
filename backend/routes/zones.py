@@ -103,7 +103,7 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
         zone_filter["branch_id"] = z.get("branch_id")
     zone_result = await db.zones.update_one(zone_filter, {"$set": update})
     if getattr(zone_result, "matched_count", 0) != 1:
-        raise HTTPException(status_code=409, detail="La zona cambió; volvé a cargarla")
+        raise HTTPException(status_code=409, detail="La zona cambió; vuelve a cargarla")
     
     # Propagate name change to tables
     if "name" in update and update["name"] != z["name"]:

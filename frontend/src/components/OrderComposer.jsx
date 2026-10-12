@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { setOrderNotes } from '@/lib/api/orders';
+import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
 import { fmtMoney } from '@/lib/format';
 import { setSoundEnabled, soundEnabled, tick } from '@/lib/feedback';
@@ -34,7 +35,7 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
             await setOrderNotes(order.id, { notes: next });
         } catch (e) {
             setNoteDraft(order.notes || '');
-            toast.error(e.response?.data?.detail || 'No se pudo guardar la nota');
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la nota'));
         }
     };
 
@@ -63,7 +64,7 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
  * Carta para componer un pedido sin salir del panel.
  *
  * La disposición sigue la del prototipo de referencia: buscador, categorías como
- * pestañas, cada plato como tarjeta con su stepper `− n +` siempre visible, y un
+ * pestañas, cada plato como tarjeta con su stepper `− n +` cuando ya está en la cuenta, y un
  * pie pegajoso con lo que se lleva la cuenta y la acción de enviar. El pie es el
  * que evita que el mozo tenga que subir a buscar el botón después de agregar.
  *
@@ -217,17 +218,6 @@ export default function OrderComposer({
                                 data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
                                 className={`relative flex min-h-[84px] flex-col rounded-xl border bg-card p-3 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
                             >
-                                {/* Badge del prototipo (`.q`): indicador persistente
-                                    arriba a la derecha, solo cuando hay unidades. */}
-                                {qty > 0 && (
-                                    <span
-                                        aria-hidden="true"
-                                        data-testid={`${testIdPrefix}-producto-badge-${p.id}`}
-                                        className="pointer-events-none absolute right-2 top-2 grid h-6 min-w-6 place-items-center rounded-full bg-primary px-1 text-[13px] font-extrabold leading-none text-primary-foreground"
-                                    >
-                                        {qty}
-                                    </span>
-                                )}
                                 {/* La tarjeta entera agrega, como el `.p` del mockup:
                                     nombre a dos líneas y precio debajo. */}
                                 <button
@@ -237,22 +227,23 @@ export default function OrderComposer({
                                     data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
                                     className="flex w-full flex-1 min-w-0 flex-col justify-between gap-1.5 text-left"
                                 >
-                                    <span className="line-clamp-2 pr-6 text-sm font-semibold leading-snug">{p.name}</span>
+                                    <span className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</span>
                                     <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
                                 </button>
-                                {/* El stepper del mockup no vive en la tarjeta: la resta
-                                    está en el ticket. Se conserva oculto para no romper
-                                    los contratos de testid existentes. */}
-                                <div className="hidden mt-2 items-center justify-between">
+                                {/* Stepper en línea: aparece cuando el producto ya está en la
+                                    cuenta. La fila siempre ocupa su alto (invisible sin unidades)
+                                    para que la tarjeta no salte al agregar el primero. "−" sólo
+                                    toca el borrador; lo ya enviado se anula desde el resumen. */}
+                                <div className={`mt-2 flex items-center justify-between ${qty > 0 ? '' : 'invisible'}`}>
                                     <button
                                         type="button"
                                         disabled={busy || qty === 0 || !target}
-                                        onClick={() => remove(p, target)}
+                                        onClick={(e) => { e.stopPropagation(); remove(p, target); }}
                                         aria-label={`Quitar uno de ${p.name}`}
                                         data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                                        className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
                                     >
-                                        <Minus className="h-3.5 w-3.5" />
+                                        <Minus className="h-4 w-4" />
                                     </button>
                                     <span
                                         className={`text-sm font-bold tabular-nums ${qty > 0 ? '' : 'text-muted-foreground'} ${pulse === p.id ? 'composer-pulse' : ''}`}
@@ -263,12 +254,12 @@ export default function OrderComposer({
                                     <button
                                         type="button"
                                         disabled={busy}
-                                        onClick={() => add(p)}
+                                        onClick={(e) => { e.stopPropagation(); add(p); }}
                                         aria-label={`Agregar uno de ${p.name}`}
                                         data-testid={`${testIdPrefix}-producto-${p.id}`}
-                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                                        className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
                                     >
-                                        <Plus className="h-3.5 w-3.5" />
+                                        <Plus className="h-4 w-4" />
                                     </button>
                                 </div>
                             </div>

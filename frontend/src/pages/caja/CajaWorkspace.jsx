@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StateBadge } from '@/components/StateBadge';
-import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { Wallet, DollarSign, Lock, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -24,6 +24,7 @@ import OpenCajaCard from '@/pages/caja/OpenCajaCard';
 import CloseCajaDialog from '@/pages/caja/CloseCajaDialog';
 import MovementCard from '@/pages/caja/MovementCard';
 import CajaKpis from '@/pages/caja/CajaKpis';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams = {}, selectedBranchId = null, branches = [], canOpen = true, runMutation, onCollectionChange }) {
     const [params] = useSearchParams();
@@ -42,10 +43,10 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         const options = scopeOptions(baseParams);
         return apiGet(path, options);
     }, [scopeOptions]);
-    const { data: register, loading, refetch: refetchReg } = usePolling(
+    const { data: register, error: registerError, loading, refetch: refetchReg } = usePolling(
         () => scopedGet('/cash/current').then((r) => r.data), 12000, [generation, contextKey]
     );
-    const { data: pending, refetch: refetchPending } = usePolling(
+    const { data: pending, error: pendingError, refetch: refetchPending } = usePolling(
         () => scopedGet('/orders', { active_only: true }).then((r) => r.data),
         12000,
         [generation, contextKey]
@@ -127,7 +128,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
             toast.success(`Pedido #${order.order_number}: pago web confirmado`);
             refetchPending();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo confirmar');
+            toast.error(apiErrorMessage(e, 'No se pudo confirmar'));
         }
     };
 
@@ -143,6 +144,25 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         );
     }
 
+    const loadFailure = registerError || pendingError;
+    const retryLoad = () => { refetchReg(); refetchPending(); };
+    const loadErrorBanner = loadFailure ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm" data-testid="caja-error">
+            <span className="font-medium">
+                No se pudo leer la caja. {(loadFailure.response && apiErrorMessage(loadFailure, '')) || 'Los datos pueden estar desactualizados.'}
+            </span>
+            <Button variant="outline" className="h-11" onClick={retryLoad} data-testid="caja-error-reintentar">Reintentar</Button>
+        </div>
+    ) : null;
+
+    // Sin poder leer la caja no se sabe si está abierta: ofrecer "abrir caja" sería mentir.
+    if (!register && registerError) return (
+        <div className="space-y-4" data-testid="caja-root">
+            <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
+            {loadErrorBanner}
+        </div>
+    );
+
     if (!register) return (
         <div className="space-y-4" data-testid="caja-root">
             <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
@@ -154,7 +174,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                 <Card data-testid="caja-cuentas-cerradas">
                     <CardContent className="p-4">
                         <h2 className="font-display text-lg font-semibold mb-1">Cuentas esperando tu turno ({cobrables.length})</h2>
-                        <p className="text-xs text-muted-foreground mb-3">Abrí la caja para cobrarlas.</p>
+                        <p className="text-xs text-muted-foreground mb-3">Abre la caja para cobrarlas.</p>
                         <div className="divide-y opacity-70">
                             {cobrables.slice(0, 8).map((o) => (
                                 <div key={o.id} className="py-2 flex items-center justify-between gap-3 text-sm">
@@ -176,6 +196,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
 
     return (
         <div className="space-y-5" data-testid="caja-root">
+            {loadErrorBanner}
             <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><Wallet className="h-6 w-6 text-primary" /> Caja</h1>
@@ -227,7 +248,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {countOf((o.items || []).length, 'ítem', 'ítems')}</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>
@@ -255,7 +276,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                             <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-pedido-${o.order_number}`}>
                                 <div className="min-w-0">
                                     <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
-                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {(o.items || []).length} ítems</div>
+                                    <div className="text-xs text-muted-foreground">{fmtTime(o.created_at)} · {elapsedMinutes(o.created_at)} min · {countOf((o.items || []).length, 'ítem', 'ítems')}</div>
                                 </div>
                                 <div className="text-right shrink-0">
                                     <div className="font-display text-xl font-bold tabular-nums">{fmtMoney(o.total)}</div>

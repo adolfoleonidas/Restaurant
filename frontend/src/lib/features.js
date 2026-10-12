@@ -26,7 +26,7 @@ export const FEATURE_DEFS = [
     {
         key: 'voice_queries',
         label: 'Consultas al asistente',
-        description: 'Responde preguntas como "¿qué pedidos faltan?" usando datos que ya podés ver.',
+        description: 'Responde preguntas como "¿qué pedidos faltan?" usando datos que ya puedes ver.',
     },
     {
         key: 'item_void',

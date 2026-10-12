@@ -1,5 +1,8 @@
 export const CURRENCY = 'S/';
 
+/** "1 plato" / "3 platos": the count with its noun in agreement. */
+export const countOf = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
+
 export const fmtMoney = (n) => {
     const v = Number(n || 0);
     return `${CURRENCY} ${v.toFixed(2)}`;
@@ -26,14 +29,13 @@ export const fmtDateTime = (iso) => {
     } catch (e) { return ''; }
 };
 
-/** Plain es-PE date and time ("4/3/2026, 10:07:09"). Accepts an ISO string or a Date. */
-export const fmtDateFull = (value) => new Date(value).toLocaleString('es-PE');
+/** Same date-time format as fmtDateTime ("04/03/2026, 10:07"). Accepts an ISO string or a Date. */
+export const fmtDateFull = (value) => fmtDateTime(value);
 
-/** Short date with medium time, for server timestamps. Dash when empty; falls back to the raw value. */
+/** Same format for server timestamps. Dash when empty; falls back to the raw value. */
 export const fmtDateTimeShort = (iso) => {
     if (!iso) return '—';
-    try { return new Date(iso).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'medium' }); }
-    catch (e) { return iso; }
+    return fmtDateTime(iso) || iso;
 };
 
 /** Weekday heading used to group history by day ("mié, 04 mar"). Dash when empty. */

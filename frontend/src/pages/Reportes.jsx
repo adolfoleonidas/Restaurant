@@ -18,7 +18,7 @@ function exportCsv(data) {
     rows.push(['Total ventas', data.total_sales]);
     rows.push(['Pedidos pagados', data.orders_count]);
     rows.push(['Ticket promedio', data.avg_ticket]);
-    rows.push(['Cancelados', data.cancelled_orders]);
+    rows.push(['Anulados', data.cancelled_orders]);
     rows.push([]);
     rows.push(['Ventas por día']);
     rows.push(['Fecha', 'Monto']);
@@ -129,9 +129,10 @@ function ReportesView({ userKey, isOwner }) {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap min-w-0">
                     {isOwner && (
-                        <label className="flex flex-col gap-1 text-sm min-w-0">
+                        <label htmlFor="reportes-branch-context" className="flex flex-col gap-1 text-sm min-w-0">
                             Contexto de sucursal
                             <select
+                                id="reportes-branch-context"
                                 data-testid="reportes-branch-context"
                                 className="h-11 w-full min-w-0 sm:min-w-52 rounded-md border border-border bg-background px-3"
                                 value={context}
@@ -210,7 +211,7 @@ function ReportesView({ userKey, isOwner }) {
                         </CardContent></Card>
                         <Card><CardContent className="p-5">
                             <div className="flex items-center justify-between gap-2 min-w-0">
-                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Cancelados</div>
+                                <div className="min-w-0"><div className="text-xs uppercase text-muted-foreground tracking-wide">Anulados</div>
                                     <div className="font-display text-xl sm:text-2xl font-semibold tabular-nums mt-1">{data.cancelled_orders}</div></div>
                                 <Ban className="h-6 w-6 text-destructive shrink-0" />
                             </div>

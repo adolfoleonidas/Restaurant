@@ -151,7 +151,7 @@ def test_transfer_refuses_a_paid_destination_and_a_grouped_source(monkeypatch):
         with pytest.raises(HTTPException) as joined:
             await table_routes.transfer_table("table-a", TableTransfer(target_table_id="table-b"), _user())
         assert joined.value.status_code == 409
-        assert "separá las mesas" in joined.value.detail
+        assert "separa las mesas" in joined.value.detail
         assert grouped.tables.writes == []
     asyncio.run(run())
 

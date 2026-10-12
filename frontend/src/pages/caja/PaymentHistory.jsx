@@ -16,9 +16,12 @@ import { ACTIONS, can } from '@/lib/permissions';
 import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import { accountLabel } from '@/lib/cash';
+import { apiErrorMessage } from '@/lib/apiError';
+import useRestaurantName from '@/hooks/useRestaurantName';
 
 export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     const { user } = useAuth();
+    const restaurantName = useRestaurantName();
     const scopeOptions = useCallback(() => Object.keys(scopeParams).length ? { params: scopeParams } : undefined, [scopeParams]);
     const canVoid = can(user, ACTIONS.CASH_VOID);
     const [period, setPeriod] = useState('day');
@@ -42,7 +45,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
             order = data;
         } catch { /* payment still reprints from its own lines */ }
         const ok = printCajaReceipt({
-            restaurantName: 'Sabor Peruano',
+            restaurantName,
             label: order ? accountLabel(order) : `Pedido #${p.order_number}`,
             order: order || { order_number: p.order_number, items: [] },
             payment: p,
@@ -50,7 +53,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                 ? p.lines.map((l) => ({ product_name: l.name, quantity: l.quantity, unit_price: 0, pay_qty: l.quantity }))
                 : order?.items,
         });
-        if (!ok) toast.error('El navegador bloqueó la ventana. Permití popups para imprimir.');
+        if (!ok) toast.error('El navegador bloqueó la ventana. Permite popups para imprimir.');
     };
 
     const submitVoid = async () => {
@@ -75,7 +78,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
             setVoidReason('');
             setReload((n) => n + 1);
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo registrar');
+            toast.error(apiErrorMessage(e, 'No se pudo registrar'));
         }
     };
 
@@ -186,8 +189,8 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                                                 ? 'Devolución: el cliente recibe el dinero. El cobro queda registrado como devuelto, no se borra.'
                                                 : 'Anulación: corrección de un cobro mal registrado. El cobro queda en el historial, no se elimina.'}
                                         </p>
-                                        <Label>Motivo</Label>
-                                        <Textarea value={voidReason} onChange={(e) => setVoidReason(e.target.value)} data-testid="caja-anular-motivo" />
+                                        <Label htmlFor="caja-anular-motivo">Motivo</Label>
+                                        <Textarea id="caja-anular-motivo" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} data-testid="caja-anular-motivo" />
                                         <div className="flex gap-2">
                                             <Button variant="outline" onClick={() => { setVoidKind(null); setVoidReason(''); }}>Cancelar</Button>
                                             <Button onClick={submitVoid} data-testid="caja-anular-confirmar">Registrar</Button>

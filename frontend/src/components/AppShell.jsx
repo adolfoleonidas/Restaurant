@@ -97,7 +97,7 @@ const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
     return (
         <div className="flex h-full flex-col bg-card">
             <div className="px-5 py-5 border-b border-border">
-                <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
+                <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
                 <NavItems items={main} onNav={onNav} readyCount={readyCount} />
@@ -215,6 +215,12 @@ export const AppShell = () => {
     return (
         <NotifyProvider>
         <div className="min-h-dvh flex bg-background">
+            <a
+                href="#contenido"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-sm focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+                Saltar al contenido
+            </a>
             <aside className="hidden md:flex w-64 shrink-0 border-r border-border">
                 <SidebarContent user={user} restaurant={restaurant} readyCount={readyCount} />
             </aside>
@@ -271,7 +277,7 @@ export const AppShell = () => {
                 {/* Sin utilidades de padding inferior: el hueco de la barra
                     inferior lo pone `.has-bottom-nav`, que vive en la capa
                     `components` y perdería contra un `p-*` de `utilities`. */}
-                <main className="has-bottom-nav flex-1 px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
+                <main id="contenido" tabIndex={-1} className="has-bottom-nav flex-1 focus:outline-none px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
                     <Suspense fallback={<RouteLoading />}>
                         <Outlet />
                     </Suspense>
@@ -282,7 +288,13 @@ export const AppShell = () => {
 
             {/* En móvil la barra inferior tapa los avisos si quedan pegados al
                 borde, así que se levantan por encima de ella. */}
-            <Toaster position="bottom-center" offset={24} mobileOffset={{ top: 16, right: 16, bottom: 84, left: 16 }} />
+            {/* Toasts stack under the header: the bottom of the screen holds the
+                thumb-reach actions (bottom nav, fixed kitchen-send/new-order bar). */}
+            <Toaster
+                position="top-center"
+                offset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)' }}
+                mobileOffset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)', right: 16, left: 16 }}
+            />
         </div>
         </NotifyProvider>
     );

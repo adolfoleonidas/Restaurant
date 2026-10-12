@@ -224,7 +224,7 @@ def _parse_int(raw, default, low, high):
 @router.post("/{product_id}/availability")
 async def set_availability(product_id: str, data: ProductAvailability, user: dict = Depends(get_current_user)):
     if not (user.get("role") in ("admin", "cocina") or user.get("can_mark_sold_out")):
-        raise HTTPException(status_code=403, detail="No tenés permiso para marcar agotado")
+        raise HTTPException(status_code=403, detail="No tienes permiso para marcar agotado")
     prod = await db.products.find_one({"id": product_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     if not prod:
         raise HTTPException(status_code=404, detail="Producto no encontrado")

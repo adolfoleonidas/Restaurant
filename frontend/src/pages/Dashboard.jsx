@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { toast } from 'sonner';
 import { ACTIONS, can } from '@/lib/permissions';
 import { AlertTriangle, ArrowRight, ChefHat, Clock, Wallet } from 'lucide-react';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function Dashboard() {
     const { user } = useAuth();
@@ -174,7 +175,7 @@ function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
             setNote('');
             setParams({});
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo resolver');
+            toast.error(apiErrorMessage(e, 'No se pudo resolver'));
         }
     };
 

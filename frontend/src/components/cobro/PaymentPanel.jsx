@@ -21,7 +21,7 @@ export default function PaymentPanel({
     chargeAmount, coarsePointer, collectionConfig, collectionConfigError,
     copyText, doPrint, handleKeypadPress, handlePreset, quickCash,
     md, method, netError, onChargeRest,
-    onNextAccount, open, paid, payMode,
+    onNextAccount, open, paid, paidAmount, payMode,
     proofAlreadySent, proofError, proofIntent, proofRefreshError,
     proofRefreshPending, proofSending, proofSent, received,
     remaining, removeSplit, result, retryOrderRefresh,
@@ -36,7 +36,7 @@ export default function PaymentPanel({
             <div className="pay-hero">
                 <div>
                     <small>{result ? 'Total pagado' : payMode === 'equal' ? 'Parte por cobrar' : 'Por cobrar'}</small>
-                    <output className="amount" aria-live="polite">{fmtMoney(chargeAmount)}</output>
+                    <output className="amount" aria-live="polite">{fmtMoney(result && paidAmount != null ? paidAmount : chargeAmount)}</output>
                 </div>
                 {scopeCaption && <span className="cap">{scopeCaption}</span>}
             </div>
@@ -46,6 +46,7 @@ export default function PaymentPanel({
                 proofIntent={proofIntent}
                 proofSent={proofSent}
                 selectMethod={selectMethod}
+                locked={Boolean(result)}
             />
 
             {/* Payment Details */}
@@ -101,6 +102,7 @@ export default function PaymentPanel({
 
                 <TransferPanel
                     method={method}
+                    transfer={collectionConfig?.transfer}
                 />
 
                 <MixedPanel

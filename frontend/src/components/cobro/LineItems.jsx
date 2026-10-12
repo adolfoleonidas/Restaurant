@@ -1,5 +1,5 @@
 import React from 'react';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, countOf } from '@/lib/format';
 import { ChevronDown } from 'lucide-react';
 
 /**
@@ -14,9 +14,9 @@ export default function LineItems({
             {/* Order heading */}
             <div className="order-heading">
                 <h2 className="section-heading">Detalle de la cuenta</h2>
-                <span className="item-count">{(acct.items || []).length} items</span>
+                <span className="item-count">{countOf((acct.items || []).length, 'ítem', 'ítems')}</span>
                 <button className="detail-toggle" aria-expanded={detailOpen} onClick={() => setDetailOpen(!detailOpen)}>
-                    <span>{detailOpen ? 'Ocultar' : `Ver ${(acct.items || []).length} items`}</span>
+                    <span>{detailOpen ? 'Ocultar' : `Ver ${countOf((acct.items || []).length, 'ítem', 'ítems')}`}</span>
                     <ChevronDown style={{ width: 16, height: 16 }} />
                 </button>
             </div>
@@ -27,7 +27,7 @@ export default function LineItems({
                     <thead>
                         <tr>
                             <th>{payMode === 'items' ? 'Sel.' : 'Cant.'}</th>
-                            <th>Descripcion</th>
+                            <th>Descripción</th>
                             <th>Importe</th>
                         </tr>
                     </thead>

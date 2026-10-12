@@ -12,7 +12,7 @@ export default function MoveVisitDialog({ transferSource, setTransferSource, tra
                 <div className="space-y-4 py-2">
                     {transferSource && (
                         <div className="rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-sm" data-testid="mover-pedido-origen">
-                            Mesa <strong>{transferSource.number}</strong> → elegí la mesa destino.
+                            Mesa <strong>{transferSource.number}</strong> → elige la mesa destino.
                             El pedido y su visita se mueven completos; Mesa {transferSource.number} queda libre.
                         </div>
                     )}

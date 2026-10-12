@@ -43,10 +43,16 @@ export const PublicLayout = () => {
     // en lugar del pb-24 fijo, que quedaba corto bajo la barra de gestos.
     return (
         <div className={`min-h-dvh flex flex-col bg-background ${showDock ? 'pb-[calc(var(--bottom-nav-h)+var(--safe-bottom)+1rem)] md:pb-0' : ''}`}>
+            <a
+                href="#contenido"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-sm focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+                Saltar al contenido
+            </a>
             <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur-md">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-3">
                     <Link to="/" className="min-w-0">
-                        <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Carta · Barranco" compact />
+                        <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Carta" compact />
                     </Link>
                     <div className="flex items-center gap-3">
                         <ThemeToggle />
@@ -98,7 +104,7 @@ export const PublicLayout = () => {
                 </div>
             )}
 
-            <main className="flex-1">
+            <main id="contenido" tabIndex={-1} className="flex-1 focus:outline-none">
                 <Outlet />
             </main>
 

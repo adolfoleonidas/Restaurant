@@ -32,6 +32,7 @@ import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { isDraft } from '@/lib/orderDraft';
+import { apiErrorMessage } from '@/lib/apiError';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -143,7 +144,7 @@ export default function PedidoDetalle() {
         try {
             await addOrderItems(order.id, [{ product_id: product.id, quantity: 1 }]);
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error al agregar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error al agregar')); }
     };
 
     const sendToKitchen = async () => {
@@ -151,7 +152,7 @@ export default function PedidoDetalle() {
             await sendOrderToKitchen(order.id);
             toast.success('Enviado a cocina');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     // Lo que sigue en borrador se quita; lo que cocina ya recibió se anula, para
@@ -166,15 +167,15 @@ export default function PedidoDetalle() {
                 toast.success(`${it.product_name} anulado`);
             }
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const serve = async () => {
         try {
             await serveOrder(order.id);
-            toast.success('Servido. La cuenta sigue abierta.');
+            toast.success('Entregado. La cuenta sigue abierta.');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const requestBill = async () => {
@@ -182,7 +183,7 @@ export default function PedidoDetalle() {
             await setOrderStatus(order.id, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
             navigate('/salon');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const reassign = async (waiterId) => {
@@ -190,7 +191,7 @@ export default function PedidoDetalle() {
             await reassignOrder(order.id, { waiter_id: waiterId });
             toast.success('Mozo reasignado. Cocina no se reinicia.');
             await refetch();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo reasignar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo reasignar')); }
     };
 
     const doCancel = async () => {
@@ -198,9 +199,9 @@ export default function PedidoDetalle() {
         try {
             await setOrderStatus(order.id, { status: 'cancelado', reason: cancelReason });
             setCancelDlg(false);
-            toast.success('Pedido cancelado');
+            toast.success('Pedido anulado');
             navigate('/salon');
-        } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     const openCollection = async () => {
@@ -239,7 +240,7 @@ export default function PedidoDetalle() {
         entregado: 'Entregado',
         pendiente_pago: 'Cuenta solicitada',
         pagado: 'Pagado',
-        cancelado: 'Cancelado',
+        cancelado: 'Anulado',
     }[order.status] || order.status;
 
     return (
@@ -418,7 +419,7 @@ export default function PedidoDetalle() {
                     </Button>
                 )}
                 {!locked && can(user, ACTIONS.ORDER_CANCEL) && (
-                    <Button variant="ghost" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button">
+                    <Button variant="outline" onClick={() => setCancelDlg(true)} className="w-full h-12 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" data-testid="pedido-cancelar-button">
                         <Ban className="h-4 w-4 mr-2" />Anular pedido
                     </Button>
                 )}

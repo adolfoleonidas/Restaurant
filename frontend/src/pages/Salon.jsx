@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
-import { ACTIONS, can } from '@/lib/permissions';
+import { ACTIONS, can, canAccessRoute } from '@/lib/permissions';
 import FloorFilters from './salon/FloorFilters';
 import FloorGrid from './salon/FloorGrid';
 import JoinBar from './salon/JoinBar';
@@ -144,6 +144,7 @@ export default function Salon() {
                     setSearch={floorView.setSearch}
                     navigate={navigate}
                     canTake={canTake}
+                    canGoKitchen={canAccessRoute(user, '/cocina')}
                     selectMode={selection.selectMode}
                     startSelection={selection.startSelection}
                     openAreas={openAreas}

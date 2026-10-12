@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { createTableGroup, deleteTableGroup, removeTableGroupMember } from '@/lib/api/tables';
 import { selectionProblem } from '@/lib/tableGroups';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * "Unir mesas": picking tables on the floor, joining them into a group and
@@ -51,7 +52,7 @@ export default function useTableSelection({
                                 await deleteTableGroup(groupId);
                                 toast.success('Mesas separadas');
                             } catch (e) {
-                                toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
+                                toast.error(apiErrorMessage(e, 'No se pudieron separar las mesas'));
                             } finally {
                                 refreshAll();
                             }
@@ -64,7 +65,7 @@ export default function useTableSelection({
             cancelSelection();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron unir las mesas');
+            toast.error(apiErrorMessage(e, 'No se pudieron unir las mesas'));
             refreshAll();
         } finally {
             setJoining(false);
@@ -79,7 +80,7 @@ export default function useTableSelection({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
+            toast.error(apiErrorMessage(e, 'No se pudieron separar las mesas'));
             refreshAll();
         }
     };
@@ -92,7 +93,7 @@ export default function useTableSelection({
             closeSheet();
             refreshAll();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo separar la mesa');
+            toast.error(apiErrorMessage(e, 'No se pudo separar la mesa'));
             refreshAll();
         }
     };
