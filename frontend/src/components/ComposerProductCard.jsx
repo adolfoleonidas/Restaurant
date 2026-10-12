@@ -15,7 +15,6 @@ function ComposerProductCard({
     out,
     busy,
     canRemove,
-    pulsing,
     testIdPrefix,
     onAdd,
     onRemove,
@@ -24,7 +23,7 @@ function ComposerProductCard({
     return (
         <div
             data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-            className={`relative flex min-h-[84px] flex-col rounded-xl border bg-card p-3 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulsing ? 'composer-pulse' : ''}`}
+            className={`composer-card relative flex min-h-[84px] touch-manipulation flex-col rounded-xl border bg-card p-3 ${out ? 'opacity-50' : 'hover:border-primary/60'}`}
         >
             {/* La tarjeta entera agrega, como el `.p` del mockup:
                 nombre a dos líneas y precio debajo. */}
@@ -33,7 +32,7 @@ function ComposerProductCard({
                 disabled={busy}
                 onClick={() => onAdd(p)}
                 data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
-                className="flex w-full flex-1 min-w-0 flex-col justify-between gap-1.5 text-left"
+                className="flex w-full flex-1 min-w-0 touch-manipulation flex-col justify-between gap-1.5 text-left"
             >
                 <span className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</span>
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
@@ -49,12 +48,12 @@ function ComposerProductCard({
                     onClick={(e) => { e.stopPropagation(); onRemove(p); }}
                     aria-label={`Quitar uno de ${p.name}`}
                     data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                    className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
                 >
                     <Minus className="h-4 w-4" />
                 </button>
                 <span
-                    className={`text-sm font-bold tabular-nums ${qty > 0 ? '' : 'text-muted-foreground'} ${pulsing ? 'composer-pulse' : ''}`}
+                    className={`text-sm font-bold tabular-nums ${qty > 0 ? '' : 'text-muted-foreground'}`}
                     data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
                 >
                     {qty}
@@ -65,7 +64,7 @@ function ComposerProductCard({
                     onClick={(e) => { e.stopPropagation(); onAdd(p); }}
                     aria-label={`Agregar uno de ${p.name}`}
                     data-testid={`${testIdPrefix}-producto-${p.id}`}
-                    className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
                 >
                     <Plus className="h-4 w-4" />
                 </button>

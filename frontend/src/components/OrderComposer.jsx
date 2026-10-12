@@ -69,8 +69,8 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
  * pie pegajoso con lo que se lleva la cuenta y la acción de enviar. El pie es el
  * que evita que el mozo tenga que subir a buscar el botón después de agregar.
  *
- * Cada toque responde al instante: el número cambia, la tarjeta da un pulso breve
- * y (si el sonido está activo) suena un clic seco.
+ * Cada toque responde al instante: el número cambia, la tarjeta se hunde mientras
+ * se toca (CSS) y (si el sonido está activo) suena un clic seco.
  */
 export default function OrderComposer({
     order = null,
@@ -97,8 +97,6 @@ export default function OrderComposer({
     const [search, setSearch] = useState('');
     const [categoryId, setCategoryId] = useState('all');
     const [sound, setSound] = useState(soundEnabled);
-    const [pulse, setPulse] = useState(null);
-    const pulseTimer = useRef(null);
 
     const lines = useMemo(
         () => (items || (order?.items || [])).filter((i) => !isCancelled(i)),
@@ -139,8 +137,6 @@ export default function OrderComposer({
         })
         .sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1))), [products, categoryId, search, hideUnavailable]);
 
-    useEffect(() => () => clearTimeout(pulseTimer.current), []);
-
     const label = title || (order
         ? (order.customer_name ? `Agregar a ${order.customer_name}` : `Agregar a la cuenta #${order.order_number}`)
         : 'Agregar productos');
@@ -149,22 +145,16 @@ export default function OrderComposer({
     // (Nuevo pedido), sale de las mismas reglas de `sendAction`.
     const sendButtonLabel = sendLabel || sendAction(lines, order)?.label || 'Enviar a cocina';
 
-    const flash = useCallback((productId) => {
-        setPulse(productId);
-        clearTimeout(pulseTimer.current);
-        pulseTimer.current = setTimeout(() => setPulse(null), 260);
+    // The visual response to a tap is CSS (`.composer-card:active`); here only the click.
+    const add = useCallback((product) => {
         tick();
+        callbacks.current.onAddProduct?.(product);
     }, []);
 
-    const add = useCallback((product) => {
-        flash(product.id);
-        callbacks.current.onAddProduct?.(product);
-    }, [flash]);
-
     const remove = useCallback((product) => {
-        flash(product.id);
+        tick();
         callbacks.current.onRemoveProduct?.(product, perProductRef.current.get(product.id)?.target || null);
-    }, [flash]);
+    }, []);
 
     // Sin permiso para tomar pedido no hay carta que mostrar.
     if (!canCompose) return null;
@@ -241,7 +231,6 @@ export default function OrderComposer({
                                 out={out}
                                 busy={out || savingItem}
                                 canRemove={Boolean(entry?.target)}
-                                pulsing={pulse === p.id}
                                 testIdPrefix={testIdPrefix}
                                 onAdd={add}
                                 onRemove={remove}

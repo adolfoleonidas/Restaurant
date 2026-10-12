@@ -27,7 +27,7 @@ Causes, verified in code:
 
 - [x] **CP-01 Memoized product cards.** Extract the card into a `React.memo` component that receives only its own product, quantity, and disabled state, with stable `onAdd`/`onRemove` callbacks; a tap re-renders only the tapped card (plus the summary/bar).
 - [x] **CP-02 Fewer requests and commits per tap.** Confirm a synced line from the write response instead of `refreshAll()`; take `generation` out of the products poll; debounce `generation` bumps in `NotifyContext`; `usePolling` skips `setData` when the payload is unchanged; `KitchenAlerts` does not poll the kitchen list for roles that do not need it. Other screens still refresh on realtime events.
-- [ ] **CP-03 CSS-only tap feedback.** Replace the `setPulse` state with a CSS-only effect (`:active` transform, transform/opacity only); remove `transition-colors` from the card row if it no longer serves a state; `touch-action: manipulation` on card and stepper buttons.
+- [x] **CP-03 CSS-only tap feedback.** Replace the `setPulse` state with a CSS-only effect (`:active` transform, transform/opacity only); remove `transition-colors` from the card row if it no longer serves a state; `touch-action: manipulation` on card and stepper buttons.
 
 ## Progress and evidence
 
@@ -42,4 +42,13 @@ Causes, verified in code:
   - GREEN: `useOrderLineSync` takes an optional `acceptOrder(order)` and confirms a synced line from the write response (falls back to the old `loadOrder` GET when the response has no order for that id). `useTableSheet` extracts `applyOrder`, passes it as `acceptOrder`, and its `onSynced` calls `refreshAll()` only when the queue created the account in this drain (`floorChangedRef`); `NewOrderSheet` does the same with `setOrder` and `onCreated`. `useSalonData` products poll no longer depends on `generation`. `NotifyContext` coalesces event bumps (250 ms quiet period, 1000 ms max wait; reconnect and wake bumps unchanged) and memoizes its value. `usePolling` skips `setData` when the JSON text equals the one on screen (payloads over 1M chars or not serialisable are committed as before), no longer ticks a state counter every interval (nothing read `tick`), and only touches `error`/`loading` state when they change.
   - KitchenAlerts: the gate was already `ROLES = admin, cocina, mozo` (cajero, other roles and signed-out users never request `/orders/kitchen`). Mozo was added on purpose in 82c123b ("mozo role included"), so it was kept; its refetch per realtime burst is now one GET that commits nothing when the list is unchanged. No code change; role gating test added.
   - Tests changed: `useTableSheetOptimistic.test.js` fake server now answers writes with the order (the real shape), so the UX-14 scenarios run on the new path; its final `refreshAll` assertion became `not.toHaveBeenCalled()` because a plain quantity change no longer refreshes the floor.
+  - Commit: 6fdcc4b `perf(realtime): confirm line writes from the response and stop redundant refetches and commits`.
   - Result: full suite 113 suites / 967 tests green.
+- 2026-10-12 CP-03 (route: delegated direct, single writer):
+  - RED: new `OrderComposerTapFeedback.test.js` failed 3/3 on the old code (the tapped card carried `composer-pulse`, no `composer-card` class, `index.css` still defined `composer-pulse`).
+  - GREEN: removed the `pulse` state, its 260 ms timer and the unmount cleanup from `OrderComposer`, and the `pulsing` prop from `ComposerProductCard`. `index.css`: `composer-pulse` keyframes replaced by `.composer-card { transition: transform 90ms ease-out }` and `.composer-card:active { transform: scale(0.97) }`, both disabled under `prefers-reduced-motion`. The card dropped `transition-colors` (hover border color now switches instantly; the stepper buttons keep theirs for their hover colors); card and the three buttons got `touch-manipulation`. A tap now commits once and schedules no timer (test counts Profiler commits and 260 ms `setTimeout` calls). No existing test asserted the pulse.
+  - Result: full suite 114 suites / 970 tests green; `CI=true npx craco build` compiled successfully.
+
+## Next step
+
+Parent re-runs the Playwright tap audit (46/194/401 ms p50 at 1x/4x/6x CPU) against the rebuilt test stack and compares; then review and merge.

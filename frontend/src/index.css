@@ -250,18 +250,19 @@ body,
     .floor-late { animation: none; }
 }
 
-/* Carta del mozo: pulso breve al tocar "+" o "−" en un plato, para que el toque
-   se sienta respondido aunque la red tarde. */
-.composer-pulse {
-    animation: composer-pulse 260ms ease-out;
+/* Carta del mozo: la tarjeta se hunde mientras se toca un plato, para que el
+   toque se sienta respondido aunque la red tarde. Es solo CSS y solo transform
+   (no repinta ni mueve el layout): antes era estado de React y costaba dos
+   renders y un timer por toque. */
+.composer-card {
+    transition: transform 90ms ease-out;
 }
-@keyframes composer-pulse {
-    0% { transform: scale(1); }
-    40% { transform: scale(1.06); box-shadow: 0 0 0 3px hsl(var(--primary) / 0.25); }
-    100% { transform: scale(1); }
+.composer-card:active {
+    transform: scale(0.97);
 }
 @media (prefers-reduced-motion: reduce) {
-    .composer-pulse { animation: none; }
+    .composer-card { transition: none; }
+    .composer-card:active { transform: none; }
 }
 
 .App {
