@@ -251,7 +251,7 @@ export default function OrderComposer({
                                         onClick={() => remove(p, target)}
                                         aria-label={`Quitar uno de ${p.name}`}
                                         data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                                        className="touch-target-coarse grid h-7 w-7 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
                                     >
                                         <Minus className="h-3.5 w-3.5" />
                                     </button>
@@ -267,7 +267,7 @@ export default function OrderComposer({
                                         onClick={() => add(p)}
                                         aria-label={`Agregar uno de ${p.name}`}
                                         data-testid={`${testIdPrefix}-producto-${p.id}`}
-                                        className="grid h-7 w-7 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                                        className="touch-target-coarse grid h-7 w-7 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
                                     >
                                         <Plus className="h-3.5 w-3.5" />
                                     </button>

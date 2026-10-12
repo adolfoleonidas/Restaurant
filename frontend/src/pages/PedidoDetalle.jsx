@@ -419,7 +419,7 @@ export default function PedidoDetalle() {
                     </Button>
                 )}
                 {!locked && can(user, ACTIONS.ORDER_CANCEL) && (
-                    <Button variant="ghost" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button">
+                    <Button variant="outline" onClick={() => setCancelDlg(true)} className="w-full h-12 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" data-testid="pedido-cancelar-button">
                         <Ban className="h-4 w-4 mr-2" />Anular pedido
                     </Button>
                 )}
