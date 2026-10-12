@@ -111,7 +111,7 @@ export default function Usuarios() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* min-h-11: el Switch mide 24 px de alto; la fila da el área táctil, sin encoger en escritorio */}
-                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
+                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} aria-label={`Activo: ${u.full_name}`} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={`Editar ${u.full_name}`}><Pencil className="h-4 w-4" /></Button>
                                 {u.id !== me.id && (<Button size="icon" variant="ghost" aria-label={`Eliminar ${u.full_name}`} onClick={() => setConfirmDel(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
                             </div>
@@ -136,13 +136,13 @@ export default function Usuarios() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</DialogTitle></DialogHeader>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div><Label>Nombre completo</Label><Input value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} data-testid="usuario-form-name" /></div>
-                        <div><Label>Teléfono</Label><Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
-                        <div><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} data-testid="usuario-form-email" /></div>
+                        <div><Label htmlFor="usuario-form-nombre-completo">Nombre completo</Label><Input id="usuario-form-nombre-completo" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} data-testid="usuario-form-name" /></div>
+                        <div><Label htmlFor="usuario-form-telefono">Teléfono</Label><Input id="usuario-form-telefono" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+                        <div><Label htmlFor="usuario-form-email">Email</Label><Input id="usuario-form-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!!editing} data-testid="usuario-form-email" /></div>
                         <div>
-                            <Label>Rol</Label>
+                            <Label htmlFor="usuario-form-rol">Rol</Label>
                             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v, functions: ROLE_FUNCTIONS[v] || form.functions })}>
-                                <SelectTrigger data-testid="usuario-form-rol"><SelectValue /></SelectTrigger>
+                                <SelectTrigger id="usuario-form-rol" data-testid="usuario-form-rol"><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     {Object.entries(ROLE_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                                 </SelectContent>
@@ -165,7 +165,7 @@ export default function Usuarios() {
                             {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="usuario-branches-retry">Reintentar</Button></div>}
                             {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
                         </div>
-                        <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" minLength={8} aria-describedby="usuario-form-pass-hint" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /><p id="usuario-form-pass-hint" className="text-xs text-muted-foreground mt-1">Mínimo 8 caracteres</p></div>
+                        <div className="sm:col-span-2"><Label htmlFor="usuario-form-password">{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input id="usuario-form-password" type="password" minLength={8} aria-describedby="usuario-form-pass-hint" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /><p id="usuario-form-pass-hint" className="text-xs text-muted-foreground mt-1">Mínimo 8 caracteres</p></div>
                         <div className="sm:col-span-2 space-y-2 text-sm">
                             <div className="text-xs text-muted-foreground">Funciones (se pueden combinar)</div>
                             {Object.entries(FN_LABELS).map(([k, lab]) => (

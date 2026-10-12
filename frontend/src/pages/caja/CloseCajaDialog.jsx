@@ -54,8 +54,8 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
                         </div>
                     )}
                     <div>
-                        <Label>Efectivo contado (S/)</Label>
-                        <Input type="number" min="0" step="0.01" value={closing} onChange={(e) => setClosing(e.target.value)} className="h-11" data-testid="caja-cierre-monto" />
+                        <Label htmlFor="caja-cierre-contado">Efectivo contado (S/)</Label>
+                        <Input id="caja-cierre-contado" type="number" min="0" step="0.01" value={closing} onChange={(e) => setClosing(e.target.value)} className="h-11" data-testid="caja-cierre-monto" />
                     </div>
                     {diff != null && (
                         <div className={`rounded-xl p-3 ${diff < 0 ? 'bg-destructive/10' : 'bg-primary/10'}`} data-testid="caja-cierre-diferencia">
@@ -63,7 +63,7 @@ export default function CloseCajaDialog({ open, onOpenChange, register, onClosed
                             <div className="font-display text-2xl font-semibold tabular-nums">{fmtMoney(Math.abs(diff))}</div>
                         </div>
                     )}
-                    <div><Label>Notas</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+                    <div><Label htmlFor="caja-cierre-notas">Notas</Label><Textarea id="caja-cierre-notas" value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>

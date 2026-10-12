@@ -70,9 +70,9 @@ export default function Categorias() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>{editing ? 'Editar categoría' : 'Nueva categoría'}</DialogTitle></DialogHeader>
                     <div className="space-y-3">
-                        <div><Label>Nombre</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="categoria-form-name" /></div>
-                        <div><Label>Descripción</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
-                        <div><Label>Orden</Label><Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} /></div>
+                        <div><Label htmlFor="categoria-form-nombre">Nombre</Label><Input id="categoria-form-nombre" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="categoria-form-name" /></div>
+                        <div><Label htmlFor="categoria-form-descripcion">Descripción</Label><Textarea id="categoria-form-descripcion" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+                        <div><Label htmlFor="categoria-form-orden">Orden</Label><Input id="categoria-form-orden" type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} /></div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>

@@ -173,7 +173,7 @@ export default function Pedidos() {
                                             </Button>
                                         )}
                                         <Button asChild size="sm" variant="outline" className="flex-1 sm:flex-none" data-testid={`pedidos-ver-${o.order_number}`}>
-                                            <Link to={`/pedidos/${o.id}`}>Ver</Link>
+                                            <Link to={`/pedidos/${o.id}`} aria-label={`Ver pedido #${o.order_number}`}>Ver</Link>
                                         </Button>
                                     </div>
                                 </div>

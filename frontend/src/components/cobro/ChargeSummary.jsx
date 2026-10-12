@@ -31,11 +31,11 @@ export default function ChargeSummary({
                 {/* Tip */}
                 <div className="tip-box">
                     <div className="summary-line tip-line">
-                        <label>{payMode === 'all' ? 'Propina' : 'Propina proporcional'}</label>
+                        <label htmlFor="caja-propina-monto">{payMode === 'all' ? 'Propina' : 'Propina proporcional'}</label>
                         {payMode === 'all' ? (
                             <div className="currency-input">
                                 <span>S/</span>
-                                <input type="text" inputMode="decimal" value={tip} placeholder="Otro monto" maxLength={9}
+                                <input id="caja-propina-monto" type="text" inputMode="decimal" value={tip} placeholder="Otro monto" maxLength={9}
                                     onChange={(e) => { setTip(e.target.value); setTipPct(0); }}
                                     aria-label="Otro monto de propina" />
                             </div>

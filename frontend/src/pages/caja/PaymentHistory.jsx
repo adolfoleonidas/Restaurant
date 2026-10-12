@@ -189,8 +189,8 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                                                 ? 'Devolución: el cliente recibe el dinero. El cobro queda registrado como devuelto, no se borra.'
                                                 : 'Anulación: corrección de un cobro mal registrado. El cobro queda en el historial, no se elimina.'}
                                         </p>
-                                        <Label>Motivo</Label>
-                                        <Textarea value={voidReason} onChange={(e) => setVoidReason(e.target.value)} data-testid="caja-anular-motivo" />
+                                        <Label htmlFor="caja-anular-motivo">Motivo</Label>
+                                        <Textarea id="caja-anular-motivo" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} data-testid="caja-anular-motivo" />
                                         <div className="flex gap-2">
                                             <Button variant="outline" onClick={() => { setVoidKind(null); setVoidReason(''); }}>Cancelar</Button>
                                             <Button onClick={submitVoid} data-testid="caja-anular-confirmar">Registrar</Button>
