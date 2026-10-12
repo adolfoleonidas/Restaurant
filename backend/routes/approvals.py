@@ -5,7 +5,7 @@ from database import db
 from auth import require_roles
 from models import ApprovalCreate, ApprovalDecide
 from notify import emit_notice
-from routes.payments import apply_void_payment
+from routes.payments import apply_void_payment, _authorized_order
 
 router = APIRouter()
 
@@ -44,11 +44,9 @@ async def create_approval(data: ApprovalCreate, user: dict = Depends(require_rol
         })
         if existing:
             return {k: v for k, v in existing.items() if k != "_id"}
-        order = await db.orders.find_one({"id": pay["order_id"]}, {"_id": 0})
+        order = await _authorized_order(pay["order_id"], user)
     elif data.order_id:
-        order = await db.orders.find_one({"id": data.order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
-        if not order:
-            raise HTTPException(status_code=404, detail="Pedido no encontrado")
+        order = await _authorized_order(data.order_id, user)
 
     doc = {
         "id": str(uuid.uuid4()),
