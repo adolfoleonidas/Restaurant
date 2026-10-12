@@ -1,4 +1,4 @@
-"""Fail closed when a new deployment still has demo secrets."""
+"""Fail closed when a new deployment still has demo secrets or an unsupported topology."""
 import os
 
 
@@ -43,8 +43,30 @@ def jwt_secret(environ=None) -> str:
     return ""
 
 
+# Worker-count variables read by uvicorn/gunicorn style launchers.
+_WORKER_COUNT_VARS = ("WEB_CONCURRENCY", "UVICORN_WORKERS")
+
+
+def assert_single_process(environ=None):
+    """Realtime (SSE) subscribers live in process memory (see notify.py).
+
+    With several workers an event published in one process never reaches the
+    clients connected to another, so screens would silently go stale. Refuse to
+    start until a shared broker (e.g. Redis pub/sub) replaces the in-process hub.
+    """
+    env = _env(environ)
+    for name in _WORKER_COUNT_VARS:
+        raw = (env.get(name) or "").strip()
+        if raw.isdigit() and int(raw) > 1:
+            raise RuntimeError(
+                f"{name}={raw}: realtime events are kept in process memory, so the backend "
+                "must run as a single process. Set it to 1 (see docs/day-one-runbook.md)"
+            )
+
+
 def assert_runtime_config(environ=None):
     env = _env(environ)
+    assert_single_process(env)
     if not is_production(env):
         return
     secret = (env.get("JWT_SECRET") or "").strip()

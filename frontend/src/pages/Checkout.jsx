@@ -3,7 +3,17 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { useTableContext } from '@/contexts/TableContext';
-import { api } from '@/lib/api';
+import {
+    createPublicOrder,
+    getPublicOrder,
+    getPublicPaymentConfig,
+    getPublicRestaurant,
+    getPublicTables,
+    listDeliveryBranches,
+    listPickupBranches,
+    resolvePublicTable,
+    uploadPublicOrderProof,
+} from '@/lib/api/public';
 import { submitPublicOrder } from '@/lib/orderRequest';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +28,7 @@ import {
     Truck, ShoppingBag, Utensils, Copy, CheckCircle2, ChevronLeft, Smartphone, Banknote,
     CreditCard as CreditCardIcon, Building2, Upload, Image as ImageIcon, AlertCircle, Clock,
 } from 'lucide-react';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const ORDER_TYPE_INFO = {
     local: { label: 'Comer en local', icon: Utensils, desc: 'Te esperamos en nuestra mesa' },
@@ -36,10 +47,10 @@ const PAYMENT_STATE_INFO = {
     pendiente: { label: 'Pendiente de pago', tone: 'amber', hint: 'Todavía no registramos tu pago.' },
     reportado: { label: 'Comprobante en revisión', tone: 'amber', hint: 'El restaurante está verificando tu pago.' },
     confirmado: { label: 'Pago confirmado', tone: 'green', hint: 'Tu pedido ya está en cocina.' },
-    rechazado: { label: 'Pago rechazado', tone: 'red', hint: 'No pudimos verificar el pago. Probá con otro método o consultá al personal.' },
-    expirado: { label: 'Pago vencido', tone: 'red', hint: 'El tiempo para pagar terminó. Empezá un pedido nuevo.' },
+    rechazado: { label: 'Pago rechazado', tone: 'red', hint: 'No pudimos verificar el pago. Prueba con otro método o consulta al personal.' },
+    expirado: { label: 'Pago vencido', tone: 'red', hint: 'El tiempo para pagar terminó. Empieza un pedido nuevo.' },
     reembolsado: { label: 'Pago reembolsado', tone: 'gray', hint: 'El dinero fue devuelto.' },
-    no_requerido: { label: 'Se paga al final', tone: 'gray', hint: 'Podés pagar cuando termines.' },
+    no_requerido: { label: 'Se paga al final', tone: 'gray', hint: 'Puedes pagar cuando termines.' },
 };
 
 const TONE_CLASSES = {
@@ -102,8 +113,8 @@ export default function Checkout() {
     const pollRef = useRef(null);
 
     useEffect(() => {
-        api.get('/public/restaurant').then((r) => setRestaurant(r.data));
-        api.get('/public/payment-config').then((r) => {
+        getPublicRestaurant().then((r) => setRestaurant(r.data));
+        getPublicPaymentConfig().then((r) => {
             setPaymentCfg(r.data);
             const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => r.data[`enable_${m}`]);
             if (enabled) setMethod(enabled);
@@ -113,7 +124,7 @@ export default function Checkout() {
     // Mesa del QR: se resuelve la capacidad firmada y queda preseleccionada.
     useEffect(() => {
         if (tableToken) {
-            api.get('/public/tables/resolve', { params: { token: tableToken } })
+            resolvePublicTable(tableToken)
                 .then((r) => setTableInfo(r.data))
                 .catch(() => setTableInfo(null));
             return;
@@ -123,7 +134,7 @@ export default function Checkout() {
             return;
         }
         if (restaurant?.require_table_qr) return;
-        api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
+        getPublicTables().then((r) => setTables(r.data || [])).catch(() => setTables([]));
     }, [tableToken, restaurant, contextTable]);
 
     useEffect(() => {
@@ -135,7 +146,7 @@ export default function Checkout() {
         }
         setPickupBranchesLoading(true);
         setPickupBranchesError(false);
-        api.get('/public/pickup-branches').then((r) => {
+        listPickupBranches().then((r) => {
             if (active) setPickupBranches(r.data || []);
         }).catch(() => {
             if (active) { setPickupBranches([]); setPickupBranchesError(true); }
@@ -152,7 +163,7 @@ export default function Checkout() {
         }
         setDeliveryBranchesLoading(true);
         setDeliveryBranchesError(false);
-        api.get('/public/delivery-branches').then((r) => {
+        listDeliveryBranches().then((r) => {
             if (active) setDeliveryBranches(r.data || []);
         }).catch(() => {
             if (active) { setDeliveryBranches([]); setDeliveryBranchesError(true); }
@@ -171,7 +182,7 @@ export default function Checkout() {
         const settled = livePaymentState === 'confirmado' || livePaymentState === 'rechazado' || livePaymentState === 'expirado';
         if (!confirmed.prepay_required || settled) return undefined;
         pollRef.current = setInterval(() => {
-            api.get(`/public/orders/${confirmed.tracking_code}`)
+            getPublicOrder(confirmed.tracking_code)
                 .then((r) => {
                     setLivePaymentState(r.data?.payment_state || null);
                     if (r.data?.payment_state === 'confirmado') {
@@ -235,7 +246,7 @@ export default function Checkout() {
         try {
             // El comprobante es una imagen en base64: en datos móviles el envío
             // tarda y sin progreso el cliente reintentaba creyendo que colgó.
-            await api.post(`/public/orders/${confirmed.tracking_code}/proof`, { payment_proof: proofFile }, {
+            await uploadPublicOrderProof(confirmed.tracking_code, { payment_proof: proofFile }, {
                 onUploadProgress: (event) => {
                     if (event.total) setUploadPct(Math.round((event.loaded / event.total) * 100));
                 },
@@ -243,7 +254,7 @@ export default function Checkout() {
             setProofSent(true);
             setLivePaymentState('reportado');
             toast.success('Comprobante enviado al restaurante');
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo subir'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo subir')); }
         finally { setUploading(false); setUploadPct(0); }
     };
 
@@ -261,10 +272,10 @@ export default function Checkout() {
             toast.error('Selecciona una sucursal para delivery'); return false;
         }
         if (orderType === 'local' && tableToken && !tableInfo) {
-            toast.error('Escaneá el QR de tu mesa'); return false;
+            toast.error('Escanea el QR de tu mesa'); return false;
         }
         if (orderType === 'local' && !tableToken && !contextTable && !tableId) {
-            toast.error(restaurant?.require_table_qr ? 'Escaneá el QR de tu mesa' : 'Elegí tu mesa'); return false;
+            toast.error(restaurant?.require_table_qr ? 'Escanea el QR de tu mesa' : 'Elige tu mesa'); return false;
         }
         return true;
     };
@@ -292,7 +303,7 @@ export default function Checkout() {
                 cryptoSource: window.crypto,
                 fingerprint: JSON.stringify(payload),
                 payload,
-                post: (requestPayload) => api.post('/public/orders', requestPayload),
+                post: (requestPayload) => createPublicOrder(requestPayload),
                 onConfirmed: (data) => {
                     const next = {
                         ...data,
@@ -329,7 +340,7 @@ export default function Checkout() {
                     else toast.success(`Pedido #${data.order_number} guardado: falta el pago`);
                 },
             });
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear el pedido'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo crear el pedido')); }
         finally { setSubmitting(false); }
     };
 
@@ -341,6 +352,10 @@ export default function Checkout() {
             && paymentState !== 'confirmado' && paymentState !== 'rechazado' && paymentState !== 'expirado';
         const showProofBox = RECEIPT_METHODS.includes(confirmed.payment_method) && !confirmed.pay_at_counter;
         const wentToKitchen = !waiting && confirmed.sent_to_kitchen !== false;
+        // "Pago confirmado" solo si alguien pagó; un pedido que va a cocina y se
+        // cobra al final no ha pagado nada todavía.
+        const isPaid = paymentState === 'confirmado'
+            || ['pagado', 'confirmado'].includes(confirmed.payment_status);
         return (
             <div className="max-w-2xl mx-auto px-4 py-10 space-y-5" data-testid="checkout-confirmed-root">
                 <Card>
@@ -349,14 +364,14 @@ export default function Checkout() {
                             {wentToKitchen ? <CheckCircle2 className="h-9 w-9" /> : <Clock className="h-9 w-9" />}
                         </div>
                         <h1 className="font-display text-3xl font-bold" data-testid="checkout-result-title">
-                            {wentToKitchen ? 'Pago confirmado ✓' : waiting ? 'Pendiente de pago' : 'Pedido guardado'}
+                            {isPaid ? 'Pago confirmado ✓' : wentToKitchen ? 'Pedido enviado a cocina' : waiting ? 'Pendiente de pago' : 'Pedido guardado'}
                         </h1>
                         <p className="text-muted-foreground mt-1">
                             {wentToKitchen
                                 ? `Pedido #${confirmed.order_number} enviado a cocina.`
                                 : waiting
                                     ? 'Tu pedido queda guardado. Cuando el restaurante confirme el pago, pasa a cocina.'
-                                    : 'Seguí el estado con tu código.'}
+                                    : 'Sigue el estado con tu código.'}
                         </p>
                         <div className="mt-4 rounded-xl bg-secondary/40 p-4 inline-flex flex-col items-center gap-1">
                             <span className="text-xs uppercase tracking-wide text-muted-foreground">Número de pedido</span>
@@ -377,7 +392,7 @@ export default function Checkout() {
                     <Card><CardContent className="p-5 space-y-1">
                         <h2 className="font-display text-lg font-semibold">Se cobra en caja</h2>
                         <p className="text-sm text-muted-foreground">
-                            Tu pedido ya está en cocina. Acercate a caja para pagar {fmtMoney(confirmed.total)} cuando quieras.
+                            Tu pedido ya está en cocina. Acércate a caja para pagar {fmtMoney(confirmed.total)} cuando quieras.
                         </p>
                     </CardContent></Card>
                 )}
@@ -390,7 +405,7 @@ export default function Checkout() {
                         <p className="text-sm text-muted-foreground">
                             {proofSent
                                 ? 'El restaurante está verificando tu pago. Esta pantalla se actualiza sola cuando lo confirme.'
-                                : 'Transferí el monto y adjuntá la captura. El restaurante verifica el pago antes de preparar tu pedido.'}
+                                : 'Transfiere el monto y adjunta la captura. El restaurante verifica el pago antes de preparar tu pedido.'}
                         </p>
                         {proofFile ? (
                             <div className="flex items-center gap-3 border rounded-xl p-2">
@@ -437,7 +452,7 @@ export default function Checkout() {
 
     // ---- Paso de revisión: el cliente ve exactamente qué está pagando ----
     if (reviewing) {
-        const tableLabel = tableInfo?.number || contextTable?.number;
+        const tableLabel = tableInfo?.number || contextTable?.number || tables.find((t) => t.id === tableId)?.number;
         return (
             <div className="max-w-2xl mx-auto px-4 py-8 pb-32 space-y-5" data-testid="checkout-review-root">
                 <Button variant="ghost" size="sm" onClick={() => setReviewing(false)} data-testid="checkout-review-back">
@@ -491,7 +506,7 @@ export default function Checkout() {
                 {payAtCounter && (
                     <div className="rounded-xl border border-border bg-secondary/40 p-4 text-sm text-muted-foreground" data-testid="checkout-pay-counter-warning">
                         <div className="flex items-center gap-2 font-semibold text-foreground"><Banknote className="h-4 w-4" /> Se cobra al entregar</div>
-                        <p className="mt-1">Tu pedido va a cocina ahora y pagás {fmtMoney(total)} en caja.</p>
+                        <p className="mt-1">Tu pedido va a cocina ahora y pagas {fmtMoney(total)} en caja.</p>
                     </div>
                 )}
 
@@ -555,20 +570,20 @@ export default function Checkout() {
                                         <span className="ml-2 rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">Del QR</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Si te moviste a otra mesa, elegila abajo. Las mesas ocupadas o reservadas no se pueden elegir.
+                                        Si te moviste a otra mesa, elígela abajo. Las mesas ocupadas o reservadas no se pueden elegir.
                                     </p>
                                     {tables.length > 0 && (
                                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                            {tables.map((t) => <TableButton key={t.id} t={t} selected={false} onSelect={() => toast.info('Pedile al mozo que mueva tu cuenta a esa mesa')} />)}
+                                            {tables.map((t) => <TableButton key={t.id} t={t} selected={false} onSelect={() => toast.info('Pídele al mozo que mueva tu cuenta a esa mesa')} />)}
                                         </div>
                                     )}
                                 </div>
                             ) : restaurant?.require_table_qr ? (
-                                <p className="text-sm text-muted-foreground">Escaneá el QR de tu mesa para pedir en el local.</p>
+                                <p className="text-sm text-muted-foreground">Escanea el QR de tu mesa para pedir en el local.</p>
                             ) : contextTable ? (
                                 <p className="text-sm">Mesa <span className="font-display text-xl font-semibold">{contextTable.number}</span></p>
                             ) : tables.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pedí recojo o avisá al mozo.</p>
+                                <p className="text-sm text-muted-foreground">No hay mesas disponibles ahora. Pide recojo o avisa al mozo.</p>
                             ) : (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                                     {tables.map((t) => <TableButton key={t.id} t={t} selected={tableId === t.id} onSelect={() => setTableId(t.id)} />)}
@@ -605,18 +620,18 @@ export default function Checkout() {
                     <Card><CardContent className="p-5">
                         <h2 className="font-display text-lg font-semibold mb-1">Tus datos</h2>
                         {orderType === 'local' ? (
-                            <p className="text-sm text-muted-foreground mb-3">Opcional: si querés, dejá tu nombre para conocerte mejor. En mesa no es obligatorio.</p>
+                            <p className="text-sm text-muted-foreground mb-3">Opcional: si quieres, deja tu nombre para conocerte mejor. En mesa no es obligatorio.</p>
                         ) : (
                             <p className="text-sm text-muted-foreground mb-3">Los necesitamos para entregarte el pedido.</p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div><Label>Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoComplete="name" className="h-11" data-testid="checkout-nombre" /></div>
-                            <div><Label>Celular{orderType === 'local' ? '' : ' *'}</Label><Input type="tel" inputMode="tel" autoComplete="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
-                            <div className="sm:col-span-2"><Label>Correo (opcional)</Label><Input type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
+                            <div><Label htmlFor="checkout-nombre-y-apellidos">Nombre y apellidos{orderType === 'local' ? '' : ' *'}</Label><Input id="checkout-nombre-y-apellidos" value={customer.name} onChange={(e) => setCustomer({ ...customer, name: e.target.value })} autoComplete="name" className="h-11" data-testid="checkout-nombre" /></div>
+                            <div><Label htmlFor="checkout-celular">Celular{orderType === 'local' ? '' : ' *'}</Label><Input id="checkout-celular" type="tel" inputMode="tel" autoComplete="tel" value={customer.phone} onChange={(e) => setCustomer({ ...customer, phone: e.target.value })} className="h-11" placeholder="+51 999 888 777" data-testid="checkout-celular" /></div>
+                            <div className="sm:col-span-2"><Label htmlFor="checkout-correo-opcional">Correo (opcional)</Label><Input id="checkout-correo-opcional" type="email" autoComplete="email" value={customer.email} onChange={(e) => setCustomer({ ...customer, email: e.target.value })} className="h-11" /></div>
                             {orderType === 'delivery' && (
-                                <div className="sm:col-span-2"><Label>Dirección de entrega *</Label><Textarea value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} autoComplete="street-address" placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
+                                <div className="sm:col-span-2"><Label htmlFor="checkout-direccion-de-entrega">Dirección de entrega *</Label><Textarea id="checkout-direccion-de-entrega" value={customer.address} onChange={(e) => setCustomer({ ...customer, address: e.target.value })} autoComplete="street-address" placeholder="Calle, número, referencia" data-testid="checkout-direccion" /></div>
                             )}
-                            <div className="sm:col-span-2"><Label>Observaciones del pedido (opcional)</Label><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sin picante, cubiertos extra…" /></div>
+                            <div className="sm:col-span-2"><Label htmlFor="checkout-observaciones-del-pedido-opcional">Observaciones del pedido (opcional)</Label><Textarea id="checkout-observaciones-del-pedido-opcional" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: sin picante, cubiertos extra…" /></div>
                         </div>
                     </CardContent></Card>
 
@@ -662,8 +677,8 @@ export default function Checkout() {
                                             <Button variant="outline" size="sm" className="h-11" onClick={() => copyText(paymentCfg[`${method}_number`] || '', method)} data-testid={`checkout-copy-${method}`}><Copy className="h-3.5 w-3.5 mr-1" /> {copied === method ? 'Copiado' : 'Copiar número'}</Button>
                                             <p className="text-xs text-muted-foreground">
                                                 {needsCounterVerification
-                                                    ? 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante. Cocina arranca cuando el restaurante lo verifique.'
-                                                    : 'Hacé la transferencia y al confirmar el pedido vas a poder subir tu comprobante.'}
+                                                    ? 'Haz la transferencia y al confirmar el pedido vas a poder subir tu comprobante. Cocina arranca cuando el restaurante lo verifique.'
+                                                    : 'Haz la transferencia y al confirmar el pedido vas a poder subir tu comprobante.'}
                                             </p>
                                         </div>
                                     </div>
@@ -691,14 +706,14 @@ export default function Checkout() {
                             {method === 'efectivo' && (
                                 <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
                                     {payAtCounter
-                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} en caja.`
+                                        ? `Tu pedido va a cocina ahora y pagas ${fmtMoney(total)} en caja.`
                                         : `Paga ${fmtMoney(total)} en efectivo al recibir tu pedido. Te recomendamos llevar monto exacto.`}
                                 </div>
                             )}
                             {method === 'tarjeta' && (
                                 <div className="rounded-xl border bg-secondary/30 p-4 text-sm">
                                     {payAtCounter
-                                        ? `Tu pedido va a cocina ahora y pagás ${fmtMoney(total)} con tarjeta en caja.`
+                                        ? `Tu pedido va a cocina ahora y pagas ${fmtMoney(total)} con tarjeta en caja.`
                                         : `Aceptamos tarjeta al momento de entrega/recojo. Cobro: ${fmtMoney(total)}.`}
                                 </div>
                             )}

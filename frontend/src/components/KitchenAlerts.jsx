@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { getKitchenOrders } from '@/lib/api/orders';
 import { useNotify } from '@/contexts/NotifyContext';
+import { countOf } from '@/lib/format';
 
 const ROLES = ['admin', 'cocina', 'mozo'];
 const SEEN_KEY = (userId) => `kitchen-seen-ids:${userId}`;
@@ -94,7 +95,7 @@ export function KitchenAlerts() {
     );
     const { generation } = useNotify();
     const { data: orders } = usePolling(
-        () => (enabled ? api.get('/orders/kitchen').then((r) => r.data) : Promise.resolve([])),
+        () => (enabled ? getKitchenOrders().then((r) => r.data) : Promise.resolve([])),
         20000,
         [enabled, user?.id, generation]
     );
@@ -121,7 +122,7 @@ export function KitchenAlerts() {
         const first = fresh[0];
         const title = fresh.length === 1
             ? `Pedido #${first.order_number} en cocina`
-            : `${fresh.length} pedidos nuevos en cocina`;
+            : `${countOf(fresh.length, 'pedido nuevo', 'pedidos nuevos')} en cocina`;
         const body = (first.items || []).slice(0, 3).map((it) => `${it.quantity}× ${it.product_name}`).join(', ') || 'Nuevo pase';
         toast(title, { description: body });
         desktopNotify(title, body, () => navigate('/cocina'));

@@ -121,7 +121,7 @@ async def reset_catalog(data: DataResetRequest, user: dict = Depends(require_rol
         raise HTTPException(
             status_code=409,
             detail=(
-                f"Hay {active} pedido(s) activo(s). Cerralos o restablecé los datos "
+                f"Hay {active} pedido(s) activo(s). Ciérralos o restablece los datos "
                 "operativos antes de vaciar la carta."
             ),
         )

@@ -26,6 +26,38 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a unique value of at least 32 characters}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to the public site origin}
 
+  # Scheduled logical backup: one compressed mongodump archive per run in
+  # ${BACKUP_DIR} (host folder), keeping only the newest BACKUP_KEEP archives.
+  # Restore steps: docs/day-one-runbook.md ("Backup y restauración").
+  backup:
+    image: mongo:7
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      DB_NAME: ${DB_NAME:-restaurant_db}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_KEEP: ${BACKUP_KEEP:-7}
+    volumes:
+      - ${BACKUP_DIR:-./backups}:/backups
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -u
+        while true; do
+          stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+          file="/backups/$${DB_NAME}-$${stamp}.archive.gz"
+          if mongodump --uri="mongodb://mongo:27017" --db="$${DB_NAME}" --archive="$${file}.part" --gzip; then
+            mv "$${file}.part" "$${file}"
+            echo "backup ok: $${file}"
+            ls -1t /backups/*.archive.gz | tail -n +$$((BACKUP_KEEP + 1)) | xargs -r rm -f
+          else
+            rm -f "$${file}.part"
+            echo "backup FAILED at $${stamp}" >&2
+          fi
+          sleep $$((BACKUP_INTERVAL_HOURS * 3600))
+        done
+
   frontend:
     build:
       context: ./frontend

@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { bumpOrder, getKitchenOrders, setOrderItemStatus } from '@/lib/api/orders';
+import { listTables } from '@/lib/api/tables';
 import { Card, CardContent } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
-import { fmtElapsed, elapsedMinutes, ORDER_TYPE_LABELS } from '@/lib/format';
+import { fmtElapsed, elapsedMinutes, ORDER_TYPE_LABELS, countOf } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +12,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
+import { apiErrorMessage } from '@/lib/apiError';
 
 function itemStage(it) {
     const st = it.status || 'pendiente';
@@ -158,11 +160,11 @@ export default function Cocina() {
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const { generation } = useNotify();
     const { data: orders, error: ordersError, loading: ordersLoading, refetch } = usePolling(
-        () => api.get('/orders/kitchen').then((r) => r.data),
+        () => getKitchenOrders().then((r) => r.data),
         12000,
         [generation]
     );
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
     const [zone, setZone] = useState('todas');
 
     const tableMap = useMemo(() => Object.fromEntries((tables || []).map((t) => [t.id, t])), [tables]);
@@ -224,19 +226,19 @@ export default function Cocina() {
     const bump = async (order, stage) => {
         const from_status = stage === 'llegan' ? 'pendiente' : 'en_preparacion';
         try {
-            await api.post(`/orders/${order.id}/bump`, { from_status });
+            await bumpOrder(order.id, { from_status });
             await refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo avanzar');
+            toast.error(apiErrorMessage(e, 'No se pudo avanzar'));
         }
     };
 
     const bumpItem = async (order, item) => {
         try {
-            await api.post(`/orders/${order.id}/items/${item.id}/status`, { status: 'listo' });
+            await setOrderItemStatus(order.id, item.id, { status: 'listo' });
             await refetch();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo marcar');
+            toast.error(apiErrorMessage(e, 'No se pudo marcar'));
         }
     };
 
@@ -340,7 +342,7 @@ export default function Cocina() {
                 <details className="rounded-md border border-border bg-card/50 p-3" data-testid="cocina-dias-anteriores">
                     {/* El resumen es lo único que se pulsa del bloque: 44 px en móvil. */}
                     <summary className="cursor-pointer font-semibold py-2.5 md:py-0">
-                        Días anteriores · {priorPickups.length} recojo(s) listos
+                        Días anteriores · {countOf(priorPickups.length, 'recojo listo', 'recojos listos')}
                     </summary>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {priorPickups.map((order) => (

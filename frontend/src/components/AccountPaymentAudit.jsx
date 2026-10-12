@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { getOrder } from '@/lib/api/orders';
+import { listPaymentsByOrder } from '@/lib/api/payments';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
+import { fmtMoney, fmtDateFull, PAYMENT_LABELS } from '@/lib/format';
+import { PAYMENT_RECORD_STATUS_LABELS, ORDER_PAYMENT_LABELS } from '@/constants/status';
 
 const EMPTY_SCOPE_PARAMS = {};
 const PAYMENT_STATUSES = new Set(['completed', 'voiding', 'voided', 'refunded']);
@@ -10,13 +12,6 @@ const ORDER_PAYMENT_STATUSES = new Set([
     'pendiente', 'parcial', 'pagado', 'comprobante_subido', 'confirmado', 'cancelado', 'anulado', 'voided', 'refunded',
 ]);
 const PAYMENT_METHODS = new Set(['efectivo', 'yape', 'plin', 'tarjeta', 'transferencia', 'mixto']);
-const PAYMENT_STATUS_LABELS = {
-    completed: 'Completado', voiding: 'Anulación en curso', voided: 'Anulado', refunded: 'Devuelto',
-};
-const ORDER_PAYMENT_LABELS = {
-    pendiente: 'Pendiente', parcial: 'Parcial', pagado: 'Pagado', comprobante_subido: 'Comprobante pendiente de revisión',
-    confirmado: 'Confirmado', cancelado: 'Cancelado', anulado: 'Anulado', voided: 'Anulado', refunded: 'Devuelto',
-};
 
 function isAmount(value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -91,10 +86,6 @@ function inspectAudit(orderId, order, payments) {
     };
 }
 
-function dateLabel(value) {
-    return new Date(value).toLocaleString('es-PE');
-}
-
 export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_PARAMS }) {
     const [open, setOpen] = useState(false);
     const [result, setResult] = useState(null);
@@ -112,8 +103,8 @@ export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_P
         setResult({ orderId, status: 'loading' });
         const options = Object.keys(scopeParams || {}).length ? { params: scopeParams } : undefined;
         Promise.all([
-            api.get(`/orders/${encodeURIComponent(orderId)}`, options),
-            api.get(`/payments/by-order/${encodeURIComponent(orderId)}`, options),
+            getOrder(encodeURIComponent(orderId), options),
+            listPaymentsByOrder(encodeURIComponent(orderId), options),
         ]).then(([orderResponse, paymentResponse]) => {
             if (!active || sequence !== requestSequence.current) return;
             const audit = inspectAudit(orderId, orderResponse?.data, paymentResponse?.data);
@@ -163,7 +154,7 @@ export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_P
                                     <div><dt className="text-muted-foreground">Estado de pago de la cuenta</dt><dd>{ORDER_PAYMENT_LABELS[current.order.payment_status] || 'No reconocido'}</dd></div>
                                     <div><dt className="text-muted-foreground">Comprobante</dt><dd>{current.proofPresent ? 'Registrado' : current.status === 'unverified' ? 'No verificable' : 'No registrado'}</dd></div>
                                 </dl>
-                                {current.proofPresent && <p className="mt-2 text-sm">Método: {PAYMENT_LABELS[current.proofMethod] || current.proofMethod} · recibido {dateLabel(current.proofUploadedAt)}</p>}
+                                {current.proofPresent && <p className="mt-2 text-sm">Método: {PAYMENT_LABELS[current.proofMethod] || current.proofMethod} · recibido {fmtDateFull(current.proofUploadedAt)}</p>}
                             </section>
                             {current.status === 'empty' ? <p>No hay pagos registrados ni comprobante disponible en esta consulta.</p> : Array.isArray(current.payments) ? (
                                 <section aria-label="Registros de pago">
@@ -173,11 +164,11 @@ export default function AccountPaymentAudit({ order, scopeParams = EMPTY_SCOPE_P
                                             {current.payments.map((payment) => (
                                                 <li key={payment.id} className="space-y-1 p-3 text-sm">
                                                     <div className="flex flex-wrap justify-between gap-2">
-                                                        <span>{PAYMENT_STATUS_LABELS[payment.status]}</span>
+                                                        <span>{PAYMENT_RECORD_STATUS_LABELS[payment.status]}</span>
                                                         <span>{fmtMoney(payment.amount)}</span>
                                                     </div>
-                                                    <div className="text-muted-foreground">{PAYMENT_LABELS[payment.method] || payment.method} · {dateLabel(payment.created_at)}</div>
-                                                    {payment.status !== 'completed' && <div className="text-muted-foreground">Resolución: {payment.void_kind === 'refund' || payment.status === 'refunded' ? 'Devolución' : payment.status === 'voiding' ? 'En curso' : 'Anulación'}{payment.void_reason ? ` · Motivo: ${payment.void_reason}` : ''}{payment.voided_at ? ` · ${dateLabel(payment.voided_at)}` : ''}</div>}
+                                                    <div className="text-muted-foreground">{PAYMENT_LABELS[payment.method] || payment.method} · {fmtDateFull(payment.created_at)}</div>
+                                                    {payment.status !== 'completed' && <div className="text-muted-foreground">Resolución: {payment.void_kind === 'refund' || payment.status === 'refunded' ? 'Devolución' : payment.status === 'voiding' ? 'En curso' : 'Anulación'}{payment.void_reason ? ` · Motivo: ${payment.void_reason}` : ''}{payment.voided_at ? ` · ${fmtDateFull(payment.voided_at)}` : ''}</div>}
                                                 </li>
                                             ))}
                                         </ol>

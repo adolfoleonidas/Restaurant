@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getPublicCategories, getPublicProducts, getPublicRestaurant } from '@/lib/api/public';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
@@ -70,11 +70,11 @@ export default function Landing() {
         // restaurante: el stream ya recarga categorías y platos con
         // `generation`, así que no se duplica el tráfico.
         const requests = restaurant
-            ? api.get('/public/restaurant').then((r) => [r.data, categories, products])
+            ? getPublicRestaurant().then((r) => [r.data, categories, products])
             : Promise.all([
-                api.get('/public/restaurant').then((r) => r.data),
-                api.get('/public/categories').then((r) => r.data),
-                api.get('/public/products').then((r) => r.data),
+                getPublicRestaurant().then((r) => r.data),
+                getPublicCategories().then((r) => r.data),
+                getPublicProducts().then((r) => r.data),
             ]);
         requests.then(([r, c, p]) => {
             if (!active) return;
@@ -90,7 +90,7 @@ export default function Landing() {
 
     useEffect(() => {
         if (!generation || !restaurant?.id) return;
-        api.get('/public/products').then((r) => setProducts(r.data));
+        getPublicProducts().then((r) => setProducts(r.data));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [generation]);
 
@@ -193,7 +193,7 @@ export default function Landing() {
             {tableError && (
                 <div className="border-b border-destructive/40 bg-destructive/10" role="alert" data-testid="public-table-context-error">
                     <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center gap-3 text-sm">
-                        <span className="min-w-0 flex-1">{tableError} Pedí el QR otra vez o avisá al personal.</span>
+                        <span className="min-w-0 flex-1">{tableError} Pide el QR otra vez o avisa al personal.</span>
                         <button type="button" onClick={clearTable} className="h-9 shrink-0 rounded-md border px-3 text-xs">Descartar</button>
                     </div>
                 </div>
@@ -297,7 +297,7 @@ export default function Landing() {
                         )}
                         {!loading && loadError && (
                             <div className="py-16 text-center" data-testid="landing-load-error">
-                                <p className="text-muted-foreground">Revisá tu conexión y volvé a intentar.</p>
+                                <p className="text-muted-foreground">Revisa tu conexión y vuelve a intentar.</p>
                                 <Button type="button" variant="outline" className="mt-3" onClick={() => setReloadToken((n) => n + 1)} data-testid="landing-retry">
                                     Reintentar
                                 </Button>

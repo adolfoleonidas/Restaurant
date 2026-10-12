@@ -2,7 +2,7 @@ import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { ROLE_LABELS } from '@/lib/format';
-import { hasFn } from '@/lib/functions';
+import { isOwner as isOwnerUser, navItemsFor as permittedNavItems } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
@@ -17,57 +17,29 @@ import {
     Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe, MoreHorizontal,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
-import { api } from '@/lib/api';
+import { getRestaurant } from '@/lib/api/restaurant';
 
 // Cuántos destinos caben en la barra inferior del móvil. El resto queda a un
 // toque, en la misma hoja lateral que abre la hamburguesa ("Más").
 const BOTTOM_NAV_MAX = 4;
 
-const ALL_NAV = [
-    { to: '/dashboard', label: 'Hoy', icon: LayoutDashboard, roles: ['admin'], group: 'main' },
-    { to: '/salon', label: 'Salón', icon: Grid2X2, roles: ['admin', 'mozo', 'cajero'], group: 'main' },
-    { to: '/productos', label: 'Carta', icon: Package, roles: ['admin'], group: 'main' },
-    { to: '/caja', label: 'Caja', icon: Wallet, roles: ['admin', 'cajero'], group: 'main' },
-    { to: '/comprobantes', label: 'Comprobantes', icon: Receipt, roles: ['admin', 'cajero'], group: 'main' },
-    { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['admin'], group: 'main' },
-    { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['cocina'], group: 'main' },
-    { to: '/disponibilidad', label: 'Disponibilidad', icon: Package, roles: ['cocina'], group: 'main' },
-    { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['mozo', 'cajero'], group: 'main' },
-    { to: '/pedidos', label: 'Pedidos', icon: Receipt, roles: ['admin'], group: 'more' },
-    { to: '/cocina', label: 'Cocina', icon: ChefHat, roles: ['admin'], group: 'more' },
-    // Combos y Categorías dejan de ser ítems propios del menú: los dos son
-    // accesos al mismo formulario de "Carta" (Combos es un tab de Productos y
-    // Categorías se abre desde su botón). Antes el menú ofrecía tres accesos a
-    // lo mismo y no decía dónde gestionar la carta.
-    { to: '/pagos', label: 'Datos de cobro', icon: CreditCard, roles: ['admin'], group: 'more' },
-    { to: '/local', label: 'Local', icon: Store, roles: ['admin'], group: 'more' },
-    { to: '/usuarios', label: 'Equipo', icon: Users, roles: ['admin'], group: 'more' },
-    { to: '/configuracion', label: 'Configuración', icon: Settings, roles: ['admin'], group: 'more' },
-];
-
-// Un solo origen de verdad para el menú: se filtra ALL_NAV por rol y por
-// funciones y se deduplica por destino. Antes había dos problemas: el menú
-// se reemplazaba entero para los perfiles multifunción (un admin que también
-// atiende y cobra perdía "Pedidos") y dos entradas del mismo destino podían
-// coexistir (mozo/cajero con administracion). Lo comparten la hoja lateral
-// (escritorio y móvil) y la barra inferior del móvil, para que las dos
-// superficies no puedan divergir.
-export const navItemsFor = (user) => {
-    const seen = new Set();
-    return ALL_NAV.filter((n) => {
-        // Staff accounts and passwords belong to the owner: the `administracion`
-        // function opens every other panel, but not this one.
-        if (n.to === '/usuarios' && user.role !== 'admin') return false;
-        const allowed = n.roles.includes(user.role)
-            || (n.roles.includes('admin') && hasFn(user, 'administracion'))
-            || (n.roles.includes('cajero') && hasFn(user, 'cobro'))
-            || (n.roles.includes('mozo') && hasFn(user, 'atencion'))
-            || (n.roles.includes('cocina') && hasFn(user, 'preparacion'));
-        if (!allowed || seen.has(n.to)) return false;
-        seen.add(n.to);
-        return true;
-    });
+// The menu entries (who sees what) live in lib/permissions, next to the route
+// guards. The shell only knows how to draw them.
+const NAV_ICONS = {
+    dashboard: LayoutDashboard,
+    salon: Grid2X2,
+    catalog: Package,
+    cash: Wallet,
+    receipt: Receipt,
+    reports: BarChart3,
+    kitchen: ChefHat,
+    payments: CreditCard,
+    store: Store,
+    team: Users,
+    settings: Settings,
 };
+
+export const navItemsFor = (user) => permittedNavItems(user).map((n) => ({ ...n, icon: NAV_ICONS[n.icon] }));
 
 // Fallback de la carga bajo demanda: las pantallas del POS se descargan al
 // entrar, así que hace falta algo que ocupe el sitio y que se anuncie como
@@ -118,14 +90,14 @@ const NavItems = ({ items, onNav, readyCount = 0 }) => items.map((it) => (
 ));
 
 const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
-    const isOwner = user.role === 'admin' || hasFn(user, 'administracion');
+    const isOwner = isOwnerUser(user);
     const items = navItemsFor(user);
     const main = items.filter((n) => n.group !== 'more');
     const more = items.filter((n) => n.group === 'more');
     return (
         <div className="flex h-full flex-col bg-card">
             <div className="px-5 py-5 border-b border-border">
-                <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
+                <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
                 <NavItems items={main} onNav={onNav} readyCount={readyCount} />
@@ -223,7 +195,7 @@ export const AppShell = () => {
 
     useEffect(() => {
         let active = true;
-        api.get('/restaurants/current').then(({ data }) => {
+        getRestaurant().then(({ data }) => {
             if (active) setRestaurant(data);
         }).catch(() => {});
         return () => { active = false; };
@@ -243,6 +215,12 @@ export const AppShell = () => {
     return (
         <NotifyProvider>
         <div className="min-h-dvh flex bg-background">
+            <a
+                href="#contenido"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-sm focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+                Saltar al contenido
+            </a>
             <aside className="hidden md:flex w-64 shrink-0 border-r border-border">
                 <SidebarContent user={user} restaurant={restaurant} readyCount={readyCount} />
             </aside>
@@ -299,7 +277,7 @@ export const AppShell = () => {
                 {/* Sin utilidades de padding inferior: el hueco de la barra
                     inferior lo pone `.has-bottom-nav`, que vive en la capa
                     `components` y perdería contra un `p-*` de `utilities`. */}
-                <main className="has-bottom-nav flex-1 px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
+                <main id="contenido" tabIndex={-1} className="has-bottom-nav flex-1 focus:outline-none px-3 pt-3 sm:px-4 sm:pt-4 md:px-6 md:pt-6 lg:px-8 lg:pt-8">
                     <Suspense fallback={<RouteLoading />}>
                         <Outlet />
                     </Suspense>
@@ -310,7 +288,13 @@ export const AppShell = () => {
 
             {/* En móvil la barra inferior tapa los avisos si quedan pegados al
                 borde, así que se levantan por encima de ella. */}
-            <Toaster position="bottom-center" offset={24} mobileOffset={{ top: 16, right: 16, bottom: 84, left: 16 }} />
+            {/* Toasts stack under the header: the bottom of the screen holds the
+                thumb-reach actions (bottom nav, fixed kitchen-send/new-order bar). */}
+            <Toaster
+                position="top-center"
+                offset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)' }}
+                mobileOffset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)', right: 16, left: 16 }}
+            />
         </div>
         </NotifyProvider>
     );

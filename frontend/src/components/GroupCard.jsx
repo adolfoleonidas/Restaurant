@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bell, Clock, Receipt, UtensilsCrossed } from 'lucide-react';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
+import { countOf } from '@/lib/format';
 
 /**
  * GroupCard — the single "big table" shown when two or more tables are joined.
@@ -70,7 +71,7 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                         ))}
                     </div>
                     {needsAttention && (
-                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atencion">
+                        <span className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center" style={{ background: s.dot }} aria-label="Requiere atención">
                             <Bell className="h-3.5 w-3.5 text-white" />
                         </span>
                     )}
@@ -80,7 +81,7 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                     <span className="text-sm font-semibold">{s.label}</span>
                     {accounts > 1 && (
                         <span data-testid="mesa-grupo-cuentas" className="text-xs font-medium rounded-full px-2 py-0.5 border" style={{ background: FLOOR_STYLE.cuenta.bg, color: FLOOR_STYLE.cuenta.fg, borderColor: FLOOR_STYLE.cuenta.border }}>
-                            {accounts} cuentas
+                            {countOf(accounts, 'cuenta', 'cuentas')}
                         </span>
                     )}
                 </div>

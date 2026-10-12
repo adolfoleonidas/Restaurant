@@ -46,7 +46,7 @@ jest.mock('@/hooks/usePolling', () => ({
   __esModule: true,
   default: (fetcher) => {
     const src = fetcher.toString();
-    if (src.includes("api.get('/tables')")) return { data: mockTables, refetch: jest.fn() };
+    if (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(src)) return { data: mockTables, refetch: jest.fn() };
     return { data: null };
   },
 }));
@@ -82,8 +82,8 @@ describe('Mesas floor priority and actions (T04)', () => {
     await act(async () => root.render(<Salon />));
     const cuentaCard = host.querySelector('[data-floor-state="cuenta"]');
     const libreCard = host.querySelector('[data-floor-state="libre"]');
-    expect(cuentaCard.querySelector('[aria-label="Requiere atencion"]')).toBeTruthy();
-    expect(libreCard.querySelector('[aria-label="Requiere atencion"]')).toBeFalsy();
+    expect(cuentaCard.querySelector('[aria-label="Requiere atención"]')).toBeTruthy();
+    expect(libreCard.querySelector('[aria-label="Requiere atención"]')).toBeFalsy();
   });
 
   it('shows elapsed time on active tables', async () => {

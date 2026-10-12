@@ -27,7 +27,7 @@ def _record_failure(key: str) -> None:
 async def login(request: Request, data: LoginInput):
     key = f"{request.client.host}|{data.email.lower()}"
     if _is_rate_limited(key):
-        raise HTTPException(status_code=429, detail="Demasiados intentos. Esperá unos minutos.")
+        raise HTTPException(status_code=429, detail="Demasiados intentos. Espera unos minutos.")
     user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
     if not user or not verify_password(data.password, user["password_hash"]):
         _record_failure(key)

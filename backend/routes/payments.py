@@ -11,9 +11,12 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
+from branch_access import has_tenantwide_branch_access, read_branch_filter, tenant_branch_scope, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
-from billing import account_total, build_sold_lines, cash_portion, method_amounts, reversal_is_inside_open_shift
+from billing import (
+    account_total, balance_due, build_sold_lines, cash_portion, line_charge_amount, method_amounts, money, paid_after_refund,
+    paid_total, remaining_due, reversal_is_inside_open_shift,
+)
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
@@ -49,13 +52,6 @@ async def _authorized_order(order_id: str, user: dict) -> dict:
     return order
 
 
-async def _payment_branch_scope(user: dict) -> dict:
-    if has_tenantwide_branch_access(user):
-        return {"restaurant_id": user["restaurant_id"]}
-    branch_id = await validate_user_branch(user, db.branches)
-    return {"restaurant_id": user["restaurant_id"], "branch_id": branch_id}
-
-
 async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
     branch_id = order.get("branch_id")
     query = {"restaurant_id": restaurant_id, "status": "open"}
@@ -69,10 +65,10 @@ def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     # Same shape as a fresh charge. The dialog and the printed receipt read these
     # to decide whether the bill is settled, and a retry after a network cut used
     # to come back without them (the cashier saw a blank remainder).
-    total = round(float(order.get("total") or 0), 2)
-    paid = round(float(order.get("amount_paid") or 0), 2)
+    total = money(order.get("total"))
+    paid = money(order.get("amount_paid"))
     replay = {key: value for key, value in payment.items() if key != "_id"}
-    replay["remaining"] = round(max(0.0, total - paid), 2)
+    replay["remaining"] = remaining_due(total, paid)
     replay["fully_paid"] = paid + 0.009 >= total
     replay["table_released"] = False
     return replay
@@ -311,7 +307,7 @@ async def list_payments(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     limit: int = 200,
     q: Optional[str] = None,
-    period: Optional[str] = Query(None, regex="^(day|week|month)$"),
+    period: Optional[str] = Query(None, pattern="^(day|week|month)$"),
     branch_id: Optional[str] = None,
     legacy_only: bool = False,
 ):
@@ -397,7 +393,7 @@ async def list_payment_proofs(
 @router.get("/by-order/{order_id}")
 async def payments_for_order(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
     await _authorized_order(order_id, user)
-    branch_scope = await _payment_branch_scope(user)
+    branch_scope = await tenant_branch_scope(user, db.branches)
     query = {"restaurant_id": user["restaurant_id"], "order_id": order_id}
     if "branch_id" in branch_scope:
         query["branch_id"] = branch_scope["branch_id"]
@@ -412,7 +408,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     request_fingerprint = _payment_request_fingerprint(data)
     order = await _authorized_order(data.order_id, user)
     if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
-        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     operation = order.get("payment_operation")
     if operation:
         recovered = await _resume_payment_operation(order, operation, user)
@@ -420,7 +416,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
             return recovered
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "message": "La cuenta cambió mientras la revisabas. Revisa el nuevo importe antes de cobrar.",
             "previous_total": data.expected_total,
             "new_total": order.get("total"),
             "updated_at": order.get("updated_at"),
@@ -439,7 +435,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
 
     # The venue may switch a method off in Datos de cobro; the UI hides it, but a
     # cached screen or a direct call still got through. Only an explicit `false`
@@ -458,7 +454,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     if data.expected_updated_at and order.get("updated_at") and data.expected_updated_at != order.get("updated_at"):
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "message": "La cuenta cambió mientras la revisabas. Revisa el nuevo importe antes de cobrar.",
             "previous_total": data.expected_total,
             "new_total": order.get("total"),
             "updated_at": order.get("updated_at"),
@@ -472,7 +468,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         # the one the account already carries does not.
         if abs(discount - stored_discount) > 0.009:
             if not user.get("can_discount"):
-                raise HTTPException(status_code=403, detail="No tenés permiso para aplicar descuentos")
+                raise HTTPException(status_code=403, detail="No tienes permiso para aplicar descuentos")
             if len((data.discount_reason or "").strip()) < 5:
                 raise HTTPException(status_code=400, detail="El descuento requiere un motivo")
     else:
@@ -489,8 +485,8 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         tip=tip,
     )
     prior = await db.payments.find({"restaurant_id": user["restaurant_id"], "order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
-    paid_so_far = round(sum(float(p.get("amount") or 0) for p in prior), 2)
-    remaining = round(bill_total - paid_so_far, 2)
+    paid_so_far = paid_total(prior)
+    remaining = balance_due(bill_total, paid_so_far)
     if remaining <= 0:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
 
@@ -507,7 +503,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
             unpaid = int(it.get("quantity") or 0) - int(it.get("paid_qty") or 0)
             if line.quantity > unpaid:
                 raise HTTPException(status_code=400, detail=f"Solo quedan {unpaid} de {it.get('product_name')}")
-            line_total += float(it.get("unit_price") or 0) * line.quantity
+            line_total += line_charge_amount(it, line.quantity)
             line_payload.append({"item_id": line.item_id, "quantity": line.quantity, "name": it.get("product_name")})
         data.amount = round(line_total, 2)
 
@@ -617,7 +613,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "idempotency_key": data.idempotency_key,
         "request_fingerprint": request_fingerprint,
         "payment": payment,
-        "remaining": round(max(0.0, bill_total - new_paid), 2),
+        "remaining": remaining_due(bill_total, new_paid),
         "fully_paid": fully_paid,
         "order_status": order_set.get("status", order.get("status")),
         "payment_status": payment_status,
@@ -659,7 +655,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
                 return _check_payment_replay(existing, latest_order, data.order_id)
         raise HTTPException(status_code=409, detail={
             "code": "account_changed",
-            "message": "La cuenta cambió mientras la revisabas. Revisá el nuevo importe antes de cobrar.",
+            "message": "La cuenta cambió mientras la revisabas. Revisa el nuevo importe antes de cobrar.",
             "previous_total": data.expected_total,
             "new_total": order.get("total"),
             "updated_at": order.get("updated_at"),
@@ -686,7 +682,7 @@ async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str
                 item["paid_qty"] = 0
 
     amount = float(pay.get("amount") or 0)
-    new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - amount), 2)
+    new_paid = paid_after_refund(order.get("amount_paid"), amount)
     timestamp = _now()
     order_patch = {"amount_paid": new_paid, "items": items, "updated_at": timestamp}
     order_patch.update(ticket_fields(
@@ -827,7 +823,7 @@ async def _resume_attention_void(order: dict, payment: dict, intent: dict) -> di
     if getattr(released, "matched_count", 0) != 1:
         latest = await db.orders.find_one({"id": order["id"], "restaurant_id": order["restaurant_id"]})
         if not latest or latest.get("attention_state") != "open" or payment["id"] not in latest.get("voided_payment_ids", []):
-            raise HTTPException(status_code=409, detail="La devolución quedó pendiente; reintentá la misma operación")
+            raise HTTPException(status_code=409, detail="La devolución quedó pendiente; reintenta la misma operación")
 
     if intent.get("movement"):
         emit_notice(intent["restaurant_id"], "cash", status="movement",
@@ -877,7 +873,7 @@ async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: 
             raise HTTPException(status_code=409, detail="Otra actualización de la visita requiere recuperación")
         return await _resume_attention_void(order, payment, intent)
     if order.get("attention_state") != "open":
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
     if payment.get("status") in ("voided", "refunded"):
         return await _verify_attention_void(order, payment)
     if payment.get("status") != "completed":
@@ -898,7 +894,7 @@ async def _apply_attention_void(payment: dict, order: dict, user: dict, reason: 
     cash_amount = cash_portion(payment)
     record_refund = (not reversal_is_inside_open_shift(payment, owned, register)) and cash_amount > 0.009
     if record_refund and not register:
-        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+        raise HTTPException(status_code=400, detail="Abre la caja para registrar la devolución")
     intent = await _attention_void_intent(payment, order, user, reason, kind, register, record_refund)
     try:
         await claim_attention_mutation(db.orders, order, token, {"attention_mutation": intent})
@@ -929,9 +925,9 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     order = await _authorized_order(pay["order_id"], user)
     if order.get("payment_operation"):
-        raise HTTPException(status_code=409, detail="El pago está terminando de registrarse; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="El pago está terminando de registrarse; reintenta en unos segundos")
     if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
-        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     if (not has_tenantwide_branch_access(user) and pay.get("branch_id") != order.get("branch_id")):
         raise HTTPException(status_code=404, detail="Pago no encontrado")
     if (has_tenantwide_branch_access(user) and pay.get("branch_id") is not None
@@ -954,7 +950,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     if order.get("status") == "cancelado":
         raise HTTPException(status_code=400, detail="El pedido está cancelado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed") and not recovering:
-        raise HTTPException(status_code=409, detail="La visita está cambiando; volvé a cargar el pedido")
+        raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
     if recovering:
         kind = pay.get("void_kind") or "void"
         reason = pay.get("void_reason") or reason
@@ -974,7 +970,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
             for item in items:
                 item["paid_qty"] = 0
 
-    new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - float(pay.get("amount") or 0)), 2)
+    new_paid = paid_after_refund(order.get("amount_paid"), pay.get("amount"))
     bill = float(order.get("total") or 0)
     was_closed = order.get("status") == "pagado"
     order_set = {"amount_paid": new_paid, "items": items, "updated_at": _now()}
@@ -999,7 +995,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
     cash_out = cash_portion(pay)
     record_refund = (not reversal_is_inside_open_shift(pay, owned, open_reg)) and cash_out > 0.009
     if record_refund and not open_reg:
-        raise HTTPException(status_code=400, detail="Abrí la caja para registrar la devolución")
+        raise HTTPException(status_code=400, detail="Abre la caja para registrar la devolución")
 
     mutation_claimed = False
     if _has_open_visit(order) and not recovering:
@@ -1078,5 +1074,5 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
 @router.post("/{payment_id}/void")
 async def void_payment(payment_id: str, data: PaymentVoid, user: dict = Depends(require_roles(["admin", "cajero"]))):
     if not user.get("can_void"):
-        raise HTTPException(status_code=403, detail="No tenés permiso para anular o devolver un cobro")
+        raise HTTPException(status_code=403, detail="No tienes permiso para anular o devolver un cobro")
     return await apply_void_payment(payment_id, user, data.reason, data.kind)

@@ -42,7 +42,7 @@ jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
-    default: (fetcher) => (fetcher.toString().includes("api.get('/tables')")
+    default: (fetcher) => (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(fetcher.toString())
         ? { data: mockTables, refetch: jest.fn() }
         : { data: mockOrders, refetch: jest.fn() }),
 }));

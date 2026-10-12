@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { login as loginRequest } from '@/lib/api/auth';
 import { canAccessRole } from '@/lib/functions';
 
 const AuthContext = createContext(null);
@@ -20,7 +20,7 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const login = async (email, password) => {
-        const { data } = await api.post('/auth/login', { email, password });
+        const { data } = await loginRequest(email, password);
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('user', JSON.stringify(data.user));
         setUser(data.user);

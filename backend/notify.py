@@ -1,6 +1,11 @@
 import asyncio
 from typing import Any, Dict
 
+# Realtime hub: subscribers live in THIS process's memory, so events only reach
+# clients connected to the same process. The backend must therefore run as a
+# single process (one uvicorn worker); security_config.assert_single_process
+# refuses to start when WEB_CONCURRENCY/UVICORN_WORKERS is greater than 1.
+# Scaling out needs a shared broker (e.g. Redis pub/sub) in place of this set.
 _subs: set[asyncio.Queue] = set()
 
 
