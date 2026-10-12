@@ -59,17 +59,6 @@ export const PAYMENT_LABELS = {
     mixto: 'Mixto',
 };
 
-export const ORDER_STATUS_LABELS = {
-    nuevo: 'Nuevo',
-    enviado_cocina: 'Enviado a cocina',
-    en_preparacion: 'En preparación',
-    listo: 'Listo',
-    entregado: 'Entregado',
-    pendiente_pago: 'Pendiente de pago',
-    pagado: 'Pagado',
-    cancelado: 'Cancelado',
-};
-
 export const ORDER_TYPE_LABELS = {
     mesa: 'Mesa',
     local: 'En local',
@@ -95,12 +84,3 @@ export function waMeLink(phone, text) {
     if (!n) return null;
     return `https://wa.me/${n}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 }
-
-export const TABLE_STATUS_LABELS = {
-    disponible: 'Disponible',
-    ocupada: 'Ocupada',
-    esperando_pago: 'Esperando pago',
-    reservada: 'Reservada',
-    inactiva: 'Inactiva',
-    pagada: 'Pagada',
-};

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
+import { ORDER_STATUS_LABELS } from '@/constants/status';
 import { Plus } from 'lucide-react';
 
 /**

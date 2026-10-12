@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Grid2X2, Plus, Pencil, Trash2, MapPin, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import TableQrActions from '@/components/TableQrActions';
-import { TABLE_STATUS_LABELS } from '@/lib/format';
+import { TABLE_STATUS_LABELS } from '@/constants/status';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fmtMoney, fmtDateTime, PAYMENT_LABELS } from '@/lib/format';
+import { proofPending, orderPaymentStatusLabel } from '@/constants/status';
 import { Search, Receipt, Image as ImageIcon, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -22,27 +23,6 @@ const FILTERS = [
     { key: 'all', label: 'Todos' },
     { key: 'pending', label: 'Pendientes de revisión' },
 ];
-
-const PENDING = 'comprobante_subido';
-
-/**
- * A proof waiting for review. Newer orders track it in `payment_proof_status`
- * so a partial payment cannot hide it; legacy ones only had `payment_status`.
- */
-function proofPending(row) {
-    return row?.payment_proof_status
-        ? row.payment_proof_status === 'pendiente'
-        : row?.payment_status === PENDING;
-}
-
-function statusLabel(row) {
-    if (proofPending(row)) return 'Pendiente de revisión';
-    const status = row?.payment_status;
-    if (status === 'pagado') return 'Pagado';
-    if (status === 'parcial') return 'Pago parcial';
-    if (status === 'confirmado') return 'Confirmado';
-    return status || '—';
-}
 
 export default function Comprobantes() {
     const navigate = useNavigate();
@@ -158,7 +138,7 @@ export default function Comprobantes() {
                                             <div className="font-mono font-bold tabular-nums">{fmtMoney(row.total)}</div>
                                             <div className={`text-xs font-medium flex items-center gap-1 justify-end ${isPending ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                 {isPending ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                                                {statusLabel(row)}
+                                                {orderPaymentStatusLabel(row)}
                                             </div>
                                             {missing > 0.009 && isPending && (
                                                 <div className="text-xs text-muted-foreground">Resta {fmtMoney(missing)}</div>
