@@ -4,25 +4,13 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import ZoneCreate, ZoneUpdate
-from branch_access import validate_user_branch
+from branch_access import assert_owned_branch, validate_user_branch
 
 router = APIRouter()
 
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
-
-
-async def _validate_branch(restaurant_id: str, branch_id: str | None):
-    """Validate that branch exists and belongs to the restaurant."""
-    if branch_id is None:
-        return
-    branch = await db.branches.find_one(
-        {"id": branch_id, "restaurant_id": restaurant_id},
-        {"_id": 0}
-    )
-    if not branch:
-        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
 
 
 @router.get("")
@@ -49,7 +37,7 @@ async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["adm
         raise HTTPException(status_code=400, detail="Ya existe una zona con ese nombre en esta sucursal")
     
     # Validate branch if provided
-    await _validate_branch(user["restaurant_id"], data.branch_id)
+    await assert_owned_branch(db.branches, user["restaurant_id"], data.branch_id)
     
     z = {
         "id": str(uuid.uuid4()),
@@ -86,7 +74,7 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
     
     # Validate branch if being updated before touching the zone or its tables.
     if "branch_id" in update:
-        await _validate_branch(user["restaurant_id"], update["branch_id"])
+        await assert_owned_branch(db.branches, user["restaurant_id"], update["branch_id"])
 
     branch_tables = []
     if "branch_id" in update and update["branch_id"] != z.get("branch_id"):

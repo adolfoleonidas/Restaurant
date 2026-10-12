@@ -4,19 +4,9 @@ import uuid
 from database import db
 from auth import require_role_exact, hash_password, get_current_user, apply_permissions
 from models import UserCreate, UserUpdate
+from branch_access import assert_owned_branch
 
 router = APIRouter()
-
-
-async def _assert_owned_branch(branch_id: str, restaurant_id: str):
-    if not isinstance(branch_id, str) or not branch_id.strip():
-        raise HTTPException(status_code=400, detail="Debe indicar una sucursal válida")
-    branch = await db.branches.find_one(
-        {"id": branch_id, "restaurant_id": restaurant_id},
-        {"_id": 0},
-    )
-    if not branch:
-        raise HTTPException(status_code=404, detail="Sucursal no encontrada")
 
 
 def _now():
@@ -35,7 +25,7 @@ async def list_users(user: dict = Depends(require_role_exact("admin"))):
 @router.post("")
 async def create_user(data: UserCreate, user: dict = Depends(require_role_exact("admin"))):
     if data.branch_id is not None:
-        await _assert_owned_branch(data.branch_id, user["restaurant_id"])
+        await assert_owned_branch(db.branches, user["restaurant_id"], data.branch_id, require_valid=True)
     existing = await db.users.find_one({"email": data.email.lower()})
     if existing:
         raise HTTPException(status_code=400, detail="Email ya registrado")
@@ -68,7 +58,7 @@ async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(requi
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     update = {k: v for k, v in data.model_dump(exclude_unset=True).items() if v is not None}
     if "branch_id" in update:
-        await _assert_owned_branch(update["branch_id"], user["restaurant_id"])
+        await assert_owned_branch(db.branches, user["restaurant_id"], update["branch_id"], require_valid=True)
     if "password" in update:
         update["password_hash"] = hash_password(update.pop("password"))
     update["updated_at"] = _now()
