@@ -1,23 +1,27 @@
 import React from 'react';
 
 /**
- * Bank transfer data.
+ * Bank transfer data from the restaurant settings. Without configured data the
+ * panel stays hidden: it never shows sample values.
  */
 export default function TransferPanel({
-    method,
+    method, transfer,
 }) {
+    if (method !== 'transfer') return null;
+    const rows = [
+        ['Banco', transfer?.bank_name],
+        ['Cuenta', transfer?.bank_account],
+        ['CCI', transfer?.bank_cci],
+        ['Titular', transfer?.bank_holder],
+    ].filter(([, value]) => Boolean(value && String(value).trim()));
+    if (rows.length === 0) return null;
     return (
-        <>
-            {/* TRANSFER PANEL */}
-            {method === 'transfer' && (
-                <div className="transfer-data">
-                    <dl className="account-data">
-                        <div className="data-row"><dt>Banco</dt><dd>Banco de muestra</dd></div>
-                        <div className="data-row"><dt>Cuenta / CCI</dt><dd>Configura los datos de tu negocio</dd></div>
-                        <div className="data-row"><dt>Titular</dt><dd>Sabor Peruano S.A.C.</dd></div>
-                    </dl>
-                </div>
-            )}
-        </>
+        <div className="transfer-data">
+            <dl className="account-data">
+                {rows.map(([label, value]) => (
+                    <div className="data-row" key={label}><dt>{label}</dt><dd>{value}</dd></div>
+                ))}
+            </dl>
+        </div>
     );
 }

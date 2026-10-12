@@ -97,7 +97,7 @@ const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
     return (
         <div className="flex h-full flex-col bg-card">
             <div className="px-5 py-5 border-b border-border">
-                <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
+                <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Servicio de salón" compact />
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
                 <NavItems items={main} onNav={onNav} readyCount={readyCount} />
