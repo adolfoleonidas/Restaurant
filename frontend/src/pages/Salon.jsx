@@ -1,6 +1,34 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listBranches } from '@/lib/api/branches';
+import { listCategories } from '@/lib/api/categories';
+import {
+    addOrderItems,
+    closeOrderAttention,
+    createOrder,
+    getOrder,
+    listOrders,
+    mergeOrder,
+    moveOrder,
+    moveOrderItem,
+    removeOrderItem,
+    sendOrderToKitchen,
+    serveOrder,
+    setOrderAlias,
+    setOrderStatus,
+    splitOrder,
+    updateOrderItem,
+    voidOrderItem,
+} from '@/lib/api/orders';
+import { listProducts } from '@/lib/api/products';
+import {
+    createTableGroup,
+    deleteTableGroup,
+    listTables,
+    releaseTable as releaseTableRequest,
+    removeTableGroupMember,
+    transferTable,
+} from '@/lib/api/tables';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -340,7 +368,7 @@ export default function Salon() {
         }
         let active = true;
         setBranchCatalog((current) => ({ ...current, loading: true, error: false }));
-        api.get('/branches').then(({ data }) => {
+        listBranches().then(({ data }) => {
             if (!active) return;
             const branches = Array.isArray(data) ? data : [];
             setBranchCatalog({ loading: false, error: false, branches, resolved: true });
@@ -374,16 +402,14 @@ export default function Salon() {
         // a la sucursal del usuario.
         () => (scopePending
             ? Promise.resolve(null)
-            : (scopeParams ? api.get('/tables', { params: scopeParams }) : api.get('/tables'))).then((r) => (r ? r.data : null)),
+            : listTables(scopeParams)).then((r) => (r ? r.data : null)),
         8000,
         [generation, scopeKey, scopePending]
     );
     const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
         () => (scopePending
             ? Promise.resolve(null)
-            : (scopeParams
-                ? api.get('/orders', { params: { active_only: true, ...scopeParams } })
-                : api.get('/orders', { params: { active_only: true } }))).then((r) => (r ? r.data : null)),
+            : listOrders({ active_only: true, ...scopeParams })).then((r) => (r ? r.data : null)),
         8000,
         [generation, scopeKey, scopePending]
     );
@@ -394,7 +420,7 @@ export default function Salon() {
     // para operar el piso.
     const { data: unassigned } = usePolling(
         () => (isOwner && !scopePending && scope !== 'legacy'
-            ? api.get('/tables', { params: { legacy_only: true } }).then((r) => r.data)
+            ? listTables({ legacy_only: true }).then((r) => r.data)
             : Promise.resolve(null)),
         30000,
         [generation, isOwner, scopeKey, scopePending]
@@ -402,8 +428,8 @@ export default function Salon() {
     const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
 
     // Carta para componer el pedido sin salir del salón.
-    const { data: liveProducts } = usePolling(() => api.get('/products').then((r) => r.data), 60000, [generation]);
-    const { data: liveCategories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
+    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, [generation]);
+    const { data: liveCategories } = usePolling(() => listCategories().then((r) => r.data), 60000);
     const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
     const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);
 
@@ -431,7 +457,7 @@ export default function Salon() {
 
     const openOrderId = openTable?.order?.id || null;
     const { data: liveOrderData } = usePolling(
-        () => (openOrderId ? api.get(`/orders/${openOrderId}`).then((r) => r.data) : Promise.resolve(null)),
+        () => (openOrderId ? getOrder(openOrderId).then((r) => r.data) : Promise.resolve(null)),
         10000,
         [openOrderId]
     );
@@ -651,7 +677,7 @@ export default function Salon() {
         setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: true, accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
-                const { data } = await api.get(`/orders/${targetOrderId}`);
+                const { data } = await getOrder(targetOrderId);
                 if (data?.id === targetOrderId) {
                     loadedOrder = data;
                     setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data } : s));
@@ -665,7 +691,7 @@ export default function Salon() {
             } catch { /* Continue loading the optional account list. */ }
         }
         try {
-            const { data } = await api.get('/orders', { params: { table_id: t.id, limit: 50 } });
+            const { data } = await listOrders({ table_id: t.id, limit: 50 });
             const all = data || [];
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
@@ -690,7 +716,7 @@ export default function Salon() {
             ...s, accounts: accountSnapshots(s, sheetOrder), accountId: orderId, loading: true,
         } : s));
         try {
-            const { data } = await api.get(`/orders/${orderId}`);
+            const { data } = await getOrder(orderId);
             if (data?.id !== orderId || (validate && !validate(data))) {
                 setOpenTable((s) => (s && s.accountId === orderId
                     ? { ...s, accountId: s.order?.id || null, loading: false }
@@ -721,7 +747,7 @@ export default function Salon() {
         const others = list.filter((o) => o.id !== targetId);
         try {
             for (const o of others) {
-                await api.post(`/orders/${targetId}/merge`, { source_order_id: o.id });
+                await mergeOrder(targetId, { source_order_id: o.id });
             }
             toast.success('Cuentas fusionadas');
             closeSheet();
@@ -735,7 +761,7 @@ export default function Salon() {
     const moveAccount = async (targetTableId) => {
         if (!moveAccountId) return;
         try {
-            await api.post(`/orders/${moveAccountId}/move`, { target_table_id: targetTableId });
+            await moveOrder(moveAccountId, { target_table_id: targetTableId });
             toast.success('Cuenta movida');
             setMoveAccountId(null);
             closeSheet();
@@ -751,7 +777,7 @@ export default function Salon() {
         const targetId = s?.order?.id || s?.accountId || s?.table?.active_order?.id;
         if (!targetId || !canTake) return;
         try {
-            await api.post(`/orders/${targetId}/split`, { parts });
+            await splitOrder(targetId, { parts });
             toast.success(`Cuenta dividida en ${parts}`);
             closeSheet();
             refreshAll();
@@ -763,7 +789,7 @@ export default function Salon() {
     // ── Pedido inline (sin salir del salón) ────────────────────────────────
     const reloadCurrentOrder = async (orderId) => {
         try {
-            const { data } = await api.get(`/orders/${orderId}`);
+            const { data } = await getOrder(orderId);
             if (data?.id !== orderId) return;
             setOpenTable((s) => {
                 if (!s) return s;
@@ -793,7 +819,7 @@ export default function Salon() {
         if (s.table?.active_attention_id || (s.accounts || []).length > 0) {
             payload.new_account = true;
         }
-        const { data } = await api.post('/orders', payload);
+        const { data } = await createOrder(payload);
         setOpenTable((prev) => (prev && prev.table.id === s.table.id
             ? { ...prev, order: data, accountId: data.id, accounts: [...(prev.accounts || []), data] }
             : prev));
@@ -818,11 +844,11 @@ export default function Salon() {
                 && !String(it.notes || '').trim()
             ));
             if (existing) {
-                await api.patch(`/orders/${orderId}/items/${existing.id}`, {
+                await updateOrderItem(orderId, existing.id, {
                     quantity: Number(existing.quantity || 0) + 1,
                 });
             } else {
-                await api.post(`/orders/${orderId}/items`, [{ product_id: product.id, quantity: 1 }]);
+                await addOrderItems(orderId, [{ product_id: product.id, quantity: 1 }]);
             }
             await reloadCurrentOrder(orderId);
             refreshAll();
@@ -845,8 +871,8 @@ export default function Salon() {
         const next = Number(item.quantity || 1) + delta;
         setSavingItem(true);
         try {
-            if (next <= 0) await api.delete(`/orders/${orderId}/items/${item.id}`);
-            else await api.patch(`/orders/${orderId}/items/${item.id}`, { quantity: next });
+            if (next <= 0) await removeOrderItem(orderId, item.id);
+            else await updateOrderItem(orderId, item.id, { quantity: next });
             await reloadCurrentOrder(orderId);
             refreshAll();
         } catch (e) {
@@ -874,7 +900,7 @@ export default function Salon() {
         if (!orderId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         setSavingItem(true);
         try {
-            await api.patch(`/orders/${orderId}/items/${item.id}`, { notes });
+            await updateOrderItem(orderId, item.id, { notes });
             await reloadCurrentOrder(orderId);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar la observación');
@@ -888,7 +914,7 @@ export default function Salon() {
         const orderId = openTable?.order?.id || openTable?.accountId;
         if (!orderId || !canTake) return;
         try {
-            await api.post(`/orders/${orderId}/items/${item.id}/void`, { reason });
+            await voidOrderItem(orderId, item.id, { reason });
             toast.success('Producto anulado');
             await reloadCurrentOrder(orderId);
             refreshAll();
@@ -908,7 +934,7 @@ export default function Salon() {
         const nextName = aliasDraft.trim();
         const currentShared = Boolean(account?.shared);
         if (nextName === currentName && sharedDraft === currentShared) return;
-        await api.patch(`/orders/${orderId}/alias`, { alias: nextName || null, shared: sharedDraft });
+        await setOrderAlias(orderId, { alias: nextName || null, shared: sharedDraft });
     };
 
     // Corregir "quién pidió qué" sin borrar y volver a cargar el producto. El
@@ -918,7 +944,7 @@ export default function Salon() {
         const orderId = sourceOrderId || openTable?.order?.id || openTable?.accountId;
         if (!orderId || !targetOrderId || !canTake) return;
         try {
-            await api.post(`/orders/${orderId}/items/${item.id}/move`, { target_order_id: targetOrderId });
+            await moveOrderItem(orderId, item.id, { target_order_id: targetOrderId });
             toast.success('Producto movido de persona');
             await reloadCurrentOrder(orderId);
             refreshAll();
@@ -950,7 +976,7 @@ export default function Salon() {
         try {
             // El alias viaja con la comanda: se guarda acá, sin botón aparte.
             if (targetId === openId) await persistAlias(targetId);
-            const { data } = await api.post(`/orders/${targetId}/send-to-kitchen`);
+            const { data } = await sendOrderToKitchen(targetId);
             const pending = draftCount(sendItemsFor(targetId), data?.status);
             const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
             // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
@@ -1032,7 +1058,7 @@ export default function Salon() {
         const nextName = alias || null;
         setSavingItem(true);
         try {
-            await api.patch(`/orders/${orderId}/alias`, { alias: nextName, shared: Boolean(account?.shared) });
+            await setOrderAlias(orderId, { alias: nextName, shared: Boolean(account?.shared) });
             // La franja lee las cuentas de la hoja: se actualiza en el acto para
             // que el nombre no espere al próximo refresco del piso.
             setOpenTable((s) => (s ? {
@@ -1065,7 +1091,7 @@ export default function Salon() {
         if (!drafts.length) return true;
         setSavingItem(true);
         try {
-            for (const it of drafts) await api.delete(`/orders/${orderId}/items/${it.id}`);
+            for (const it of drafts) await removeOrderItem(orderId, it.id);
             await reloadCurrentOrder(orderId);
             refreshAll();
             return true;
@@ -1149,7 +1175,7 @@ export default function Salon() {
         if (!canConfirmJoin || joining) return;
         setJoining(true);
         try {
-            const { data } = await api.post('/table-groups', { table_ids: selected });
+            const { data } = await createTableGroup({ table_ids: selected });
             const groupId = data?.id || data?.group?.id || null;
             // Unir mesas tiene inversa fiel: la misma disolución que ya usa la
             // hoja (`DELETE /table-groups/:id`). Solo se ofrece si la API
@@ -1161,7 +1187,7 @@ export default function Salon() {
                         label: 'Deshacer',
                         onClick: async () => {
                             try {
-                                await api.delete(`/table-groups/${groupId}`);
+                                await deleteTableGroup(groupId);
                                 toast.success('Mesas separadas');
                             } catch (e) {
                                 toast.error(e.response?.data?.detail || 'No se pudieron separar las mesas');
@@ -1187,7 +1213,7 @@ export default function Salon() {
     const dissolveGroup = async (group) => {
         if (!group?.id) return;
         try {
-            await api.delete(`/table-groups/${group.id}`);
+            await deleteTableGroup(group.id);
             toast.success('Mesas separadas');
             closeSheet();
             refreshAll();
@@ -1200,7 +1226,7 @@ export default function Salon() {
     const removeGroupMember = async (group, member) => {
         if (!group?.id || !member?.id) return;
         try {
-            await api.delete(`/table-groups/${group.id}/tables/${member.id}`);
+            await removeTableGroupMember(group.id, member.id);
             toast.success(`Mesa ${member.number} separada`);
             closeSheet();
             refreshAll();
@@ -1221,7 +1247,7 @@ export default function Salon() {
         if (!transferSource || movingVisit) return;
         setMovingVisit(true);
         try {
-            const { data } = await api.post(`/tables/${transferSource.id}/transfer`, { target_table_id: target.id });
+            const { data } = await transferTable(transferSource.id, { target_table_id: target.id });
             toast.success(`Pedido movido a Mesa ${data?.to_number ?? target.number}`);
             setTransferSource(null);
             refreshAll();
@@ -1241,7 +1267,7 @@ export default function Salon() {
 
     const deliver = async (orderId) => {
         try {
-            await api.post(`/orders/${orderId}/serve`);
+            await serveOrder(orderId);
             toast.success('Pedido entregado');
             closeSheet();
             refreshAll();
@@ -1253,7 +1279,7 @@ export default function Salon() {
     const closeAttention = async (order) => {
         setClosing(order.id);
         try {
-            await api.post(`/orders/${order.id}/attention/close`);
+            await closeOrderAttention(order.id);
             toast.success('Atención cerrada');
             closeSheet();
             refreshAll();
@@ -1267,7 +1293,7 @@ export default function Salon() {
 
     const requestBill = async (order) => {
         try {
-            await api.post(`/orders/${order.id}/status`, { status: 'pendiente_pago' });
+            await setOrderStatus(order.id, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
             closeSheet();
             refreshAll();
@@ -1279,7 +1305,7 @@ export default function Salon() {
     const releaseTable = async (t) => {
         if (!canTake) return;
         try {
-            await api.post(`/tables/${t.id}/release`);
+            await releaseTableRequest(t.id);
             toast.success(`Mesa ${t.number} libre`);
             closeSheet();
             refetchTables?.();

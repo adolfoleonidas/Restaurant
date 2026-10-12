@@ -12,13 +12,13 @@ import { CartPanel } from '@/components/CartPanel';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { getPublicRestaurant } from '@/lib/api/public';
 
 export const PublicLayout = () => {
     const { count, subtotal } = useCart();
     const { order: liveOrder, isActive, mode, clearMeta } = useLiveOrder();
     const [cartOpen, setCartOpen] = useState(false);
-    const { data: restaurant } = usePolling(() => api.get('/public/restaurant').then((r) => r.data), 60000);
+    const { data: restaurant } = usePolling(() => getPublicRestaurant().then((r) => r.data), 60000);
     const location = useLocation();
     const hideCartBtn = location.pathname.startsWith('/checkout') || location.pathname.startsWith('/pedido/');
     const showCart = !hideCartBtn;

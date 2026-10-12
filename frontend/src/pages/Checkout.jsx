@@ -3,7 +3,17 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { useTableContext } from '@/contexts/TableContext';
-import { api } from '@/lib/api';
+import {
+    createPublicOrder,
+    getPublicOrder,
+    getPublicPaymentConfig,
+    getPublicRestaurant,
+    getPublicTables,
+    listDeliveryBranches,
+    listPickupBranches,
+    resolvePublicTable,
+    uploadPublicOrderProof,
+} from '@/lib/api/public';
 import { submitPublicOrder } from '@/lib/orderRequest';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -102,8 +112,8 @@ export default function Checkout() {
     const pollRef = useRef(null);
 
     useEffect(() => {
-        api.get('/public/restaurant').then((r) => setRestaurant(r.data));
-        api.get('/public/payment-config').then((r) => {
+        getPublicRestaurant().then((r) => setRestaurant(r.data));
+        getPublicPaymentConfig().then((r) => {
             setPaymentCfg(r.data);
             const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => r.data[`enable_${m}`]);
             if (enabled) setMethod(enabled);
@@ -113,7 +123,7 @@ export default function Checkout() {
     // Mesa del QR: se resuelve la capacidad firmada y queda preseleccionada.
     useEffect(() => {
         if (tableToken) {
-            api.get('/public/tables/resolve', { params: { token: tableToken } })
+            resolvePublicTable(tableToken)
                 .then((r) => setTableInfo(r.data))
                 .catch(() => setTableInfo(null));
             return;
@@ -123,7 +133,7 @@ export default function Checkout() {
             return;
         }
         if (restaurant?.require_table_qr) return;
-        api.get('/public/tables').then((r) => setTables(r.data || [])).catch(() => setTables([]));
+        getPublicTables().then((r) => setTables(r.data || [])).catch(() => setTables([]));
     }, [tableToken, restaurant, contextTable]);
 
     useEffect(() => {
@@ -135,7 +145,7 @@ export default function Checkout() {
         }
         setPickupBranchesLoading(true);
         setPickupBranchesError(false);
-        api.get('/public/pickup-branches').then((r) => {
+        listPickupBranches().then((r) => {
             if (active) setPickupBranches(r.data || []);
         }).catch(() => {
             if (active) { setPickupBranches([]); setPickupBranchesError(true); }
@@ -152,7 +162,7 @@ export default function Checkout() {
         }
         setDeliveryBranchesLoading(true);
         setDeliveryBranchesError(false);
-        api.get('/public/delivery-branches').then((r) => {
+        listDeliveryBranches().then((r) => {
             if (active) setDeliveryBranches(r.data || []);
         }).catch(() => {
             if (active) { setDeliveryBranches([]); setDeliveryBranchesError(true); }
@@ -171,7 +181,7 @@ export default function Checkout() {
         const settled = livePaymentState === 'confirmado' || livePaymentState === 'rechazado' || livePaymentState === 'expirado';
         if (!confirmed.prepay_required || settled) return undefined;
         pollRef.current = setInterval(() => {
-            api.get(`/public/orders/${confirmed.tracking_code}`)
+            getPublicOrder(confirmed.tracking_code)
                 .then((r) => {
                     setLivePaymentState(r.data?.payment_state || null);
                     if (r.data?.payment_state === 'confirmado') {
@@ -235,7 +245,7 @@ export default function Checkout() {
         try {
             // El comprobante es una imagen en base64: en datos móviles el envío
             // tarda y sin progreso el cliente reintentaba creyendo que colgó.
-            await api.post(`/public/orders/${confirmed.tracking_code}/proof`, { payment_proof: proofFile }, {
+            await uploadPublicOrderProof(confirmed.tracking_code, { payment_proof: proofFile }, {
                 onUploadProgress: (event) => {
                     if (event.total) setUploadPct(Math.round((event.loaded / event.total) * 100));
                 },
@@ -292,7 +302,7 @@ export default function Checkout() {
                 cryptoSource: window.crypto,
                 fingerprint: JSON.stringify(payload),
                 payload,
-                post: (requestPayload) => api.post('/public/orders', requestPayload),
+                post: (requestPayload) => createPublicOrder(requestPayload),
                 onConfirmed: (data) => {
                     const next = {
                         ...data,

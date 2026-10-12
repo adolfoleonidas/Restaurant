@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listProducts, setProductAvailability } from '@/lib/api/products';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,7 @@ export default function Disponibilidad() {
     const { generation } = useNotify();
     const [q, setQ] = useState('');
     const [pending, setPending] = useState(null);
-    const { data: products, refetch } = usePolling(() => api.get('/products').then((r) => r.data), 20000, [generation]);
+    const { data: products, refetch } = usePolling(() => listProducts().then((r) => r.data), 20000, [generation]);
 
     const list = useMemo(() => {
         const needle = q.trim().toLowerCase();
@@ -21,7 +21,7 @@ export default function Disponibilidad() {
 
     const toggle = async (p) => {
         try {
-            const { data } = await api.post(`/products/${p.id}/availability`, { is_available: !p.is_available });
+            const { data } = await setProductAvailability(p.id, { is_available: !p.is_available });
             if (!data.product.is_available) {
                 setPending({ name: data.product.name, orders: data.pending_orders || [] });
                 toast.success(`${data.product.name} agotado. Los pedidos ya aceptados siguen.`);

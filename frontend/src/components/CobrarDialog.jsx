@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
-import { api } from '@/lib/api';
+import { getOrder } from '@/lib/api/orders';
+import { createPayment, getCollectionConfig, uploadPaymentProof } from '@/lib/api/payments';
 import { fmtMoney, PAYMENT_LABELS } from '@/lib/format';
 import { Banknote, Smartphone, CreditCard, Building2, ArrowLeftRight, CheckCircle2, Printer, Copy, Info, Lock, HelpCircle, X, ChevronDown, Maximize2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -128,7 +129,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         setCollectionConfig(null);
         setCollectionConfigError(false);
         if (!open || !canSubmitProof) return () => { cancelled = true; };
-        api.get('/payment-config/collection')
+        getCollectionConfig()
             .then(({ data }) => { if (!cancelled) setCollectionConfig(data || {}); })
             .catch(() => { if (!cancelled) setCollectionConfigError(true); });
         return () => { cancelled = true; };
@@ -300,7 +301,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     const refreshOrderAfterProof = async (orderId, requestEpoch) => {
         try {
-            const { data } = await api.get(`/orders/${orderId}`);
+            const { data } = await getOrder(orderId);
             if (dialogEpochRef.current !== requestEpoch || !open) return false;
             if (!data || data.id !== orderId) throw new Error('Invalid order response');
             setLive(data);
@@ -326,7 +327,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         setProofSending(true);
         setProofError('');
         try {
-            await api.post(`/payments/${requestOrderId}/proof`, {
+            await uploadPaymentProof(requestOrderId, {
                 method: intent.method,
                 payment_proof: intent.payment_proof,
             });
@@ -376,14 +377,14 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             if (payMode === 'items' && pickedLines.length) {
                 payload.lines = pickedLines.map((l) => ({ item_id: l.item_id, quantity: l.quantity }));
             }
-            const { data } = await api.post('/payments', payload);
+            const { data } = await createPayment(payload);
             setResult(data);
             setNetError(false);
             try {
                 navigator.vibrate?.(data.fully_paid ? [40, 30, 40] : 30);
             } catch { /* haptics are best-effort */ }
             try {
-                const fresh = await api.get(`/orders/${acct.id}`);
+                const fresh = await getOrder(acct.id);
                 setLive(fresh.data);
             } catch { /* keep snapshot */ }
             onPaid && onPaid();

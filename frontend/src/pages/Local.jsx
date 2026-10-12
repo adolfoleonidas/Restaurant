@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { createBranch, listBranches, updateBranch } from '@/lib/api/branches';
+import { createTable, deleteTable, listTables, updateTable } from '@/lib/api/tables';
+import { createZone, deleteZone, listZones, updateZone } from '@/lib/api/zones';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,7 +31,7 @@ export function SucursalesPanel() {
     const [saving, setSaving] = useState(false);
     const load = async () => {
         setLoading(true);
-        try { const { data } = await api.get('/branches'); setBranches(Array.isArray(data) ? data : []); }
+        try { const { data } = await listBranches(); setBranches(Array.isArray(data) ? data : []); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales'); }
         finally { setLoading(false); }
     };
@@ -38,7 +40,7 @@ export function SucursalesPanel() {
     const create = async () => {
         setSaving(true);
         try {
-            await api.post('/branches', draft);
+            await createBranch(draft);
             setDraft({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
             toast.success('Sucursal creada'); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo crear la sucursal'); }
@@ -47,7 +49,7 @@ export function SucursalesPanel() {
     const save = async (branch) => {
         setSaving(true);
         try {
-            await api.patch(`/branches/${branch.id}`, {
+            await updateBranch(branch.id, {
                 name: branch.name,
                 timezone: branch.timezone,
                 business_day_cutoff: branch.business_day_cutoff,
@@ -97,9 +99,9 @@ export function ZonasPanel() {
     const load = async () => {
         try {
             const [z, b, t] = await Promise.all([
-                api.get('/zones'),
-                api.get('/branches'),
-                api.get('/tables')
+                listZones(),
+                listBranches(),
+                listTables()
             ]);
             setZones(z.data);
             setBranches(Array.isArray(b.data) ? b.data : []);
@@ -130,14 +132,14 @@ export function ZonasPanel() {
             const payload = { name };
             if (branchId) payload.branch_id = branchId;
 
-            if (editing) await api.patch(`/zones/${editing.id}`, payload);
-            else await api.post('/zones', payload);
+            if (editing) await updateZone(editing.id, payload);
+            else await createZone(payload);
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
     const doDelete = async (z) => {
-        try { await api.delete(`/zones/${z.id}`); toast.success('Zona eliminada'); await load(); }
+        try { await deleteZone(z.id); toast.success('Zona eliminada'); await load(); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
     };
 
@@ -271,7 +273,7 @@ export function TablesManager() {
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
     const load = async () => {
         try {
-            const [t, z] = await Promise.all([api.get('/tables'), api.get('/zones')]);
+            const [t, z] = await Promise.all([listTables(), listZones()]);
             setTables(t.data); setZones(z.data);
         } catch {
             // Keep the section usable with whatever data is already loaded.
@@ -282,7 +284,7 @@ export function TablesManager() {
         setBranchesLoading(true);
         setBranchesError(false);
         try {
-            const { data } = await api.get('/branches');
+            const { data } = await listBranches();
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
@@ -300,14 +302,14 @@ export function TablesManager() {
             const { branch_id, ...tableForm } = form;
             const payload = { ...tableForm, number: Number(form.number), capacity: Number(form.capacity) };
             if (branch_id && branch_id !== (editing?.branch_id || '')) payload.branch_id = branch_id;
-            if (editing) await api.patch(`/tables/${editing.id}`, payload);
-            else await api.post('/tables', payload);
+            if (editing) await updateTable(editing.id, payload);
+            else await createTable(payload);
             toast.success('Guardado'); setDlg(false); await load();
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
         finally { setSaving(false); }
     };
     const doDelete = async (t) => {
-        try { await api.delete(`/tables/${t.id}`); toast.success('Eliminada'); await load(); }
+        try { await deleteTable(t.id); toast.success('Eliminada'); await load(); }
         catch (e) { toast.error('Error'); }
     };
 
@@ -346,7 +348,7 @@ export function TablesManager() {
         let done = 0;
         try {
             for (const t of missingBranch) {
-                await api.patch(`/tables/${t.id}`, { branch_id: assignBranch });
+                await updateTable(t.id, { branch_id: assignBranch });
                 done += 1;
             }
             toast.success(done === 1 ? 'Mesa asignada' : `${done} mesas asignadas`);

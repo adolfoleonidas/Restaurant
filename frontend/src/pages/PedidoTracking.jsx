@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getPublicOrder, getPublicOrderTable, getPublicRestaurant, uploadPublicOrderProof } from '@/lib/api/public';
 import usePolling from '@/hooks/usePolling';
 import usePublicStream from '@/hooks/usePublicStream';
 import { useTableContext } from '@/contexts/TableContext';
@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtElapsed, PAYMENT_LABELS, waMeLink } from '@/lib/format';
 import {
-    ORDER_STATUS_LABELS, PAYMENT_STATE_LABELS, PAYMENT_STATE_TONES, trackingStepsFor, trackingStepIndex,
+    PAYMENT_STATE_LABELS, PAYMENT_STATE_TONES, trackingStepsFor, trackingStepIndex,
 } from '@/constants/status';
 import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -40,7 +40,7 @@ export default function PedidoTracking() {
         return () => document.removeEventListener('visibilitychange', onVisibility);
     }, []);
     useEffect(() => {
-        api.get('/public/restaurant').then((r) => setRestaurant(r.data)).catch(() => {});
+        getPublicRestaurant().then((r) => setRestaurant(r.data)).catch(() => {});
     }, []);
     // El SSE ya empuja cada cambio de estado; el sondeo queda como red de
     // seguridad. A 5 s eran 12 peticiones/minuto de datos y batería, así que
@@ -48,7 +48,7 @@ export default function PedidoTracking() {
     // un parámetro del hook, no hace falta tocar usePolling).
     const pollInterval = visible ? 30000 : 300000;
     const { data: order, loading, error, refetch } = usePolling(
-        () => api.get(`/public/orders/${code}`).then((r) => r.data),
+        () => getPublicOrder(code).then((r) => r.data),
         pollInterval,
         [code, generation]
     );
@@ -62,7 +62,7 @@ export default function PedidoTracking() {
     useEffect(() => {
         if (!code || !tableId) return undefined;
         let active = true;
-        api.get(`/public/orders/${code}/table`)
+        getPublicOrderTable(code)
             .then((r) => { if (active) setOwnTable(r.data); })
             .catch(() => { if (active) setOwnTable(null); });
         return () => { active = false; };
@@ -99,7 +99,7 @@ export default function PedidoTracking() {
     };
     const upload = async () => {
         setUploading(true);
-        try { await api.post(`/public/orders/${code}/proof`, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
+        try { await uploadPublicOrderProof(code, { payment_proof: proof }); toast.success('Comprobante enviado'); await refetch(); setProof(null); }
         catch (e) { toast.error(e.response?.data?.detail || 'No se pudo enviar el comprobante. Revisá tu conexión y reintentá.'); }
         finally { setUploading(false); }
     };

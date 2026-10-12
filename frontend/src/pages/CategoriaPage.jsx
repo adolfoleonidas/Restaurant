@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getPublicCategories, getPublicProducts, getPublicRestaurant } from '@/lib/api/public';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { ProductCard } from '@/components/ProductCard';
@@ -44,9 +44,9 @@ export default function CategoriaPage() {
         // Sin .catch, un fallo de red se veía como una categoría vacía.
         setLoadError(false);
         Promise.all([
-            api.get('/public/restaurant').then((r) => r.data),
-            api.get('/public/categories').then((r) => r.data),
-            api.get('/public/products').then((r) => r.data),
+            getPublicRestaurant().then((r) => r.data),
+            getPublicCategories().then((r) => r.data),
+            getPublicProducts().then((r) => r.data),
         ]).then(([r, c, p]) => {
             if (!active) return;
             setRestaurant(r); setCategories(c); setProducts(p);
@@ -82,7 +82,7 @@ export default function CategoriaPage() {
 
     useEffect(() => {
         if (!generation) return;
-        api.get('/public/products').then((r) => setProducts(r.data));
+        getPublicProducts().then((r) => setProducts(r.data));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [generation]);
 

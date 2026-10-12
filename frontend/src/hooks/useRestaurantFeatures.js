@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getRestaurant } from '@/lib/api/restaurant';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_FEATURES, mergeFeatures, subscribeFeatures } from '@/lib/features';
 
@@ -25,7 +25,7 @@ export default function useRestaurantFeatures() {
             // Un mock o un api degradado pueden devolver algo que no es promesa:
             // sin flags simplemente se mantienen los defaults (todo apagado).
             let request;
-            try { request = api.get('/restaurants/current'); } catch { return; }
+            try { request = getRestaurant(); } catch { return; }
             if (!request || typeof request.then !== 'function') return;
             request
                 .then(({ data }) => { if (active) setFeatures(mergeFeatures(data?.features)); })

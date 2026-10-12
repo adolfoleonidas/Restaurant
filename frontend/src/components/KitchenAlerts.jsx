@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { getKitchenOrders } from '@/lib/api/orders';
 import { useNotify } from '@/contexts/NotifyContext';
 
 const ROLES = ['admin', 'cocina', 'mozo'];
@@ -94,7 +94,7 @@ export function KitchenAlerts() {
     );
     const { generation } = useNotify();
     const { data: orders } = usePolling(
-        () => (enabled ? api.get('/orders/kitchen').then((r) => r.data) : Promise.resolve([])),
+        () => (enabled ? getKitchenOrders().then((r) => r.data) : Promise.resolve([])),
         20000,
         [enabled, user?.id, generation]
     );

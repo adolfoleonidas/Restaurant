@@ -1,7 +1,14 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listBranches } from '@/lib/api/branches';
+import { addCashMovement, closeCash, getCash, listCashHistory, openCash } from '@/lib/api/cash';
+import { confirmOrderPayment, getOrder } from '@/lib/api/orders';
+import {
+    createApproval, listPayments, listPendingPrepay, runPrepayAction, voidPayment,
+} from '@/lib/api/payments';
+import { getProductsReport } from '@/lib/api/reports';
+import { get as apiGet } from '@/lib/api/request';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +37,7 @@ function WebOrderRow({ order, onConfirm, scopeParams = {} }) {    const [proof, 
         setLoading(true);
         try {
             const options = Object.keys(scopeParams).length ? { params: scopeParams } : undefined;
-            const { data } = await api.get(`/orders/${order.id}`, options);
+            const { data } = await getOrder(order.id, options);
             setProof(data.payment_proof_url || null);
             setShowProof(true);
         } catch (e) {
@@ -91,7 +98,7 @@ function PrepayQueue({ runMutation, onChanged }) {
 
     useEffect(() => {
         let active = true;
-        api.get('/public-prepay/pending')
+        listPendingPrepay()
             .then((r) => { if (active) setRows(Array.isArray(r.data) ? r.data : []); })
             .catch(() => { if (active) setRows([]); })
             .finally(() => { if (active) setLoaded(true); });
@@ -102,7 +109,7 @@ function PrepayQueue({ runMutation, onChanged }) {
 
     const openProof = async (row) => {
         try {
-            const { data } = await api.get(`/orders/${row.id}`);
+            const { data } = await getOrder(row.id);
             setProof({ order: row, url: data.payment_proof_url || null });
         } catch {
             toast.error('No se pudo cargar el comprobante');
@@ -113,7 +120,7 @@ function PrepayQueue({ runMutation, onChanged }) {
         if (action === 'reject' && !window.confirm(`¿Rechazar el pago del pedido #${row.order_number}? El pedido no va a cocina.`)) return;
         setBusy(`${action}-${row.id}`);
         try {
-            await runMutation(() => api.post(`/public-prepay/${row.id}/${action}`));
+            await runMutation(() => runPrepayAction(row.id, action));
             toast.success(action === 'confirm'
                 ? `Pedido #${row.order_number}: pago registrado y enviado a cocina`
                 : `Pedido #${row.order_number}: pago rechazado`);
@@ -194,13 +201,13 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     useEffect(() => {
         const params = { period, limit: 200, ...scopeParams };
         if (q.trim()) params.q = q.trim();
-        api.get('/payments', { params }).then((r) => setItems(r.data)).catch(() => setItems([]));
+        listPayments(params).then((r) => setItems(r.data)).catch(() => setItems([]));
     }, [period, q, refreshKey, reload, scopeParams]);
 
     const reprint = async (p) => {
         let order = null;
         try {
-            const { data } = await api.get(`/orders/${p.order_id}`, scopeOptions());
+            const { data } = await getOrder(p.order_id, scopeOptions());
             order = data;
         } catch { /* payment still reprints from its own lines */ }
         const ok = printCajaReceipt({
@@ -224,11 +231,11 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
         try {
             await runMutation(async () => {
                 if (canVoid) {
-                    const { data } = await api.post(`/payments/${detail.id}/void`, { kind: voidKind, reason: voidReason.trim() });
+                    const { data } = await voidPayment(detail.id, { kind: voidKind, reason: voidReason.trim() });
                     toast.success(voidKind === 'refund' ? 'Devolución registrada. El cobro sigue en el historial.' : 'Anulación registrada. El cobro no se eliminó.');
                     setDetail(data);
                 } else {
-                    await api.post('/approvals', { kind: voidKind, reason: voidReason.trim(), payment_id: detail.id });
+                    await createApproval({ kind: voidKind, reason: voidReason.trim(), payment_id: detail.id });
                     toast.success('Solicitud enviada al encargado. No cobres de nuevo mientras tanto.');
                     setDetail(null);
                 }
@@ -392,7 +399,7 @@ function SoldDishes({ refreshKey, scopeParams = {}, contextKey = 'staff', branch
 
     useEffect(() => {
         let active = true;
-        api.get('/reports/products', { params: { period, ...scopeParams } }).then((r) => {
+        getProductsReport({ period, ...scopeParams }).then((r) => {
             if (active) setResult({ identity: requestIdentity, data: r.data, failed: false });
         }).catch(() => {
             if (active) setResult({ identity: requestIdentity, data: null, failed: true });
@@ -456,7 +463,7 @@ function CashHistory({ refreshKey, scopeParams = {} }) {
     const [data, setData] = useState(null);
 
     useEffect(() => {
-        api.get('/cash/history', { params: { period, ...scopeParams } }).then((r) => setData(r.data)).catch(() => setData({ registers: [] }));
+        listCashHistory({ period, ...scopeParams }).then((r) => setData(r.data)).catch(() => setData({ registers: [] }));
     }, [period, refreshKey, scopeParams]);
 
     const grouped = useMemo(() => {
@@ -549,7 +556,7 @@ function OpenCajaCard({ onOpened, branchId, canOpen = true, runMutation }) {
         if (!amount) { toast.error('Indica monto inicial'); return; }
         setLoading(true);
         try {
-            await runMutation(() => api.post('/cash/open', {
+            await runMutation(() => openCash({
                 opening_amount: Number(amount), notes,
                 ...(branchId ? { branch_id: branchId } : {}),
             }));
@@ -586,7 +593,7 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }
     const submit = async () => {
         if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indicá el efectivo contado'); return; }
         try {
-            const { data } = await runMutation(() => api.post('/cash/close', { closing_amount: Number(closing), notes }));
+            const { data } = await runMutation(() => closeCash({ closing_amount: Number(closing), notes }));
             const delta = Number(data.difference || 0);
             toast.success(delta === 0 ? 'Turno cerrado. El cajón cuadra.' : `Turno cerrado. Diferencia: ${fmtMoney(delta)}`);
             onClosed && onClosed();
@@ -642,7 +649,7 @@ function MovementCard({ register, onAdded, runMutation }) {
         if (!amount || Number(amount) <= 0) { toast.error('Ingresá un monto mayor a 0'); return; }
         if (desc.trim().length < 5) { toast.error('Escribe una descripción (mínimo 5 caracteres)'); return; }
         try {
-            await runMutation(() => api.post('/cash/movements', { type, amount: Number(amount), description: desc.trim() }));
+            await runMutation(() => addCashMovement({ type, amount: Number(amount), description: desc.trim() }));
             toast.success('Movimiento registrado');
             setAmount(''); setDesc('');
             onAdded && onAdded();
@@ -723,7 +730,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
     }, [scopeParams]);
     const scopedGet = useCallback((path, baseParams) => {
         const options = scopeOptions(baseParams);
-        return options ? api.get(path, options) : api.get(path);
+        return apiGet(path, options);
     }, [scopeOptions]);
     const { data: register, loading, refetch: refetchReg } = usePolling(
         () => scopedGet('/cash/current').then((r) => r.data), 12000, [generation, contextKey]
@@ -806,7 +813,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
     const confirmWeb = async (order) => {
         try {
-            await runMutation(() => api.post(`/orders/${order.id}/confirm-payment`));
+            await runMutation(() => confirmOrderPayment(order.id));
             toast.success(`Pedido #${order.order_number}: pago web confirmado`);
             refetchPending();
         } catch (e) {
@@ -995,7 +1002,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
 
 function ConsolidatedCashView({ branches, userKey }) {
     const { data: registers, loading, error } = usePolling(
-        () => api.get('/cash').then((r) => r.data),
+        () => getCash().then((r) => r.data),
         12000,
         [userKey]
     );
@@ -1056,7 +1063,7 @@ export default function Caja() {
         let active = true;
         setBranchesLoading(true);
         setBranchesError(false);
-        api.get('/branches').then(({ data }) => {
+        listBranches().then(({ data }) => {
             if (active) setBranches(Array.isArray(data) ? data : []);
         }).catch(() => {
             if (active) {
