@@ -47,7 +47,7 @@ Likely 1500+ authored changed lines, mostly moved code. Strategy: `feature-branc
 
 - FC-05 (part 2). `pages/Caja.jsx` 1084 -> 109 lines: its ten in-file components moved unchanged to `pages/caja/` (`WebOrderRow`, `PrepayQueue`, `PaymentHistory`, `SoldDishes`, `CashHistory`, `OpenCajaCard`, `CloseCajaDialog`, `MovementCard`, `CajaWorkspace`, `ConsolidatedCashView`); `Caja.jsx` keeps the owner branch context and remains the route entry. The dead `statusGroups` memo of `PaymentHistory` was dropped. Full suite 68 suites / 578 tests passed. Commit: bde3796.
 
-- FC-06. RED: `permissions.test.js` failed with the module absent. `lib/permissions.js` now holds `ROUTE_ROLES` (the role guard of each route), `NAV_ITEMS` + `navItemsFor` (the menu, with icon keys), and `can(user, action)` with 13 actions (`owner`, `salon.*`, `cash.*`, `order.*`). `App.js` builds every guard with `routeRoles(path)`; `AppShell.jsx` draws `navItemsFor` and maps icon keys to lucide icons; the inline role checks of Salon, CobrarDialog, Caja (owner, void), PaymentHistory, Dashboard, Reportes, PedidoDetalle and Pedidos read `can`. The test embeds the previous nav and every previous inline expression as an oracle and compares them over 4 roles x 8 function sets x 2 discount flags (64 users): identical output. Kept as they were: the notification and assistant surfaces that gate on a role list (`KitchenAlerts`, `AssistantBar`, `RoleInbox`) and the `Dashboard` home redirects. Full suite 69 suites / 589 tests passed. Commit: FC06_HASH.
+- FC-06. RED: `permissions.test.js` failed with the module absent. `lib/permissions.js` now holds `ROUTE_ROLES` (the role guard of each route), `NAV_ITEMS` + `navItemsFor` (the menu, with icon keys), and `can(user, action)` with 13 actions (`owner`, `salon.*`, `cash.*`, `order.*`). `App.js` builds every guard with `routeRoles(path)`; `AppShell.jsx` draws `navItemsFor` and maps icon keys to lucide icons; the inline role checks of Salon, CobrarDialog, Caja (owner, void), PaymentHistory, Dashboard, Reportes, PedidoDetalle and Pedidos read `can`. The test embeds the previous nav and every previous inline expression as an oracle and compares them over 4 roles x 8 function sets x 2 discount flags (64 users): identical output. Kept as they were: the notification and assistant surfaces that gate on a role list (`KitchenAlerts`, `AssistantBar`, `RoleInbox`) and the `Dashboard` home redirects. Full suite 69 suites / 589 tests passed. Commit: 0a797f7.
 
 
 ## Stage 4 findings
@@ -75,6 +75,14 @@ Behavior quirks (characterized, not fixed):
 14. A full parallel run on a loaded machine showed intermittent timeouts in a few suites (`MesasMultiCuenta`, `PedidoDetalleCollection`, `BranchAssignment`, `CajaPaymentProof`); each passes alone and the full suite is stable with `--maxWorkers=4`.
 15. `CRA`'s ESLint is configured with only the react-hooks rules, so unused imports and undefined identifiers are not reported by `craco build`; the stage was checked with a throwaway ESLint config (`no-undef`, `no-unused-vars`, `react/jsx-no-undef`), which found no undefined identifiers in `src`.
 
+## Final verification (2026-10-12)
+
+- `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false`: 69 suites / 589 tests passed (baseline 52 / 321; +17 suites and +268 tests, no previously passing test changed except the fetcher-source sniffers listed under FC-03).
+- `npx craco build`: Compiled successfully, no warnings.
+- `git diff --check 3ec5fe9..HEAD`: clean.
+- Line counts, before -> after: `pages/Salon.jsx` 1890 -> 361, `components/CobrarDialog.jsx` 1142 -> 464, `pages/Caja.jsx` 1084 -> 109.
+- Commits: d67f153 (FC-01), 35db358 (FC-02), 8eeafa2 (FC-03), cf5d094 and 32d8168 (FC-04), e8f4fd6 and bde3796 (FC-05), 0a797f7 (FC-06).
+
 ## Next step
 
-Delegate FC-01 to FC-06 to one writer.
+Review the branch. Push, pull requests (one slice per task under `feature-branch-chain`) and merge are separate user decisions. Stage 4 starts from the findings above.
