@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderItemVoid, OrderItemMove
-from billing import assert_can_cancel, guarded_totals
+from billing import assert_can_cancel, guarded_totals, line_subtotal, split_group_totals, sum_line_subtotals
 from order_flow import (
     DRAFT_STATUS,
     FlowError,
@@ -120,7 +120,6 @@ async def _next_order_number(restaurant_id: str) -> int:
 
 
 async def _compute_total(items: list, restaurant_id: str):
-    subtotal = 0.0
     enriched = []
     for it in items:
         prod = await db.products.find_one(
@@ -131,7 +130,7 @@ async def _compute_total(items: list, restaurant_id: str):
             raise HTTPException(status_code=400, detail=f"Producto {it['product_id']} no existe")
         if not prod.get("is_available", True):
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
-        line_subtotal = prod["price"] * it["quantity"]
+        line = line_subtotal(prod["price"], it["quantity"])
         combo_components = await combo_components_for(prod, restaurant_id)
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
@@ -141,7 +140,7 @@ async def _compute_total(items: list, restaurant_id: str):
             "product_name": prod["name"],
             "quantity": it["quantity"],
             "unit_price": prod["price"],
-            "subtotal": line_subtotal,
+            "subtotal": line,
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),
             "added_at": it.get("added_at") or _now(),
@@ -149,8 +148,7 @@ async def _compute_total(items: list, restaurant_id: str):
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })
-        subtotal += line_subtotal
-    return enriched, subtotal
+    return enriched, sum_line_subtotals(line["subtotal"] for line in enriched)
 
 
 async def _save_order(order: dict, fields: dict):
@@ -636,12 +634,8 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
     for idx, it in enumerate(items):
         groups[idx % parts].append(it)
 
-    def _split_total(group):
-        subtotal = round(sum(float(i.get("subtotal") or 0) for i in group), 2)
-        return subtotal, subtotal
-
     # La cuenta original conserva el primer grupo (sin descuento ni propina).
-    subtotal0, total0 = _split_total(groups[0])
+    subtotal0, total0 = split_group_totals(groups[0])
     await _save_order(order, {
         "items": groups[0], "subtotal": subtotal0, "total": total0,
         "discount": 0.0, "tip": 0.0, "updated_at": _now(),
@@ -651,7 +645,7 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
     # Las cuentas nuevas heredan mesa, visita y estado de la original.
     created = []
     for group in groups[1:]:
-        subtotal_g, total_g = _split_total(group)
+        subtotal_g, total_g = split_group_totals(group)
         new_id = str(uuid.uuid4())
         order_no = await _next_order_number(user["restaurant_id"])
         new_order = {
@@ -860,7 +854,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
                 raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anulalo y volvé a pedirlo.")
             if data.quantity is not None:
                 it["quantity"] = data.quantity
-                it["subtotal"] = it["unit_price"] * data.quantity
+                it["subtotal"] = line_subtotal(it["unit_price"], data.quantity)
             if data.notes is not None:
                 it["notes"] = data.notes
             found = True

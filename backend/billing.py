@@ -20,6 +20,58 @@ def billable_items(items: list) -> list:
     return [item for item in items if is_billable(item)]
 
 
+def line_subtotal(unit_price, quantity):
+    """Price of one order line. Stored unrounded, like every line before it."""
+    return unit_price * quantity
+
+
+def sum_line_subtotals(subtotals) -> float:
+    """Running sum of freshly priced lines. Kept as a loop so the stored float matches history."""
+    total = 0.0
+    for value in subtotals:
+        total += value
+    return total
+
+
+def line_charge_amount(item: dict, quantity: int) -> float:
+    """What a cashier collects when charging `quantity` units of an existing line."""
+    return float(item.get("unit_price") or 0) * quantity
+
+
+def split_group_totals(items: list) -> tuple:
+    """(subtotal, total) of one account created by splitting. No discount or tip carries over.
+
+    Unlike `guarded_totals` this sums every line it is given, cancelled ones included.
+    """
+    subtotal = money(sum(float(item.get("subtotal") or 0) for item in items))
+    return subtotal, subtotal
+
+
+def public_order_totals(subtotal, delivery_fee):
+    """(subtotal, total) stored on a new public order: rounded sum and rounded sum plus delivery."""
+    return round(subtotal, 2), round(subtotal + delivery_fee, 2)
+
+
+def paid_total(payments) -> float:
+    """Sum of what the given completed payments collected."""
+    return money(sum(float(payment.get("amount") or 0) for payment in payments))
+
+
+def balance_due(total, paid) -> float:
+    """Signed balance (total minus paid), rounded to cents."""
+    return round(total - paid, 2)
+
+
+def remaining_due(total, paid) -> float:
+    """Balance still to collect, never below zero."""
+    return round(max(0.0, total - paid), 2)
+
+
+def paid_after_refund(amount_paid, refunded) -> float:
+    """Collected amount left on an order once a payment is voided or refunded."""
+    return round(max(0.0, float(amount_paid or 0) - float(refunded or 0)), 2)
+
+
 def account_total(*, subtotal, delivery_fee=0, discount=0, tip=0) -> float:
     base = money(subtotal) + money(delivery_fee) - money(discount)
     return money(max(0.0, base) + money(tip))

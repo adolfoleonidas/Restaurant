@@ -12,7 +12,7 @@ import string
 from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
-from billing import guarded_totals
+from billing import guarded_totals, line_subtotal, public_order_totals, sum_line_subtotals
 from order_flow import VersionError, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
@@ -59,7 +59,6 @@ def _derive_kitchen_status(items: list, current: str) -> str:
 
 async def _enrich_items(items, r):
     enriched = []
-    subtotal = 0.0
     for it in items:
         prod = await db.products.find_one(
             {"id": it.product_id, "restaurant_id": r["id"]},
@@ -67,7 +66,7 @@ async def _enrich_items(items, r):
         )
         if not prod or not prod.get("is_available", True):
             raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
-        line = prod["price"] * it.quantity
+        line = line_subtotal(prod["price"], it.quantity)
         combo_components = await combo_components_for(prod, r["id"])
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
@@ -84,8 +83,7 @@ async def _enrich_items(items, r):
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })
-        subtotal += line
-    return enriched, subtotal
+    return enriched, sum_line_subtotals(line["subtotal"] for line in enriched)
 
 
 def _public_order_view(o: dict) -> dict:
@@ -737,7 +735,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
     enriched, subtotal = await _enrich_items(data.items, r)
 
     delivery_fee = r.get("delivery_fee", 0.0) if data.order_type == "delivery" else 0.0
-    total = subtotal + delivery_fee
+    order_subtotal, order_total = public_order_totals(subtotal, delivery_fee)
     order_id = str(uuid.uuid4())
     # Una mesa con visita abierta ya tiene su `attention_id`: el pedido nuevo se
     # suma a esa visita (otra cuenta) en lugar de abrir una nueva.
@@ -784,11 +782,11 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
         "payment_state": money["payment_state"],
         "order_type": data.order_type,
         "items": enriched,
-        "subtotal": round(subtotal, 2),
+        "subtotal": order_subtotal,
         "discount": 0.0,
         "tip": 0.0,
         "delivery_fee": delivery_fee,
-        "total": round(total, 2),
+        "total": order_total,
         "notes": data.notes,
         "customer_name": (data.customer_name or "").strip() or None,
         "customer_phone": (data.customer_phone or "").strip() or None,
@@ -914,7 +912,7 @@ async def public_update_item(tracking_code: str, item_id: str, data: PublicItemU
     if target.get("status") not in ("pendiente", None):
         raise HTTPException(status_code=400, detail="Este plato ya está en cocina. Consultá al mozo si querés modificarlo.")
     target["quantity"] = data.quantity
-    target["subtotal"] = target["unit_price"] * data.quantity
+    target["subtotal"] = line_subtotal(target["unit_price"], data.quantity)
     subtotal, total = guarded_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     await _save_public_order(o, {

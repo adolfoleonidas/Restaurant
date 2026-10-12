@@ -12,7 +12,10 @@ from database import db
 from auth import get_current_user, require_roles
 from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
-from billing import account_total, build_sold_lines, cash_portion, reversal_is_inside_open_shift
+from billing import (
+    account_total, balance_due, build_sold_lines, cash_portion, line_charge_amount, money, paid_after_refund,
+    paid_total, remaining_due, reversal_is_inside_open_shift,
+)
 from order_flow import VersionError, claim_order, claim_attention_mutation, finish_attention_mutation, ticket_fields, version_conflict
 from notify import emit_order, emit_notice
 
@@ -68,10 +71,10 @@ def _check_payment_replay(payment: dict, order: dict, order_id: str) -> dict:
     # Same shape as a fresh charge. The dialog and the printed receipt read these
     # to decide whether the bill is settled, and a retry after a network cut used
     # to come back without them (the cashier saw a blank remainder).
-    total = round(float(order.get("total") or 0), 2)
-    paid = round(float(order.get("amount_paid") or 0), 2)
+    total = money(order.get("total"))
+    paid = money(order.get("amount_paid"))
     replay = {key: value for key, value in payment.items() if key != "_id"}
-    replay["remaining"] = round(max(0.0, total - paid), 2)
+    replay["remaining"] = remaining_due(total, paid)
     replay["fully_paid"] = paid + 0.009 >= total
     replay["table_released"] = False
     return replay
@@ -358,8 +361,8 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         tip=tip,
     )
     prior = await db.payments.find({"restaurant_id": user["restaurant_id"], "order_id": data.order_id, "status": "completed"}, {"_id": 0, "amount": 1}).to_list(50)
-    paid_so_far = round(sum(float(p.get("amount") or 0) for p in prior), 2)
-    remaining = round(bill_total - paid_so_far, 2)
+    paid_so_far = paid_total(prior)
+    remaining = balance_due(bill_total, paid_so_far)
     if remaining <= 0:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
 
@@ -376,7 +379,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
             unpaid = int(it.get("quantity") or 0) - int(it.get("paid_qty") or 0)
             if line.quantity > unpaid:
                 raise HTTPException(status_code=400, detail=f"Solo quedan {unpaid} de {it.get('product_name')}")
-            line_total += float(it.get("unit_price") or 0) * line.quantity
+            line_total += line_charge_amount(it, line.quantity)
             line_payload.append({"item_id": line.item_id, "quantity": line.quantity, "name": it.get("product_name")})
         data.amount = round(line_total, 2)
 
@@ -543,11 +546,11 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "action": "payment_create",
         "entity": "payment",
         "entity_id": payment_id,
-        "details": {"order_id": data.order_id, "method": data.method, "amount": amount, "remaining": round(bill_total - new_paid, 2)},
+        "details": {"order_id": data.order_id, "method": data.method, "amount": amount, "remaining": balance_due(bill_total, new_paid)},
         "created_at": _now(),
     })
 
-    payment["remaining"] = round(max(0.0, bill_total - new_paid), 2)
+    payment["remaining"] = remaining_due(bill_total, new_paid)
     payment["fully_paid"] = fully_paid
     payment["table_released"] = False
     return {k: v for k, v in payment.items() if k != "_id"}
@@ -571,7 +574,7 @@ async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str
                 item["paid_qty"] = 0
 
     amount = float(pay.get("amount") or 0)
-    new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - amount), 2)
+    new_paid = paid_after_refund(order.get("amount_paid"), amount)
     timestamp = _now()
     order_patch = {"amount_paid": new_paid, "items": items, "updated_at": timestamp}
     order_patch.update(ticket_fields(
@@ -855,7 +858,7 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
             for item in items:
                 item["paid_qty"] = 0
 
-    new_paid = round(max(0.0, float(order.get("amount_paid") or 0) - float(pay.get("amount") or 0)), 2)
+    new_paid = paid_after_refund(order.get("amount_paid"), pay.get("amount"))
     bill = float(order.get("total") or 0)
     was_closed = order.get("status") == "pagado"
     order_set = {"amount_paid": new_paid, "items": items, "updated_at": _now()}
