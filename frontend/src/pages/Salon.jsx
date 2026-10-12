@@ -251,6 +251,28 @@ function isComposingDraft(order) {
     return !(order.items || []).some((item) => !isDraft(item, order.status));
 }
 
+const isComposableTable = (table) => ['disponible', 'ocupada'].includes(table?.status);
+
+function canComposeAccountAt(account, table, attentionId = table?.active_attention_id) {
+    return Boolean(account?.id && isComposableTable(table)
+        && account.table_id === table.id
+        && (!account.order_type || account.order_type === 'mesa')
+        && !['pagado', 'cancelado'].includes(account.status)
+        && (!account.attention_state || account.attention_state === 'open')
+        && (!attentionId || account.attention_id === attentionId)
+        && (!account.branch_id || !table.branch_id || account.branch_id === table.branch_id));
+}
+
+// Keep local account cards current without adding a followed group's bill to this table.
+function accountSnapshots(sheet, account) {
+    const accounts = sheet.accounts || [];
+    if (!account?.id) return accounts;
+    if (accounts.some((entry) => entry.id === account.id)) {
+        return accounts.map((entry) => (entry.id === account.id ? account : entry));
+    }
+    return account.table_id === sheet.table.id ? [...accounts, account] : accounts;
+}
+
 export default function Salon() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
@@ -606,7 +628,17 @@ export default function Salon() {
     }, [filteredUnits, areas, areaFilter]);
 
     // ── Actions ────────────────────────────────────────────────────────────
+    const composeTableFor = (account) => {
+        const selectedTable = (tables || []).find((table) => table.id === openTable?.table?.id) || openTable?.table;
+        if (account?.table_id === selectedTable?.id) return selectedTable;
+        const group = selectedTable?.group;
+        return groupMembers(group, tables || []).find((table) => (
+            table.id === account?.table_id && table.group?.id === group?.id
+        )) || null;
+    };
+
     const openSheet = async (t, preferredOrderId = null) => {
+        if (savingItem || sendingToKitchen || openTable?.loading) return null;
         // A joined table with no account of its own reads the group's account,
         // but only when the group holds exactly one: with two separate bills
         // there is nothing unambiguous to follow, so the sheet lists them.
@@ -615,32 +647,35 @@ export default function Salon() {
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
         let loadedOrder = null;
         setComposerOpen(false);
-        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: Boolean(targetOrderId), accounts: [], accountId: targetOrderId || null });
+        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: true, accounts: [], accountId: targetOrderId || null });
         if (targetOrderId) {
             try {
                 const { data } = await api.get(`/orders/${targetOrderId}`);
                 if (data?.id === targetOrderId) {
                     loadedOrder = data;
-                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data, loading: false } : s));
-                } else {
-                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+                    setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data } : s));
                 }
                 // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
                 // abre sola, sin obligar a buscar el botón.
-                if (loadedOrder && isComposingDraft(loadedOrder)) setComposerOpen(true);
-            } catch {
-                setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
-            }
+                if (canTake && isComposableTable(t) && canComposeAccountAt(loadedOrder, followed || t)
+                    && isComposingDraft(loadedOrder)) {
+                    setComposerOpen(true);
+                }
+            } catch { /* Continue loading the optional account list. */ }
         }
         try {
             const { data } = await api.get('/orders', { params: { table_id: t.id, limit: 50 } });
             const all = data || [];
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
-            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accounts: active, history: past } : s));
+            setOpenTable((s) => (s && s.table.id === t.id ? {
+                ...s, accounts: accountSnapshots({ ...s, accounts: active }, s.order), history: past,
+            } : s));
             // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
-            if (!targetOrderId && active.length) await selectAccount(active[0].id);
-        } catch { /* historial opcional */ }
+            if (!targetOrderId && active.length) loadedOrder = await selectAccount(active[0].id);
+        } catch { /* historial opcional */ } finally {
+            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+        }
         return loadedOrder;
     };
 
@@ -648,17 +683,24 @@ export default function Salon() {
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
-    const selectAccount = async (orderId) => {
-        setOpenTable((s) => (s ? { ...s, accountId: orderId, loading: true } : s));
+    const selectAccount = async (orderId, validate = null) => {
+        if (!orderId || savingItem || sendingToKitchen || openTable?.loading) return null;
+        setOpenTable((s) => (s ? {
+            ...s, accounts: accountSnapshots(s, sheetOrder), accountId: orderId, loading: true,
+        } : s));
         try {
             const { data } = await api.get(`/orders/${orderId}`);
-            if (data?.id !== orderId) {
+            if (data?.id !== orderId || (validate && !validate(data))) {
                 setOpenTable((s) => (s && s.accountId === orderId
                     ? { ...s, accountId: s.order?.id || null, loading: false }
                     : s));
                 return null;
             }
-            setOpenTable((s) => (s && s.accountId === orderId ? { ...s, order: data, loading: false } : s));
+            setOpenTable((s) => (s && s.accountId === orderId ? {
+                ...s, order: data, accounts: accountSnapshots(s, data), loading: false,
+                accountTable: data.table_id === s.table.id ? null
+                    : (tables || []).find((table) => table.id === data.table_id) || s.accountTable,
+            } : s));
             return data;
         } catch {
             setOpenTable((s) => (s && s.accountId === orderId
@@ -721,9 +763,15 @@ export default function Salon() {
     const reloadCurrentOrder = async (orderId) => {
         try {
             const { data } = await api.get(`/orders/${orderId}`);
-            setOpenTable((s) => (s && (s.order?.id === orderId || s.accountId === orderId)
-                ? { ...s, order: data, accountId: orderId }
-                : s));
+            if (data?.id !== orderId) return;
+            setOpenTable((s) => {
+                if (!s) return s;
+                const isSelected = s.order?.id === orderId || s.accountId === orderId;
+                return {
+                    ...s, accounts: accountSnapshots(s, data),
+                    ...(isSelected ? { order: data, accountId: orderId } : {}),
+                };
+            });
         } catch { /* la recarga es best-effort */ }
     };
 
@@ -752,7 +800,7 @@ export default function Salon() {
     };
 
     const addProductToAccount = async (product) => {
-        if (!canTake || savingItem || sendingToKitchen) return;
+        if (!canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         setSavingItem(true);
         try {
             const orderId = await ensureAccount();
@@ -792,7 +840,7 @@ export default function Salon() {
     // S14: el paso de confirmación puede operar sobre OTRA cuenta (el
     // mini-reproductor no abre la hoja), así que el destino es explícito.
     const changeItemQtyFor = async (orderId, item, delta) => {
-        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         const next = Number(item.quantity || 1) + delta;
         setSavingItem(true);
         try {
@@ -822,7 +870,7 @@ export default function Salon() {
     };
 
     const saveItemNotesFor = async (orderId, item, notes) => {
-        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         setSavingItem(true);
         try {
             await api.patch(`/orders/${orderId}/items/${item.id}`, { notes });
@@ -890,7 +938,7 @@ export default function Salon() {
         // acababa siendo "[object Object]" y la petición iba a /orders/[object Object].
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
+        if (!targetId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         const openId = openTable?.order?.id || openTable?.accountId;
         // Primer envío de la cuenta (todavía estaba en 'nuevo'): el aviso es el
         // del prototipo, "Enviado a cocina · Mesa N".
@@ -938,7 +986,7 @@ export default function Salon() {
     const requestSend = (orderId = null) => {
         const requested = typeof orderId === 'string' ? orderId : null;
         const targetId = requested || openTable?.order?.id || openTable?.accountId;
-        if (!targetId || !canTake || savingItem || sendingToKitchen) return;
+        if (!targetId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         setReviewOrderId(targetId);
     };
 
@@ -977,10 +1025,11 @@ export default function Salon() {
      * apuntado a la persona elegida y conservando el "Compartido" que ya tenía.
      */
     const renamePerson = async (orderId, alias) => {
-        if (!canTake || !orderId) return;
+        if (!canTake || !orderId || savingItem || sendingToKitchen || openTable?.loading) return;
         const account = (openTable?.accounts || []).find((o) => o.id === orderId)
             || (openTable?.order?.id === orderId ? openTable.order : null);
         const nextName = alias || null;
+        setSavingItem(true);
         try {
             await api.patch(`/orders/${orderId}/alias`, { alias: nextName, shared: Boolean(account?.shared) });
             // La franja lee las cuentas de la hoja: se actualiza en el acto para
@@ -994,6 +1043,8 @@ export default function Salon() {
             refreshAll();
         } catch (e) {
             toast.error(e.response?.data?.detail || 'No se pudo guardar el alias');
+        } finally {
+            setSavingItem(false);
         }
     };
 
@@ -1027,7 +1078,7 @@ export default function Salon() {
     };
 
     const leaveComposer = async ({ closeTable = false } = {}) => {
-        if (savingItem || sendingToKitchen) return;
+        if (savingItem || sendingToKitchen || openTable?.loading) return;
         const orderId = openTable?.order?.id || openTable?.accountId;
         const current = sheetOrder?.id === orderId ? sheetOrder : openTable?.order;
         const hasDrafts = (current?.items || []).some((it) => isDraft(it, current?.status));
@@ -1049,16 +1100,25 @@ export default function Salon() {
     // The ticket clear action confirms before deleting draft items only.
     const clearDraft = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
-        if (!orderId || !canTake || savingItem || sendingToKitchen) return;
+        if (!orderId || !canTake || savingItem || sendingToKitchen || openTable?.loading) return;
         if (!window.confirm('¿Vaciar los productos sin enviar? Los productos enviados se conservarán.')) return;
         await discardDraftItems(orderId);
     };
 
-    // Empezar el pedido de OTRA persona: la pantalla se limpia y el próximo plato
-    // abre una cuenta nueva de la misma visita. No es "abrir cuenta" — eso lo
-    // decide el sistema — sino pasar a la siguiente persona.
-    const startAnotherPerson = () => {
-        setOpenTable((s) => (s ? { ...s, order: null, accountId: null, loading: false } : s));
+    // A new independent account is created only when its first product is added.
+    const startNewAccount = () => {
+        const table = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
+        if (!canTake || !isComposableTable(table) || savingItem || sendingToKitchen || openTable?.loading) return;
+        setOpenTable((s) => (s ? {
+            ...s, accounts: accountSnapshots(s, sheetOrder), order: null, accountId: null, accountTable: null,
+        } : s));
+        setReviewOrderId(null);
+        setPersonNameEdit(false);
+        setCardRenameId(null);
+        setCardRenameDraft('');
+        setAliasDraft('');
+        setSharedDraft(false);
+        setComposerOpen(true);
     };
 
     // "Tomar pedido" abre el sheet; la cuenta se crea al agregar el primer
@@ -1289,12 +1349,18 @@ export default function Salon() {
         void openSheet(lastOpened.table, lastOpened.accountId);
     };
 
-    const editAccountDrafts = async (account) => {
+    const editAccount = async (account) => {
         if (!canTake || !account?.id || savingItem || sendingToKitchen || openTable?.loading) return;
+        const selectedTable = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
+        if (!isComposableTable(selectedTable)) return;
+        const table = composeTableFor(account);
+        if (!canComposeAccountAt(account, table)) return;
+        const attentionId = table.active_attention_id || account.attention_id;
         setReviewOrderId(null);
-        const latest = await selectAccount(account.id);
-        if (latest?.id !== account.id || ['pagado', 'cancelado'].includes(latest.status)
-            || !draftCount(latest.items || [], latest.status)) return;
+        setPersonNameEdit(false);
+        setCardRenameId(null);
+        const latest = await selectAccount(account.id, (fresh) => canComposeAccountAt(fresh, table, attentionId));
+        if (latest?.id !== account.id) return;
         setComposerOpen(true);
     };
 
@@ -1693,7 +1759,8 @@ export default function Salon() {
                         const floor = floorState(t);
                         const s = FLOOR_STYLE[floor.key];
                         // Composición inline: se puede pedir mientras la mesa no esté cerrada.
-                        const canCompose = canTake && ['disponible', 'ocupada'].includes(t.status);
+                        const composeTable = (tables || []).find((entry) => entry.id === t.id) || t;
+                        const canCompose = canTake && isComposableTable(composeTable);
                         const allItems = order?.items || [];
                         const orderItems = allItems.filter((i) => i.status !== 'cancelado');
                         // Qué ofrece el botón de envío: la comanda entera la primera
@@ -1882,7 +1949,7 @@ export default function Salon() {
                                             <p className="text-sm font-semibold" style={{ color: s.fg }}>{s.label}</p>
                                         )}
                                     </div>
-                                    {t.active_order && loading && (
+                                    {loading && (
                                         <span className="shrink-0 text-sm text-muted-foreground">Cargando pedido…</span>
                                     )}
                                     {/* S13: las acciones ocasionales viven en este
@@ -1945,16 +2012,6 @@ export default function Salon() {
                                                     </span>
                                                     {canTake && (
                                                         <span className="flex shrink-0 items-center gap-1">
-                                                            {hasAccount && (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={startAnotherPerson}
-                                                                    data-testid="mesa-sheet-agregar-persona"
-                                                                    className="flex h-9 items-center rounded-lg border border-dashed border-border px-2.5 text-xs font-medium text-muted-foreground hover:border-primary hover:text-foreground"
-                                                                >
-                                                                    ＋ Agregar persona
-                                                                </button>
-                                                            )}
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setPersonNameEdit(true)}
@@ -1978,7 +2035,7 @@ export default function Salon() {
                                             items={orderItems}
                                             products={products}
                                             categories={categories}
-                                            savingItem={savingItem}
+                                            savingItem={savingItem || sendingToKitchen || loading}
                                             canCompose={canCompose}
                                             showKitchen={showSend}
                                             sendLabel={sendState?.label}
@@ -1990,17 +2047,6 @@ export default function Salon() {
                                             hideUnavailable
                                         />
                                     </div>
-                                    {!composerOpen && hasAccount && canCompose && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            className="w-full justify-start"
-                                            onClick={() => { startAnotherPerson(); setComposerOpen(true); }}
-                                            data-testid="mesa-sheet-agregar-persona"
-                                        >
-                                            <Plus className="h-4 w-4 mr-1" /> Agregar persona
-                                        </Button>
-                                    )}
                                     {/* Tarjetas por cuenta, como los `.order` del
                                         prototipo: persona + ✎, #id · hora, píldora de
                                         estado, líneas y footer con total. La cuenta
@@ -2045,10 +2091,14 @@ export default function Salon() {
                                                                 />
                                                             ) : (
                                                                 <>
-                                                                    <span className="min-w-0 truncate">{draftAccount ? 'Nuevo pedido' : personLabel(view, index)}</span>
+                                                                    <span className="min-w-0 truncate">
+                                                                        {draftAccount && !view.customer_name && !view.shared
+                                                                            ? 'Nuevo pedido' : personLabel(view, index)}
+                                                                    </span>
                                                                     {canTake && (
                                                                         <button
                                                                             type="button"
+                                                                            disabled={savingItem || sendingToKitchen || loading}
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
                                                                                 setCardRenameId(account.id);
@@ -2094,19 +2144,18 @@ export default function Salon() {
                                                 )}
                                                 <footer className="flex items-center justify-between gap-2 border-t border-dashed pt-2">
                                                     <strong className="font-mono tabular-nums">{fmtMoney(cardTotal)}</strong>
-                                                    {canTake && !['pagado', 'cancelado'].includes(view.status)
-                                                        && draftCount(view.items || [], view.status) > 0 && (
-                                                            <Button
-                                                                type="button"
-                                                                size="sm"
-                                                                variant="outline"
-                                                                disabled={savingItem || sendingToKitchen}
-                                                                onClick={(event) => { event.stopPropagation(); void editAccountDrafts(view); }}
-                                                                data-testid="mesa-sheet-editar-pedido"
-                                                            >
-                                                                Editar pedido
-                                                            </Button>
-                                                        )}
+                                                    {canCompose && canComposeAccountAt(view, composeTableFor(view)) && (
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            disabled={savingItem || sendingToKitchen || loading}
+                                                            onClick={(event) => { event.stopPropagation(); void editAccount(view); }}
+                                                            data-testid="mesa-sheet-editar-pedido"
+                                                        >
+                                                            Editar pedido
+                                                        </Button>
+                                                    )}
                                                     {kitchen.key === 'ready' && canServe && (
                                                         <Button
                                                             size="sm"
@@ -2231,7 +2280,7 @@ export default function Salon() {
                                                 draftOnly
                                                 canEdit={canCompose}
                                                 canVoid={canVoidItems}
-                                                saving={savingItem}
+                                                saving={savingItem || sendingToKitchen || loading}
                                                 draftUnits={draftUnits}
                                                 sendLabel={sendState?.label}
                                                 showSend={showSend}
@@ -2293,7 +2342,8 @@ export default function Salon() {
                                         <Button
                                             variant="outline"
                                             className="w-full h-12"
-                                            onClick={() => setComposerOpen((open) => !open)}
+                                            disabled={savingItem || sendingToKitchen || loading}
+                                            onClick={startNewAccount}
                                             aria-expanded={composerOpen}
                                             data-testid="mesa-sheet-nuevo-pedido"
                                         >

@@ -289,9 +289,11 @@ describe('pedido por personas en el salón', () => {
         });
         ({ container, root, sheet } = await openTableWith([juan], { active_attention_id: 'att-1' }));
 
-        // La acción para agregar a otra persona queda visible junto a las cuentas.
-        await click(sheet.querySelector('[data-testid="mesa-sheet-agregar-persona"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        // New order prepares an independent account within the existing attention.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        const product = sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
+        expect(product.closest('[hidden]')).toBeNull();
+        await click(product);
 
         expect(api.post).toHaveBeenCalledWith('/orders', {
             table_id: 'table-1', order_type: 'mesa', new_account: true,
@@ -317,7 +319,8 @@ describe('pedido por personas en el salón', () => {
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
         sheet = document.body.querySelector('[data-testid="mesa-sheet"]');
 
-        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
+        await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
     });
 
