@@ -1,19 +1,20 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
 import { listBranches } from '@/lib/api/branches';
 import { addCashMovement, closeCash, getCash, listCashHistory, openCash } from '@/lib/api/cash';
 import { confirmOrderPayment, getOrder } from '@/lib/api/orders';
-import {
-    createApproval, listPayments, listPendingPrepay, runPrepayAction, voidPayment,
-} from '@/lib/api/payments';
+import { createApproval, listPayments, listPendingPrepay, runPrepayAction, voidPayment } from '@/lib/api/payments';
 import { getProductsReport } from '@/lib/api/reports';
 import { get as apiGet } from '@/lib/api/request';
+import { DIGITAL_METHODS } from '@/lib/paymentMethods';
+import useOrderProof from '@/hooks/useOrderProof';
+import ProofPreview from '@/components/ProofPreview';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, fmtDayLabel, elapsedMinutes, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
@@ -29,23 +30,8 @@ import { accountLabel, round2 } from '@/lib/cash';
 import CobrarDialog from '@/components/CobrarDialog';
 import AccountPaymentAudit from '@/components/AccountPaymentAudit';
 
-function WebOrderRow({ order, onConfirm, scopeParams = {} }) {    const [proof, setProof] = useState(null);
-    const [showProof, setShowProof] = useState(false);
-    const [loading, setLoading] = useState(false);
-
-    const openProof = async () => {
-        setLoading(true);
-        try {
-            const options = Object.keys(scopeParams).length ? { params: scopeParams } : undefined;
-            const { data } = await getOrder(order.id, options);
-            setProof(data.payment_proof_url || null);
-            setShowProof(true);
-        } catch (e) {
-            toast.error('No se pudo cargar el comprobante');
-        } finally {
-            setLoading(false);
-        }
-    };
+function WebOrderRow({ order, onConfirm, scopeParams = {} }) {
+    const { proof, loading, openProof } = useOrderProof(scopeParams);
 
     return (
         <div className="py-3 flex items-start justify-between gap-3" data-testid={`caja-web-${order.order_number}`}>
@@ -59,17 +45,11 @@ function WebOrderRow({ order, onConfirm, scopeParams = {} }) {    const [proof, 
                 <div className="text-xs text-muted-foreground">
                     {PAYMENT_LABELS[order.payment_method_choice] || 'Pago'} · {order.payment_status === 'comprobante_subido' ? 'Comprobante subido' : 'Sin comprobante'}
                 </div>
-                {showProof && (
-                    proof ? (
-                        <img src={proof} alt="Comprobante" className="mt-2 max-h-40 rounded-sm border" />
-                    ) : (
-                        <div className="mt-2 text-xs text-muted-foreground">No hay imagen de comprobante.</div>
-                    )
-                )}
+                {proof && <ProofPreview url={proof.url} maxHeightClass="max-h-40" emptyText="No hay imagen de comprobante." />}
             </div>
             <div className="text-right shrink-0 space-y-1">
                 <div className="font-mono font-bold tabular-nums">{fmtMoney(order.total)}</div>
-                <Button size="sm" variant="outline" className="h-11 w-full" onClick={openProof} disabled={loading}>Ver comprobante</Button>
+                <Button size="sm" variant="outline" className="h-11 w-full" onClick={() => openProof(order)} disabled={loading}>Ver comprobante</Button>
                 <Button size="sm" className="h-11 w-full" onClick={onConfirm} data-testid={`caja-confirmar-web-${order.order_number}`}>Confirmar</Button>
             </div>
         </div>
@@ -93,7 +73,7 @@ function PrepayQueue({ runMutation, onChanged }) {
     const [rows, setRows] = useState([]);
     const [loaded, setLoaded] = useState(false);
     const [busy, setBusy] = useState('');
-    const [proof, setProof] = useState(null);
+    const { proof, openProof, closeProof } = useOrderProof();
     const [load, setLoad] = useState(0);
 
     useEffect(() => {
@@ -106,15 +86,6 @@ function PrepayQueue({ runMutation, onChanged }) {
     }, [load]);
 
     const reload = () => setLoad((n) => n + 1);
-
-    const openProof = async (row) => {
-        try {
-            const { data } = await getOrder(row.id);
-            setProof({ order: row, url: data.payment_proof_url || null });
-        } catch {
-            toast.error('No se pudo cargar el comprobante');
-        }
-    };
 
     const decide = async (row, action) => {
         if (action === 'reject' && !window.confirm(`¿Rechazar el pago del pedido #${row.order_number}? El pedido no va a cocina.`)) return;
@@ -174,11 +145,9 @@ function PrepayQueue({ runMutation, onChanged }) {
                     <div className="mt-3 border-t pt-3" data-testid="caja-prepago-comprobante">
                         <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-medium">Comprobante del pedido #{proof.order.order_number}</span>
-                            <Button size="sm" variant="ghost" onClick={() => setProof(null)}>Cerrar</Button>
+                            <Button size="sm" variant="ghost" onClick={closeProof}>Cerrar</Button>
                         </div>
-                        {proof.url
-                            ? <img src={proof.url} alt="Comprobante" className="mt-2 max-h-72 rounded-sm border" />
-                            : <p className="mt-2 text-xs text-muted-foreground">El cliente todavía no subió imagen.</p>}
+                        <ProofPreview url={proof.url} maxHeightClass="max-h-72" emptyText="El cliente todavía no subió imagen." emptyAs="p" />
                     </div>
                 )}
             </CardContent>
@@ -263,19 +232,6 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
             }
         }
         return map;
-    }, [items]);
-
-    const statusGroups = useMemo(() => {
-        if (!items) return { completed: [], voided: [], other: [] };
-        const completed = [];
-        const voided = [];
-        const other = [];
-        for (const p of items) {
-            if (p.status === 'voided' || p.status === 'refunded') voided.push(p);
-            else if (p.status === 'completed') completed.push(p);
-            else other.push(p);
-        }
-        return { completed, voided, other };
     }, [items]);
 
     return (
@@ -589,7 +545,7 @@ function CloseCajaDialog({ open, onOpenChange, register, onClosed, runMutation }
     const counted = closing === '' ? null : Number(closing);
     const diff = counted == null || Number.isNaN(counted) ? null : round2(counted - expected);
     const by = register.by_method || {};
-    const digital = ['yape', 'plin', 'tarjeta', 'transferencia'].filter((m) => Number(by[m] || 0) > 0);
+    const digital = DIGITAL_METHODS.filter((m) => Number(by[m] || 0) > 0);
     const submit = async () => {
         if (closing === '' || Number.isNaN(Number(closing))) { toast.error('Indicá el efectivo contado'); return; }
         try {
@@ -984,7 +940,7 @@ function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams
                     <div><div className="text-xs text-muted-foreground">Fondo inicial</div><div className="font-display text-xl font-semibold tabular-nums">{fmtMoney(register.opening_amount)}</div></div>
                     <div><div className="text-xs text-muted-foreground">Efectivo esperado</div><div className="font-display text-xl font-semibold tabular-nums" data-testid="caja-turno-esperado">{fmtMoney(register.expected_amount)}</div></div>
                     <div><div className="text-xs text-muted-foreground">Cobros en efectivo</div><div className="font-mono font-semibold tabular-nums">{fmtMoney(register.cash_sales)}</div></div>
-                    {['yape', 'plin', 'tarjeta', 'transferencia'].map((m) => (
+                    {DIGITAL_METHODS.map((m) => (
                         Number((register.by_method || {})[m] || 0) > 0 ? (
                             <div key={m}><div className="text-xs text-muted-foreground">{PAYMENT_LABELS[m]}</div><div className="font-mono font-semibold tabular-nums">{fmtMoney(register.by_method[m])}</div></div>
                         ) : null
