@@ -218,8 +218,15 @@ describe('detalle de mesa · vista completa (S7)', () => {
         const vacio = sheet.querySelector('[data-testid="mesa-sheet-vacio"]');
         expect(vacio).not.toBeNull();
         expect(vacio.textContent).toContain('Mesa libre');
-        expect(vacio.textContent).toContain('Toca «Nuevo pedido» para empezar.');
-        expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]')).not.toBeNull();
+        expect(vacio.textContent).toContain('Aún no hay pedidos en esta mesa.');
+        expect(vacio.textContent).not.toContain('Toca');
+        // UX-12: one control per action, inside the card, no duplicated plus.
+        const nuevo = sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]');
+        expect(vacio.contains(nuevo)).toBe(true);
+        expect(nuevo.textContent.trim()).toBe('Nuevo pedido');
+        expect(nuevo.className).toContain('h-12');
+        expect(sheet.querySelectorAll('[data-testid="mesa-sheet-nuevo-pedido"]')).toHaveLength(1);
+        expect(sheet.querySelector('[data-testid="mesa-sheet-acciones"]')).toBeNull();
     });
 
     it('"+ Nuevo pedido" abre la carta dentro de la vista', async () => {

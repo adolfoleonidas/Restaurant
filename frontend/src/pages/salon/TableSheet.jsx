@@ -2,6 +2,7 @@ import React from 'react';
 import OrderComposer from '@/components/OrderComposer';
 import OrderTicket from '@/components/OrderTicket';
 import AccountCard from './AccountCard';
+import NewOrderButton from './NewOrderButton';
 import PersonStrip from './PersonStrip';
 import SheetHeader from './SheetHeader';
 import SheetSummaryPanel from './SheetSummaryPanel';
@@ -36,7 +37,7 @@ export default function TableSheet({
         <>
             <section
                 data-testid="mesa-sheet"
-                className={`space-y-4 ${hasAccount || canCompose || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
+                className={`space-y-4 ${hasAccount || t.status === 'pagada' ? 'pb-28 min-[820px]:pb-0' : ''}`}
             >
                 {/* Cabecera del detalle, como `detail-head`/`poshead` del
                     prototipo: ← + título grande y estado en color. */}
@@ -127,11 +128,18 @@ export default function TableSheet({
                                 deliver={deliver}
                             />
                         )) : (
-                            <div className="rounded-xl border p-8 text-center space-y-1" data-testid="mesa-sheet-vacio">
+                            <div className="rounded-xl border p-8 text-center space-y-3" data-testid="mesa-sheet-vacio">
                                 <p className="font-display text-xl font-semibold">
                                     {t.status === 'reservada' ? 'Mesa reservada' : 'Mesa libre'}
                                 </p>
-                                <p className="text-sm text-muted-foreground">Toca «Nuevo pedido» para empezar.</p>
+                                <p className="text-sm text-muted-foreground">Aún no hay pedidos en esta mesa.</p>
+                                {canCompose && (
+                                    <NewOrderButton
+                                        disabled={savingItem || sendingToKitchen || loading}
+                                        onClick={startNewAccount}
+                                        expanded={composerOpen}
+                                    />
+                                )}
                             </div>
                         ))}
                         {accountTable && order && (

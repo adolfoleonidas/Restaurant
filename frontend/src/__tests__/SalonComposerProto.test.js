@@ -946,8 +946,10 @@ describe('edición explícita de borradores (T04)', () => {
         await click(newOrder);
         expect(api.post).not.toHaveBeenCalled();
         await act(async () => resolveHistory({ data: [first] }));
-        expect(newOrder.disabled).toBe(false);
-        await click(newOrder);
+        // The control moves from the empty-table card to the action bar once the account exists.
+        const loadedNewOrder = container.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]');
+        expect(loadedNewOrder.disabled).toBe(false);
+        await click(loadedNewOrder);
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
