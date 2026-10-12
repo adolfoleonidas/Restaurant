@@ -34,8 +34,8 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const src = String(fetcher);
-        if (src.includes("'/tables'")) return { data: mockTables, refetch: jest.fn() };
-        if (src.includes("'/orders'")) return { data: [], refetch: jest.fn() };
+        if (src.includes('listTables')) return { data: mockTables, refetch: jest.fn() };
+        if (src.includes('listOrders')) return { data: [], refetch: jest.fn() };
         return { data: null, refetch: jest.fn() };
     },
 }));

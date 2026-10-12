@@ -5,13 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { fmtMoney } from '@/lib/format';
-
-const STATUS_CHIP = {
-    pendiente: { label: 'nuevo', cls: 'bg-secondary text-muted-foreground' },
-    en_preparacion: { label: 'en cocina', cls: 'bg-[#FFF6DB] text-[#6B4E00]' },
-    listo: { label: 'listo', cls: 'bg-[#E6F2FF] text-[#0B3A66]' },
-    entregado: { label: 'servido', cls: 'bg-[#E7F6EE] text-[#0F5132]' },
-};
+import { LIVE_ITEM_CHIPS } from '@/constants/status';
 
 export function ProductCard({ product, children }) {
     const { items, addProduct, updateQty } = useCart();
@@ -46,7 +40,7 @@ export function ProductCard({ product, children }) {
                     {children}
                     {qty > 0 && (
                         <div className="flex flex-wrap gap-1">
-                            {Object.entries(STATUS_CHIP).map(([k, chip]) => (
+                            {Object.entries(LIVE_ITEM_CHIPS).map(([k, chip]) => (
                                 counts[k] > 0 ? (
                                     <span key={k} className={`text-xs font-medium rounded-full px-1.5 py-0.5 ${chip.cls}`} data-testid={`landing-chip-${product.id}-${k}`}>
                                         {counts[k]} {chip.label}

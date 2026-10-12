@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { api } from '@/lib/api';
+import { ACTIONS, can } from '@/lib/permissions';
+import { getSalesReport } from '@/lib/api/reports';
+import { listBranches } from '@/lib/api/branches';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -41,7 +43,7 @@ function exportCsv(data) {
 
 export default function Reportes() {
     const { user } = useAuth();
-    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
     const userKey = JSON.stringify([
         user?.id || user?.email || 'signed-in',
         user?.restaurant_id,
@@ -66,7 +68,7 @@ function ReportesView({ userKey, isOwner }) {
 
         let active = true;
         setCatalog({ userKey, branches: [], loading: true, error: false });
-        api.get('/branches').then(({ data: branchData }) => {
+        listBranches().then(({ data: branchData }) => {
             if (!active) return;
             setCatalog({ userKey, branches: Array.isArray(branchData) ? branchData : [], loading: false, error: false });
         }).catch(() => {
@@ -99,7 +101,7 @@ function ReportesView({ userKey, isOwner }) {
         if (context === 'legacy') params.legacy_only = true;
         else if (selectedBranchId) params.branch_id = selectedBranchId;
 
-        api.get('/reports/sales', { params }).then(({ data: reportData }) => {
+        getSalesReport(params).then(({ data: reportData }) => {
             if (active) setResult({ key: requestKey, data: reportData, loading: false, error: null });
         }).catch((error) => {
             if (!active) return;

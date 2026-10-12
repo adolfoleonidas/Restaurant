@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listPaymentProofs } from '@/lib/api/payments';
+import { getOrder } from '@/lib/api/orders';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { fmtMoney, fmtDateTime, PAYMENT_LABELS } from '@/lib/format';
+import { proofPending, orderPaymentStatusLabel } from '@/constants/status';
 import { Search, Receipt, Image as ImageIcon, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -23,27 +25,6 @@ const FILTERS = [
     { key: 'pending', label: 'Pendientes de revisión' },
 ];
 
-const PENDING = 'comprobante_subido';
-
-/**
- * A proof waiting for review. Newer orders track it in `payment_proof_status`
- * so a partial payment cannot hide it; legacy ones only had `payment_status`.
- */
-function proofPending(row) {
-    return row?.payment_proof_status
-        ? row.payment_proof_status === 'pendiente'
-        : row?.payment_status === PENDING;
-}
-
-function statusLabel(row) {
-    if (proofPending(row)) return 'Pendiente de revisión';
-    const status = row?.payment_status;
-    if (status === 'pagado') return 'Pagado';
-    if (status === 'parcial') return 'Pago parcial';
-    if (status === 'confirmado') return 'Confirmado';
-    return status || '—';
-}
-
 export default function Comprobantes() {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -54,7 +35,7 @@ export default function Comprobantes() {
     const [detail, setDetail] = useState(null);
 
     const { data, refetch } = usePolling(
-        () => api.get('/payments/proofs', { params: filter === 'pending' ? { pending: true } : {} }).then((r) => r.data),
+        () => listPaymentProofs(filter === 'pending' ? { pending: true } : {}).then((r) => r.data),
         10000,
         [filter, generation]
     );
@@ -78,7 +59,7 @@ export default function Comprobantes() {
     const openDetail = async (row) => {
         setDetail({ row, image: null, loading: true });
         try {
-            const { data: order } = await api.get(`/orders/${row.id}`);
+            const { data: order } = await getOrder(row.id);
             setDetail({ row: { ...row, ...order }, image: order?.payment_proof_url || null, loading: false });
         } catch {
             toast.error('No se pudo cargar el comprobante');
@@ -158,7 +139,7 @@ export default function Comprobantes() {
                                             <div className="font-mono font-bold tabular-nums">{fmtMoney(row.total)}</div>
                                             <div className={`text-xs font-medium flex items-center gap-1 justify-end ${isPending ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                                                 {isPending ? <AlertTriangle className="h-3 w-3" /> : <CheckCircle2 className="h-3 w-3" />}
-                                                {statusLabel(row)}
+                                                {orderPaymentStatusLabel(row)}
                                             </div>
                                             {missing > 0.009 && isPending && (
                                                 <div className="text-xs text-muted-foreground">Resta {fmtMoney(missing)}</div>

@@ -18,9 +18,9 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const src = fetcher.toString();
-        if (src.includes("api.get('/tables')")) return { data: mockTables, refetch: jest.fn() };
-        if (src.includes("api.get('/products')")) return { data: mockProducts, refetch: jest.fn() };
-        if (src.includes("api.get('/categories')")) return { data: [], refetch: jest.fn() };
+        if (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(src)) return { data: mockTables, refetch: jest.fn() };
+        if (src.includes('listProducts')) return { data: mockProducts, refetch: jest.fn() };
+        if (src.includes('listCategories')) return { data: [], refetch: jest.fn() };
         return { data: mockOrders, refetch: jest.fn() };
     },
 }));

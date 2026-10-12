@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { getTableGuestLink, revokeTableQr, rotateTableQr } from '@/lib/api/tables';
 import { Button } from '@/components/ui/button';
 import QrCode, { QrActions } from '@/components/TableQr';
 
@@ -49,7 +49,7 @@ export default function TableQrActions({ table }) {
         setGuestUrl('');
         setCopyFallback(false);
         try {
-            const { data } = await api.get(`/tables/${table.id}/guest-link`);
+            const { data } = await getTableGuestLink(table.id);
             setGuestUrl(buildGuestUrl(data?.path));
             updateStatus('active');
         } catch (requestError) {
@@ -68,7 +68,7 @@ export default function TableQrActions({ table }) {
         setStatus('unknown');
         setBusy('rotate');
         try {
-            const { data } = await api.post(`/tables/${table.id}/qr/rotate`);
+            const { data } = await rotateTableQr(table.id);
             setGuestUrl(buildGuestUrl(data?.path));
             updateStatus('active');
         } catch (requestError) {
@@ -86,7 +86,7 @@ export default function TableQrActions({ table }) {
         setStatus('unknown');
         setBusy('revoke');
         try {
-            const { data } = await api.post(`/tables/${table.id}/qr/revoke`);
+            const { data } = await revokeTableQr(table.id);
             if (data?.qr_status !== 'revoked') throw new Error('Revocation was not confirmed');
             updateStatus('revoked');
         } catch (requestError) {

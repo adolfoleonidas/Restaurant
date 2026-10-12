@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import usePolling from '@/hooks/usePolling';
-import { api } from '@/lib/api';
+import { listOrders } from '@/lib/api/orders';
+import { listTables } from '@/lib/api/tables';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
@@ -13,6 +14,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import AttentionReference from '@/components/AttentionReference';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import useBranchNames from '@/hooks/useBranchNames';
+import { ACTIONS, can } from '@/lib/permissions';
 
 const WAITING_THRESHOLD_MIN = 15;
 
@@ -37,14 +39,14 @@ export default function Pedidos() {
             const params = {};
             if (filter === 'activos') params.active_only = true;
             else if (filter !== 'all') params.status = filter;
-            return api.get('/orders', { params }).then((r) => r.data);
+            return listOrders(params).then((r) => r.data);
         },
         12000,
         [filter, generation]
     );
 
     // Only the sales-area dialog needs the floor, to offer the free tables.
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 15000);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 15000);
 
     // Orders start from the same sales-area decision as the floor: "Nuevo pedido"
     // must not drop the waiter into the composer with the area already assumed.
@@ -62,7 +64,7 @@ export default function Pedidos() {
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
                 {/* El primitivo ya da 44 px en móvil: basta con no anularlo. */}
-                {['admin', 'mozo'].includes(user.role) && (
+                {can(user, ACTIONS.ORDER_EDIT) && (
                     <Button onClick={() => setShowAreas(true)} data-testid="pedidos-nuevo-button">
                         <Plus className="h-4 w-4 mr-2" /> Nuevo pedido
                     </Button>

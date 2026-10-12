@@ -1,6 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getCurrentCash } from '@/lib/api/cash';
+import { listCategories } from '@/lib/api/categories';
+import {
+    addOrderItems,
+    getOrder,
+    reassignOrder,
+    removeOrderItem,
+    sendOrderToKitchen,
+    serveOrder,
+    setOrderStatus,
+    voidOrderItem,
+} from '@/lib/api/orders';
+import { listProducts } from '@/lib/api/products';
+import { listTables } from '@/lib/api/tables';
+import { listUsers } from '@/lib/api/users';
 import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +25,7 @@ import { Plus, ChevronLeft, CreditCard, Ban, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasFn } from '@/lib/functions';
+import { ACTIONS, can } from '@/lib/permissions';
 import { useNotify } from '@/contexts/NotifyContext';
 import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
@@ -32,12 +46,12 @@ export default function PedidoDetalle() {
     // El ✕ de cancelar ítem por ítem es una flag apagada por defecto (Ajustes).
     const features = useRestaurantFeatures();
 
-    const { data: order, refetch } = usePolling(() => api.get(`/orders/${id}`).then((r) => r.data), 12000, [id, generation]);
-    const { data: categories } = usePolling(() => api.get('/categories').then((r) => r.data), 60000);
-    const { data: products } = usePolling(() => api.get('/products').then((r) => r.data), 60000);
-    const { data: tables } = usePolling(() => api.get('/tables').then((r) => r.data), 20000, [generation]);
+    const { data: order, refetch } = usePolling(() => getOrder(id).then((r) => r.data), 12000, [id, generation]);
+    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000);
+    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
     const { data: staff } = usePolling(
-        () => (user?.role === 'admin' ? api.get('/users').then((r) => r.data) : Promise.resolve([])),
+        () => (can(user, ACTIONS.ORDER_REASSIGN) ? listUsers().then((r) => r.data) : Promise.resolve([])),
         60000,
         [user?.role]
     );
@@ -57,7 +71,7 @@ export default function PedidoDetalle() {
     }, []);
 
     const locked = ['pagado', 'cancelado'].includes(order?.status);
-    const canCollect = hasFn(user, 'cobro', 'administracion');
+    const canCollect = can(user, ACTIONS.ORDER_COLLECT);
     const canCharge = Boolean(order && !locked && canCollect
         && Number(order.amount_paid || 0) < Number(order.total || 0));
     // The backend keeps `status` on the kitchen fulfillment and flags the bill
@@ -83,7 +97,7 @@ export default function PedidoDetalle() {
         let cancelled = false;
         const verifyRegister = async () => {
             try {
-                const { data: register } = await api.get('/cash/current');
+                const { data: register } = await getCurrentCash();
                 const context = collectionContextRef.current;
                 if (cancelled || !detailMountedRef.current) return;
                 if (context.routeId !== collectionOrderId || context.orderId !== collectionOrderId || !context.canCollect) return;
@@ -119,22 +133,22 @@ export default function PedidoDetalle() {
 
     if (!order) return <div className="text-muted-foreground">Cargando pedido…</div>;
 
-    const canEdit = !locked && ['admin', 'mozo'].includes(user.role);
-    const canServe = !locked && hasFn(user, 'preparacion', 'atencion', 'administracion');
+    const canEdit = !locked && can(user, ACTIONS.ORDER_EDIT);
+    const canServe = !locked && can(user, ACTIONS.ORDER_SERVE);
     const pending = (order.items || []).filter(itemOpen);
     const ready = (order.items || []).filter((it) => it.status === 'listo');
     const delivered = (order.items || []).filter((it) => it.status === 'entregado');
 
     const addItem = async (product) => {
         try {
-            await api.post(`/orders/${order.id}/items`, [{ product_id: product.id, quantity: 1 }]);
+            await addOrderItems(order.id, [{ product_id: product.id, quantity: 1 }]);
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error al agregar'); }
     };
 
     const sendToKitchen = async () => {
         try {
-            await api.post(`/orders/${order.id}/send-to-kitchen`);
+            await sendOrderToKitchen(order.id);
             toast.success('Enviado a cocina');
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
@@ -145,10 +159,10 @@ export default function PedidoDetalle() {
     const removeItem = async (it) => {
         try {
             if (isDraft(it, order.status)) {
-                await api.delete(`/orders/${order.id}/items/${it.id}`);
+                await removeOrderItem(order.id, it.id);
                 toast.success(`${it.product_name} quitado`);
             } else {
-                await api.post(`/orders/${order.id}/items/${it.id}/void`, { reason: 'Anulado desde el detalle del pedido' });
+                await voidOrderItem(order.id, it.id, { reason: 'Anulado desde el detalle del pedido' });
                 toast.success(`${it.product_name} anulado`);
             }
             await refetch();
@@ -157,7 +171,7 @@ export default function PedidoDetalle() {
 
     const serve = async () => {
         try {
-            await api.post(`/orders/${order.id}/serve`);
+            await serveOrder(order.id);
             toast.success('Servido. La cuenta sigue abierta.');
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
@@ -165,7 +179,7 @@ export default function PedidoDetalle() {
 
     const requestBill = async () => {
         try {
-            await api.post(`/orders/${order.id}/status`, { status: 'pendiente_pago' });
+            await setOrderStatus(order.id, { status: 'pendiente_pago' });
             toast.success('Cuenta solicitada');
             navigate('/salon');
         } catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
@@ -173,7 +187,7 @@ export default function PedidoDetalle() {
 
     const reassign = async (waiterId) => {
         try {
-            await api.post(`/orders/${order.id}/reassign`, { waiter_id: waiterId });
+            await reassignOrder(order.id, { waiter_id: waiterId });
             toast.success('Mozo reasignado. Cocina no se reinicia.');
             await refetch();
         } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo reasignar'); }
@@ -182,7 +196,7 @@ export default function PedidoDetalle() {
     const doCancel = async () => {
         if (!cancelReason.trim()) { toast.error('Indica el motivo'); return; }
         try {
-            await api.post(`/orders/${order.id}/status`, { status: 'cancelado', reason: cancelReason });
+            await setOrderStatus(order.id, { status: 'cancelado', reason: cancelReason });
             setCancelDlg(false);
             toast.success('Pedido cancelado');
             navigate('/salon');
@@ -204,7 +218,7 @@ export default function PedidoDetalle() {
                 && context.canCharge;
         };
         try {
-            const { data: register } = await api.get('/cash/current');
+            const { data: register } = await getCurrentCash();
             if (!isCurrentRequest()) return;
             if (!register || register.status !== 'open') {
                 navigate(`/caja?order=${requestedOrderId}`);
@@ -245,7 +259,7 @@ export default function PedidoDetalle() {
                     <AttentionReference order={order} branchNames={branchNames} />
                 </div>
             </div>
-            {user.role === 'admin' && !locked && (
+            {can(user, ACTIONS.ORDER_REASSIGN) && !locked && (
                 <div className="flex items-center gap-2 text-sm">
                     <span>Reasignar mozo</span>
                     <select
@@ -349,7 +363,7 @@ export default function PedidoDetalle() {
             {/* Barra fija de acciones: en móvil sube por encima de la barra inferior
                 de navegación (las dos están en z-40 y se tapaban). */}
             <div className="fixed bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
-                {order.status === 'nuevo' && ['admin', 'mozo'].includes(user.role) && (
+                {order.status === 'nuevo' && can(user, ACTIONS.ORDER_EDIT) && (
                     <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
                         {order.acceptance_status === 'pendiente' ? 'Aceptar y enviar a cocina' : 'Enviar a cocina'}
                     </Button>
@@ -403,7 +417,7 @@ export default function PedidoDetalle() {
                         Volver a mesas
                     </Button>
                 )}
-                {!locked && ['admin', 'cajero'].includes(user.role) && (
+                {!locked && can(user, ACTIONS.ORDER_CANCEL) && (
                     <Button variant="ghost" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button">
                         <Ban className="h-4 w-4 mr-2" />Anular pedido
                     </Button>
