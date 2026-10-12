@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import uuid
 from database import db
 from auth import get_current_user, require_roles
-from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
+from branch_access import branch_query, has_tenantwide_branch_access, read_branch_filter, resolve_branch_id
 from models import CashOpen, CashClose, CashMovement
 from billing import method_amounts, shift_payment_filter
 from pymongo.errors import DuplicateKeyError
@@ -81,31 +81,6 @@ def _attach_shift(reg: dict, totals: dict) -> dict:
     return {k: v for k, v in reg.items() if k != "_id"}
 
 
-async def _cash_branch(user: dict, requested: str | None = None, *, owner_selection: bool = False) -> str | None:
-    tenantwide = has_tenantwide_branch_access(user)
-    if tenantwide:
-        if requested:
-            owned = await db.branches.find_one(
-                {"id": requested, "restaurant_id": user["restaurant_id"]}, {"_id": 0, "id": 1}
-            )
-            if not owned:
-                raise HTTPException(status_code=404, detail="Sucursal no encontrada")
-            return requested
-        if owner_selection:
-            raise HTTPException(status_code=400, detail="Seleccione una sucursal para esta operación")
-        return None
-    branch_id = await validate_user_branch(user, db.branches)
-    if requested and requested != branch_id:
-        raise HTTPException(status_code=403, detail="No tiene acceso a esa sucursal")
-    return branch_id
-
-
-def _branch_query(branch_id: str | None, *, legacy: bool = False) -> dict:
-    if branch_id:
-        return {"branch_id": branch_id}
-    return {"branch_id": None} if legacy else {}
-
-
 async def _cash_register_index_state() -> str:
     """Read index metadata only; never create, replace, or drop cash indexes here."""
     try:
@@ -138,7 +113,7 @@ async def _cash_register_index_state() -> str:
 
 
 async def _open_register_for_branch(restaurant_id: str, branch_id: str | None, *, legacy: bool = False):
-    query = {"restaurant_id": restaurant_id, "status": "open", **_branch_query(branch_id, legacy=legacy)}
+    query = {"restaurant_id": restaurant_id, "status": "open", **branch_query(branch_id, legacy=legacy)}
     return await db.cash_registers.find_one(query, {"_id": 0})
 
 
@@ -191,7 +166,7 @@ async def list_registers(
 
 @router.post("/open")
 async def open_register(data: CashOpen, user: dict = Depends(require_roles(["admin", "cajero"]))):
-    branch = await _cash_branch(user, data.branch_id, owner_selection=True)
+    branch = await resolve_branch_id(user, db.branches, data.branch_id, owner_must_choose=True)
     if not branch:
         raise HTTPException(status_code=400, detail="No se crean cajas nuevas sin sucursal")
     state = await _cash_register_index_state()
@@ -226,9 +201,9 @@ async def open_register(data: CashOpen, user: dict = Depends(require_roles(["adm
 
 @router.post("/close")
 async def close_register(data: CashClose, user: dict = Depends(require_roles(["admin", "cajero"]))):
-    branch = await _cash_branch(user, data.branch_id)
+    branch = await resolve_branch_id(user, db.branches, data.branch_id)
     legacy = branch is None and has_tenantwide_branch_access(user)
-    query = {"restaurant_id": user["restaurant_id"], "status": "open", **_branch_query(branch, legacy=legacy)}
+    query = {"restaurant_id": user["restaurant_id"], "status": "open", **branch_query(branch, legacy=legacy)}
     reg = await db.cash_registers.find_one(query, {"_id": 0})
     if not reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta")
@@ -249,7 +224,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
     totals = await _shift_totals(reg)
     expected = totals["expected_amount"]
     difference = round(float(data.closing_amount) - expected, 2)
-    close_filter = {"id": reg["id"], "restaurant_id": user["restaurant_id"], "status": "open", **_branch_query(reg.get("branch_id"), legacy=reg.get("branch_id") is None)}
+    close_filter = {"id": reg["id"], "restaurant_id": user["restaurant_id"], "status": "open", **branch_query(reg.get("branch_id"), legacy=reg.get("branch_id") is None)}
     result = await db.cash_registers.update_one(close_filter, {"$set": {
         "status": "closed", "closing_amount": data.closing_amount,
         "expected_amount": expected, "difference": difference,
@@ -276,7 +251,7 @@ async def add_movement(data: CashMovement, user: dict = Depends(require_roles(["
             status_code=403,
             detail=f"Un movimiento mayor a S/ {CASHIER_MOVEMENT_LIMIT:.2f} lo registra un administrador",
         )
-    branch = await _cash_branch(user, data.branch_id, owner_selection=has_tenantwide_branch_access(user))
+    branch = await resolve_branch_id(user, db.branches, data.branch_id, owner_must_choose=has_tenantwide_branch_access(user))
     if branch is None and not has_tenantwide_branch_access(user):
         raise HTTPException(status_code=403, detail="El usuario no tiene una sucursal asignada")
     reg = await _open_register_for_branch(user["restaurant_id"], branch, legacy=branch is None)

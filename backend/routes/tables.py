@@ -8,7 +8,7 @@ from models import TableCreate, TableTransfer, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
 from attention import AttentionBlocked, open_table_attention, recover_opening_intent
-from branch_access import read_branch_filter, record_branch_filter, validate_user_branch
+from branch_access import read_branch_filter, record_branch_filter, record_lookup_scope
 from routes.table_groups import attach_groups, record_audit
 
 router = APIRouter()
@@ -75,14 +75,6 @@ async def _resolve_area(restaurant_id: str, area: str, branch_id: str | None = N
         status_code=400,
         detail="Hay más de una zona con ese nombre; elegí la sucursal de la mesa",
     )
-
-
-async def _table_lookup_scope(table_id: str, user: dict) -> dict:
-    branch_id = await validate_user_branch(user, db.branches)
-    scope = {"id": table_id, "restaurant_id": user["restaurant_id"]}
-    if branch_id is not None:
-        scope["branch_id"] = branch_id
-    return scope
 
 
 @router.get("")
@@ -185,7 +177,7 @@ def _qr_payload(table: dict, nonce: str) -> dict:
 @router.get("/{table_id}/guest-link")
 async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
     table = await db.tables.find_one(
-        await _table_lookup_scope(table_id, user),
+        await record_lookup_scope(user, db.branches, table_id),
         {"_id": 0, "id": 1, "number": 1, "qr_nonce": 1, "qr_revoked": 1},
     )
     if not table:
@@ -196,7 +188,7 @@ async def guest_link(table_id: str, user: dict = Depends(require_roles(["admin",
     if not nonce:
         nonce = secrets.token_urlsafe(16)
         await db.tables.update_one(
-            await _table_lookup_scope(table_id, user),
+            await record_lookup_scope(user, db.branches, table_id),
             {"$set": {"qr_nonce": nonce, "updated_at": _now()}},
         )
     return _qr_payload(table, nonce)
@@ -231,7 +223,7 @@ async def revoke_qr(table_id: str, user: dict = Depends(require_roles(["admin"])
 
 @router.post("/{table_id}/seat")
 async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = await _table_lookup_scope(table_id, user)
+    scope = await record_lookup_scope(user, db.branches, table_id)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -262,7 +254,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
 
 @router.post("/{table_id}/release")
 async def release_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = await _table_lookup_scope(table_id, user)
+    scope = await record_lookup_scope(user, db.branches, table_id)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -289,7 +281,7 @@ async def release_table(table_id: str, user: dict = Depends(require_roles(["admi
 
 @router.post("/{table_id}/resume-opening")
 async def resume_table_opening(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    scope = await _table_lookup_scope(table_id, user)
+    scope = await record_lookup_scope(user, db.branches, table_id)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
@@ -398,7 +390,7 @@ async def delete_table(table_id: str, user: dict = Depends(require_roles(["admin
 
 # ============== MOVE AN OPEN VISIT TO ANOTHER TABLE ==============
 async def _load_scoped_table(table_id: str, user: dict, detail: str = "Mesa no encontrada") -> dict:
-    table = await db.tables.find_one(await _table_lookup_scope(table_id, user), {"_id": 0})
+    table = await db.tables.find_one(await record_lookup_scope(user, db.branches, table_id), {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail=detail)
     return table
