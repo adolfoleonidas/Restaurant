@@ -65,6 +65,14 @@ docker compose up -d --build
 Abrí `http://<IP-o-dominio>:8081` y entrá con `admin@resto.com` y la contraseña que pusiste en
 `SEED_ADMIN_PASSWORD`. Cambiala después desde **Equipo**.
 
+> **Un solo proceso.** Los avisos en tiempo real (cocina, salón, caja) viven en la memoria del
+> proceso del backend (`backend/notify.py`). Con más de un worker, un aviso publicado en uno nunca
+> llega a los clientes conectados al otro y las pantallas quedan desactualizadas sin error.
+> Por eso el backend **se niega a arrancar** si `WEB_CONCURRENCY` o `UVICORN_WORKERS` es mayor que 1
+> (el `Dockerfile` ya lanza un único proceso de uvicorn). No uses `--workers N` ni réplicas del
+> backend detrás de un balanceador; escalar horizontalmente requiere antes un broker compartido
+> (por ejemplo Redis pub/sub), que es una mejora pendiente.
+
 ## 3. Limpiar lo que trae la demo o las pruebas
 
 > Si la base ya tenía datos (demo o de pruebas), hacelo **antes** de cargar lo real.
@@ -183,6 +191,7 @@ El volumen `mongo-data` **no viene respaldado**. Programá un backup (por ejempl
 - **No** dejes Yape/Plin/transferencia con los datos demo.
 - **No** corras los tests (Playwright/pytest) contra producción: crean pedidos y mesas reales.
 - **No** cierres una caja con un monto inventado: siempre el conteo físico.
+- **No** corras el backend con más de un worker ni más de una réplica: el tiempo real es en memoria.
 
 ## Checklist final
 

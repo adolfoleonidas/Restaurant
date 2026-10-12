@@ -276,3 +276,30 @@ def test_compose_does_not_publish_known_defaults():
     assert "change-this-secret" not in text
     assert "CORS_ORIGINS:-*" not in text
     assert ":-*" not in text
+
+
+def test_startup_refuses_more_than_one_worker_because_realtime_is_in_process():
+    from security_config import assert_runtime_config
+
+    base = {"APP_ENV": "development"}
+    for key in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        with pytest.raises(RuntimeError, match="single process"):
+            assert_runtime_config({**base, key: "2"})
+    # The guard also applies to production, before the secret checks pass.
+    with pytest.raises(RuntimeError, match="single process"):
+        assert_runtime_config({
+            "APP_ENV": "production",
+            "JWT_SECRET": "x" * 40,
+            "CORS_ORIGINS": "https://resto.example",
+            "WEB_CONCURRENCY": "4",
+        })
+
+
+def test_startup_accepts_one_or_unset_worker_count():
+    from security_config import assert_runtime_config
+
+    assert_runtime_config({"APP_ENV": "development"})
+    assert_runtime_config({"APP_ENV": "development", "WEB_CONCURRENCY": "1"})
+    assert_runtime_config({"APP_ENV": "development", "WEB_CONCURRENCY": ""})
+    # A malformed value is not a worker count; it must not crash startup here.
+    assert_runtime_config({"APP_ENV": "development", "WEB_CONCURRENCY": "auto"})
