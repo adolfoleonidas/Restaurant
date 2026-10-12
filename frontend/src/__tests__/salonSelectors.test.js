@@ -171,9 +171,19 @@ describe('order level selectors', () => {
         expect(summarizeOrders([])).toEqual({ toPrep: 0, toReady: 0, toPay: 0 });
     });
 
-    test('floorSummaryText is the screen reader line', () => {
+    test('floorSummaryText is the screen reader line, naming the unit of each count', () => {
         expect(floorSummaryText({ toPrep: 1, toReady: 2, toPay: 3 }))
-            .toBe('En preparación 1 · listos para entregar 2 · cuentas por cobrar 3');
+            .toBe('En cocina 1 plato · listos 2 platos · por cobrar 3 mesas');
+        expect(floorSummaryText({ toPrep: 0, toReady: 1, toPay: 1 }))
+            .toBe('En cocina 0 platos · listos 1 plato · por cobrar 1 mesa');
+    });
+
+    test('summarizeOrders leaves unsent drafts out of kitchen and bill counts', () => {
+        const mixed = [
+            order('o1', 't1', { status: 'nuevo', total: 40, items: [item('a', 'borrador', 2)] }),
+            order('o2', 't2', { status: 'en_preparacion', total: 30, items: [item('b', 'borrador', 1), item('c', 'pendiente', 2)] }),
+        ];
+        expect(summarizeOrders(mixed)).toEqual({ toPrep: 2, toReady: 0, toPay: 1 });
     });
 
     test('indexOrdersByTable keeps the last order per table', () => {
@@ -253,6 +263,20 @@ describe('floor units', () => {
         expect(grouped.group.id).toBe('g1');
         expect(grouped.groupBadge.accounts).toBe(0);
         expect(grouped.groupNumbers).toEqual([3, 4]);
+    });
+
+    test('decorateTables sums what every open order of the visit owes', () => {
+        const visitTable = table('tv', 7, { status: 'ocupada', active_attention_id: 'att-9', active_order: { id: 'v1', status: 'en_preparacion' } });
+        const visitOrders = [
+            order('v1', 'tv', { attention_id: 'att-9', attention_state: 'open', total: 30, amount_paid: 10, items: [item('a', 'pendiente')] }),
+            order('v2', 'tv', { attention_id: 'att-9', attention_state: 'open', total: 25, amount_paid: 0, items: [item('b', 'entregado')] }),
+            order('v3', 'tv', { attention_id: 'att-9', attention_state: 'open', status: 'pagado', total: 99, amount_paid: 99, items: [item('c', 'entregado')] }),
+            order('v4', 'tv', { attention_id: 'att-9', attention_state: 'open', status: 'nuevo', total: 12, amount_paid: 0, items: [item('d', 'borrador')] }),
+        ];
+        const decorated = decorateTables({
+            tables: [visitTable], byTable: indexOrdersByTable(visitOrders), orders: visitOrders, activeOrders: ordersByTable(visitOrders),
+        });
+        expect(decorated[0].due).toBe(45);
     });
 
     test('buildUnits folds a group into one unit and keeps singles', () => {
@@ -370,6 +394,13 @@ describe('selectSheetModel', () => {
         activeOrders: ordersByTable([o1, o2]),
         ...perms,
     };
+
+    test('the sheet follows the live table, not the snapshot taken when it opened', () => {
+        const live = { ...t, status: 'esperando_pago', active_order: { id: 'o1', status: 'pendiente_pago' } };
+        const model = selectSheetModel({ ...base, tables: [live] });
+        expect(model.floor).toEqual({ key: 'cuenta' });
+        expect(model.table.status).toBe('esperando_pago');
+    });
 
     test('derives persons, summary rows and totals', () => {
         const model = selectSheetModel(base);

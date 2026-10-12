@@ -36,8 +36,6 @@ export default function useFloorView({ user, tables, orders }) {
     const activeOrders = useMemo(() => ordersByTable(orders), [orders]);
 
     // ── Summary (former Servicio header) ───────────────────────────────────
-    const summary = useMemo(() => summarizeOrders(orders), [orders]);
-    const floorSummary = floorSummaryText(summary);
     const pickups = useMemo(() => projectPickups(orders), [orders]);
 
     // ── Filters ────────────────────────────────────────────────────────────
@@ -51,6 +49,12 @@ export default function useFloorView({ user, tables, orders }) {
         [decorated, tables, activeOrders]
     );
     const stateCounts = useMemo(() => countByState(units), [units]);
+    // Cabecera y chips cuentan lo mismo: platos en cocina/listos, y mesas por cobrar.
+    const summary = useMemo(
+        () => ({ ...summarizeOrders(orders), toPay: stateCounts.cuenta }),
+        [orders, stateCounts]
+    );
+    const floorSummary = floorSummaryText(summary);
     const filteredUnits = useMemo(
         () => filterUnits(units, { areaFilter, stateFilter, search, sortMode }),
         [units, areaFilter, stateFilter, search, sortMode]

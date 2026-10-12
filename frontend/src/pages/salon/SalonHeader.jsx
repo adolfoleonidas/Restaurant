@@ -2,7 +2,7 @@ import React from 'react';
 import { Grid2X2, Link2, Search, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fmtMoney } from '@/lib/format';
+import { countOf, fmtMoney } from '@/lib/format';
 
 export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, selectMode, startSelection, openAreas }) {
     return (
@@ -13,7 +13,7 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                     <Grid2X2 className="h-6 w-6 text-primary" /> Salón
                 </h1>
                 <p className="text-sm text-muted-foreground" data-testid="salon-resumen">
-                    En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay} ·{' '}
+                    En cocina: {countOf(summary.toPrep, 'plato', 'platos')} · Listos: {countOf(summary.toReady, 'plato', 'platos')} · Por cobrar: {countOf(summary.toPay, 'mesa', 'mesas')} ·{' '}
                     <span data-testid="salon-total-en-mesas">{fmtMoney(floorDue)} en mesas</span>
                 </p>
             </div>

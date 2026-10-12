@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowUpDown } from 'lucide-react';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
+import { countOf } from '@/lib/format';
 import { LEGEND, SORT_PRIORIDAD, STATE_FILTERS } from './selectors';
 
 export default function FloorFilters({ setStateFilter, stateFilter, stateCounts, toggleSortMode, sortMode, areas, setAreaFilter, areaFilter }) {
@@ -18,6 +19,7 @@ export default function FloorFilters({ setStateFilter, stateFilter, stateCounts,
                             type="button"
                             onClick={() => setStateFilter(f.key)}
                             data-testid={`salon-filtro-${f.key}`}
+                            title={countOf(stateCounts[f.key], 'mesa', 'mesas')}
                             className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                         >
                             {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>

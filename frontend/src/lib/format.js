@@ -1,5 +1,8 @@
 export const CURRENCY = 'S/';
 
+/** "1 plato" / "3 platos": the count with its noun in agreement. */
+export const countOf = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
+
 export const fmtMoney = (n) => {
     const v = Number(n || 0);
     return `${CURRENCY} ${v.toFixed(2)}`;
