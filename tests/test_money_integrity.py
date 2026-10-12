@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from models import CashClose, CashMovement, CashOpen, OrderItemUpdate, PaymentCreate, PaymentLine, PaymentSplit, ProductCreate
-from billing import method_amounts
+from billing import BillError, method_amounts
 from routes.cash import _shift_totals, add_movement, close_register
 from routes.orders import add_items, change_status, kitchen_orders, merge_order, move_order, remove_item, serve_order, set_order_alias, split_order, update_item
 from routes.payments import apply_void_payment, create_payment, proof_is_pending
@@ -642,9 +642,10 @@ def test_cannot_remove_an_already_paid_item():
         _bind(db)
         await remove_item("order-1", "item-1", _mozo())
 
-    with pytest.raises(HTTPException) as removed:
+    # The route lets the billing rule through; the app-level handler maps it to 400.
+    with pytest.raises(BillError) as removed:
         asyncio.run(run())
-    assert removed.value.status_code == 400
+    assert removed.value.detail == "No puedes quitar un producto que ya fue cobrado"
 
 
 def test_cannot_shrink_an_item_below_what_was_paid():
@@ -654,9 +655,9 @@ def test_cannot_shrink_an_item_below_what_was_paid():
         _bind(db)
         await update_item("order-1", "item-1", OrderItemUpdate(quantity=1), _mozo())
 
-    with pytest.raises(HTTPException) as shrunk:
+    with pytest.raises(BillError) as shrunk:
         asyncio.run(run())
-    assert shrunk.value.status_code == 400
+    assert shrunk.value.detail == "No puedes dejar un producto por debajo de lo ya cobrado"
 
 
 def test_can_remove_an_unpaid_item_while_another_is_paid():
@@ -679,9 +680,9 @@ def test_cannot_cancel_while_money_was_collected():
         _bind(db)
         await change_status("order-1", type("S", (), {"status": "cancelado", "reason": "se fue el cliente"})(), _cashier())
 
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(BillError) as caught:
         asyncio.run(run())
-    assert caught.value.status_code == 400
+    assert caught.value.detail == "Devuelve o anula los cobros antes de cancelar el pedido"
 
 
 def test_editing_items_keeps_the_delivery_fee():

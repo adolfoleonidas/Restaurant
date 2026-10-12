@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { getPublicTableSession } from '@/lib/api/public';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Contexto del QR de mesa.
@@ -77,7 +78,7 @@ export const TableProvider = ({ children }) => {
         let active = true;
         setLoading(true);
         setError('');
-        api.get('/public/tables/session', { params: { token } })
+        getPublicTableSession(token)
             .then((response) => {
                 if (!active) return;
                 // Un QR impreso no vence solo: si el servidor lo renovó, se guarda
@@ -89,7 +90,7 @@ export const TableProvider = ({ children }) => {
             .catch((requestError) => {
                 if (!active) return;
                 // Un QR revocado o rotado deja de servir: se avisa y se olvida.
-                setError(requestError.response?.data?.detail || 'No pudimos leer el QR de la mesa.');
+                setError(apiErrorMessage(requestError, 'No pudimos leer el QR de la mesa.'));
                 setState({ token, table: null, session: null, policy: null });
                 writeStored(null);
             })
@@ -100,7 +101,7 @@ export const TableProvider = ({ children }) => {
 
     const refresh = useCallback(async () => {
         if (!token) return null;
-        const response = await api.get('/public/tables/session', { params: { token } });
+        const response = await getPublicTableSession(token);
         const next = { token: response.data?.renewed_token || token, ...response.data };
         setState(next);
         writeStored(next);

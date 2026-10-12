@@ -12,7 +12,7 @@ import { api } from '@/lib/api';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
 // Mozo de sala con atención y cobro: es el perfil que ve las dos acciones de
-// la banda ("Servir" y "Cobrar"). Las funciones van explícitas para que la
+// la banda ("Entregar" y "Cobrar"). Las funciones van explícitas para que la
 // suite no dependa de los valores por rol.
 const mockUser = { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'mozo', functions: ['atencion', 'cobro'] };
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
@@ -30,8 +30,8 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const src = fetcher.toString();
-        if (src.includes("api.get('/tables')")) return { data: mockTables.slice(), refetch: jest.fn() };
-        if (src.includes("api.get('/orders'")) return { data: mockOrders.slice(), refetch: jest.fn() };
+        if (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(src)) return { data: mockTables.slice(), refetch: jest.fn() };
+        if (src.includes('listOrders')) return { data: mockOrders.slice(), refetch: jest.fn() };
         return { data: [], refetch: jest.fn() };
     },
 }));
@@ -138,7 +138,7 @@ describe('mini-reproductor del pedido activo', () => {
         await click(document.body.querySelector('[data-testid="mesa-sheet-volver"]'));
 
         const accion = container.querySelector('[data-testid="salon-mini-accion"]');
-        expect(accion.textContent).toBe('Servir');
+        expect(accion.textContent).toBe('Entregar');
         await click(accion);
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/serve');
     });

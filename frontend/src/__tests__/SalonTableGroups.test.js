@@ -28,7 +28,7 @@ const mockRefreshOrders = jest.fn();
 
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
-    default: (fetcher) => (fetcher.toString().includes("api.get('/tables')")
+    default: (fetcher) => (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(fetcher.toString())
         ? { data: mockRows.tables, refetch: mockRefreshTables }
         : { data: mockRows.orders, refetch: mockRefreshOrders }),
 }));

@@ -88,7 +88,7 @@ def _user(**changes):
 
 
 def _create(**changes):
-    values = {"email": "new.staff@example.com", "password": "secret", "full_name": "New Staff", "role": "mozo"}
+    values = {"email": "new.staff@example.com", "password": "secret-pass", "full_name": "New Staff", "role": "mozo"}
     values.update(changes)
     return UserCreate(**values)
 
@@ -101,7 +101,7 @@ def test_create_without_branch_preserves_legacy_unassigned_behavior(monkeypatch)
     assert "branch_id" not in result
     assert result["restaurant_id"] == "tenant-a"
     assert "password_hash" not in result
-    assert db.users.rows[0]["password_hash"] == "hashed:secret"
+    assert db.users.rows[0]["password_hash"] == "hashed:secret-pass"
     assert len(db.users.writes) == 1
     assert db.branches.queries == []
 
@@ -114,7 +114,7 @@ def test_create_with_owned_branch_stores_only_server_checked_branch_metadata(mon
     assert result["branch_id"] == "branch-a"
     assert result["restaurant_id"] == "tenant-a"
     assert "password_hash" not in result
-    assert db.users.rows[0]["password_hash"] == "hashed:secret"
+    assert db.users.rows[0]["password_hash"] == "hashed:secret-pass"
     assert db.branches.queries == [{"id": "branch-a", "restaurant_id": "tenant-a"}]
 
 

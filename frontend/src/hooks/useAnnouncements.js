@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { api } from '@/lib/api';
+import { getOrder } from '@/lib/api/orders';
+import { listTables } from '@/lib/api/tables';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAssistant } from '@/contexts/AssistantContext';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -23,7 +24,7 @@ export default function useAnnouncements() {
     useEffect(() => {
         if (!enabled || !user) return undefined;
         let active = true;
-        const load = () => api.get('/tables')
+        const load = () => listTables()
             .then((res) => {
                 if (!active) return;
                 const map = new Map();
@@ -55,7 +56,7 @@ export default function useAnnouncements() {
         }
 
         // Order events don't carry the table, so resolve it once.
-        api.get(`/orders/${item.refId}`)
+        getOrder(item.refId)
             .then(({ data }) => {
                 const order = data || {};
                 const table = order.table_id ? tablesRef.current.get(order.table_id) : null;

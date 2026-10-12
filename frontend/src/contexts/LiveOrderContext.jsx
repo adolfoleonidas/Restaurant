@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { addPublicOrderItem, getPublicOrder, removePublicOrderItem, updatePublicOrderItem } from '@/lib/api/public';
 import usePolling from '@/hooks/usePolling';
 import usePublicStream from '@/hooks/usePublicStream';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const KEY = 'public_last_order_v1';
 const LiveOrderContext = createContext(null);
@@ -33,7 +34,7 @@ export const LiveOrderProvider = ({ children }) => {
 
     const fetcher = useCallback(() => {
         if (!meta?.tracking_code) return Promise.resolve(null);
-        return api.get(`/public/orders/${meta.tracking_code}`).then((r) => r.data).catch((e) => {
+        return getPublicOrder(meta.tracking_code).then((r) => r.data).catch((e) => {
             if (e.response?.status === 404) clearMeta();
             return null;
         });
@@ -69,12 +70,12 @@ export const LiveOrderProvider = ({ children }) => {
         if (!order) return;
         setBusy((b) => ({ ...b, [product.id]: true }));
         try {
-            await api.post(`/public/orders/${order.tracking_code}/items`, {
+            await addPublicOrderItem(order.tracking_code, {
                 items: [{ product_id: product.id, quantity: qty }],
             });
             await refetch();
         } catch (e) {
-            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+            throw new Error(apiErrorMessage(e, 'No se pudo actualizar el pedido'));
         } finally {
             setBusy((b) => ({ ...b, [product.id]: false }));
         }
@@ -83,18 +84,18 @@ export const LiveOrderProvider = ({ children }) => {
     const decrementLine = async (line) => {
         if (!order) return;
         if (line.status !== 'pendiente' && line.status != null) {
-            throw new Error('Ese plato ya está en cocina. Consultá al mozo si querés quitarlo.');
+            throw new Error('Ese plato ya está en cocina. Consulta al mozo si quieres quitarlo.');
         }
         setBusy((b) => ({ ...b, [line.product_id]: true }));
         try {
             if (line.quantity > 1) {
-                await api.patch(`/public/orders/${order.tracking_code}/items/${line.id}`, { quantity: line.quantity - 1 });
+                await updatePublicOrderItem(order.tracking_code, line.id, { quantity: line.quantity - 1 });
             } else {
-                await api.delete(`/public/orders/${order.tracking_code}/items/${line.id}`);
+                await removePublicOrderItem(order.tracking_code, line.id);
             }
             await refetch();
         } catch (e) {
-            throw new Error(e.response?.data?.detail || 'No se pudo actualizar el pedido');
+            throw new Error(apiErrorMessage(e, 'No se pudo actualizar el pedido'));
         } finally {
             setBusy((b) => ({ ...b, [line.product_id]: false }));
         }
@@ -106,7 +107,7 @@ export const LiveOrderProvider = ({ children }) => {
             .filter((i) => i.product_id === product.id && (i.status === 'pendiente' || !i.status))
             .sort((a, b) => new Date(b.added_at || 0) - new Date(a.added_at || 0));
         const target = lines[0];
-        if (!target) throw new Error('Ese plato ya está en preparación. Pedí al mozo si querés quitarlo.');
+        if (!target) throw new Error('Ese plato ya está en preparación. Pide al mozo si quieres quitarlo.');
         return decrementLine(target);
     };
 

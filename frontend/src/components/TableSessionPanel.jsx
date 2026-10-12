@@ -1,7 +1,8 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
+import { ORDER_STATUS_LABELS } from '@/constants/status';
 import { Plus } from 'lucide-react';
 
 /**
@@ -54,7 +55,7 @@ export function TableSessionPanel({ table, session, onOrderMore, currentOrderId 
 
             {orders.length === 0 ? (
                 <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
-                    Todavía no hay pedidos en esta mesa. Elegí algo de la carta para empezar.
+                    Todavía no hay pedidos en esta mesa. Elige algo de la carta para empezar.
                 </p>
             ) : (
                 <ul className="space-y-2">

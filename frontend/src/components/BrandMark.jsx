@@ -26,7 +26,7 @@ function BrandSymbol() {
     );
 }
 
-export function BrandMark({ name = 'Sabor Peruano', kicker = 'Barranco · Lima', compact = false, logoUrl }) {
+export function BrandMark({ name = 'Restaurante', kicker = '', compact = false, logoUrl }) {
     const safeLogoUrl = getSafeLogoUrl(logoUrl);
     const [failedUrl, setFailedUrl] = useState(null);
     const showLogo = safeLogoUrl && failedUrl !== safeLogoUrl;

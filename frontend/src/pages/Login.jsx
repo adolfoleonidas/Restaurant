@@ -8,9 +8,10 @@ import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { ROLE_LABELS } from '@/lib/format';
 import { homeFor } from '@/lib/home';
-import { api } from '@/lib/api';
+import { getPublicRestaurant } from '@/lib/api/public';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const DEMO = [
     { email: 'admin@resto.com', password: 'admin123', role: 'admin' },
@@ -32,7 +33,7 @@ export default function Login() {
 
     useEffect(() => {
         let active = true;
-        api.get('/public/restaurant').then(({ data }) => {
+        getPublicRestaurant().then(({ data }) => {
             if (active) setRestaurant(data);
         }).catch(() => {});
         return () => { active = false; };
@@ -47,7 +48,7 @@ export default function Login() {
     const submit = async (e) => {
         e.preventDefault();
         if (!email || !password) {
-            setFormError('Ingresá tu correo y tu contraseña para entrar.');
+            setFormError('Ingresa tu correo y tu contraseña para entrar.');
             return;
         }
         setFormError('');
@@ -58,7 +59,7 @@ export default function Login() {
             const fallback = homeFor(logged);
             navigate(from && from !== '/login' ? from : fallback, { replace: true });
         } catch (err) {
-            const message = err.response?.data?.detail || 'No se pudo iniciar sesión. Revisá tu correo y tu contraseña.';
+            const message = apiErrorMessage(err, 'No se pudo iniciar sesión. Revisa tu correo y tu contraseña.');
             setFormError(message);
             toast.error(message);
         } finally {
@@ -92,14 +93,14 @@ export default function Login() {
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
                     <p className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</p>
-                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
+                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Restaurante'}.</div>
                 </div>
             </div>
             <div className="flex-1 flex items-center justify-center p-6">
                 <div className="w-full max-w-md my-auto">
                     <div className="flex items-start justify-between mb-10">
                         <Link to="/" className="inline-block">
-                            <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
+                            <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
                         </Link>
                         <ThemeToggle />
                     </div>

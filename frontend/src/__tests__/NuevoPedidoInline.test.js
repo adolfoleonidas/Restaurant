@@ -18,9 +18,9 @@ jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,
     default: (fetcher) => {
         const src = fetcher.toString();
-        if (src.includes("api.get('/tables')")) return { data: mockTables, refetch: jest.fn() };
-        if (src.includes("api.get('/products')")) return { data: mockProducts, refetch: jest.fn() };
-        if (src.includes("api.get('/categories')")) return { data: [], refetch: jest.fn() };
+        if (/^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(src)) return { data: mockTables, refetch: jest.fn() };
+        if (src.includes('listProducts')) return { data: mockProducts, refetch: jest.fn() };
+        if (src.includes('listCategories')) return { data: [], refetch: jest.fn() };
         return { data: mockOrders, refetch: jest.fn() };
     },
 }));
@@ -93,6 +93,48 @@ describe('nuevo pedido sin mesa', () => {
 
         expect(api.post).toHaveBeenCalledWith('/orders', { order_type: 'llevar' });
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/items', [{ product_id: 'prod-1', quantity: 1 }]);
+    });
+
+    it('UX-14 quick taps before the order exists create it once and keep every unit', async () => {
+        const server = { items: [] };
+        let releaseCreate;
+        api.post.mockImplementation((url, body) => {
+            if (url === '/orders') {
+                return new Promise((resolve) => { releaseCreate = () => resolve({ data: createdOrder({ items: [], total: 0 }) }); });
+            }
+            if (url === '/orders/order-9/items') {
+                body.forEach((entry) => server.items.push({
+                    id: `i${server.items.length + 1}`, product_id: entry.product_id, product_name: 'Ceviche', quantity: entry.quantity, unit_price: 38, subtotal: 38 * entry.quantity, status: 'borrador', notes: null,
+                }));
+            }
+            return Promise.resolve({ data: {} });
+        });
+        api.patch.mockImplementation((url, body) => {
+            server.items[0].quantity = body.quantity;
+            server.items[0].subtotal = 38 * body.quantity;
+            return Promise.resolve({ data: {} });
+        });
+        api.get.mockImplementation((url) => (url === '/orders/order-9'
+            ? Promise.resolve({ data: createdOrder({ items: server.items.map((i) => ({ ...i })), total: server.items.reduce((sum, i) => sum + i.subtotal, 0) }) })
+            : Promise.resolve({ data: [] })));
+        ({ host, root } = await renderSalon());
+        await openComposer(host, 'llevar');
+
+        const card = () => document.body.querySelector('[data-testid="nuevo-pedido-producto-nombre-prod-1"]');
+        const qty = () => document.body.querySelector('[data-testid="nuevo-pedido-producto-cantidad-prod-1"]').textContent;
+        await click(card());
+        await click(card());
+        await click(card());
+        // The screen follows the taps while the order is still being created.
+        expect(qty()).toBe('3');
+        expect(card().disabled).toBe(false);
+
+        await act(async () => releaseCreate());
+        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+        expect(api.post.mock.calls.filter(([url]) => url === '/orders')).toHaveLength(1);
+        expect(server.items).toHaveLength(1);
+        expect(server.items[0].quantity).toBe(3);
+        expect(qty()).toBe('3');
     });
 
     it('exige la dirección antes de crear un envío', async () => {

@@ -1,4 +1,4 @@
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, fmtDateFull } from '@/lib/format';
 
 function esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => (
@@ -21,13 +21,13 @@ export function printCajaReceipt({ restaurantName, label, order, payment, items 
         td{padding:4px 0}
         .total{font-size:16px;font-weight:700;border-top:1px dashed #999;padding-top:8px}
       </style></head><body>
-      <h1>${esc(restaurantName || 'Sabor Peruano')}</h1>
+      <h1>${esc(restaurantName || '')}</h1>
       <div class="muted">${esc(label || '')} · Pedido #${esc(order?.order_number || payment?.order_number || '')}</div>
       <table>${lines}</table>
       <div class="total">Pagado ${fmtMoney(payment?.amount)} · ${payment?.method || ''}</div>
       ${payment?.change_amount ? `<div>Vuelto ${fmtMoney(payment.change_amount)}</div>` : ''}
       ${payment?.remaining > 0 ? `<div class="muted">Saldo ${fmtMoney(payment.remaining)}</div>` : '<div class="muted">Cuenta cubierta</div>'}
-      <div class="muted" style="margin-top:16px">${new Date().toLocaleString('es-PE')}</div>
+      <div class="muted" style="margin-top:16px">${fmtDateFull(new Date())}</div>
       </body></html>`;
     const w = window.open('', 'comprobante', 'width=420,height=640');
     if (!w) return false;

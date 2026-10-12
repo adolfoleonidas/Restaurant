@@ -1,5 +1,8 @@
 export const CURRENCY = 'S/';
 
+/** "1 plato" / "3 platos": the count with its noun in agreement. */
+export const countOf = (n, one, many) => `${n} ${Number(n) === 1 ? one : many}`;
+
 export const fmtMoney = (n) => {
     const v = Number(n || 0);
     return `${CURRENCY} ${v.toFixed(2)}`;
@@ -25,6 +28,20 @@ export const fmtDateTime = (iso) => {
         return d.toLocaleString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     } catch (e) { return ''; }
 };
+
+/** Same date-time format as fmtDateTime ("04/03/2026, 10:07"). Accepts an ISO string or a Date. */
+export const fmtDateFull = (value) => fmtDateTime(value);
+
+/** Same format for server timestamps. Dash when empty; falls back to the raw value. */
+export const fmtDateTimeShort = (iso) => {
+    if (!iso) return '—';
+    return fmtDateTime(iso) || iso;
+};
+
+/** Weekday heading used to group history by day ("mié, 04 mar"). Dash when empty. */
+export const fmtDayLabel = (iso) => (
+    iso ? new Date(iso).toLocaleDateString('es-PE', { weekday: 'short', day: '2-digit', month: 'short' }) : '—'
+);
 
 export const elapsedMinutes = (iso) => {
     if (!iso) return 0;
@@ -59,17 +76,6 @@ export const PAYMENT_LABELS = {
     mixto: 'Mixto',
 };
 
-export const ORDER_STATUS_LABELS = {
-    nuevo: 'Nuevo',
-    enviado_cocina: 'Enviado a cocina',
-    en_preparacion: 'En preparación',
-    listo: 'Listo',
-    entregado: 'Entregado',
-    pendiente_pago: 'Pendiente de pago',
-    pagado: 'Pagado',
-    cancelado: 'Cancelado',
-};
-
 export const ORDER_TYPE_LABELS = {
     mesa: 'Mesa',
     local: 'En local',
@@ -95,12 +101,3 @@ export function waMeLink(phone, text) {
     if (!n) return null;
     return `https://wa.me/${n}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
 }
-
-export const TABLE_STATUS_LABELS = {
-    disponible: 'Disponible',
-    ocupada: 'Ocupada',
-    esperando_pago: 'Esperando pago',
-    reservada: 'Reservada',
-    inactiva: 'Inactiva',
-    pagada: 'Pagada',
-};

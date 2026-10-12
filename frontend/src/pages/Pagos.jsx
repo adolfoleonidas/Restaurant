@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import { getPaymentConfig, updatePaymentConfig } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CreditCard, Smartphone, Banknote, Building2, Upload, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
     <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40 transition-colors">
@@ -25,7 +26,7 @@ export default function Pagos() {
     const [cfg, setCfg] = useState(null);
     const [tab, setTab] = useState('yape');
 
-    const load = async () => { const { data } = await api.get('/payment-config'); setCfg(data); };
+    const load = async () => { const { data } = await getPaymentConfig(); setCfg(data); };
     useEffect(() => { load(); }, []);
 
     const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
@@ -39,8 +40,8 @@ export default function Pagos() {
     };
 
     const save = async () => {
-        try { const { data } = await api.patch('/payment-config', cfg); setCfg(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(e.response?.data?.detail || 'Error'); }
+        try { const { data } = await updatePaymentConfig(cfg); setCfg(data); toast.success('Configuración guardada'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
     };
 
     if (!cfg) return (
@@ -59,7 +60,7 @@ export default function Pagos() {
                 <div>
                     <p className="page-kicker mb-1">Administración</p>
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
-                    <p className="text-muted-foreground text-sm">Activá los medios que aceptás y completá los datos que ve tu cliente al pagar.</p>
+                    <p className="text-muted-foreground text-sm">Activa los medios que aceptas y completa los datos que ve tu cliente al pagar.</p>
                 </div>
                 <Button onClick={save} data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button>
             </div>
@@ -82,11 +83,11 @@ export default function Pagos() {
                     <TabsContent key={m} value={m}>
                         <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div className="space-y-3">
-                                <div><Label>Número {m === 'yape' ? 'Yape' : 'Plin'}</Label><Input value={cfg[`${m}_number`] || ''} onChange={(e) => set({ [`${m}_number`]: e.target.value })} placeholder="999 888 777" data-testid={`pagos-${m}-numero`} /></div>
-                                <div><Label htmlFor="nombre-del-titular">Nombre del titular</Label><Input id="nombre-del-titular" value={cfg[`${m}_holder`] || ''} onChange={(e) => set({ [`${m}_holder`]: e.target.value })} data-testid={`pagos-${m}-titular`} /></div>
+                                <div><Label htmlFor={`pagos-${m}-numero`}>Número {m === 'yape' ? 'Yape' : 'Plin'}</Label><Input id={`pagos-${m}-numero`} value={cfg[`${m}_number`] || ''} onChange={(e) => set({ [`${m}_number`]: e.target.value })} placeholder="999 888 777" data-testid={`pagos-${m}-numero`} /></div>
+                                <div><Label htmlFor={`pagos-${m}-titular`}>Nombre del titular</Label><Input id={`pagos-${m}-titular`} value={cfg[`${m}_holder`] || ''} onChange={(e) => set({ [`${m}_holder`]: e.target.value })} data-testid={`pagos-${m}-titular`} /></div>
                             </div>
                             <div>
-                                <Label>QR (imagen)</Label>
+                                <span className="block text-sm font-medium leading-none">QR (imagen)</span>
                                 {cfg[`${m}_qr`] ? (
                                     <div className="border rounded-xl p-3 flex items-center gap-3">
                                         <img src={cfg[`${m}_qr`]} alt="QR" className="h-32 w-32 object-contain bg-white rounded" />
@@ -111,7 +112,7 @@ export default function Pagos() {
                         <div><Label htmlFor="titular">Titular</Label><Input id="titular" value={cfg.bank_holder || ''} onChange={(e) => set({ bank_holder: e.target.value })} /></div>
                         <div><Label htmlFor="numero-de-cuenta">Número de cuenta</Label><Input id="numero-de-cuenta" value={cfg.bank_account || ''} onChange={(e) => set({ bank_account: e.target.value })} data-testid="pagos-bank-account" /></div>
                         <div><Label htmlFor="cci">CCI</Label><Input id="cci" value={cfg.bank_cci || ''} onChange={(e) => set({ bank_cci: e.target.value })} /></div>
-                        <div className="md:col-span-2"><Label>Instrucciones para el cliente</Label><Textarea value={cfg.transfer_instructions || ''} onChange={(e) => set({ transfer_instructions: e.target.value })} placeholder="Ej: envía comprobante por WhatsApp…" /></div>
+                        <div className="md:col-span-2"><Label htmlFor="pagos-instrucciones">Instrucciones para el cliente</Label><Textarea id="pagos-instrucciones" value={cfg.transfer_instructions || ''} onChange={(e) => set({ transfer_instructions: e.target.value })} placeholder="Ej: envía comprobante por WhatsApp…" /></div>
                     </CardContent></Card>
                 </TabsContent>
             </Tabs>

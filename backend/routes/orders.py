@@ -6,7 +6,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderNotes, OrderItemVoid, OrderItemMove
-from billing import BillError, assert_can_cancel, guarded_totals
+from billing import assert_can_cancel, guarded_totals, line_subtotal, split_group_totals, sum_line_subtotals
 from order_flow import (
     DRAFT_STATUS,
     FlowError,
@@ -32,6 +32,7 @@ from branch_access import (
     assert_record_branch_access,
     read_branch_filter,
     record_branch_filter,
+    record_lookup_scope,
     validate_user_branch,
 )
 
@@ -60,14 +61,6 @@ def _order_projection(user: dict) -> dict:
     return proj
 
 
-async def _order_lookup_scope(order_id: str, user: dict) -> dict:
-    branch_id = await validate_user_branch(user, db.branches)
-    scope = {"id": order_id, "restaurant_id": user["restaurant_id"]}
-    if branch_id is not None:
-        scope["branch_id"] = branch_id
-    return scope
-
-
 def _order_for_user(order: dict | None, user: dict) -> dict | None:
     if not order:
         return order
@@ -89,7 +82,7 @@ def _order_for_user(order: dict | None, user: dict) -> dict | None:
 
 async def _current_order_response(order_id: str, user: dict) -> dict | None:
     order = await db.orders.find_one(
-        await _order_lookup_scope(order_id, user), {"_id": 0}
+        await record_lookup_scope(user, db.branches, order_id), {"_id": 0}
     )
     return _order_for_user(order, user)
 
@@ -127,7 +120,6 @@ async def _next_order_number(restaurant_id: str) -> int:
 
 
 async def _compute_total(items: list, restaurant_id: str):
-    subtotal = 0.0
     enriched = []
     for it in items:
         prod = await db.products.find_one(
@@ -138,7 +130,7 @@ async def _compute_total(items: list, restaurant_id: str):
             raise HTTPException(status_code=400, detail=f"Producto {it['product_id']} no existe")
         if not prod.get("is_available", True):
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
-        line_subtotal = prod["price"] * it["quantity"]
+        line = line_subtotal(prod["price"], it["quantity"])
         combo_components = await combo_components_for(prod, restaurant_id)
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
@@ -148,7 +140,7 @@ async def _compute_total(items: list, restaurant_id: str):
             "product_name": prod["name"],
             "quantity": it["quantity"],
             "unit_price": prod["price"],
-            "subtotal": line_subtotal,
+            "subtotal": line,
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),
             "added_at": it.get("added_at") or _now(),
@@ -156,8 +148,7 @@ async def _compute_total(items: list, restaurant_id: str):
             "is_combo": bool(prod.get("is_combo")),
             "combo_components": combo_components,
         })
-        subtotal += line_subtotal
-    return enriched, subtotal
+    return enriched, sum_line_subtotals(line["subtotal"] for line in enriched)
 
 
 async def _save_order(order: dict, fields: dict):
@@ -180,13 +171,6 @@ async def _release_paid_table(order: dict, status: str):
         {"$set": {"status": table_status, "updated_at": _now()}},
     )
     emit_notice(order["restaurant_id"], "table", table_id=order["table_id"], status=table_status, branch_id=order.get("branch_id"))
-
-
-def _apply_bill(order: dict, items: list, removed_item: dict = None):
-    try:
-        return guarded_totals(order, items, removed_item=removed_item)
-    except BillError as exc:
-        raise HTTPException(status_code=400, detail=exc.detail)
 
 
 def _derive_kitchen_status(items: list, current: str) -> str:
@@ -318,7 +302,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
 @router.get("/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     o = await db.orders.find_one(
-        await _order_lookup_scope(order_id, user),
+        await record_lookup_scope(user, db.branches, order_id),
         _order_projection(user),
     )
     if not o:
@@ -445,7 +429,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
             try:
                 await open_table_attention(db, order=o, user=user, now=_now())
             except AttentionBlocked as exc:
-                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintentá /orders/{order_id}/attention/open. {exc.detail}")
+                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintenta /orders/{order_id}/attention/open. {exc.detail}")
     await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
     emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no, branch_id=o.get("branch_id"))
     return await _current_order_response(order_id, user)
@@ -453,7 +437,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
 
 @router.post("/{order_id}/attention/open")
 async def resume_attention_open(order_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         table = await db.tables.find_one({
             "restaurant_id": user["restaurant_id"], "opening_order_id": order_id,
@@ -472,7 +456,7 @@ async def resume_attention_open(order_id: str, user: dict = Depends(require_role
 
 @router.post("/{order_id}/attention/close")
 async def close_attention(order_id: str, user: dict = Depends(require_roles(["admin", "mozo", "cajero"]))):
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     was_closed = order.get("attention_state") == "closed"
@@ -485,7 +469,7 @@ async def close_attention(order_id: str, user: dict = Depends(require_roles(["ad
     return attention
 @router.post("/{order_id}/items")
 async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -498,7 +482,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
         it["status"] = DRAFT_STATUS
         it["added_at"] = _now()
     combined = (o.get("items") or []) + enriched_new
-    subtotal, total = _apply_bill(o, combined)
+    subtotal, total = guarded_totals(o, combined)
     # Cargar un producto no manda nada a cocina por sí solo: el pedido conserva
     # su estado hasta que el mozo envía.
     new_status = _derive_kitchen_status(combined, o["status"])
@@ -526,7 +510,7 @@ async def _resume_merge_operation(operation: dict, user: dict) -> None:
             await db.orders.update_one(target_filter, {"$unset": {"account_operation": ""}})
             return
         if source.get("account_operation_ref"):
-            raise HTTPException(status_code=409, detail="La cuenta está cambiando; volvé a cargarla")
+            raise HTTPException(status_code=409, detail="La cuenta está cambiando; vuelve a cargarla")
         claim = {**source_filter, "updated_at": operation.get("source_updated_at"), "account_operation_ref": {"$exists": False}, "account_operation": {"$exists": False}, "payment_operation": {"$exists": False}}
         result = await db.orders.update_one(claim, {"$set": {"account_operation_ref": operation["id"]}})
         if getattr(result, "matched_count", 0) != 1:
@@ -541,21 +525,21 @@ async def _resume_merge_operation(operation: dict, user: dict) -> None:
 @router.post("/{order_id}/merge")
 async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Merge an unpaid account with a fixed, resumable operation."""
-    target_filter = await _order_lookup_scope(order_id, user)
+    target_filter = await record_lookup_scope(user, db.branches, order_id)
     target = await db.orders.find_one(target_filter, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if target.get("account_operation"):
         operation = target["account_operation"]
         if operation.get("kind") != "merge" or operation.get("source_id") != data.source_order_id:
-            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
         await _resume_merge_operation(operation, user)
         return await _current_order_response(order_id, user)
-    source = await db.orders.find_one(await _order_lookup_scope(data.source_order_id, user), {"_id": 0})
+    source = await db.orders.find_one(await record_lookup_scope(user, db.branches, data.source_order_id), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
     if source["id"] == target["id"]:
-        raise HTTPException(status_code=400, detail="Elegí cuentas distintas")
+        raise HTTPException(status_code=400, detail="Elige cuentas distintas")
     if source.get("status") == "cancelado" and source.get("cancellation_reason") == f"Fusionada con #{target.get('order_number')}":
         return await _current_order_response(order_id, user)
     if target["status"] in ("pagado", "cancelado") or source["status"] in ("pagado", "cancelado"):
@@ -563,9 +547,9 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
     if target.get("table_id") != source.get("table_id") or target.get("attention_id") != source.get("attention_id"):
         raise HTTPException(status_code=400, detail="Las cuentas deben pertenecer a la misma mesa y visita")
     if (source.get("amount_paid") or 0) > 0.009 or (target.get("amount_paid") or 0) > 0.009:
-        raise HTTPException(status_code=400, detail="Las cuentas ya tienen cobros; anulalos antes de fusionar")
+        raise HTTPException(status_code=400, detail="Las cuentas ya tienen cobros; anúlalos antes de fusionar")
     combined = (target.get("items") or []) + (source.get("items") or [])
-    subtotal, total = _apply_bill(target, combined)
+    subtotal, total = guarded_totals(target, combined)
     new_status = _derive_kitchen_status(combined, target["status"])
     if target["status"] in ("entregado", "pendiente_pago"):
         new_status = "enviado_cocina"
@@ -589,11 +573,11 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
 @router.post("/{order_id}/move")
 async def move_order(order_id: str, data: OrderMove, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Mueve una cuenta a una mesa libre; la desprende de la visita de origen."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
-        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     if not order.get("table_id"):
         raise HTTPException(status_code=400, detail="La cuenta no está en una mesa")
     if order["status"] in ("pagado", "cancelado"):
@@ -606,7 +590,7 @@ async def move_order(order_id: str, data: OrderMove, user: dict = Depends(requir
     if not target:
         raise HTTPException(status_code=404, detail="Mesa destino no encontrada")
     if target["id"] == source_table_id:
-        raise HTTPException(status_code=400, detail="Elegí una mesa distinta")
+        raise HTTPException(status_code=400, detail="Elige una mesa distinta")
     if target.get("branch_id") != order.get("branch_id"):
         raise HTTPException(status_code=400, detail="Las mesas pertenecen a sucursales distintas")
     if target.get("group_id"):
@@ -710,7 +694,7 @@ async def _resume_split_operation(order: dict, operation: dict) -> None:
 @router.post("/{order_id}/split")
 async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Split an unpaid account using fixed child identities and resumable intent."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     operation = order.get("account_operation")
@@ -720,13 +704,13 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
         return await _current_order_response(order_id, user)
     if operation:
         if operation.get("kind") != "split" or operation.get("parts") != data.parts:
-            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+            raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
         await _resume_split_operation(order, operation)
         return await _current_order_response(order_id, user)
     if order["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede dividir una cuenta cerrada")
     if (order.get("amount_paid") or 0) > 0.009:
-        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anulalos antes de dividir")
+        raise HTTPException(status_code=400, detail="La cuenta ya tiene cobros; anúlalos antes de dividir")
     items = order.get("items") or []
     parts = data.parts
     if parts > len(items):
@@ -734,16 +718,13 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
     groups = [[] for _ in range(parts)]
     for idx, item in enumerate(items):
         groups[idx % parts].append(item)
-    def _split_total(group):
-        subtotal = round(sum(float(item.get("subtotal") or 0) for item in group), 2)
-        return subtotal, subtotal
-    subtotal0, total0 = _split_total(groups[0])
+    subtotal0, total0 = split_group_totals(groups[0])
     original_patch = {"items": groups[0], "subtotal": subtotal0, "total": total0, "discount": 0.0, "tip": 0.0,
                       "updated_at": _now(), **ticket_fields(order, order.get("fulfillment_status") or order.get("status"), order.get("amount_paid"), total0)}
     operation_id = str(uuid.uuid4())
     children = []
     for group in groups[1:]:
-        subtotal_g, total_g = _split_total(group)
+        subtotal_g, total_g = split_group_totals(group)
         child = {"id": str(uuid.uuid4()), "order_number": await _next_order_number(user["restaurant_id"]),
                  "restaurant_id": order["restaurant_id"], "table_id": order.get("table_id"),
                  "created_by": user["id"], "created_by_name": user.get("full_name"), "status": order["status"],
@@ -776,7 +757,7 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
 async def set_order_alias(order_id: str, data: OrderAlias, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Identidad de la cuenta: el alias con el que viaja a cocina, y si es la
     compartida de la mesa. El alias se guarda al enviar el pedido, no antes."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
@@ -797,7 +778,7 @@ async def set_order_notes(order_id: str, data: OrderNotes, user: dict = Depends(
     Mismos guardas que el alias: sólo pedidos abiertos, con el alcance de
     sucursal del usuario. Cocina la lee del propio pedido (`order.notes`).
     """
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
@@ -808,7 +789,7 @@ async def set_order_notes(order_id: str, data: OrderNotes, user: dict = Depends(
 
 @router.delete("/{order_id}/items/{item_id}")
 async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -816,9 +797,9 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
     target = next((i for i in (o.get("items") or []) if i["id"] == item_id), None)
     if target is not None and not is_draft(target):
         # Un producto que cocina ya conoce no desaparece con "−": se anula.
-        raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Usá Anular producto.")
+        raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Usa Anular producto.")
     items = [i for i in (o.get("items") or []) if i["id"] != item_id]
-    subtotal, total = _apply_bill(o, items, removed_item=target)
+    subtotal, total = guarded_totals(o, items, removed_item=target)
     await _save_order(o, {
         "items": items,
         "subtotal": subtotal,
@@ -833,7 +814,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
 @router.post("/{order_id}/items/{item_id}/void")
 async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Anula un producto ya enviado a cocina, sin borrarlo del historial."""
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -845,7 +826,7 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     if is_cancelled(target):
         return await _current_order_response(order_id, user)
     if int(target.get("paid_qty") or 0) > 0:
-        raise HTTPException(status_code=400, detail="No podés anular un producto que ya fue cobrado")
+        raise HTTPException(status_code=400, detail="No puedes anular un producto que ya fue cobrado")
     reason = (data.reason or "").strip()
     now = _now()
     target["status"] = "cancelado"
@@ -853,7 +834,7 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     target["voided_at"] = now
     target["voided_by"] = user["id"]
     target["voided_by_name"] = user.get("full_name")
-    subtotal, total = _apply_bill(o, items)
+    subtotal, total = guarded_totals(o, items)
     new_status = _derive_kitchen_status(items, o["status"])
     patch = {"items": items, "subtotal": subtotal, "total": total, "updated_at": now}
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
@@ -870,20 +851,20 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     Sirve para corregir "quién pidió qué" sin borrar y volver a cargar: el ítem
     conserva su estado, su hora y sus observaciones.
     """
-    source = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    source = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if source.get("account_operation") or source.get("account_operation_ref") or source.get("account_operation_id"):
-        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     if source["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
-    target = await db.orders.find_one(await _order_lookup_scope(data.target_order_id, user), {"_id": 0})
+    target = await db.orders.find_one(await record_lookup_scope(user, db.branches, data.target_order_id), {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
     if target.get("account_operation") or target.get("account_operation_ref") or target.get("account_operation_id"):
-        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
+        raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     if target["id"] == source["id"]:
-        raise HTTPException(status_code=400, detail="Elegí otra persona")
+        raise HTTPException(status_code=400, detail="Elige otra persona")
     if target["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="La cuenta destino está cerrada")
     if target.get("attention_id") != source.get("attention_id"):
@@ -894,7 +875,7 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     if is_cancelled(item):
         raise HTTPException(status_code=400, detail="El producto está anulado")
     if int(item.get("paid_qty") or 0) > 0:
-        raise HTTPException(status_code=400, detail="No podés mover un producto que ya fue cobrado")
+        raise HTTPException(status_code=400, detail="No puedes mover un producto que ya fue cobrado")
 
     now = _now()
     source_items = [i for i in (source.get("items") or []) if i["id"] != item_id]
@@ -903,8 +884,8 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     moved["moved_at"] = now
     target_items = (target.get("items") or []) + [moved]
 
-    source_subtotal, source_total = _apply_bill(source, source_items)
-    target_subtotal, target_total = _apply_bill(target, target_items)
+    source_subtotal, source_total = guarded_totals(source, source_items)
+    target_subtotal, target_total = guarded_totals(target, target_items)
 
     source_patch = {
         "items": source_items,
@@ -950,7 +931,7 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
 
 @router.patch("/{order_id}/items/{item_id}")
 async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -962,17 +943,17 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
             # Lo que cocina ya recibió no se edita en silencio: se anula y se
             # vuelve a pedir. Sólo el borrador se corrige libremente.
             if not is_draft(it):
-                raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anulalo y volvé a pedirlo.")
+                raise HTTPException(status_code=400, detail="Ese producto ya fue enviado a cocina. Anúlalo y vuelve a pedirlo.")
             if data.quantity is not None:
                 it["quantity"] = data.quantity
-                it["subtotal"] = it["unit_price"] * data.quantity
+                it["subtotal"] = line_subtotal(it["unit_price"], data.quantity)
             if data.notes is not None:
                 it["notes"] = data.notes
             found = True
             break
     if not found:
         raise HTTPException(status_code=404, detail="Ítem no encontrado")
-    subtotal, total = _apply_bill(o, items)
+    subtotal, total = guarded_totals(o, items)
     await _save_order(o, {
         "items": items,
         "subtotal": subtotal,
@@ -986,7 +967,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
 
 @router.post("/{order_id}/send-to-kitchen")
 async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     items = o.get("items") or []
@@ -1052,7 +1033,7 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
 @router.post("/{order_id}/bump")
 async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(require_roles(["admin", "cocina"]))):
     from_status = data.from_status
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1086,7 +1067,7 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
 async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, user: dict = Depends(require_roles(["admin", "cocina"]))):
     if data.status not in ("en_preparacion", "listo"):
         raise HTTPException(status_code=400, detail="Estado de ítem no permitido")
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1121,7 +1102,7 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
 
 @router.post("/{order_id}/serve")
 async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1143,7 +1124,7 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
 
 @router.post("/{order_id}/reassign")
 async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depends(require_roles(["admin"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     waiter = await db.users.find_one(
@@ -1163,7 +1144,7 @@ async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depen
 
 @router.post("/{order_id}/confirm-payment")
 async def confirm_public_payment(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -1173,7 +1154,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
     if o.get("acceptance_status") == "pendiente":
         raise HTTPException(
             status_code=409,
-            detail="Confirmá el prepago desde Caja para registrar el cobro y enviarlo a cocina",
+            detail="Confirma el prepago desde Caja para registrar el cobro y enviarlo a cocina",
         )
     await _save_order(o, {"payment_status": "confirmado", "payment_proof_status": "verificado", "updated_at": _now()})
     await _audit(user["restaurant_id"], user["id"], "confirm_public_payment", "order", order_id)
@@ -1183,7 +1164,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
 
 @router.post("/{order_id}/status")
 async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     role = user["role"]
@@ -1205,10 +1186,7 @@ async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Dep
     if new_status == "cancelado" and not data.reason:
         raise HTTPException(status_code=400, detail="Se requiere motivo de cancelación")
     if new_status == "cancelado":
-        try:
-            assert_can_cancel(o)
-        except BillError as exc:
-            raise HTTPException(status_code=400, detail=exc.detail)
+        assert_can_cancel(o)
     try:
         assert_order_transition(o["status"], new_status)
     except FlowError as exc:

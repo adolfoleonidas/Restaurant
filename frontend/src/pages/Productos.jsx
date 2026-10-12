@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { api } from '@/lib/api';
+import { listCategories } from '@/lib/api/categories';
+import { createProduct, deleteProduct, importProducts, listProducts, setProductAvailability, updateProduct } from '@/lib/api/products';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { fmtMoney } from '@/lib/format';
+import { fmtMoney, countOf } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -17,6 +18,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -59,17 +61,17 @@ function splitDelimited(line, sep) {
 
 function parseRows(text) {
     const lines = (text || '').split(/\r?\n/).filter((l) => l.trim());
-    if (!lines.length) return { error: 'Pegá o subí datos con encabezados (nombre, categoría, precio…).' };
+    if (!lines.length) return { error: 'Pega o sube datos con encabezados (nombre, categoría, precio…).' };
     const first = lines[0].replace(/^\uFEFF/, '');
     const seps = ['\t', ';', ','];
     const counts = seps.map((s) => first.split(s).length - 1);
     const sepIdx = counts.indexOf(Math.max(...counts));
-    if (Math.max(...counts) === 0) return { error: 'No se detectaron columnas. Separalas con tab, punto y coma o coma.' };
+    if (Math.max(...counts) === 0) return { error: 'No se detectaron columnas. Sepáralas con tab, punto y coma o coma.' };
     const sep = seps[sepIdx];
     const header = splitDelimited(first, sep).map((h) => norm(h));
     const fields = header.map((h) => COLUMN_MAP[h] || null);
     if (!fields.includes('name') || !fields.includes('price')) {
-        return { error: 'Faltan columnas: necesitás al menos «nombre» y «precio». Descargá la plantilla de ejemplo.' };
+        return { error: 'Faltan columnas: necesitas al menos «nombre» y «precio». Descarga la plantilla de ejemplo.' };
     }
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
@@ -131,12 +133,12 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
     const importNow = async () => {
         setBusy(true);
         try {
-            const { data } = await api.post('/products/import', { items: validRows });
+            const { data } = await importProducts({ items: validRows });
             const skipped = data.skipped?.length || 0;
             toast.success(
                 skipped > 0
-                    ? `${data.created.length} platos creados, ${skipped} omitidos`
-                    : `${data.created.length} platos creados`
+                    ? `${countOf(data.created.length, 'plato creado', 'platos creados')}, ${countOf(skipped, 'omitido', 'omitidos')}`
+                    : countOf(data.created.length, 'plato creado', 'platos creados')
             );
             if (data.categories_created?.length) {
                 toast.info(`Categorías nuevas: ${data.categories_created.join(', ')}`);
@@ -145,7 +147,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
             setText('');
             onDone();
         } catch (err) {
-            toast.error(err.response?.data?.detail || 'No se pudo importar');
+            toast.error(apiErrorMessage(err, 'No se pudo importar'));
         } finally {
             setBusy(false);
         }
@@ -161,7 +163,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
                 <div className="space-y-3">
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-muted-foreground">
-                            Copiá las filas de tu Excel/Google Sheets y pegalas acá, o subí un archivo CSV.
+                            Copia las filas de tu Excel/Google Sheets y pégalas acá, o sube un archivo CSV.
                         </p>
                         <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
                             <Download className="h-4 w-4 mr-1" /> Plantilla
@@ -229,7 +231,7 @@ export default function Productos({ section = 'platos' }) {
     const [confirmDel, setConfirmDel] = useState(null);
 
     const load = async () => {
-        const [p, c] = await Promise.all([api.get('/products'), api.get('/categories')]);
+        const [p, c] = await Promise.all([listProducts(), listCategories()]);
         setProducts(p.data); setCategories(c.data);
     };
     const { generation } = useNotify();
@@ -270,11 +272,11 @@ export default function Productos({ section = 'platos' }) {
 
     const save = async () => {
         if (!form.name.trim()) {
-            toast.error(tab === 'combos' ? 'Poné un nombre al combo' : 'Poné un nombre al plato');
+            toast.error(tab === 'combos' ? 'Pon un nombre al combo' : 'Pon un nombre al plato');
             return;
         }
         if (form.is_combo && !(form.combo_items || []).length) {
-            toast.error('Agregá al menos un plato al combo');
+            toast.error('Agrega al menos un plato al combo');
             return;
         }
         try {
@@ -286,25 +288,25 @@ export default function Productos({ section = 'platos' }) {
                 combo_items: form.is_combo ? (form.combo_items || []).filter((c) => c.product_id && Number(c.quantity) > 0) : [],
             };
             if (editing) {
-                await api.patch(`/products/${editing.id}`, payload);
+                await updateProduct(editing.id, payload);
                 toast.success(form.is_combo ? 'Combo actualizado' : 'Producto actualizado');
             } else {
-                await api.post('/products', payload);
+                await createProduct(payload);
                 toast.success(form.is_combo ? 'Combo creado' : 'Producto creado');
             }
             setOpenDlg(false);
             await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const doDelete = async (p) => {
-        try { await api.delete(`/products/${p.id}`); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
     };
 
     const toggleAvail = async (p) => {
         try {
-            const { data } = await api.post(`/products/${p.id}/availability`, { is_available: !p.is_available });
+            const { data } = await setProductAvailability(p.id, { is_available: !p.is_available });
             if (!data.product.is_available) {
                 setPendingAvail({ name: data.product.name, orders: data.pending_orders || [] });
                 toast.success(`${data.product.name} agotado. Los pedidos ya aceptados siguen.`);
@@ -313,7 +315,7 @@ export default function Productos({ section = 'platos' }) {
                 toast.success(`${data.product.name} vuelve a la carta`);
             }
             await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo actualizar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo actualizar')); }
     };
 
     const setComboLine = (idx, patch) => {
@@ -391,7 +393,7 @@ export default function Productos({ section = 'platos' }) {
 
             {visible.length === 0 ? (
                 <Card><CardContent className="py-14 text-center text-muted-foreground">
-                    {tab === 'combos' ? 'Todavía no hay combos. Creá uno con nombre y los platos que incluye.' : 'No hay platos en la carta.'}
+                    {tab === 'combos' ? 'Todavía no hay combos. Crea uno con nombre y los platos que incluye.' : 'No hay platos en la carta.'}
                 </CardContent></Card>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -439,8 +441,9 @@ export default function Productos({ section = 'platos' }) {
                     </DialogHeader>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
-                            <Label>{form.is_combo ? 'Nombre del combo *' : 'Nombre *'}</Label>
+                            <Label htmlFor="producto-form-nombre">{form.is_combo ? 'Nombre del combo *' : 'Nombre *'}</Label>
                             <Input
+                                id="producto-form-nombre"
                                 value={form.name}
                                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                                 placeholder={form.is_combo ? 'Ej: Combo almuerzo criollo' : 'Ej: Ceviche clásico'}
@@ -448,8 +451,9 @@ export default function Productos({ section = 'platos' }) {
                             />
                         </div>
                         <div className="sm:col-span-2">
-                            <Label>{form.is_combo ? 'Código / identificador' : 'Código (opcional)'}</Label>
+                            <Label htmlFor="producto-form-codigo">{form.is_combo ? 'Código / identificador' : 'Código (opcional)'}</Label>
                             <Input
+                                id="producto-form-codigo"
                                 value={form.code}
                                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                                 placeholder={form.is_combo ? 'Ej: ALM-01' : 'Ej: CE-01'}
@@ -457,27 +461,28 @@ export default function Productos({ section = 'platos' }) {
                             />
                         </div>
                         <div className="sm:col-span-2">
-                            <Label>Descripción</Label>
+                            <Label htmlFor="producto-form-descripcion">Descripción</Label>
                             <Textarea
+                                id="producto-form-descripcion"
                                 value={form.description}
                                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                                 placeholder={form.is_combo ? 'Qué incluye y para quién es' : ''}
                             />
                         </div>
-                        <div><Label>Precio (S/)</Label><Input type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="producto-form-price" /></div>
-                        <div><Label>Tiempo prep. (min)</Label><Input type="number" min="1" value={form.preparation_time} onChange={(e) => setForm({ ...form, preparation_time: e.target.value })} /></div>
+                        <div><Label htmlFor="producto-form-precio-s">Precio (S/)</Label><Input id="producto-form-precio-s" type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} data-testid="producto-form-price" /></div>
+                        <div><Label htmlFor="producto-form-tiempo-prep-min">Tiempo prep. (min)</Label><Input id="producto-form-tiempo-prep-min" type="number" min="1" value={form.preparation_time} onChange={(e) => setForm({ ...form, preparation_time: e.target.value })} /></div>
                         {!form.is_combo && (
                             <div className="sm:col-span-2">
-                                <Label>Categoría</Label>
+                                <Label htmlFor="producto-form-categoria">Categoría</Label>
                                 <Select value={form.category_id} onValueChange={(v) => setForm({ ...form, category_id: v })}>
-                                    <SelectTrigger data-testid="producto-form-category"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                                    <SelectTrigger id="producto-form-categoria" data-testid="producto-form-category"><SelectValue placeholder="Selecciona" /></SelectTrigger>
                                     <SelectContent>
                                         {categories.filter((c) => c.slug !== 'combos').map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                         )}
-                        <div className="sm:col-span-2"><Label>URL imagen (opcional)</Label><Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} /></div>
+                        <div className="sm:col-span-2"><Label htmlFor="producto-form-url-imagen-opcional">URL imagen (opcional)</Label><Input id="producto-form-url-imagen-opcional" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} /></div>
                         {form.is_combo && (
                             <div className="sm:col-span-2 space-y-2 border border-border rounded-sm p-3">
                                 <div className="font-medium text-sm">Platos que incluye</div>
@@ -485,7 +490,7 @@ export default function Productos({ section = 'platos' }) {
                                 {(form.combo_items || []).map((line, idx) => (
                                     <div key={idx} className="flex gap-2">
                                         <Select value={line.product_id} onValueChange={(v) => setComboLine(idx, { product_id: v })}>
-                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Elegí un plato" /></SelectTrigger>
+                                            <SelectTrigger className="flex-1"><SelectValue placeholder="Elige un plato" /></SelectTrigger>
                                             <SelectContent>
                                                 {simples.filter((p) => p.id !== editing?.id).map((p) => (
                                                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
@@ -509,7 +514,7 @@ export default function Productos({ section = 'platos' }) {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => {
-                                        if (!simples.length) { toast.error('Primero creá platos en la carta'); return; }
+                                        if (!simples.length) { toast.error('Primero crea platos en la carta'); return; }
                                         setForm({ ...form, combo_items: [...(form.combo_items || []), { product_id: simples[0].id, quantity: 1 }] });
                                     }}
                                 >
