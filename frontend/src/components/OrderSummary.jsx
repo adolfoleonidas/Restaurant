@@ -147,7 +147,7 @@ export function PersonOrderSummary({
                                     disabled={saving}
                                     aria-label={`Quitar uno de ${item.product_name}`}
                                     data-testid={`${testIdPrefix}-item-menos-${item.id}`}
-                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
+                                    className="touch-target-coarse grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
                                 >
                                     <Minus className="h-3.5 w-3.5" />
                                 </button>
@@ -160,7 +160,7 @@ export function PersonOrderSummary({
                                     disabled={saving}
                                     aria-label={`Agregar uno de ${item.product_name}`}
                                     data-testid={`${testIdPrefix}-item-mas-${item.id}`}
-                                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
+                                    className="touch-target-coarse grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
                                 >
                                     <Plus className="h-3.5 w-3.5" />
                                 </button>

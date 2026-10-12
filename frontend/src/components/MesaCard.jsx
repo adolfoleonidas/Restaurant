@@ -26,7 +26,7 @@ import { canCloseAttention } from '@/lib/attentionClose';
  * `data-floor-state` and `aria-label="Requiere atencion"`.
  */
 
-const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
+const ACTION_BASE = 'touch-target-coarse min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
 
 // El fondo de los botones sólidos es el tono oscuro del estado (`fg`), no el
 // punto de color (`dot`): blanco sobre `dot` da 3,67:1 (Listo) y 2,95:1
