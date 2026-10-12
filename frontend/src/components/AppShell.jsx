@@ -288,7 +288,13 @@ export const AppShell = () => {
 
             {/* En móvil la barra inferior tapa los avisos si quedan pegados al
                 borde, así que se levantan por encima de ella. */}
-            <Toaster position="bottom-center" offset={24} mobileOffset={{ top: 16, right: 16, bottom: 84, left: 16 }} />
+            {/* Toasts stack under the header: the bottom of the screen holds the
+                thumb-reach actions (bottom nav, fixed kitchen-send/new-order bar). */}
+            <Toaster
+                position="top-center"
+                offset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)' }}
+                mobileOffset={{ top: 'calc(var(--header-h) + var(--safe-top) + 8px)', right: 16, left: 16 }}
+            />
         </div>
         </NotifyProvider>
     );
