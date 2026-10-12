@@ -17,9 +17,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import { accountLabel } from '@/lib/cash';
 import { apiErrorMessage } from '@/lib/apiError';
+import useRestaurantName from '@/hooks/useRestaurantName';
 
 export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
     const { user } = useAuth();
+    const restaurantName = useRestaurantName();
     const scopeOptions = useCallback(() => Object.keys(scopeParams).length ? { params: scopeParams } : undefined, [scopeParams]);
     const canVoid = can(user, ACTIONS.CASH_VOID);
     const [period, setPeriod] = useState('day');
@@ -43,7 +45,7 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
             order = data;
         } catch { /* payment still reprints from its own lines */ }
         const ok = printCajaReceipt({
-            restaurantName: 'Sabor Peruano',
+            restaurantName,
             label: order ? accountLabel(order) : `Pedido #${p.order_number}`,
             order: order || { order_number: p.order_number, items: [] },
             payment: p,

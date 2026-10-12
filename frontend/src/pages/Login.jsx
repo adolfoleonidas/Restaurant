@@ -93,14 +93,14 @@ export default function Login() {
                 <div className="absolute bottom-12 left-12 right-12">
                     <p className="page-kicker text-primary mb-3">Servicio de salón</p>
                     <p className="font-display text-5xl font-semibold mb-3 leading-tight">El turno empieza en la carta</p>
-                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Sabor Peruano'}.</div>
+                    <div className="text-foreground/75 max-w-md">Mesas, cocina y caja en el mismo ritmo. {restaurant?.name || 'Restaurante'}.</div>
                 </div>
             </div>
             <div className="flex-1 flex items-center justify-center p-6">
                 <div className="w-full max-w-md my-auto">
                     <div className="flex items-start justify-between mb-10">
                         <Link to="/" className="inline-block">
-                            <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
+                            <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Personal de salón" />
                         </Link>
                         <ThemeToggle />
                     </div>

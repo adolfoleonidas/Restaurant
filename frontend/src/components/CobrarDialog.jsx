@@ -19,6 +19,7 @@ import {
 } from '@/lib/paymentForm';
 import usePaymentForm from '@/hooks/usePaymentForm';
 import usePaymentProof from '@/hooks/usePaymentProof';
+import useRestaurantName from '@/hooks/useRestaurantName';
 import CobroHeader from '@/components/cobro/CobroHeader';
 import OrderPanel from '@/components/cobro/OrderPanel';
 import PaymentPanel from '@/components/cobro/PaymentPanel';
@@ -36,6 +37,7 @@ function mediaMatches(query) {
 
 export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const { user } = useAuth();
+    const restaurantName = useRestaurantName(open);
     const canDiscount = can(user, ACTIONS.CASH_DISCOUNT);
     const canSubmitProof = can(user, ACTIONS.CASH_SUBMIT_PROOF);
 
@@ -256,7 +258,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
 
     const doPrint = () => {
         const ok = printCajaReceipt({
-            restaurantName: 'Sabor Peruano',
+            restaurantName,
             label: accountLabel(acct),
             order: acct,
             payment: result,

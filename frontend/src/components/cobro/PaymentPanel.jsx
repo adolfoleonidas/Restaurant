@@ -101,6 +101,7 @@ export default function PaymentPanel({
 
                 <TransferPanel
                     method={method}
+                    transfer={collectionConfig?.transfer}
                 />
 
                 <MixedPanel
