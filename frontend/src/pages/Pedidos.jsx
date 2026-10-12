@@ -14,6 +14,7 @@ import { useNotify } from '@/contexts/NotifyContext';
 import AttentionReference from '@/components/AttentionReference';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import useBranchNames from '@/hooks/useBranchNames';
+import { ACTIONS, can } from '@/lib/permissions';
 
 const WAITING_THRESHOLD_MIN = 15;
 
@@ -63,7 +64,7 @@ export default function Pedidos() {
                     <p className="text-muted-foreground text-sm">Historial y pedidos activos</p>
                 </div>
                 {/* El primitivo ya da 44 px en móvil: basta con no anularlo. */}
-                {['admin', 'mozo'].includes(user.role) && (
+                {can(user, ACTIONS.ORDER_EDIT) && (
                     <Button onClick={() => setShowAreas(true)} data-testid="pedidos-nuevo-button">
                         <Plus className="h-4 w-4 mr-2" /> Nuevo pedido
                     </Button>

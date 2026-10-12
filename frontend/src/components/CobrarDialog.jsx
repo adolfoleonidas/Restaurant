@@ -4,6 +4,7 @@ import { getOrder } from '@/lib/api/orders';
 import { createPayment } from '@/lib/api/payments';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { ACTIONS, can } from '@/lib/permissions';
 import { printCajaReceipt } from '@/lib/printReceipt';
 import { accountLabel } from '@/lib/cash';
 import { copyToClipboard } from '@/lib/clipboard';
@@ -34,9 +35,8 @@ function mediaMatches(query) {
 
 export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
     const { user } = useAuth();
-    const canDiscount = user?.role === 'admin' || !!user?.can_discount;
-    const canSubmitProof = user?.role === 'admin' || user?.role === 'cajero'
-        || user?.functions?.includes('cobro') || user?.functions?.includes('administracion');
+    const canDiscount = can(user, ACTIONS.CASH_DISCOUNT);
+    const canSubmitProof = can(user, ACTIONS.CASH_SUBMIT_PROOF);
 
     // Detect mobile viewport / coarse pointer for responsive defaults (guarded for jsdom)
     const [isMobile, setIsMobile] = useState(() => (typeof window.matchMedia === 'function'

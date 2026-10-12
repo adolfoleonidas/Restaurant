@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { ACTIONS, can } from '@/lib/permissions';
 import { getSalesReport } from '@/lib/api/reports';
 import { listBranches } from '@/lib/api/branches';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,7 +43,7 @@ function exportCsv(data) {
 
 export default function Reportes() {
     const { user } = useAuth();
-    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
     const userKey = JSON.stringify([
         user?.id || user?.email || 'signed-in',
         user?.restaurant_id,
