@@ -88,3 +88,9 @@ def test_seeded_staff_pass_the_branch_gate(monkeypatch):
     fake = _run_demo_seed(monkeypatch)
     mozo = next(u for u in fake.users.rows if u["role"] == "mozo")
     assert asyncio.run(validate_user_branch(mozo, fake.branches)) == fake.branches.rows[0]["id"]
+
+
+def test_demo_seed_names_are_not_placeholders(monkeypatch):
+    fake = _run_demo_seed(monkeypatch)
+    names = [p["name"] for p in fake.products.rows] + [c["name"] for c in fake.categories.rows]
+    assert names and not [n for n in names if "test" in n.lower()]

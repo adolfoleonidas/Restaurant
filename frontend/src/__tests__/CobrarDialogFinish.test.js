@@ -49,7 +49,8 @@ async function payInFull() {
 beforeEach(() => {
     onOpenChange.mockClear();
     api.get.mockReset().mockImplementation((path) => Promise.resolve({
-        data: path === '/orders/order-1' ? { ...order, status: 'pagado', payment_status: 'pagado', amount_paid: 25 } : {},
+        data: path === '/orders/order-1' ? { ...order, status: 'pagado', payment_status: 'pagado', amount_paid: 25 }
+            : path === '/restaurants/current' ? { name: 'Casa Andina' } : {},
     }));
     api.post.mockReset().mockResolvedValue({ data: { fully_paid: true, remaining: 0, change_amount: 0, amount: 25 } });
 });
@@ -81,5 +82,13 @@ describe('charge dialog after a registered payment', () => {
         const methods = document.body.querySelectorAll('.method-rail button.method');
         expect(methods.length).toBeGreaterThan(0);
         methods.forEach((button) => expect(button.disabled).toBe(true));
+    });
+
+    it('prints the receipt with the restaurant name from settings', async () => {
+        const write = jest.fn();
+        window.open = jest.fn(() => ({ document: { write, close: jest.fn() }, focus: jest.fn(), print: jest.fn() }));
+        await payInFull();
+        await click(q('caja-imprimir'));
+        expect(write.mock.calls[0][0]).toContain('<h1>Casa Andina</h1>');
     });
 });

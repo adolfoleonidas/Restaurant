@@ -21,7 +21,7 @@ export function printCajaReceipt({ restaurantName, label, order, payment, items 
         td{padding:4px 0}
         .total{font-size:16px;font-weight:700;border-top:1px dashed #999;padding-top:8px}
       </style></head><body>
-      <h1>${esc(restaurantName || 'Sabor Peruano')}</h1>
+      <h1>${esc(restaurantName || '')}</h1>
       <div class="muted">${esc(label || '')} · Pedido #${esc(order?.order_number || payment?.order_number || '')}</div>
       <table>${lines}</table>
       <div class="total">Pagado ${fmtMoney(payment?.amount)} · ${payment?.method || ''}</div>

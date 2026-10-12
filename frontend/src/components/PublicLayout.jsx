@@ -46,7 +46,7 @@ export const PublicLayout = () => {
             <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur-md">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-3">
                     <Link to="/" className="min-w-0">
-                        <BrandMark name={restaurant?.name || 'Sabor Peruano'} logoUrl={restaurant?.logo_url} kicker="Carta · Barranco" compact />
+                        <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Carta" compact />
                     </Link>
                     <div className="flex items-center gap-3">
                         <ThemeToggle />
