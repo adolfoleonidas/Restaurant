@@ -81,7 +81,7 @@ Behavior quirks (characterized, not fixed):
 - `npx craco build`: Compiled successfully, no warnings.
 - `git diff --check 3ec5fe9..HEAD`: clean.
 - Line counts, before -> after: `pages/Salon.jsx` 1890 -> 361, `components/CobrarDialog.jsx` 1142 -> 464, `pages/Caja.jsx` 1084 -> 109.
-- Commits: d67f153 (FC-01), 35db358 (FC-02), 8eeafa2 (FC-03), cf5d094 and 32d8168 (FC-04), e8f4fd6 and bde3796 (FC-05), 0a797f7 (FC-06).
+- Commits: d67f153 (FC-01), 35db358 (FC-02), 8eeafa2 (FC-03), cf5d094 and 32d8168 (FC-04), e8f4fd6 and bde3796 (FC-05), 0a797f7 (FC-06), f81797d (hook dependency warning fix found by the final build).
 
 ## Next step
 
