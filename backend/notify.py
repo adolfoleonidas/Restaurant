@@ -8,6 +8,11 @@ from typing import Any, Dict
 # Scaling out needs a shared broker (e.g. Redis pub/sub) in place of this set.
 _subs: set[asyncio.Queue] = set()
 
+# Marker a stream generator reads as "your subscription was dropped: end the
+# response". Without it a subscriber whose queue overflowed would stay connected
+# (the stream keeps sending pings) but never receive another event.
+CLOSED = object()
+
 
 def subscribe() -> asyncio.Queue:
     q: asyncio.Queue = asyncio.Queue(maxsize=64)
@@ -28,6 +33,20 @@ def publish(event: Dict[str, Any]) -> None:
             dead.append(q)
     for q in dead:
         _subs.discard(q)
+        _close(q)
+
+
+def _close(q: asyncio.Queue) -> None:
+    """Drop what the slow client never read and leave only the close marker.
+
+    Events lost here are recovered by the client: it reconnects and refetches.
+    """
+    while True:
+        try:
+            q.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+    q.put_nowait(CLOSED)
 
 
 def emit_order(restaurant_id: str, order_id: str, status: str, **extra) -> None:

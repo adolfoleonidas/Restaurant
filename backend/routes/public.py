@@ -20,7 +20,7 @@ from attention_presentation import public_attention_reference
 from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token, sign_table
 from payment_policy import collection_policy, needs_counter_verification, order_acceptance
 from routes.products import combo_components_for
-from notify import emit_order, emit_notice, subscribe, unsubscribe, public_allowed
+from notify import CLOSED, emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
 router = APIRouter()
 
@@ -996,6 +996,9 @@ async def public_stream(restaurant_id: str = None, tracking: str = None):
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
                     continue
+                if event is CLOSED:
+                    # Dropped by the hub (queue overflow): end so the client reconnects.
+                    return
                 if not public_allowed(event, rid, order_id):
                     continue
                 yield f"data: {json.dumps(event)}\n\n"

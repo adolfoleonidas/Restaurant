@@ -6,18 +6,24 @@ export default function usePolling(fetcher, interval = 3000, deps = []) {
     const [loading, setLoading] = useState(true);
     const [tick, setTick] = useState(0);
     const stopped = useRef(false);
+    // Each request takes a number; only the newest one may write state, so a slow
+    // older response can never overwrite a newer one.
+    const requestId = useRef(0);
 
     const refetch = useCallback(async () => {
+        requestId.current += 1;
+        const mine = requestId.current;
+        const current = () => !stopped.current && mine === requestId.current;
         try {
             const result = await fetcher();
-            if (!stopped.current) {
+            if (current()) {
                 setData(result);
                 setError(null);
             }
         } catch (e) {
-            if (!stopped.current) setError(e);
+            if (current()) setError(e);
         } finally {
-            if (!stopped.current) setLoading(false);
+            if (current()) setLoading(false);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, deps);
