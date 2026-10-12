@@ -32,6 +32,7 @@ from branch_access import (
     assert_record_branch_access,
     read_branch_filter,
     record_branch_filter,
+    record_lookup_scope,
     validate_user_branch,
 )
 
@@ -60,14 +61,6 @@ def _order_projection(user: dict) -> dict:
     return proj
 
 
-async def _order_lookup_scope(order_id: str, user: dict) -> dict:
-    branch_id = await validate_user_branch(user, db.branches)
-    scope = {"id": order_id, "restaurant_id": user["restaurant_id"]}
-    if branch_id is not None:
-        scope["branch_id"] = branch_id
-    return scope
-
-
 def _order_for_user(order: dict | None, user: dict) -> dict | None:
     if not order:
         return order
@@ -89,7 +82,7 @@ def _order_for_user(order: dict | None, user: dict) -> dict | None:
 
 async def _current_order_response(order_id: str, user: dict) -> dict | None:
     order = await db.orders.find_one(
-        await _order_lookup_scope(order_id, user), {"_id": 0}
+        await record_lookup_scope(user, db.branches, order_id), {"_id": 0}
     )
     return _order_for_user(order, user)
 
@@ -309,7 +302,7 @@ async def kitchen_orders(user: dict = Depends(require_roles(["admin", "mozo", "c
 @router.get("/{order_id}")
 async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     o = await db.orders.find_one(
-        await _order_lookup_scope(order_id, user),
+        await record_lookup_scope(user, db.branches, order_id),
         _order_projection(user),
     )
     if not o:
@@ -444,7 +437,7 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
 
 @router.post("/{order_id}/attention/open")
 async def resume_attention_open(order_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         table = await db.tables.find_one({
             "restaurant_id": user["restaurant_id"], "opening_order_id": order_id,
@@ -463,7 +456,7 @@ async def resume_attention_open(order_id: str, user: dict = Depends(require_role
 
 @router.post("/{order_id}/attention/close")
 async def close_attention(order_id: str, user: dict = Depends(require_roles(["admin", "mozo", "cajero"]))):
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     was_closed = order.get("attention_state") == "closed"
@@ -476,7 +469,7 @@ async def close_attention(order_id: str, user: dict = Depends(require_roles(["ad
     return attention
 @router.post("/{order_id}/items")
 async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -532,7 +525,7 @@ async def _resume_merge_operation(operation: dict, user: dict) -> None:
 @router.post("/{order_id}/merge")
 async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Merge an unpaid account with a fixed, resumable operation."""
-    target_filter = await _order_lookup_scope(order_id, user)
+    target_filter = await record_lookup_scope(user, db.branches, order_id)
     target = await db.orders.find_one(target_filter, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
@@ -542,7 +535,7 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
             raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
         await _resume_merge_operation(operation, user)
         return await _current_order_response(order_id, user)
-    source = await db.orders.find_one(await _order_lookup_scope(data.source_order_id, user), {"_id": 0})
+    source = await db.orders.find_one(await record_lookup_scope(user, db.branches, data.source_order_id), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Cuenta a fusionar no encontrada")
     if source["id"] == target["id"]:
@@ -580,7 +573,7 @@ async def merge_order(order_id: str, data: OrderMerge, user: dict = Depends(requ
 @router.post("/{order_id}/move")
 async def move_order(order_id: str, data: OrderMove, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Mueve una cuenta a una mesa libre; la desprende de la visita de origen."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
@@ -701,7 +694,7 @@ async def _resume_split_operation(order: dict, operation: dict) -> None:
 @router.post("/{order_id}/split")
 async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Split an unpaid account using fixed child identities and resumable intent."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     operation = order.get("account_operation")
@@ -764,7 +757,7 @@ async def split_order(order_id: str, data: OrderSplit, user: dict = Depends(requ
 async def set_order_alias(order_id: str, data: OrderAlias, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Identidad de la cuenta: el alias con el que viaja a cocina, y si es la
     compartida de la mesa. El alias se guarda al enviar el pedido, no antes."""
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
@@ -785,7 +778,7 @@ async def set_order_notes(order_id: str, data: OrderNotes, user: dict = Depends(
     Mismos guardas que el alias: sólo pedidos abiertos, con el alcance de
     sucursal del usuario. Cocina la lee del propio pedido (`order.notes`).
     """
-    order = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    order = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order["status"] in ("pagado", "cancelado"):
@@ -796,7 +789,7 @@ async def set_order_notes(order_id: str, data: OrderNotes, user: dict = Depends(
 
 @router.delete("/{order_id}/items/{item_id}")
 async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -821,7 +814,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
 @router.post("/{order_id}/items/{item_id}/void")
 async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict = Depends(require_roles(["admin", "mozo"]))):
     """Anula un producto ya enviado a cocina, sin borrarlo del historial."""
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -858,14 +851,14 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
     Sirve para corregir "quién pidió qué" sin borrar y volver a cargar: el ítem
     conserva su estado, su hora y sus observaciones.
     """
-    source = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    source = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not source:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if source.get("account_operation") or source.get("account_operation_ref") or source.get("account_operation_id"):
         raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintentá en unos segundos")
     if source["status"] in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
-    target = await db.orders.find_one(await _order_lookup_scope(data.target_order_id, user), {"_id": 0})
+    target = await db.orders.find_one(await record_lookup_scope(user, db.branches, data.target_order_id), {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Cuenta destino no encontrada")
     if target.get("account_operation") or target.get("account_operation_ref") or target.get("account_operation_id"):
@@ -938,7 +931,7 @@ async def move_item(order_id: str, item_id: str, data: OrderItemMove, user: dict
 
 @router.patch("/{order_id}/items/{item_id}")
 async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -974,7 +967,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
 
 @router.post("/{order_id}/send-to-kitchen")
 async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     items = o.get("items") or []
@@ -1040,7 +1033,7 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
 @router.post("/{order_id}/bump")
 async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(require_roles(["admin", "cocina"]))):
     from_status = data.from_status
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1074,7 +1067,7 @@ async def bump_kitchen(order_id: str, data: KitchenBump, user: dict = Depends(re
 async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, user: dict = Depends(require_roles(["admin", "cocina"]))):
     if data.status not in ("en_preparacion", "listo"):
         raise HTTPException(status_code=400, detail="Estado de ítem no permitido")
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1109,7 +1102,7 @@ async def bump_item(order_id: str, item_id: str, data: OrderItemStatusUpdate, us
 
 @router.post("/{order_id}/serve")
 async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin", "mozo", "cocina"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     try:
@@ -1131,7 +1124,7 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
 
 @router.post("/{order_id}/reassign")
 async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depends(require_roles(["admin"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user), {"_id": 0})
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id), {"_id": 0})
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     waiter = await db.users.find_one(
@@ -1151,7 +1144,7 @@ async def reassign_waiter(order_id: str, data: OrderReassign, user: dict = Depen
 
 @router.post("/{order_id}/confirm-payment")
 async def confirm_public_payment(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if o["status"] in ("pagado", "cancelado"):
@@ -1171,7 +1164,7 @@ async def confirm_public_payment(order_id: str, user: dict = Depends(require_rol
 
 @router.post("/{order_id}/status")
 async def change_status(order_id: str, data: OrderStatusUpdate, user: dict = Depends(get_current_user)):
-    o = await db.orders.find_one(await _order_lookup_scope(order_id, user))
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
     if not o:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     role = user["role"]

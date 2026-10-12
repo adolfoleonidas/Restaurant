@@ -37,15 +37,6 @@ async def _today_range(restaurant_id: str):
     return start.astimezone(timezone.utc).isoformat(), now.astimezone(timezone.utc).isoformat()
 
 
-async def _report_branch_filter(user: dict, branch_id: Optional[str], legacy_only: bool) -> dict:
-    return await read_branch_filter(
-        user,
-        db.branches,
-        branch_id,
-        legacy_only=legacy_only,
-    )
-
-
 def _scoped_report_query(restaurant_id: str, branch_filter: dict, time_filter: dict) -> dict:
     query = {"restaurant_id": restaurant_id}
     if "$or" in branch_filter:
@@ -64,7 +55,7 @@ async def dashboard(
 ):
     """KPIs visible to current user role. Some fields restricted by role."""
     rid = user["restaurant_id"]
-    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     start, end = await _today_range(rid)
 
     active_orders = await db.orders.count_documents(_scoped_report_query(
@@ -140,7 +131,7 @@ async def sales_report(
             s = (now - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
         start = s.astimezone(timezone.utc).isoformat()
         end = now.astimezone(timezone.utc).isoformat()
-    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     date_filter = {"$or": [
         {"created_at": {"$gte": start, "$lte": end}},
         {"voided_at": {"$gte": start, "$lte": end}},
@@ -191,7 +182,7 @@ async def product_sales(
 ):
     rid = user["restaurant_id"]
     start = await _period_start(period, rid)
-    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     date_filter = {"$or": [
         {"created_at": {"$gte": start}},
         {"voided_at": {"$gte": start}},
@@ -229,7 +220,7 @@ async def today_board(
     legacy_only: bool = False,
 ):
     rid = user["restaurant_id"]
-    branch_filter = await _report_branch_filter(user, branch_id, legacy_only)
+    branch_filter = await read_branch_filter(user, db.branches, branch_id, legacy_only=legacy_only)
     tables = await db.tables.find(
         _scoped_report_query(rid, branch_filter, {}), {"_id": 0}
     ).to_list(200)

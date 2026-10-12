@@ -11,7 +11,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles
-from branch_access import has_tenantwide_branch_access, read_branch_filter, validate_user_branch
+from branch_access import has_tenantwide_branch_access, read_branch_filter, tenant_branch_scope, validate_user_branch
 from models import PaymentCreate, PaymentVoid, StaffPaymentProof
 from billing import (
     account_total, balance_due, build_sold_lines, cash_portion, line_charge_amount, method_amounts, money, paid_after_refund,
@@ -50,13 +50,6 @@ async def _authorized_order(order_id: str, user: dict) -> dict:
         if not branch_id or order.get("branch_id") != branch_id:
             raise HTTPException(status_code=404, detail="Pedido no encontrado")
     return order
-
-
-async def _payment_branch_scope(user: dict) -> dict:
-    if has_tenantwide_branch_access(user):
-        return {"restaurant_id": user["restaurant_id"]}
-    branch_id = await validate_user_branch(user, db.branches)
-    return {"restaurant_id": user["restaurant_id"], "branch_id": branch_id}
 
 
 async def _register_for_order(order: dict, restaurant_id: str) -> dict | None:
@@ -400,7 +393,7 @@ async def list_payment_proofs(
 @router.get("/by-order/{order_id}")
 async def payments_for_order(order_id: str, user: dict = Depends(require_roles(["admin", "cajero"]))):
     await _authorized_order(order_id, user)
-    branch_scope = await _payment_branch_scope(user)
+    branch_scope = await tenant_branch_scope(user, db.branches)
     query = {"restaurant_id": user["restaurant_id"], "order_id": order_id}
     if "branch_id" in branch_scope:
         query["branch_id"] = branch_scope["branch_id"]
