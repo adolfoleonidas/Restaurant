@@ -55,12 +55,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-async def record_audit(action: str, entity: str, entity_id: str, user: dict, details: dict | None = None) -> None:
-    """Audit entry shared by the floor operations (groups and table moves)."""
+async def record_audit(action: str, entity: str, entity_id: str, user: dict, details: dict | None = None,
+                       branch_id: str | None = None) -> None:
+    """Audit entry shared by the floor operations (groups, seat, release and table moves).
+
+    It always names the acting user (id, name, role) and the branch, since any
+    waiter of a branch may operate any of its tables.
+    """
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),
         "restaurant_id": user["restaurant_id"],
         "user_id": user.get("id"),
+        "user_name": user.get("full_name"),
+        "user_role": user.get("role"),
+        "branch_id": branch_id or user.get("branch_id"),
         "action": action,
         "entity": entity,
         "entity_id": entity_id,
