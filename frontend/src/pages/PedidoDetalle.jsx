@@ -25,7 +25,7 @@ import { Plus, ChevronLeft, CreditCard, Ban, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasFn } from '@/lib/functions';
+import { ACTIONS, can } from '@/lib/permissions';
 import { useNotify } from '@/contexts/NotifyContext';
 import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
@@ -48,7 +48,7 @@ export default function PedidoDetalle() {
     const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000);
     const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
     const { data: staff } = usePolling(
-        () => (user?.role === 'admin' ? listUsers().then((r) => r.data) : Promise.resolve([])),
+        () => (can(user, ACTIONS.ORDER_REASSIGN) ? listUsers().then((r) => r.data) : Promise.resolve([])),
         60000,
         [user?.role]
     );
@@ -68,7 +68,7 @@ export default function PedidoDetalle() {
     }, []);
 
     const locked = ['pagado', 'cancelado'].includes(order?.status);
-    const canCollect = hasFn(user, 'cobro', 'administracion');
+    const canCollect = can(user, ACTIONS.ORDER_COLLECT);
     const canCharge = Boolean(order && !locked && canCollect
         && Number(order.amount_paid || 0) < Number(order.total || 0));
     // The backend keeps `status` on the kitchen fulfillment and flags the bill
@@ -130,8 +130,8 @@ export default function PedidoDetalle() {
 
     if (!order) return <div className="text-muted-foreground">Cargando pedido…</div>;
 
-    const canEdit = !locked && ['admin', 'mozo'].includes(user.role);
-    const canServe = !locked && hasFn(user, 'preparacion', 'atencion', 'administracion');
+    const canEdit = !locked && can(user, ACTIONS.ORDER_EDIT);
+    const canServe = !locked && can(user, ACTIONS.ORDER_SERVE);
     const pending = (order.items || []).filter(itemOpen);
     const ready = (order.items || []).filter((it) => it.status === 'listo');
     const delivered = (order.items || []).filter((it) => it.status === 'entregado');
@@ -256,7 +256,7 @@ export default function PedidoDetalle() {
                     <AttentionReference order={order} branchNames={branchNames} />
                 </div>
             </div>
-            {user.role === 'admin' && !locked && (
+            {can(user, ACTIONS.ORDER_REASSIGN) && !locked && (
                 <div className="flex items-center gap-2 text-sm">
                     <span>Reasignar mozo</span>
                     <select
@@ -360,7 +360,7 @@ export default function PedidoDetalle() {
             {/* Barra fija de acciones: en móvil sube por encima de la barra inferior
                 de navegación (las dos están en z-40 y se tapaban). */}
             <div className="fixed bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border space-y-2">
-                {order.status === 'nuevo' && ['admin', 'mozo'].includes(user.role) && (
+                {order.status === 'nuevo' && can(user, ACTIONS.ORDER_EDIT) && (
                     <Button onClick={sendToKitchen} className="w-full h-14 rounded-full text-base" data-testid="pedido-enviar-cocina-detalle">
                         {order.acceptance_status === 'pendiente' ? 'Aceptar y enviar a cocina' : 'Enviar a cocina'}
                     </Button>
@@ -414,7 +414,7 @@ export default function PedidoDetalle() {
                         Volver a mesas
                     </Button>
                 )}
-                {!locked && ['admin', 'cajero'].includes(user.role) && (
+                {!locked && can(user, ACTIONS.ORDER_CANCEL) && (
                     <Button variant="ghost" onClick={() => setCancelDlg(true)} className="w-full h-12" data-testid="pedido-cancelar-button">
                         <Ban className="h-4 w-4 mr-2" />Anular pedido
                     </Button>

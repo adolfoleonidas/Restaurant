@@ -33,7 +33,7 @@ import {
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotify } from '@/contexts/NotifyContext';
-import { hasFn } from '@/lib/functions';
+import { ACTIONS, can } from '@/lib/permissions';
 import useBranchNames from '@/hooks/useBranchNames';
 import { ordersByTable } from '@/lib/tableGroups';
 
@@ -68,11 +68,11 @@ export default function Salon() {
     const [showNewOrder, setShowNewOrder] = useState(false);
     const searchRef = useRef(null);
 
-    const isOwner = user?.role === 'admin' || hasFn(user, 'administracion');
-    const canServe = ['admin', 'mozo', 'cocina'].includes(user?.role);
-    const canTake = ['admin', 'mozo'].includes(user?.role);
-    const canClose = ['admin', 'mozo', 'cajero'].includes(user?.role);
-    const canCharge = hasFn(user, 'cobro', 'administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
+    const canServe = can(user, ACTIONS.SALON_SERVE);
+    const canTake = can(user, ACTIONS.SALON_TAKE);
+    const canClose = can(user, ACTIONS.SALON_CLOSE);
+    const canCharge = can(user, ACTIONS.SALON_CHARGE);
 
     // Alcance por sucursal del piso. El dueño ve todo el negocio, así que elige
     // qué salón mira; el resto del personal queda fijado por el servidor.

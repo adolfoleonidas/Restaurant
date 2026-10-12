@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { ACTIONS, can } from '@/lib/permissions';
 import { AlertTriangle, ArrowRight, ChefHat, Clock, Wallet } from 'lucide-react';
 
 export default function Dashboard() {
@@ -19,7 +20,7 @@ export default function Dashboard() {
     if (user?.role === 'cocina') return <Navigate to="/cocina" replace />;
     if (user?.role === 'cajero') return <Navigate to="/caja" replace />;
 
-    const isOwner = user?.role === 'admin' || user?.functions?.includes('administracion');
+    const isOwner = can(user, ACTIONS.OWNER);
     const userKey = JSON.stringify([
         user?.id || user?.email || 'signed-in',
         user?.restaurant_id,
