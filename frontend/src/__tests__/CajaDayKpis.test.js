@@ -34,7 +34,10 @@ const mockPayments = [
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'cashier-1', restaurant_id: 'restaurant-1', role: 'cajero' } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({
     Link: ({ children, to, ...p }) => <a href={to} {...p}>{children}</a>,
     useSearchParams: () => [new URLSearchParams()],

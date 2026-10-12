@@ -8,7 +8,10 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 jest.mock('@/lib/api/request', () => ({ get: jest.fn() }));
 jest.mock('@/lib/api/orders', () => ({ confirmOrderPayment: jest.fn() }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'c1', role: 'cajero', functions: ['cobro'] } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ useSearchParams: () => [new URLSearchParams()] }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock('@/components/CobrarDialog', () => ({ __esModule: true, default: () => null }));

@@ -12,7 +12,7 @@ import { fmtMoney, ORDER_TYPE_LABELS } from '@/lib/format';
 import { Plus, Minus, Search, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { apiErrorMessage } from '@/lib/apiError';
 
 export default function PedidoNuevo() {
@@ -30,11 +30,14 @@ export default function PedidoNuevo() {
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
     const [loading, setLoading] = useState(false);
-    const { generation } = useNotify();
+    // The free-table list follows a table's status, which opening an order changes
+    // without a table event of its own.
+    const tablesGeneration = useRealtimeGeneration(['tables', 'orders']);
+    const catalogGeneration = useRealtimeGeneration(['catalog']);
 
-    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 8000, [generation]);
-    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000);
-    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [generation]);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 8000, [tablesGeneration]);
+    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
 
     useEffect(() => {
         if (lockedTableId) setTableId(lockedTableId);

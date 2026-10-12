@@ -35,7 +35,10 @@ const mockOrders = [
 jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: (fetcher) => ({ data: fetcher.toString().includes('listTables') ? [{ id: 'table-5', name: 'Mesa 05', area: 'Salón' }] : mockOrders, refetch: jest.fn() }) }));
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'cocina' } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('react-router-dom', () => ({ Link: ({ to, children }) => <a href={to}>{children}</a> }));
 

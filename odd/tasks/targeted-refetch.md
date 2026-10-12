@@ -22,7 +22,7 @@ After #91, a composer tap still triggers about 4 GETs within 2 s, because every 
 ## Tasks
 
 - [x] **TR-01 Event topic map.** Inventory every backend `publish`/`emit_order`/`emit_notice` call and its payload fields; define a small topic vocabulary (e.g. `orders`, `kitchen`, `tables`, `payments`, `cash`, `catalog`, `prepay`, `notices`) and make every event carry its topic (and `order_id`, `table_id`, `branch_id` when known), keeping existing fields for compatibility. Document the map in this file.
-- [ ] **TR-02 Topic-scoped refresh on the client.** `NotifyContext` keeps per-topic generations (coalesced like today); a hook such as `useRealtimeGeneration(['orders', 'tables'])` changes only when one of those topics fires. Reconnect, wake, and unknown/legacy events bump every topic. Migrate each consumer to the topics it actually renders; a screen showing one order may also ignore order events for other orders.
+- [x] **TR-02 Topic-scoped refresh on the client.** `NotifyContext` keeps per-topic generations (coalesced like today); a hook such as `useRealtimeGeneration(['orders', 'tables'])` changes only when one of those topics fires. Reconnect, wake, and unknown/legacy events bump every topic. Migrate each consumer to the topics it actually renders; a screen showing one order may also ignore order events for other orders.
 - [ ] **TR-03 Catalog and floor CRUD go live.** Product, category, availability, table, and zone create/update/delete publish `catalog` or `tables` events so menus and floor maps update without waiting for slow polls.
 
 ## Topic map (TR-01)
@@ -44,12 +44,44 @@ Extra fields: `order_id`, `table_id`, `branch_id`, `restaurant_id` when known; `
 
 Action to topics: order create / add lines (public) / bump / serve / send-to-kitchen / void line -> orders+kitchen; staff add/edit/remove draft line -> orders; charge, void, refund, proof -> orders+kitchen+payments (+prepay); seat / release / transfer / group -> tables; cash open/close/movement -> cash; approval request/decision -> approvals.
 
+## Client subscriptions (TR-02)
+
+`useRealtimeGeneration(topics, filter?)` (in `contexts/NotifyContext.jsx`) returns a counter that changes when a matching event arrives, coalesced 250 ms trailing / 1 s max wait per subscription. A separate, never-changing `HubContext` fans events out, so an event re-renders only the screens whose topics it touches. It always refreshes on reconnect, wake (visible / online / focus), events with no topic, and events naming a topic outside the known vocabulary (newer backend). `useNotify().generation` keeps working (bumps on any event) and `lastEvent` still feeds the voice assistant.
+
+| Screen / query | Topics | Why |
+|---|---|---|
+| Salón `/tables` | `tables`, `orders` | `/tables` embeds every table's open orders (`active_order`, totals, item count) and staff `POST /orders` publishes no table event |
+| Salón `/orders` | `orders` | live orders list |
+| Salón unassigned tables (owner) | `tables` | count only |
+| Salón / PedidoNuevo / PedidoDetalle menu (`/products`, `/categories`) | `catalog` | no longer waits for the 60 s poll |
+| Cocina board | `kitchen` | draft-line edits never reach the kitchen |
+| Cocina tables | `tables` | table name / area only |
+| KitchenAlerts | `kitchen` | alerts on `enviado_cocina` |
+| RoleInbox | `kitchen`, `payments`, `prepay` | web-pending, ready, bill, proof and charge notices |
+| Caja register | `cash`, `payments` | |
+| Caja pending accounts | `orders`, `payments`, `prepay` | totals / balances |
+| Caja tables | `tables` | table number only |
+| Caja day payments (KPIs) | `payments`, `prepay` | |
+| Pedidos list | `orders` | |
+| PedidoDetalle order | `orders` filtered to `order_id === id` or `related_order_ids` has `id` | merge / split touch other orders |
+| PedidoDetalle tables | `tables` | table number only |
+| PedidoNuevo tables | `tables`, `orders` | free-table list follows status, which opening an order changes without a table event |
+| Comprobantes | `payments`, `prepay` | |
+| Dashboard | `orders`, `payments`, `cash`, `tables`, `approvals`, `catalog` | today board mixes all of them |
+| Productos, Disponibilidad | `catalog` | |
+
+Not subscribed (not live today either): Local (zones / tables admin), Categorias, Pedidos' sales-area table poll, public Landing / menu / tracking (own public stream, unchanged).
+
 ## Progress and evidence
 
 - 2026-10-12: document and branch created.
 - TR-01 RED: `python -m pytest tests/test_realtime_topics.py -q` -> 15 failed, 3 passed (no topic fields, `kitchen=` kwarg, category not public).
-- TR-01 GREEN: same file -> 29 passed; full backend `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` -> 581 passed, 49 deselected.
+- TR-01 GREEN: same file -> 29 passed; full backend `MONGO_URL=mongodb://127.0.0.1:1 DB_NAME=audit_dummy APP_ENV=test python -m pytest -m "not integration" -q` -> 581 passed, 49 deselected. Commit `be5e330`.
+- TR-02 RED (context): `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false NotifyTopics` with the old `NotifyContext` -> 12 failed, 12 total (`useRealtimeGeneration` did not exist). Unknown-topic safeguard RED: 1 failed, 12 passed, then GREEN.
+- TR-02 RED (screens): `RealtimeTargetedRefetch` against the pre-migration consumers (restored temporarily) -> 13 failed, 6 passed; GREEN on the migrated ones -> 19 passed.
+- TR-02 GREEN: full frontend `CI=true ENABLE_HEALTH_CHECK=false npx craco test --watchAll=false --maxWorkers=4` -> 116 suites / 1001 tests passed (baseline 114 / 970); `CI=true npx craco build` -> exit 0.
+- Existing tests touched: 32 files that mocked `NotifyContext` with only `useNotify` now also mock `useRealtimeGeneration: () => 0`; `useSalonData.test.js` mocks the context and drops the removed `generation` prop.
 
 ## Next step
 
-Writer implements TR-01 to TR-03.
+Writer implements TR-03; then the parent re-runs the Playwright before/after comparison.

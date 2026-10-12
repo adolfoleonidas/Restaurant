@@ -13,7 +13,7 @@ import { fmtMoney, countOf } from '@/lib/format';
 import { Plus, Pencil, Trash2, Package, Layers, Upload, Download, FileSpreadsheet, Tags } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -234,7 +234,7 @@ export default function Productos({ section = 'platos' }) {
         const [p, c] = await Promise.all([listProducts(), listCategories()]);
         setProducts(p.data); setCategories(c.data);
     };
-    const { generation } = useNotify();
+    const generation = useRealtimeGeneration(['catalog']);
     useEffect(() => { load(); }, []);
     useEffect(() => { if (generation) load(); }, [generation]);
     useEffect(() => { setTab(section); }, [section]);

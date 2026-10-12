@@ -6,7 +6,7 @@ import { listBranches } from '@/lib/api/branches';
 import { decideApproval } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -128,7 +128,9 @@ function DashboardContext({ user, userKey, isOwner }) {
 }
 
 function DashboardReport({ scopeKey, scopeParams, onBranchUnavailable }) {
-    const { generation } = useNotify();
+    // The today board mixes orders, payments, the cash register, tables, pending
+    // approvals and sold-out products.
+    const generation = useRealtimeGeneration(['orders', 'payments', 'cash', 'tables', 'approvals', 'catalog']);
     const [params, setParams] = useSearchParams();
     const [fetchedAt, setFetchedAt] = useState(Date.now());
     const [now, setNow] = useState(Date.now());

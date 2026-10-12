@@ -13,7 +13,10 @@ const mockRefetch = jest.fn();
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('@/hooks/useBranchNames', () => ({ __esModule: true, default: () => ({}) }));
 jest.mock('@/hooks/useRestaurantFeatures', () => ({ __esModule: true, default: () => ({ item_void: true }) }));
 jest.mock('@/components/CobrarDialog', () => ({ __esModule: true, default: () => null }));

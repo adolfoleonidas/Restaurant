@@ -8,7 +8,10 @@ const mockTables = [{ id: 'table-1', number: 7, name: 'Mesa 7', area: 'Salón', 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn() } }));
 jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: (fetcher) => /^(?![\s\S]*legacy_only)[\s\S]*\blistTables\b/.test(fetcher.toString()) ? { data: mockTables, refetch: jest.fn() } : { data: mockOrder } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 

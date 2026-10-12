@@ -7,7 +7,10 @@ const mockOrders = [{ id: 'order-1', order_number: 32, order_type: 'recojo', acc
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn() } }));
 jest.mock('@/hooks/usePolling', () => ({ __esModule: true, default: () => ({ data: mockOrders }) }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ Link: ({ children, to }) => <a href={to}>{children}</a>, useNavigate: () => jest.fn() }));
 global.IS_REACT_ACT_ENVIRONMENT = true;
 

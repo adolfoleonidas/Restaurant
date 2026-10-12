@@ -10,11 +10,12 @@ jest.mock('@/lib/api/tables', () => ({ listTables: jest.fn() }));
 jest.mock('@/lib/api/orders', () => ({ listOrders: jest.fn() }));
 jest.mock('@/lib/api/products', () => ({ listProducts: jest.fn() }));
 jest.mock('@/lib/api/categories', () => ({ listCategories: jest.fn() }));
+jest.mock('@/contexts/NotifyContext', () => ({ useRealtimeGeneration: () => 0 }));
 
 const tables = [{ id: 't1', number: 1 }];
 const orders = [{ id: 'o1', table_id: 't1' }];
 const base = {
-    generation: 0, isOwner: false, scope: null, scopeKey: 'sin-alcance', scopeParams: null, scopePending: false,
+    isOwner: false, scope: null, scopeKey: 'sin-alcance', scopeParams: null, scopePending: false,
 };
 let mounted;
 

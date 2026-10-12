@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotify } from '@/contexts/NotifyContext';
 import { PendingActionsContext } from '@/contexts/PendingActionsContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
@@ -54,7 +53,6 @@ export default function Salon() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const navigate = useNavigate();
-    const { generation } = useNotify();
     // Módulos del local (Ajustes). `item_void` apagada por defecto: el ✕ para
     // anular productos enviados solo aparece con la flag activa.
     const features = useRestaurantFeatures();
@@ -74,7 +72,7 @@ export default function Salon() {
         tables, tablesError, tablesLoading, refetchTables, orders, ordersError, refetchOrders,
         unassignedCount, products, categories, refreshAll,
     } = useSalonData({
-        generation, isOwner, scope, scopeKey, scopeParams, scopePending,
+        isOwner, scope, scopeKey, scopeParams, scopePending,
     });
 
     const canServe = can(user, ACTIONS.SALON_SERVE);
