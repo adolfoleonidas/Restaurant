@@ -3,7 +3,7 @@
  * of the floor, and the model of the table sheet. No React, no I/O: the screen
  * and its tests share exactly the same rules.
  */
-import { fmtMoney, fmtElapsed, elapsedMinutes } from '@/lib/format';
+import { fmtMoney, fmtElapsed, elapsedMinutes, countOf } from '@/lib/format';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import {
@@ -133,17 +133,30 @@ export function indexOrdersByTable(orders) {
     return map;
 }
 
-/** Header counters (former Servicio header). */
+const CLOSED_STATUSES = ['cancelado', 'pagado'];
+
+/** Una cuenta debe algo cuando está abierta y ya tiene algo más que borradores. */
+const orderDue = (o) => {
+    if (!o || CLOSED_STATUSES.includes(o.status) || isComposingDraft(o)) return 0;
+    return Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
+};
+
+/**
+ * Header counters (former Servicio header). Los borradores todavía no viajaron
+ * a cocina ni se cobran: no cuentan como "en cocina" ni como "por cobrar".
+ * `toPrep` y `toReady` son platos; `toPay` son cuentas (el Salón lo reemplaza
+ * por las mesas del filtro "Por cobrar" para que cabecera y chips coincidan).
+ */
 export function summarizeOrders(orders) {
     let toPrep = 0;
     let toReady = 0;
     let toPay = 0;
     for (const o of orders) {
         const items = o.items || [];
-        toPrep += itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
+        toPrep += itemQty(items, (it) => !isDraft(it, o.status)
+            && !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
         toReady += itemQty(items, (it) => it.status === 'listo');
-        const due = Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0));
-        if (due > 0) toPay += 1;
+        if (orderDue(o) > 0) toPay += 1;
     }
     return { toPrep, toReady, toPay };
 }
@@ -152,7 +165,7 @@ export function summarizeOrders(orders) {
 // los cambios de estado llegan sin aviso (4.1.3). El texto solo cambia si
 // cambian los conteos, así que no se repite en cada refresco.
 export const floorSummaryText = (summary) => (
-    `En preparación ${summary.toPrep} · listos para entregar ${summary.toReady} · cuentas por cobrar ${summary.toPay}`
+    `En cocina ${countOf(summary.toPrep, 'plato', 'platos')} · listos ${countOf(summary.toReady, 'plato', 'platos')} · por cobrar ${countOf(summary.toPay, 'mesa', 'mesas')}`
 );
 
 export function projectPickups(orders) {
@@ -187,9 +200,19 @@ export function decorateTables({
         const items = serviceOrder?.items || [];
         const ready = itemQty(items, (it) => it.status === 'listo');
         const pendingPrep = itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
-        const due = serviceOrder && serviceOrder.status !== 'cancelado'
-            ? Math.max(0, Number(serviceOrder.total || 0) - Number(serviceOrder.amount_paid || 0))
-            : 0;
+        // Una visita puede tener varias cuentas: la tarjeta debe lo que deben todas.
+        const visitOrders = t.active_attention_id
+            ? (orders || []).filter((o) => (
+                o.table_id === t.id
+                && o.attention_id === t.active_attention_id
+                && ['open', 'closing'].includes(o.attention_state)
+            ))
+            : [];
+        const due = visitOrders.length > 0
+            ? visitOrders.reduce((sum, o) => sum + orderDue(o), 0)
+            : (serviceOrder && serviceOrder.status !== 'cancelado'
+                ? Math.max(0, Number(serviceOrder.total || 0) - Number(serviceOrder.amount_paid || 0))
+                : 0);
         const billRequested = Boolean(serviceOrder?.payment_requested) || serviceOrder?.status === 'pendiente_pago';
         const showVisitaActiva = Boolean(t.active_attention_id) && !attentionOrder && Boolean(listOrder);
         const group = t.group || null;
@@ -300,7 +323,9 @@ export function freeTablesForAccountMove(tables, openTableId) {
 export function selectSheetModel({
     openTable, sheetOrder, tables, activeOrders, canTake, canClose,
 }) {
-    const { table: t, history, loading, accountTable, accounts, accountId } = openTable;
+    const { table: openedTable, history, loading, accountTable, accounts, accountId } = openTable;
+    // El estado sale de la mesa viva del piso, no de la copia que se guardó al abrir la hoja.
+    const t = (tables || []).find((candidate) => candidate.id === openedTable.id) || openedTable;
     const group = openTable.group || t.group || null;
     const members = group ? groupMembers(group, tables) : [];
     const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];

@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, Grid2X2, ShoppingCart, Link2 } from 'lucide-react';
+import { countOf } from '@/lib/format';
 
 /**
  * Title, summary line, branch scope selector, search and the main floor buttons.
@@ -20,7 +21,7 @@ export default function SalonHeader({
                     <Grid2X2 className="h-6 w-6 text-primary" /> Salón
                 </h1>
                 <p className="text-sm text-muted-foreground" data-testid="salon-resumen">
-                    En cocina: {summary.toPrep} · Listos: {summary.toReady} · Por cobrar: {summary.toPay}
+                    En cocina: {countOf(summary.toPrep, 'plato', 'platos')} · Listos: {countOf(summary.toReady, 'plato', 'platos')} · Por cobrar: {countOf(summary.toPay, 'mesa', 'mesas')}
                 </p>
             </div>
             <div className="flex flex-wrap gap-2 items-center">

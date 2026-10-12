@@ -123,8 +123,6 @@ export default function Salon() {
     });
 
     // ── Summary (former Servicio header) ───────────────────────────────────
-    const summary = useMemo(() => summarizeOrders(orders), [orders]);
-    const floorSummary = floorSummaryText(summary);
     const pickupProjection = useMemo(() => projectPickups(orders), [orders]);
 
     // ── Filters ────────────────────────────────────────────────────────────
@@ -138,6 +136,12 @@ export default function Salon() {
         [decorated, tables, activeOrders]
     );
     const stateCounts = useMemo(() => countByState(units), [units]);
+    // Cabecera y chips cuentan lo mismo: platos en cocina/listos, y mesas por cobrar.
+    const summary = useMemo(
+        () => ({ ...summarizeOrders(orders), toPay: stateCounts.cuenta }),
+        [orders, stateCounts]
+    );
+    const floorSummary = floorSummaryText(summary);
     const filteredUnits = useMemo(
         () => filterUnits(units, { areaFilter, stateFilter, search }),
         [units, areaFilter, stateFilter, search]
