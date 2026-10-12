@@ -219,6 +219,8 @@ export default function NewOrderSheet({
                                     canEdit={canTake}
                                     saving={savingItem}
                                     onChangeQty={changeQty}
+                                    products={products}
+                                    categories={categories}
                                     testIdPrefix="nuevo-pedido"
                                 />
                             )}

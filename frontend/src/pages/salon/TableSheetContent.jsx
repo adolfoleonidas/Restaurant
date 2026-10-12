@@ -203,6 +203,8 @@ export default function TableSheetContent({
                             onNotes={saveItemNotes}
                             onApplyNote={applyItemNote}
                             onVoid={voidProduct}
+                            products={products}
+                            categories={categories}
                         />
                         <div className="flex justify-between font-display text-lg font-bold">
                             <span>Total</span>

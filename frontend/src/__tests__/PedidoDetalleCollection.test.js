@@ -254,4 +254,15 @@ describe('PedidoDetalle collection entry', () => {
         expect(api.get).not.toHaveBeenCalledWith('/cash/current');
         await cleanup(view);
     });
+
+    it('offers "Anular pedido" in the destructive style', async () => {
+        mockUser.role = 'admin';
+        const view = await renderDetail();
+        await flush();
+        const cancel = view.host.querySelector('[data-testid="pedido-cancelar-button"]');
+        expect(cancel).not.toBeNull();
+        expect(cancel.className).toContain('text-destructive');
+        expect(cancel.className).toContain('border-destructive');
+        await cleanup(view);
+    });
 });

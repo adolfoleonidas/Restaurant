@@ -21,7 +21,7 @@ export default function FloorFilters({
                         onClick={() => setStateFilter(f.key)}
                         data-testid={`salon-filtro-${f.key}`}
                         title={countOf(stateCounts[f.key], 'mesa', 'mesas')}
-                        className={`shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                        className={`touch-target-coarse shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                     >
                         {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
                     </button>

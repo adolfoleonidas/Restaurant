@@ -3,7 +3,7 @@ import { Ban, ChevronDown, ChevronUp, Minus, Plus, Printer, Receipt } from 'luci
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
-import { QUICK_NOTES, itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
+import { quickNotesFor, itemState, peopleLabel, summaryLine } from '@/lib/orderDraft';
 
 const TONE_CLASS = {
     draft: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -33,16 +33,17 @@ function StateChip({ item, orderStatus, testIdPrefix }) {
  * Con más de una unidad la observación es de UNA unidad ("2 sopas, una sin
  * cebolla"), y de eso se encarga quien recibe el toque.
  */
-function QuickNotes({ item, onApply, testIdPrefix }) {
+function QuickNotes({ item, notes, onApply, testIdPrefix }) {
+    if (notes.length === 0) return null;
     return (
         <div className="scroll-x flex gap-1.5 pb-1" data-testid={`${testIdPrefix}-item-notas-rapidas-${item.id}`}>
-            {QUICK_NOTES.map((note) => (
+            {notes.map((note) => (
                 <button
                     key={note}
                     type="button"
                     onClick={() => onApply?.(item, note)}
                     data-testid={`${testIdPrefix}-item-nota-rapida-${item.id}-${note}`}
-                    className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
+                    className="touch-target-coarse shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary hover:text-foreground"
                 >
                     {note}
                 </button>
@@ -65,6 +66,8 @@ export function PersonOrderSummary({
     onNotes,
     onApplyNote,
     onVoid,
+    products = [],
+    categories = [],
     testIdPrefix = 'mesa-sheet',
 }) {
     const [notesDraft, setNotesDraft] = useState({});
@@ -146,7 +149,7 @@ export function PersonOrderSummary({
                                                 disabled={saving}
                                                 aria-label={`Quitar uno de ${item.product_name}`}
                                                 data-testid={`${testIdPrefix}-item-menos-${item.id}`}
-                                                className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
+                                                className="touch-target-coarse grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
                                             >
                                                 <Minus className="h-3.5 w-3.5" />
                                             </button>
@@ -159,7 +162,7 @@ export function PersonOrderSummary({
                                                 disabled={saving}
                                                 aria-label={`Agregar uno de ${item.product_name}`}
                                                 data-testid={`${testIdPrefix}-item-mas-${item.id}`}
-                                                className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
+                                                className="touch-target-coarse grid h-8 w-8 shrink-0 place-items-center rounded-md border border-border hover:bg-secondary"
                                             >
                                                 <Plus className="h-3.5 w-3.5" />
                                             </button>
@@ -178,7 +181,7 @@ export function PersonOrderSummary({
                                 </div>
                             )}
                             {draft && canEdit && (
-                                <QuickNotes item={item} onApply={onApplyNote} testIdPrefix={testIdPrefix} />
+                                <QuickNotes item={item} notes={quickNotesFor(item, products, categories)} onApply={onApplyNote} testIdPrefix={testIdPrefix} />
                             )}
                             {voidingId === item.id && (
                                 <div className="flex items-center gap-1.5" data-testid={`${testIdPrefix}-item-anular-panel-${item.id}`}>

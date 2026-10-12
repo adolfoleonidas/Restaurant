@@ -126,8 +126,8 @@ body,
         --muted-foreground: 220 15% 65%;
         --accent: 220 65% 45%;
         --accent-foreground: 220 25% 92%;
-        --destructive: 0 72% 46%;
-        --destructive-foreground: 220 25% 92%;
+        --destructive: 0 72% 66%;
+        --destructive-foreground: 220 25% 10%;
         --border: 220 18% 24%;
         --input: 220 18% 24%;
         --ring: 220 75% 58%;
@@ -171,6 +171,15 @@ body,
         font-family: 'Bricolage Grotesque', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
         letter-spacing: -0.02em;
     }
+}
+
+/* Un solo anillo de foco para enlaces, botones y tarjetas-botón: el mismo token
+   --ring que usa el componente Button (>= 3:1 sobre página y tarjeta en todos los
+   temas). Las utilidades de Tailwind (layer utilities) siguen mandando donde un
+   componente declara su propio foco. */
+:where(a[href], button, [role='button'], [role='tab'], [role='switch'], [role='menuitem'], summary, select, input, textarea, [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
 }
 
 /* Carta dotted leaders — the signature of this UI */
@@ -363,6 +372,15 @@ body,
 .touch-target {
     min-height: 44px;
     min-width: 44px;
+}
+
+/* Lo mismo, solo en pantallas táctiles: en escritorio con ratón el control
+   conserva su tamaño compacto. */
+@media (pointer: coarse) {
+    .touch-target-coarse {
+        min-height: 44px;
+        min-width: 44px;
+    }
 }
 
 /* Feedback táctil: sin el destello gris de Android, que se ve sucio sobre

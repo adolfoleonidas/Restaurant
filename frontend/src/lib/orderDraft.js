@@ -27,6 +27,28 @@ export const QUICK_NOTES = [
     'Parte pecho',
 ];
 
+const fold = (text) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// Observaciones por categoría: cada una solo ofrece lo que tiene sentido para
+// ese tipo de producto. Sin categoría conocida se mantiene la lista completa.
+const NOTES_BY_CATEGORY = [
+    [/bebida|trago|coctel|jugo|gaseosa|licor|refresco/, ['Sin hielo', 'Poco azúcar']],
+    [/postre|dulce|helado/, []],
+    [/pollo|brasa|ave/, ['Sin ensalada', 'Sin ají', 'Parte pierna', 'Parte pecho']],
+    [/principal|plato|carne|parrilla|fondo/, ['Sin ensalada', 'Sin cebolla', 'Sin ají', 'Poco picante', 'Término medio']],
+    [/entrada|sopa|ensalada|aperitivo/, ['Sin cebolla', 'Sin ají', 'Poco picante']],
+];
+
+/** Observaciones rápidas que corresponden al producto de la línea. */
+export function quickNotesFor(item, products = [], categories = []) {
+    const product = (products || []).find((p) => p.id === item?.product_id);
+    const category = (categories || []).find((c) => c.id === product?.category_id);
+    if (!category) return QUICK_NOTES;
+    const name = fold(category.name);
+    const rule = NOTES_BY_CATEGORY.find(([pattern]) => pattern.test(name));
+    return rule ? rule[1] : QUICK_NOTES;
+}
+
 const CANCELLED = 'cancelado';
 const SENT = ['pendiente', 'en_preparacion', 'listo', 'entregado'];
 
