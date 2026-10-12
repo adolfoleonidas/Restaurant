@@ -7,60 +7,22 @@ import { useTableContext } from '@/contexts/TableContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { fmtMoney, fmtElapsed, ORDER_STATUS_LABELS, PAYMENT_LABELS, waMeLink } from '@/lib/format';
+import { fmtMoney, fmtElapsed, PAYMENT_LABELS, waMeLink } from '@/lib/format';
+import {
+    ORDER_STATUS_LABELS, PAYMENT_STATE_LABELS, PAYMENT_STATE_TONES, trackingStepsFor, trackingStepIndex,
+} from '@/constants/status';
 import { CheckCircle2, ChefHat, Bell, Truck, Clock, Upload, Image as ImageIcon, MapPin, Phone, Utensils, ShoppingBag, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import TableSessionPanel from '@/components/TableSessionPanel';
 
-const PAYMENT_STATE_TONES = {
-    confirmado: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
-    rechazado: 'border-destructive/40 bg-destructive/10 text-destructive',
-    expirado: 'border-destructive/40 bg-destructive/10 text-destructive',
-    reportado: 'border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200',
-};
-
-const PAYMENT_STATE_LABELS = {
-    pendiente: 'Pendiente de pago',
-    reportado: 'Comprobante en revisión: el restaurante está verificando tu pago',
-    confirmado: 'Pago confirmado ✓',
-    rechazado: 'Pago rechazado: no pudimos verificar el pago',
-    expirado: 'Pago vencido',
-    reembolsado: 'Pago reembolsado',
-    no_requerido: 'Se paga al final',
-};
-
-const STATUS_STEPS = [
-    { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
-    { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
-    { key: 'listo', label: 'Listo', icon: Bell },
-    { key: 'entregado', label: 'Entregado / En camino', icon: Truck },
-    { key: 'pagado', label: 'Completado', icon: CheckCircle2 },
-];
-
-const LOCAL_STEPS = [
-    { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
-    { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
-    { key: 'listo', label: 'Listo', icon: Bell },
-    { key: 'servido', label: 'Servido', icon: Utensils },
-    { key: 'pagado', label: 'Pagado', icon: CheckCircle2 },
-];
-
-const RECOJO_STEPS = [
-    { key: 'nuevo', label: 'Pedido recibido', icon: CheckCircle2 },
-    { key: 'en_preparacion', label: 'En preparación', icon: ChefHat },
-    { key: 'listo', label: 'Listo', icon: Bell },
-    { key: 'entregado', label: 'Recogido', icon: ShoppingBag },
-    { key: 'pagado', label: 'Completado', icon: CheckCircle2 },
-];
-
-const statusIndex = (s) => {
-    if (s === 'nuevo') return 0;
-    if (s === 'enviado_cocina' || s === 'en_preparacion') return 1;
-    if (s === 'listo') return 2;
-    if (s === 'entregado' || s === 'pendiente_pago') return 3;
-    if (s === 'pagado') return 4;
-    return 0;
+const STEP_ICONS = {
+    check: CheckCircle2,
+    chef: ChefHat,
+    bell: Bell,
+    truck: Truck,
+    utensils: Utensils,
+    bag: ShoppingBag,
 };
 
 export default function PedidoTracking() {
@@ -124,9 +86,9 @@ export default function PedidoTracking() {
         );
     }
 
-    const idx = statusIndex(order.status);
+    const idx = trackingStepIndex(order.status);
     const cancelled = order.status === 'cancelado';
-    const steps = order.order_type === 'local' ? LOCAL_STEPS : (order.order_type === 'recojo' ? RECOJO_STEPS : STATUS_STEPS);
+    const steps = trackingStepsFor(order.order_type);
 
     const onFile = (e) => {
         const f = e.target.files?.[0]; if (!f) return;
@@ -202,7 +164,7 @@ export default function PedidoTracking() {
                             <div className="absolute left-7 top-7 bottom-7 w-0.5 bg-border" />
                             <div className="space-y-5">
                                 {steps.map((step, i) => {
-                                    const Icon = step.icon;
+                                    const Icon = STEP_ICONS[step.icon];
                                     const done = i <= idx;
                                     const current = i === idx;
                                     return (

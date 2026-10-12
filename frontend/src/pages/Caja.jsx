@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, PAYMENT_LABELS, ORDER_TYPE_LABELS } from '@/lib/format';
+import { PAYMENT_RECORD_STATUS_LABELS } from '@/constants/status';
 import { Wallet, DollarSign, PlusCircle, MinusCircle, LockOpen, Lock, Printer, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNotify } from '@/contexts/NotifyContext';
@@ -240,11 +241,9 @@ function PaymentHistory({ refreshKey, scopeParams = {}, runMutation }) {
         }
     };
 
-    const statusLabel = (p) => {
-        if (p.status === 'voided') return 'Anulado';
-        if (p.status === 'refunded') return 'Devuelto';
-        return null;
-    };
+    const statusLabel = (p) => (
+        p.status === 'voided' || p.status === 'refunded' ? PAYMENT_RECORD_STATUS_LABELS[p.status] : null
+    );
 
     // Compute method totals and status grouping
     const methodTotals = useMemo(() => {

@@ -1,7 +1,8 @@
 import React from 'react';
 import { useCart } from '@/contexts/CartContext';
 import { useLiveOrder } from '@/contexts/LiveOrderContext';
-import { fmtMoney, ORDER_STATUS_LABELS } from '@/lib/format';
+import { fmtMoney } from '@/lib/format';
+import { ORDER_STATUS_LABELS } from '@/constants/status';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Minus, X } from 'lucide-react';
