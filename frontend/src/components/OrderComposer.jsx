@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Plus, Minus, Volume2, VolumeX } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Search, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import ComposerProductCard from '@/components/ComposerProductCard';
 import { setOrderNotes } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -99,7 +100,33 @@ export default function OrderComposer({
     const [pulse, setPulse] = useState(null);
     const pulseTimer = useRef(null);
 
-    const lines = (items || (order?.items || [])).filter((i) => !isCancelled(i));
+    const lines = useMemo(
+        () => (items || (order?.items || [])).filter((i) => !isCancelled(i)),
+        [items, order?.items]
+    );
+    // Units on the open account and the draft line a "−" takes from, per product,
+    // so each card gets plain values instead of scanning every line itself.
+    const orderStatus = order?.status;
+    const perProduct = useMemo(() => {
+        const map = new Map();
+        lines.forEach((line) => {
+            let entry = map.get(line.product_id);
+            if (!entry) {
+                entry = { qty: 0, target: null };
+                map.set(line.product_id, entry);
+            }
+            entry.qty += Number(line.quantity || 0);
+            // El "−" sólo toca lo que sigue en borrador: lo que ya salió a
+            // cocina se anula desde el resumen, no desaparece por acá.
+            if (isDraft(line, orderStatus)) entry.target = line;
+        });
+        return map;
+    }, [lines, orderStatus]);
+    const perProductRef = useRef(perProduct);
+    perProductRef.current = perProduct;
+    // The latest callbacks without making the cards' own callbacks change.
+    const callbacks = useRef({});
+    callbacks.current = { onAddProduct, onRemoveProduct };
 
     // La cantidad que se muestra es la de la cuenta abierta: el resumen general
     // de la mesa vive en el resumen de arriba, así que acá no se mezclan personas.
@@ -122,22 +149,22 @@ export default function OrderComposer({
     // (Nuevo pedido), sale de las mismas reglas de `sendAction`.
     const sendButtonLabel = sendLabel || sendAction(lines, order)?.label || 'Enviar a cocina';
 
-    const flash = (productId) => {
+    const flash = useCallback((productId) => {
         setPulse(productId);
         clearTimeout(pulseTimer.current);
         pulseTimer.current = setTimeout(() => setPulse(null), 260);
         tick();
-    };
+    }, []);
 
-    const add = (product) => {
+    const add = useCallback((product) => {
         flash(product.id);
-        onAddProduct?.(product);
-    };
+        callbacks.current.onAddProduct?.(product);
+    }, [flash]);
 
-    const remove = (product, item) => {
+    const remove = useCallback((product) => {
         flash(product.id);
-        onRemoveProduct?.(product, item);
-    };
+        callbacks.current.onRemoveProduct?.(product, perProductRef.current.get(product.id)?.target || null);
+    }, [flash]);
 
     // Sin permiso para tomar pedido no hay carta que mostrar.
     if (!canCompose) return null;
@@ -205,64 +232,20 @@ export default function OrderComposer({
                 >
                     {visible.map((p) => {
                         const out = !p.is_available || (p.is_combo && p.components_available === false);
-                        const mine = lines.filter((i) => i.product_id === p.id);
-                        const qty = mine.reduce((s, i) => s + Number(i.quantity || 0), 0);
-                        // El "−" sólo toca lo que sigue en borrador: lo que ya salió a
-                        // cocina se anula desde el resumen, no desaparece por acá.
-                        const drafts = mine.filter((i) => isDraft(i, order?.status));
-                        const target = drafts[drafts.length - 1] || null;
-                        const busy = out || savingItem;
+                        const entry = perProduct.get(p.id);
                         return (
-                            <div
+                            <ComposerProductCard
                                 key={p.id}
-                                data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-                                className={`relative flex min-h-[84px] flex-col rounded-xl border bg-card p-3 transition-colors ${out ? 'opacity-50' : 'hover:border-primary/60'} ${pulse === p.id ? 'composer-pulse' : ''}`}
-                            >
-                                {/* La tarjeta entera agrega, como el `.p` del mockup:
-                                    nombre a dos líneas y precio debajo. */}
-                                <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => add(p)}
-                                    data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
-                                    className="flex w-full flex-1 min-w-0 flex-col justify-between gap-1.5 text-left"
-                                >
-                                    <span className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</span>
-                                    <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
-                                </button>
-                                {/* Stepper en línea: aparece cuando el producto ya está en la
-                                    cuenta. La fila siempre ocupa su alto (invisible sin unidades)
-                                    para que la tarjeta no salte al agregar el primero. "−" sólo
-                                    toca el borrador; lo ya enviado se anula desde el resumen. */}
-                                <div className={`mt-2 flex items-center justify-between ${qty > 0 ? '' : 'invisible'}`}>
-                                    <button
-                                        type="button"
-                                        disabled={busy || qty === 0 || !target}
-                                        onClick={(e) => { e.stopPropagation(); remove(p, target); }}
-                                        aria-label={`Quitar uno de ${p.name}`}
-                                        data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                                        className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                                    >
-                                        <Minus className="h-4 w-4" />
-                                    </button>
-                                    <span
-                                        className={`text-sm font-bold tabular-nums ${qty > 0 ? '' : 'text-muted-foreground'} ${pulse === p.id ? 'composer-pulse' : ''}`}
-                                        data-testid={`${testIdPrefix}-producto-cantidad-${p.id}`}
-                                    >
-                                        {qty}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        disabled={busy}
-                                        onClick={(e) => { e.stopPropagation(); add(p); }}
-                                        aria-label={`Agregar uno de ${p.name}`}
-                                        data-testid={`${testIdPrefix}-producto-${p.id}`}
-                                        className="touch-target-coarse grid h-8 w-8 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </div>
+                                product={p}
+                                qty={entry?.qty || 0}
+                                out={out}
+                                busy={out || savingItem}
+                                canRemove={Boolean(entry?.target)}
+                                pulsing={pulse === p.id}
+                                testIdPrefix={testIdPrefix}
+                                onAdd={add}
+                                onRemove={remove}
+                            />
                         );
                     })}
                     {visible.length === 0 && (
