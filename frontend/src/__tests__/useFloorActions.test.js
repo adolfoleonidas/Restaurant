@@ -100,4 +100,31 @@ describe('useFloorActions', () => {
         expect(closeSheet).toHaveBeenCalled();
         expect(navigate).toHaveBeenCalledWith('/pedidos/o9');
     });
+    test.each([
+        ['deliver', 'deliver:o1', (r) => r.current.deliver('o1'), serveOrder],
+        ['requestBill', 'bill:o1', (r) => r.current.requestBill({ id: 'o1' }), setOrderStatus],
+        ['releaseTable', 'release:t1', (r) => r.current.releaseTable({ id: 't1', number: 4 }), releaseTable],
+    ])('%s ignores repeat taps while pending and exposes its pending key', async (name, key, call, api) => {
+        let resolve;
+        api.mockReturnValue(new Promise((r) => { resolve = r; }));
+        const result = await mount();
+        let first;
+        act(() => { first = call(result); });
+        act(() => { call(result); call(result); });
+        expect(api).toHaveBeenCalledTimes(1);
+        expect(result.current.pending.has(key)).toBe(true);
+        await act(async () => { resolve({ data: {} }); await first; });
+        expect(result.current.pending.has(key)).toBe(false);
+    });
+
+    test('closeAttention ignores repeat taps while pending', async () => {
+        let resolve;
+        closeOrderAttention.mockReturnValue(new Promise((r) => { resolve = r; }));
+        const result = await mount();
+        let first;
+        act(() => { first = result.current.closeAttention({ id: 'o1' }); });
+        act(() => { result.current.closeAttention({ id: 'o1' }); });
+        expect(closeOrderAttention).toHaveBeenCalledTimes(1);
+        await act(async () => { resolve({ data: {} }); await first; });
+    });
 });

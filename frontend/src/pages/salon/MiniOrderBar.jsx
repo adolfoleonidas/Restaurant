@@ -1,10 +1,12 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { fmtMoney } from '@/lib/format';
+import { usePendingActions } from '@/contexts/PendingActionsContext';
 import { editableItems, itemsTotal } from '@/lib/orderDraft';
 import { accountTally, tallyLabel } from './selectors';
 
 export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSend, openTrackedSheet }) {
+    const pendingActions = usePendingActions();
     const order = miniOrder;
     const trackedTable = lastOpened.table;
     const tally = accountTally(order);
@@ -18,6 +20,7 @@ export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSe
         : tally.drafts > 0
             ? `Enviar a cocina · ${tally.drafts} · ${fmtMoney(draftsAmount)}`
             : 'Agregar';
+    const delivering = tally.ready > 0 && pendingActions.has(`deliver:${order.id}`);
     const runAction = () => {
         if (tally.ready > 0) return deliver(order.id);
         if (tally.drafts > 0) return requestSend(order.id);
@@ -49,8 +52,8 @@ export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSe
                     </span>
                 </span>
             </button>
-            <Button size="sm" className="shrink-0" onClick={runAction} data-testid="salon-mini-accion">
-                {actionVerb}
+            <Button size="sm" className="shrink-0" onClick={runAction} data-testid="salon-mini-accion" disabled={delivering} aria-busy={delivering ? 'true' : undefined}>
+                {delivering ? 'Entregando…' : actionVerb}
             </Button>
         </div>
     );

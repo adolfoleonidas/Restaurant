@@ -2,6 +2,7 @@ import React from 'react';
 import { Bell, Clock, Receipt, UtensilsCrossed } from 'lucide-react';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
 import { countOf } from '@/lib/format';
+import { usePendingActions } from '@/contexts/PendingActionsContext';
 
 /**
  * GroupCard — the single "big table" shown when two or more tables are joined.
@@ -19,6 +20,7 @@ import { countOf } from '@/lib/format';
 const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
 
 export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpen, onOpenMember, onDeliver, onCharge }) {
+    const pendingActions = usePendingActions();
     const { floor, anchor, accounts, amount, elapsed, minutes, urgency, isLate, members } = unit;
     const s = FLOOR_STYLE[floor.key];
     const needsAttention = ['listo', 'cuenta', 'atencion'].includes(floor.key);
@@ -110,8 +112,8 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                 // escritorio se conserva la columna de siempre.
                 <div className="px-3 pb-3 sm:px-4 sm:pb-4 flex gap-1.5 sm:flex-col">
                     {showEntregar && (
-                        <button type="button" data-testid="mesa-grupo-entregar" className={`${ACTION_BASE} grow text-white`} style={{ background: FLOOR_STYLE.listo.dot }} onClick={(e) => { e.stopPropagation(); onDeliver(entregable[0].serviceOrder.id); }}>
-                            <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" />Entregar
+                        <button type="button" data-testid="mesa-grupo-entregar" disabled={pendingActions.has(`deliver:${entregable[0].serviceOrder.id}`)} aria-busy={pendingActions.has(`deliver:${entregable[0].serviceOrder.id}`) ? 'true' : undefined} className={`${ACTION_BASE} grow text-white`} style={{ background: FLOOR_STYLE.listo.dot }} onClick={(e) => { e.stopPropagation(); onDeliver(entregable[0].serviceOrder.id); }}>
+                            <UtensilsCrossed className="h-3.5 w-3.5 inline mr-1" />{pendingActions.has(`deliver:${entregable[0].serviceOrder.id}`) ? 'Entregando…' : 'Entregar'}
                         </button>
                     )}
                     {showCobrar && (

@@ -6,7 +6,7 @@ import { Link2, MoveRight } from 'lucide-react';
  */
 export function buildMoreActions({
     t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId,
-    closeable, billRequested, closing, canTake, canServe,
+    closeable, billRequested, closing, canTake, canServe, pending = new Set(),
     closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill,
     setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
 }) {
@@ -35,7 +35,8 @@ export function buildMoreActions({
             // menú; mismos testids para las suites.
             ...(floor.key === 'listo' && canServe ? [{
                 key: 'entregar',
-                label: 'Entregar',
+                label: pending.has(`deliver:${actionAccountId}`) ? 'Entregando…' : 'Entregar',
+                disabled: pending.has(`deliver:${actionAccountId}`),
                 testId: 'mesa-sheet-entregar',
                 onSelect: () => deliver(actionAccountId),
             }] : []),
@@ -49,7 +50,8 @@ export function buildMoreActions({
             ...(!closeable && !billRequested
                 && ['listo', 'entregado'].includes(actionOrder?.status) && canTake ? [{
                 key: 'solicitar-cuenta',
-                label: 'Solicitar cuenta',
+                label: pending.has(`bill:${actionOrder?.id}`) ? 'Solicitando…' : 'Solicitar cuenta',
+                disabled: pending.has(`bill:${actionOrder?.id}`),
                 testId: 'mesa-sheet-solicitar-cuenta',
                 onSelect: () => requestBill(actionOrder),
             }] : []),
@@ -94,9 +96,9 @@ export function buildMoreActions({
             // La mesa ya está pagada: liberarla es la única
             // acción y vive en ⋯, no en la barra (S13).
             key: 'liberar',
-            label: 'Liberar mesa',
+            label: pending.has(`release:${t.id}`) ? 'Liberando…' : 'Liberar mesa',
             testId: 'mesa-sheet-liberar',
-            disabled: !canTake,
+            disabled: !canTake || pending.has(`release:${t.id}`),
             onSelect: () => releaseTable(t),
         }] : [];
 }

@@ -142,6 +142,51 @@ describe('Cocina priority board', () => {
         container.remove();
     });
 
+    it('ignores repeat taps on a bump while it is pending and shows the pending label', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        let resolve;
+        api.post.mockReset().mockReturnValue(new Promise((r) => { resolve = r; }));
+        await act(async () => root.render(<Cocina />));
+        const bumpBtn = () => container.querySelector('[data-testid="cocina-ticket-22-llegan"] button:last-child');
+        await act(async () => { bumpBtn().dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+        await act(async () => {
+            bumpBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            bumpBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(api.post.mock.calls.filter(([url]) => url === '/orders/order-22/bump')).toHaveLength(1);
+        expect(bumpBtn().textContent).toBe('Pasando a fuego…');
+        expect(bumpBtn().disabled).toBe(true);
+        expect(bumpBtn().getAttribute('aria-busy')).toBe('true');
+        await act(async () => { resolve({ data: {} }); await Promise.resolve(); });
+        expect(bumpBtn().textContent).toBe('Pasar a fuego');
+        await act(async () => root.unmount());
+        container.remove();
+        api.post.mockReset();
+    });
+
+    it('ignores repeat taps on the per-item Listo button while it is pending', async () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        let resolve;
+        api.post.mockReset().mockReturnValue(new Promise((r) => { resolve = r; }));
+        await act(async () => root.render(<Cocina />));
+        const itemBtn = () => container.querySelector('[aria-label="Marcar Lomo listo"]');
+        await act(async () => {
+            itemBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            itemBtn().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(api.post).toHaveBeenCalledTimes(1);
+        expect(itemBtn().textContent).toBe('Marcando…');
+        expect(itemBtn().disabled).toBe(true);
+        await act(async () => { resolve({ data: {} }); await Promise.resolve(); });
+        await act(async () => root.unmount());
+        container.remove();
+        api.post.mockReset();
+    });
+
     it('pinta en rojo los minutos desde los 15 y mantiene el aviso intermedio de los 10', async () => {
         const minutesAgo = (min) => new Date(Date.now() - min * 60 * 1000).toISOString();
         mockOrders.push(

@@ -4,9 +4,11 @@ import { KITCHEN_TONE, PersonOrderSummary } from '@/components/OrderSummary';
 import { Button } from '@/components/ui/button';
 import { fmtMoney, fmtTime } from '@/lib/format';
 import { itemsTotal, personLabel } from '@/lib/orderDraft';
+import { usePendingActions } from '@/contexts/PendingActionsContext';
 import { accountKitchenState, canComposeAccountAt, isComposingDraft } from './selectors';
 
 export default function AccountCard({ activeOrders, account, currentAccountId, order, selectAccount, cardRenameId, cardRenameDraft, setCardRenameDraft, commitCardRename, setCardRenameId, index, canTake, savingItem, sendingToKitchen, loading, canCompose, canVoidItems, voidProduct, composeTableFor, editAccount, canServe, deliver }) {
+    const pendingActions = usePendingActions();
     const detail = activeOrders[account.id] || account;
     const isActive = account.id === currentAccountId;
     const view = isActive && order ? order : detail;
@@ -116,9 +118,11 @@ export default function AccountCard({ activeOrders, account, currentAccountId, o
                         size="sm"
                         className="h-9 bg-[hsl(var(--warn))] text-[hsl(var(--background))] hover:opacity-90"
                         onClick={(e) => { e.stopPropagation(); deliver(view.id); }}
+                        disabled={pendingActions.has(`deliver:${view.id}`)}
+                        aria-busy={pendingActions.has(`deliver:${view.id}`) ? 'true' : undefined}
                         data-testid={`mesa-sheet-entregar-${view.order_number}`}
                     >
-                        ✓ Entregado
+                        {pendingActions.has(`deliver:${view.id}`) ? 'Entregando…' : '✓ Entregado'}
                     </Button>
                 )}
             </footer>

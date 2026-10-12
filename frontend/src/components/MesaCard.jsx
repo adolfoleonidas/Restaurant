@@ -4,6 +4,7 @@ import AttentionReference from '@/components/AttentionReference';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
 import { elapsedMinutes, fmtElapsed, fmtMoney, countOf } from '@/lib/format';
 import { canCloseAttention } from '@/lib/attentionClose';
+import { usePendingActions } from '@/contexts/PendingActionsContext';
 
 /**
  * MesaCard — one table of the Salón floor grid.
@@ -39,18 +40,19 @@ const ACTION_VARIANT = {
     outline: { className: 'border', style: ({ s }) => ({ borderColor: s.border }) },
 };
 
-function CardAction({ label, icon: Icon, testId, variant, color, s, disabled = false, onClick }) {
+function CardAction({ label, pendingLabel, pending = false, icon: Icon, testId, variant, color, s, disabled = false, onClick }) {
     const { className, style } = ACTION_VARIANT[variant];
     return (
         <button
             type="button"
             data-testid={testId}
-            disabled={disabled}
+            disabled={disabled || pending}
+            aria-busy={pending ? 'true' : undefined}
             className={`${ACTION_BASE} ${className}`}
             style={style({ color, s })}
             onClick={(e) => { e.stopPropagation(); onClick(); }}
         >
-            {Icon && <Icon className="h-3.5 w-3.5 inline mr-1" />}{label}
+            {Icon && <Icon className="h-3.5 w-3.5 inline mr-1" />}{pending && pendingLabel ? pendingLabel : label}
         </button>
     );
 }
@@ -72,6 +74,7 @@ export default function MesaCard({
     onCloseAttention,
     onTake,
 }) {
+    const pendingActions = usePendingActions();
     const { table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva, group, groupBadge, groupNumbers } = item;
     const s = FLOOR_STYLE[floor.key];
     // Mismo campo que la cabecera del sheet (Capacidad N personas); `seats` es
@@ -112,6 +115,7 @@ export default function MesaCard({
     if (showDeliver) {
         actions.push({
             key: 'entregar', label: 'Entregar', icon: UtensilsCrossed, variant: 'solid', color: FLOOR_STYLE.listo.fg,
+            pendingLabel: 'Entregando…', pending: pendingActions.has(`deliver:${serviceOrder.id}`),
             testId: `mesa-card-deliver-${t.number}`, onClick: () => onDeliver(serviceOrder.id),
         });
     }

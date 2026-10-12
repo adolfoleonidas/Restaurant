@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from auth import apply_permissions, get_current_user
 from database import db
-from notify import subscribe, unsubscribe
+from notify import CLOSED, subscribe, unsubscribe
 from branch_access import has_tenantwide_branch_access, validate_user_branch
 
 router = APIRouter()
@@ -25,6 +25,10 @@ async def notification_stream(user: dict = Depends(get_current_user)):
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
                     continue
+                if event is CLOSED:
+                    # The hub dropped this subscriber (queue overflow): end the
+                    # response so the client reconnects and refetches.
+                    return
                 rid = event.get("restaurant_id")
                 if rid and rid != user.get("restaurant_id"):
                     continue

@@ -596,6 +596,10 @@
   padding: 14px; line-height: 1.7; background: hsl(var(--warn-t)); border-radius: 12px; min-height: 56px;
 }
 .cobro-checkout .confirm-check input { margin: 4px 0 0; width: 24px; height: 24px; flex-shrink: 0; accent-color: var(--brand); cursor: pointer; }
+.cobro-checkout .confirm-check.needs-attention { outline: 2px solid hsl(var(--destructive, 0 72% 45%)); outline-offset: 2px; animation: cobro-nudge .3s ease-in-out; }
+.cobro-checkout .confirm-hint { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: hsl(var(--destructive, 0 72% 45%)); }
+@keyframes cobro-nudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@media (prefers-reduced-motion: reduce) { .cobro-checkout .confirm-check.needs-attention { animation: none; } }
 .cobro-checkout .confirm-warning { font-size: 11px; color: var(--muted-ink); margin: 12px 0 0; line-height: 1.7; }
 
 /* ---- Help steps ---- */
