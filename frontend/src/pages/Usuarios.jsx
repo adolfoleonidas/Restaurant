@@ -17,6 +17,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const ROLE_AVATAR_BG = {
     admin: 'bg-purple-100 text-purple-700',
@@ -47,7 +48,7 @@ export default function Usuarios() {
             setBranches(Array.isArray(data) ? data : []);
         } catch (e) {
             setBranchesError(true);
-            toast.error(e.response?.data?.detail || 'No se pudieron cargar las sucursales');
+            toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales'));
         } finally { setBranchesLoading(false); }
     };
     useEffect(() => { loadBranches(); }, []);
@@ -72,12 +73,12 @@ export default function Usuarios() {
                 toast.success('Creado');
             }
             setDlg(false); await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.')); }
         finally { setSaving(false); }
     };
     const doDelete = async (u) => {
         try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisá tu conexión y reintentá.')); }
     };
     const toggleActive = async (u) => {
         try { await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
@@ -164,7 +165,7 @@ export default function Usuarios() {
                             {!branchesLoading && branchesError && <div className="flex items-center gap-2 mt-1"><p className="text-xs text-muted-foreground">No se pudo cargar la lista. Los cambios de sucursal están deshabilitados.</p><Button type="button" size="sm" variant="outline" onClick={loadBranches} disabled={saving} data-testid="usuario-branches-retry">Reintentar</Button></div>}
                             {!branchesLoading && !branchesError && branches.length === 0 && <p className="text-xs text-muted-foreground mt-1">No hay sucursales configuradas.</p>}
                         </div>
-                        <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /></div>
+                        <div className="sm:col-span-2"><Label>{editing ? 'Nueva contraseña (dejar vacío para mantener)' : 'Contraseña'}</Label><Input type="password" minLength={8} aria-describedby="usuario-form-pass-hint" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} data-testid="usuario-form-pass" /><p id="usuario-form-pass-hint" className="text-xs text-muted-foreground mt-1">Mínimo 8 caracteres</p></div>
                         <div className="sm:col-span-2 space-y-2 text-sm">
                             <div className="text-xs text-muted-foreground">Funciones (se pueden combinar)</div>
                             {Object.entries(FN_LABELS).map(([k, lab]) => (

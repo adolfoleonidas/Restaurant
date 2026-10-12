@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getOrder } from '@/lib/api/orders';
 import { getCollectionConfig, uploadPaymentProof } from '@/lib/api/payments';
+import { apiErrorMessage } from '@/lib/apiError';
 
 /**
  * Wallet proof flow of the charge dialog: the receiving accounts, the image the
@@ -83,8 +84,7 @@ export default function usePaymentProof({
             await refreshOrderAfterProof(requestOrderId, requestEpoch);
         } catch (error) {
             if (dialogEpochRef.current !== requestEpoch || !open) return;
-            const detail = error.response?.data?.detail;
-            setProofError(typeof detail === 'string' ? detail : 'No se pudo enviar el comprobante. Puede reintentar la misma imagen.');
+            setProofError(apiErrorMessage(error, 'No se pudo enviar el comprobante. Puede reintentar la misma imagen.'));
         } finally {
             if (dialogEpochRef.current === requestEpoch && open) setProofSending(false);
         }

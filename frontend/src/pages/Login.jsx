@@ -11,6 +11,7 @@ import { homeFor } from '@/lib/home';
 import { getPublicRestaurant } from '@/lib/api/public';
 import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const DEMO = [
     { email: 'admin@resto.com', password: 'admin123', role: 'admin' },
@@ -58,7 +59,7 @@ export default function Login() {
             const fallback = homeFor(logged);
             navigate(from && from !== '/login' ? from : fallback, { replace: true });
         } catch (err) {
-            const message = err.response?.data?.detail || 'No se pudo iniciar sesión. Revisá tu correo y tu contraseña.';
+            const message = apiErrorMessage(err, 'No se pudo iniciar sesión. Revisá tu correo y tu contraseña.');
             setFormError(message);
             toast.error(message);
         } finally {

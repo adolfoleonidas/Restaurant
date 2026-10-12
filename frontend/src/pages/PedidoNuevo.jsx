@@ -13,6 +13,7 @@ import { Plus, Minus, Search, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { useNotify } from '@/contexts/NotifyContext';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function PedidoNuevo() {
     const navigate = useNavigate();
@@ -82,7 +83,7 @@ export default function PedidoNuevo() {
             try {
                 await releaseTable(lockedTableId);
             } catch (e) {
-                const msg = e.response?.data?.detail;
+                const msg = apiErrorMessage(e, '');
                 if (msg) toast.error(msg);
             }
         }
@@ -111,7 +112,7 @@ export default function PedidoNuevo() {
             toast.success(`${where.trim()} enviado a cocina`);
             navigate('/salon', { replace: true });
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'No se pudo enviar');
+            toast.error(apiErrorMessage(e, 'No se pudo enviar'));
         } finally {
             setLoading(false);
         }

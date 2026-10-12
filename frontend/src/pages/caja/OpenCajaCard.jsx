@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LockOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function OpenCajaCard({ onOpened, branchId, canOpen = true, runMutation }) {
     const [amount, setAmount] = useState('');
@@ -21,7 +22,7 @@ export default function OpenCajaCard({ onOpened, branchId, canOpen = true, runMu
             }));
             toast.success('Caja abierta');
             onOpened && onOpened();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo completar la operación. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo completar la operación. Revisá tu conexión y reintentá.')); }
         finally { setLoading(false); }
     };
     return (

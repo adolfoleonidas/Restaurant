@@ -18,6 +18,7 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { apiErrorMessage } from '@/lib/apiError';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -146,7 +147,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
             setText('');
             onDone();
         } catch (err) {
-            toast.error(err.response?.data?.detail || 'No se pudo importar');
+            toast.error(apiErrorMessage(err, 'No se pudo importar'));
         } finally {
             setBusy(false);
         }
@@ -295,12 +296,12 @@ export default function Productos({ section = 'platos' }) {
             }
             setOpenDlg(false);
             await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
     };
 
     const doDelete = async (p) => {
         try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(e.response?.data?.detail || 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisá tu conexión y reintentá.')); }
     };
 
     const toggleAvail = async (p) => {
@@ -314,7 +315,7 @@ export default function Productos({ section = 'platos' }) {
                 toast.success(`${data.product.name} vuelve a la carta`);
             }
             await load();
-        } catch (e) { toast.error(e.response?.data?.detail || 'No se pudo actualizar'); }
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo actualizar')); }
     };
 
     const setComboLine = (idx, patch) => {
