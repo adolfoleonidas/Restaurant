@@ -67,9 +67,6 @@
 .cobro-checkout button:disabled { cursor: not-allowed; }
 .cobro-checkout button:not(:disabled),
 .cobro-checkout a { touch-action: manipulation; }
-.cobro-checkout button,
-.cobro-checkout input,
-.cobro-checkout select { transition: border-color .14s, background .14s, box-shadow .14s; }
 .cobro-checkout button svg { pointer-events: none; }
 .cobro-checkout [hidden] { display: none !important; }
 
@@ -141,11 +138,6 @@
   box-shadow: 0 1px 3px hsl(var(--foreground) / 0.2); font-weight: 600;
 }
 .cobro-checkout .scope-tab:disabled { opacity: .5; }
-.cobro-checkout .method:active,
-.cobro-checkout .tip-chip:active,
-.cobro-checkout .scope-tab:active,
-.cobro-checkout .preset-cash button:active { transform: scale(.97); }
-.cobro-checkout .primary-button:active:not(:disabled) { transform: scale(.985); }
 
 /* ---- Section Headings ---- */
 .cobro-checkout .section-heading {
@@ -164,7 +156,7 @@
   display: none; background: none; border: 0; padding: 6px 0 6px 8px;
   min-height: 36px; align-items: center; gap: 8px; color: var(--muted-ink); font-size: 12px;
 }
-.cobro-checkout .detail-toggle svg { width: 16px; height: 16px; transition: transform .15s; }
+.cobro-checkout .detail-toggle svg { width: 16px; height: 16px; }
 .cobro-checkout .detail-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* ---- Line Items Table ---- */
@@ -454,10 +446,8 @@
   display: flex; align-items: center; gap: 9px; color: var(--brand);
   font-size: 14px; font-weight: 600; min-height: 48px; margin-top: 12px; padding: 11px 13px;
   background: var(--brand-soft); border: 0; border-radius: 12px;
-  animation: cobro-pop .35s cubic-bezier(.2, 1.3, .4, 1);
 }
 .cobro-checkout .success-inline svg { width: 18px; height: 18px; }
-@keyframes cobro-pop { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---- Receipt Actions ---- */
 .cobro-checkout .receipt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
@@ -542,7 +532,7 @@
 }
 .cobro-checkout .mixed-remove:disabled { visibility: hidden; }
 .cobro-checkout .mixed-bar { height: 6px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 4px 0 8px; }
-.cobro-checkout .mixed-bar i { display: block; height: 100%; width: 0; background: var(--brand); transition: width .25s; }
+.cobro-checkout .mixed-bar i { display: block; height: 100%; width: 0; background: var(--brand); }
 .cobro-checkout .mixed-note { font-size: 13px; color: var(--muted-ink); line-height: 1.6; margin: 0 0 12px; font-variant-numeric: tabular-nums; }
 .cobro-checkout .mixed-add { width: 100%; min-height: 48px; border: 1.5px dashed var(--muted-ink); border-radius: 12px; font-weight: 600; }
 .cobro-checkout .mixed-add:disabled { opacity: .45; cursor: not-allowed; }
@@ -596,10 +586,8 @@
   padding: 14px; line-height: 1.7; background: hsl(var(--warn-t)); border-radius: 12px; min-height: 56px;
 }
 .cobro-checkout .confirm-check input { margin: 4px 0 0; width: 24px; height: 24px; flex-shrink: 0; accent-color: var(--brand); cursor: pointer; }
-.cobro-checkout .confirm-check.needs-attention { outline: 2px solid hsl(var(--destructive, 0 72% 45%)); outline-offset: 2px; animation: cobro-nudge .3s ease-in-out; }
+.cobro-checkout .confirm-check.needs-attention { outline: 2px solid hsl(var(--destructive, 0 72% 45%)); outline-offset: 2px; }
 .cobro-checkout .confirm-hint { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: hsl(var(--destructive, 0 72% 45%)); }
-@keyframes cobro-nudge { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
-@media (prefers-reduced-motion: reduce) { .cobro-checkout .confirm-check.needs-attention { animation: none; } }
 .cobro-checkout .confirm-warning { font-size: 11px; color: var(--muted-ink); margin: 12px 0 0; line-height: 1.7; }
 
 /* ---- Help steps ---- */
@@ -637,13 +625,13 @@
 
 /* ---- Toast ---- */
 .cobro-toast {
-  position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%) translateY(10px);
+  position: fixed; bottom: 110px; left: 50%; transform: translateX(-50%);
   background: var(--ink); color: var(--paper); box-shadow: var(--shadow-sm);
   border-radius: 12px; padding: 11px 17px; max-width: min(440px, calc(100vw - 36px));
   font-size: 12px; z-index: 2147483647; opacity: 0; pointer-events: none;
-  transition: opacity .2s, transform .2s; text-align: center; line-height: 1.6;
+  text-align: center; line-height: 1.6;
 }
-.cobro-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.cobro-toast.show { opacity: 1; }
 
 /* ---- Responsive: Tablet (761px - 1040px) ---- */
 @media (min-width: 761px) and (max-width: 1040px) {
@@ -816,15 +804,15 @@
   .cobro-checkout { width: min(1180px, 100%); }
 }
 
-/* ---- Reduced motion ---- */
-@media (prefers-reduced-motion: reduce) {
-  .cobro-checkout *,
-  .cobro-checkout *::before,
-  .cobro-checkout *::after {
-    transition: none !important; scroll-behavior: auto !important;
-  }
-  .cobro-checkout .success-inline { animation: none !important; }
-}
+/* ---- Pressed state ----
+   Feedback is an instant colour change, never a move or a scale. It sits last
+   among the interactive rules so it wins over the hover and selected rules of
+   equal weight. (The tip chip that is already pressed in keeps its look.) */
+.cobro-checkout .method:active,
+.cobro-checkout .scope-tab:active,
+.cobro-checkout .tip-chip:not([aria-pressed="true"]):active,
+.cobro-checkout .preset-cash button:active { background: var(--line); border-color: var(--ink); }
+.cobro-checkout .primary-button:active:not(:disabled) { background: var(--brand-hover); border-color: var(--ink); }
 
 /* ---- Print ---- */
 @media print {

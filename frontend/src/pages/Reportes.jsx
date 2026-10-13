@@ -229,8 +229,8 @@ function ReportesView({ userKey, isOwner }) {
                                         <CartesianGrid strokeDasharray="3 3" stroke="#E7DED5" />
                                         <XAxis dataKey="date" fontSize={12} />
                                         <YAxis fontSize={12} />
-                                        <Tooltip formatter={(v) => fmtMoney(v)} />
-                                        <Bar dataKey="amount" fill="#1F6F66" radius={[6, 6, 0, 0]} />
+                                        <Tooltip formatter={(v) => fmtMoney(v)} isAnimationActive={false} />
+                                        <Bar dataKey="amount" fill="#1F6F66" radius={[6, 6, 0, 0]} isAnimationActive={false} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             )}
@@ -244,10 +244,10 @@ function ReportesView({ userKey, isOwner }) {
                                 <div className="flex flex-col md:flex-row items-center gap-4">
                                     <ResponsiveContainer width="100%" height={220}>
                                         <PieChart>
-                                            <Pie data={data.by_method} dataKey="amount" nameKey="method" outerRadius={80} label>
+                                            <Pie data={data.by_method} dataKey="amount" nameKey="method" outerRadius={80} label isAnimationActive={false}>
                                                 {data.by_method.map((entry, i) => <Cell key={entry.method} fill={COLORS[i % COLORS.length]} />)}
                                             </Pie>
-                                            <Tooltip formatter={(v) => fmtMoney(v)} />
+                                            <Tooltip formatter={(v) => fmtMoney(v)} isAnimationActive={false} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                     <div className="flex-1 space-y-1.5">

@@ -8,6 +8,7 @@
 5. [Cómo Crear un Nuevo Tema](#cómo-crear-un-nuevo-tema)
 6. [Buenas Prácticas](#buenas-prácticas)
 7. [Componentes y Estados](#componentes-y-estados)
+8. [No motion](#no-motion)
 
 ---
 
@@ -22,7 +23,7 @@ Variables CSS semánticas que definen la base del diseño:
 - **Espaciados**: `--space-1` a `--space-20`
 - **Bordes**: `--radius-sm`, `--radius-base`, `--radius-lg`, etc.
 - **Sombras**: `--shadow-sm`, `--shadow-base`, `--shadow-lg`, etc.
-- **Transiciones**: `--transition-fast`, `--transition-base`, `--transition-slow`
+- **Movimiento**: ninguno. No hay tokens de transición ni de animación (ver [No motion](#no-motion)).
 
 ### 2. Temas (`public/themes/theme-*.css`)
 Cada tema define valores específicos para las variables:
@@ -347,10 +348,9 @@ background: var(--color-brand);
   background: var(--color-brand-hover);
 }
 
-/* Active/Pressed */
+/* Active/Pressed: an instant colour change, never a move or a scale */
 :active {
   background: var(--color-brand-active);
-  transform: scale(0.98);
 }
 
 /* Focus */
@@ -396,6 +396,48 @@ background: var(--color-brand);
   background: var(--color-warning-soft);
 }
 ```
+
+---
+
+## 🚫 No motion
+
+**Nothing in the interface animates.** No keyframes, no transitions, no smooth scrolling and no script-driven animation. Decided on 2026-10-12.
+
+### Why
+
+- The staff use low-end phones. A pulsing late-table border kept the main thread 98-99 % busy on the Salón floor with five late tables (5.8 % with it off, 1.1 % with all animation off). Composer animations cost up to ~40 ms per tap, and the header "En vivo" dot cost ~4 points of idle CPU.
+- Library animations (Radix dialogs, sheets and menus through `tailwindcss-animate`, sonner toasts) ran on every open and close.
+- A service tool should answer at once: a state change is information, not a show.
+
+### What replaces motion
+
+Visual states still exist (hover, pressed, focus, selected, disabled, late). They switch instantly.
+
+| Before | Now |
+| --- | --- |
+| Late table: pulsing `box-shadow` (`.floor-late`) | Static destructive border and ring, plus the word "Atrasada" inside the card, so the signal is not colour only |
+| "En vivo" and loading dot (`.pulse-dot`) | A static dot (the class keeps its name) |
+| Pressed feedback with `transform: scale(...)`, `active:scale-*`, `active:translate-y-px` | An instant background, border or tone change (`:active { background: ... }`, `active:brightness-90`). Pressed never moves or scales |
+| Skeletons with `animate-pulse` | Static blocks |
+| Spinners with `animate-spin` | Text such as "Cargando…", or a static icon next to text. Keep `role="status"` where it exists |
+| Radix dialogs, sheets, menus, popovers, tooltips (`animate-in/out`, `fade-*`, `zoom-*`, `slide-*`, `duration-*`) | They appear and disappear at once. Radix unmounts immediately when no animation is defined |
+| Accordion height animation and chevron easing | Instant open and close. The chevron rotates as a state, not as an animation |
+| sonner toasts | Same component. The global rule below removes its transitions |
+| `window.scrollTo({ behavior: 'smooth' })` | `behavior: 'instant'` |
+| recharts bars, slices and tooltip | `isAnimationActive={false}` on every animated part |
+
+### How it is enforced
+
+- **One global safety rule** in `src/index.css`: `*, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }`. It catches third-party and future markup. It is the only `animation` or `transition` declaration allowed in the source.
+- **A guard test**, `src/__tests__/NoMotion.test.js`, scans `frontend/src` (tests excluded), `frontend/public` and `tailwind.config.js`. It fails on: `@keyframes`; `animation`, `transition` or `scroll-behavior` declarations other than the safety rule; `--transition-*` tokens; `animate-*`, `transition*`, `duration-*`, `ease-*` and `delay-*` utilities; Radix `fade`, `zoom`, `slide` and `spin` `in/out` utilities; pressed (`:active`, `active:`) moves and scales; smooth scrolling; `element.animate()`; animation libraries; and recharts parts without `isAnimationActive={false}`. It also requires the safety rule to exist.
+- **Tailwind** loads no animation plugin, defines no `keyframes` or `animation` extension, and skips test files when it scans for classes, so the class names a test quotes do not end up as CSS.
+- **Toasts**: use `toast.success`, `toast.error` and `toast.info`. The result icon of sonner's `toast.promise` appears through a keyframe, so under the safety rule it would stay invisible.
+
+### When you add UI
+
+- Express hover, pressed, focus, selected, disabled and late states with colour, border, ring or text. Do not reach for `transform`, `opacity` easing or `@keyframes`.
+- Say it with words as well as colour (for example "Atrasada"), and keep `role="status"` text for loading.
+- If the guard fails, remove the motion. Do not add an exception: the safety rule is the only one.
 
 ---
 

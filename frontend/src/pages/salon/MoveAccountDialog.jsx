@@ -25,7 +25,7 @@ export default function MoveAccountDialog({ moveAccountId, setMoveAccountId, tab
                                         type="button"
                                         onClick={() => moveAccount(target.id)}
                                         data-testid={`mover-cuenta-mesa-${target.number}`}
-                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5"
                                     >
                                         <span className="font-display text-2xl font-bold">{target.number}</span>
                                         <span className="text-xs text-muted-foreground mt-1">{target.area}</span>

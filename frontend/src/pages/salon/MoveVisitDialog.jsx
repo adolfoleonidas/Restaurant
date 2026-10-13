@@ -29,7 +29,7 @@ export default function MoveVisitDialog({ transferSource, setTransferSource, tra
                                     onClick={() => moveVisit(target)}
                                     disabled={movingVisit}
                                     data-testid={`mover-pedido-mesa-${target.number}`}
-                                    className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-60"
+                                    className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 disabled:opacity-60"
                                 >
                                     <span className="font-display text-2xl font-bold">{target.number}</span>
                                     <span className="text-xs text-muted-foreground mt-1">{target.area}</span>

@@ -160,7 +160,7 @@ export default function OrderComposer({
     if (!canCompose) return null;
 
     const chip = (active) => [
-        'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+        'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
         active ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground hover:border-primary hover:text-foreground',
     ].join(' ');
 

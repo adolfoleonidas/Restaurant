@@ -99,7 +99,7 @@ export default function Pedidos() {
                     return (
                         <Card
                             key={o.id}
-                            className={`hover:shadow-md transition-shadow ${isWaiting ? 'pedidos-card-waiting border-amber-400/60 bg-amber-50 dark:bg-amber-950/20' : ''}`}
+                            className={`hover:shadow-md ${isWaiting ? 'pedidos-card-waiting border-amber-400/60 bg-amber-50 dark:bg-amber-950/20' : ''}`}
                             data-testid={`pedidos-card-${o.order_number}`}
                         >
                             <CardContent className="p-4">

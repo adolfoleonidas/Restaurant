@@ -31,7 +31,7 @@ export const CartPanel = ({ onClose }) => {
                 type="button"
                 onClick={() => setMode('live')}
                 data-testid="cart-tab-live"
-                className={`h-11 sm:h-8 rounded-sm text-sm font-medium transition-colors ${showLive ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`h-11 sm:h-8 rounded-sm text-sm font-medium ${showLive ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
                 {(order && !['mesa', 'local'].includes(order.order_type)) ? 'Tu pedido' : 'En tu mesa'}
             </button>
@@ -39,7 +39,7 @@ export const CartPanel = ({ onClose }) => {
                 type="button"
                 onClick={() => setMode('cart')}
                 data-testid="cart-tab-cart"
-                className={`h-11 sm:h-8 rounded-sm text-sm font-medium transition-colors ${cartMode ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                className={`h-11 sm:h-8 rounded-sm text-sm font-medium ${cartMode ? 'bg-card shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
             >
                 Para llevar
             </button>

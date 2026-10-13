@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { apiErrorMessage } from '@/lib/apiError';
 
 const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
-    <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40 transition-colors">
+    <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40">
         <Icon className="h-5 w-5 text-primary" />
         <div className="flex-1">
             <div className="font-medium">{label}</div>

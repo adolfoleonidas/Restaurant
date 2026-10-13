@@ -179,7 +179,7 @@ export default function NewOrderSheet({
                                 disabled={Boolean(shownOrder) && area.key !== type}
                                 aria-pressed={type === area.key}
                                 data-testid={`nuevo-pedido-tipo-${area.key}`}
-                                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                                className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium disabled:opacity-50 ${
                                     type === area.key
                                         ? 'border-primary bg-primary text-primary-foreground'
                                         : 'border-border hover:border-primary hover:bg-primary/5'
@@ -204,7 +204,7 @@ export default function NewOrderSheet({
                                         type="button"
                                         onClick={() => onPickTable?.(t)}
                                         data-testid={`nuevo-pedido-mesa-${t.number}`}
-                                        className="flex flex-col items-center justify-center rounded-lg border-2 border-border p-4 transition-colors hover:border-primary hover:bg-primary/5"
+                                        className="flex flex-col items-center justify-center rounded-lg border-2 border-border p-4 hover:border-primary hover:bg-primary/5"
                                     >
                                         <span className="font-display text-2xl font-bold">{t.number}</span>
                                         <span className="mt-1 text-xs text-muted-foreground">{t.area}</span>

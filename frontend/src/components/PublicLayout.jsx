@@ -58,7 +58,7 @@ export const PublicLayout = () => {
                         <ThemeToggle />
                         {/* El enlace "Salón" medía ~16 px de alto (page-kicker):
                             en táctil necesita los 44 px. */}
-                        <Link to="/login" className="inline-flex h-11 items-center px-2 -mx-2 page-kicker hover:text-primary transition-colors">
+                        <Link to="/login" className="inline-flex h-11 items-center px-2 -mx-2 page-kicker hover:text-primary">
                             Salón
                         </Link>
                         {showCart && (
@@ -85,7 +85,7 @@ export const PublicLayout = () => {
                 <div className="border-b border-border bg-secondary/40" data-testid="public-order-bar">
                     <div className="max-w-6xl mx-auto px-4 md:px-6 py-2 flex items-center justify-between gap-3 text-sm">
                         <div className="flex items-center gap-2 min-w-0">
-                            <span className="h-2 w-2 rounded-full bg-primary animate-pulse shrink-0" />
+                            <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
                             <span className="truncate">
                                 Tu pedido <span className="font-semibold">#{liveOrder.order_number}</span>
                                 <span className="text-muted-foreground"> · {ORDER_STATUS_LABELS[liveOrder.status] || liveOrder.status}</span>
@@ -96,7 +96,7 @@ export const PublicLayout = () => {
                             <Button asChild variant="outline" size="sm">
                                 <Link to={`/pedido/${liveOrder.tracking_code}`} data-testid="public-order-bar-track">Ver estado</Link>
                             </Button>
-                            <button onClick={clearMeta} aria-label="Ocultar mi pedido" className="grid h-11 w-11 place-items-center text-muted-foreground hover:text-foreground transition-colors" data-testid="public-order-bar-dismiss">
+                            <button onClick={clearMeta} aria-label="Ocultar mi pedido" className="grid h-11 w-11 place-items-center text-muted-foreground hover:text-foreground" data-testid="public-order-bar-dismiss">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>

@@ -26,7 +26,7 @@ export default function PersonStrip({ personNameEdit, aliasDraft, setAliasDraft,
                         aria-pressed={sharedDraft}
                         title="Lo que pide la mesa entera"
                         data-testid="mesa-sheet-compartido"
-                        className={`flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+                        className={`flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium ${
                             sharedDraft
                                 ? 'border-primary bg-primary text-primary-foreground'
                                 : 'border-border text-muted-foreground hover:border-primary'

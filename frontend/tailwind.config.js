@@ -3,6 +3,10 @@ module.exports = {
     darkMode: ["class"],
     content: [
         "./src/**/*.{js,jsx,ts,tsx}",
+        // Tests quote class names as samples (the no-motion guard lists the very
+        // classes it forbids). They must not make Tailwind emit those classes.
+        "!./src/**/__tests__/**",
+        "!./src/**/*.{test,spec}.{js,jsx,ts,tsx}",
         "./public/index.html"
     ],
     theme: {
@@ -77,15 +81,9 @@ module.exports = {
                     '5': 'hsl(var(--chart-5))',
                 },
             },
-            keyframes: {
-                'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
-                'accordion-up': { from: { height: 'var(--radix-accordion-content-height)' }, to: { height: '0' } },
-            },
-            animation: {
-                'accordion-down': 'accordion-down 0.2s ease-out',
-                'accordion-up': 'accordion-up 0.2s ease-out',
-            },
         }
     },
-    plugins: [require("tailwindcss-animate")],
+    // No plugins: the app has no motion, so no enter/exit animation utilities
+    // are generated for the Radix components.
+    plugins: [],
 };

@@ -5,18 +5,19 @@ import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
+      // Pressed = an instant darker tone (never a move or a scale).
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/92 hover:shadow-md active:translate-y-px",
+          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/92 hover:shadow-md active:brightness-90",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/92 active:translate-y-px",
+          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/92 active:brightness-90",
         outline:
-          "border border-input bg-transparent shadow-sm hover:bg-secondary hover:text-secondary-foreground active:translate-y-px",
+          "border border-input bg-transparent shadow-sm hover:bg-secondary hover:text-secondary-foreground active:bg-secondary active:brightness-95",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/85 active:translate-y-px",
+          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/85 active:brightness-90",
         ghost: "hover:bg-secondary hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },

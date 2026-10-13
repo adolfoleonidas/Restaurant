@@ -154,7 +154,7 @@ export default function Login() {
                                         type="button"
                                         onClick={() => fillDemo(d)}
                                         data-testid={`demo-${d.role}-button`}
-                                        className="flex flex-col items-start rounded-sm border border-border bg-secondary/40 hover:bg-secondary px-3 py-2.5 text-left transition-colors"
+                                        className="flex flex-col items-start rounded-sm border border-border bg-secondary/40 hover:bg-secondary px-3 py-2.5 text-left"
                                     >
                                         <span className="text-xs font-semibold">{ROLE_LABELS[d.role]}</span>
                                         <span className="text-xs text-muted-foreground break-all w-full">{d.email}</span>
