@@ -507,7 +507,7 @@ def test_new_database_installs_branch_and_legacy_uniqueness_without_tenant_uniqu
         def __init__(self):
             for name in ("users", "tables", "orders", "payment_configs", "products", "payments",
                          "cash_registers", "attentions", "audit_logs", "zones", "branches",
-                         "table_groups"):
+                         "table_groups", "approvals", "categories", "restaurants"):
                 setattr(self, name, IndexCollection())
 
     fake = FakeDatabase()
@@ -549,7 +549,8 @@ def test_existing_tenant_unique_cash_index_is_preserved_without_startup_replacem
     class FakeDatabase:
         def __init__(self):
             for name in ("users", "tables", "orders", "payment_configs", "products", "payments",
-                         "attentions", "audit_logs", "zones", "branches", "table_groups"):
+                         "attentions", "audit_logs", "zones", "branches", "table_groups",
+                         "approvals", "categories", "restaurants"):
                 setattr(self, name, IndexCollection())
             self.cash_registers = IndexCollection(existing=(True,))
 
@@ -557,7 +558,8 @@ def test_existing_tenant_unique_cash_index_is_preserved_without_startup_replacem
     monkeypatch.setattr(database, "db", fake)
     asyncio.run(database.ensure_indexes())
     assert fake.cash_registers.dropped == []
-    assert not any(options.get("unique") for _, options in fake.cash_registers.created)
+    # Only the register's own id gets a unique index; no open-register rule is installed over the old one.
+    assert not any(options.get("unique") for keys, options in fake.cash_registers.created if keys != "id")
 
 
 def test_refund_reconciliation_rejects_movement_with_different_branch():
