@@ -6,6 +6,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* No motion (NA-02). The app does not animate. This is the one place that
+   enforces it for markup the app does not own: Radix, sonner, any library or
+   future component. Radix reads the computed animation name, so with no
+   animation it unmounts at once; sonner removes toasts on timers, so they still
+   appear and dismiss. The guard in src/__tests__/NoMotion.test.js allows this
+   rule and no other motion declaration. */
+*,
+*::before,
+*::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+}
+
 /* ============================================================
    DESIGN SYSTEM — Fresco (Azul/Blanco)
    Tokens semánticos. Cambia este archivo para cambiar el tema
