@@ -111,6 +111,18 @@ Step 6 ("keeps the order as a draft") is local-first and batched, so a tap costs
 
 Details, failure modes and limits: [`odd/tasks/batched-order-sync.md`](../../odd/tasks/batched-order-sync.md).
 
+### 6.2 Creating the account (engineering note)
+
+The create that step 8 and "the first product of an account" end in is idempotent, so a retry never makes a second order (exceptional cases A, B and M):
+
+- The client makes one `request_id` per creation (a UUID, or the fallback of `lib/clientId.js`) and sends it with `POST /api/orders`. Every retry of that creation sends the same id; the next account, another person at the table, sends a new one. It applies to the table sheet, the take-out sheet and "Nuevo pedido".
+- Before it touches the table or takes a number, the server looks for an order of the restaurant with that id. If it finds one that the caller may see (their branch, or any for the owner), it answers `200` with that order, like a create, and writes nothing: no order number, no table reservation, no visit, no audit entry, no event. A create that had stopped halfway (the visit still opening, no audit entry) is finished once.
+- An id that belongs to an order of another branch, or to another table or kind of order, is a `409` ("Esa solicitud ya se usó para otro pedido. Vuelve a intentarlo.") and writes nothing.
+- Two attempts at once (a retry that races the original) end with one order: the unique index on `(restaurant_id, request_id)` lets one insert win and the other answers with the winner's order, also when the winner had only reserved the table and died before storing it.
+- A request without `request_id` behaves as before. Public QR orders and payments have their own keys (`request_id` with a fingerprint, `idempotency_key`).
+
+Contract, races and limits: [`odd/tasks/db-indexes-idempotent-orders.md`](../../odd/tasks/db-indexes-idempotent-orders.md).
+
 Y del lado de cocina:
 
 ```text
@@ -223,6 +235,7 @@ R-MP-13. La vista avanzada de Cocina está apagada por defecto.
 | J | Se va la señal mientras arma el pedido | Lo tocado sigue en pantalla con «Sin guardar» y se guarda solo al volver la señal; mientras tanto no se puede enviar a cocina, cambiar de cuenta ni salir del compositor |
 | K | La app se recarga, se cierra o se actualiza con productos sin guardar | Lo tocado queda en el equipo y se guarda al abrir esa cuenta o la app; una actualización espera un instante a que llegue |
 | L | El mozo cierra sesión con productos sin guardar | Intenta guardarlos; si no puede, avisa antes de salir |
+| M | Se pierde la respuesta al crear la cuenta de la mesa (o el pedido para llevar) | El reintento lleva el mismo identificador de creación y el servidor devuelve la cuenta que ya hizo: la mesa queda con una sola cuenta y lo tocado se guarda en ella |
 
 ---
 
