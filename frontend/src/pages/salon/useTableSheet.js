@@ -38,7 +38,7 @@ import {
  * The container only wires it to the floor (`refreshAll`) and to the permissions.
  */
 export default function useTableSheet({
-    tables, orders, activeOrders, canTake, refreshAll,
+    tables, orders, activeOrders, canTake, refreshAll, userId = null,
 }) {
     const [run] = usePendingAction();
     const [openTable, setOpenTable] = useState(null);
@@ -304,6 +304,8 @@ export default function useTableSheet({
         ensureOrderId: ensureAccount,
         loadOrder: (orderId) => reloadCurrentOrder(orderId, { strict: true }),
         acceptOrder: applyOrder,
+        // Whose taps wait on this device: they are kept per user and order until the server confirms them.
+        userId,
         onError: (error, entry) => {
             // The line is already back at the last confirmed quantity; one toast,
             // and a re-read in case the server did apply part of it.

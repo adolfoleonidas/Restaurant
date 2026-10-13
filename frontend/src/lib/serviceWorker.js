@@ -12,12 +12,21 @@
 // siendo los viejos y una ruta nueva pediría un archivo que ya no existe en la
 // caché, así que el paso a la build nueva tiene que ser completo.
 //
+// Unsaved taps: the waiter's taps reach the server in batches (see
+// `lib/lineSyncQueue`), so a batch may be waiting when the page reloads. It gets a
+// moment to arrive first; if the connection does not answer, the reload goes ahead
+// anyway: what is pending is kept on the device and sent when that order is opened.
+//
 // Búsqueda activa: el navegador solo busca un service worker nuevo al navegar o
 // cada 24 h, y el celular del mozo deja la app abierta todo el turno sin
 // recargar. Por eso se pide `registration.update()` al volver a primer plano y
 // cada 15 minutos con la app visible; si hay build nueva, el `controllerchange`
 // de arriba hace el resto.
+import { flushAllOutboxes, hasPendingOutbox } from '@/lib/outboxRegistry';
+
 const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+// How long the reload waits for pending taps to reach the server.
+const RELOAD_FLUSH_TIMEOUT_MS = 1500;
 const watched = new WeakSet();
 
 function watchForUpdates(registration) {
@@ -46,7 +55,13 @@ export function registerServiceWorker() {
     navigator.serviceWorker.addEventListener?.('controllerchange', () => {
         if (!hadController || reloading) return;
         reloading = true;
-        window.location.reload();
+        if (!hasPendingOutbox()) {
+            window.location.reload();
+            return;
+        }
+        flushAllOutboxes({ timeoutMs: RELOAD_FLUSH_TIMEOUT_MS })
+            .catch(() => {})
+            .then(() => window.location.reload());
     });
 
     window.addEventListener('load', () => {

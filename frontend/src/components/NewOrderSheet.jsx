@@ -26,6 +26,7 @@ export default function NewOrderSheet({
     products = [],
     categories = [],
     canTake = false,
+    userId = null,
     onPickTable,
     onCreated,
 }) {
@@ -96,6 +97,7 @@ export default function NewOrderSheet({
         placeholder: emptyOrder,
         ensureOrderId: ensureOrder,
         loadOrder: (orderId) => reload(orderId, { strict: true }),
+        userId,
         // The sheet may have been closed while the batch was on its way.
         acceptOrder: (saved) => { if (openRef.current) setOrder(saved); },
         onError: (error, entry) => {
@@ -264,6 +266,7 @@ export default function NewOrderSheet({
                                 products={products}
                                 categories={categories}
                                 canCompose={canTake}
+                                saveState={sync.saveState}
                                 showKitchen={Boolean(shownOrder) && shownOrder.status === 'nuevo' && items.length > 0}
                                 testIdPrefix="nuevo-pedido"
                                 onAddProduct={addProduct}

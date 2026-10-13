@@ -465,6 +465,57 @@ describe('when the connection fails', () => {
     });
 });
 
+describe('what a previous session left', () => {
+    test('restored entries are sent at once, flagged as they were saved', async () => {
+        const { queue, run } = make();
+        queue.restore([
+            { key: 'line:a', kind: 'line', orderId: 'o1', lineId: 'a', quantity: 3 },
+            { key: 'new:p1', kind: 'new', orderId: 'o1', productId: 'p1', clientLineId: 'c-1', quantity: 2, attempted: true },
+        ]);
+        await settle();
+
+        expect(run).toHaveBeenCalledTimes(1);
+        expect(run.mock.calls[0][0].orderId).toBe('o1');
+        expect(run.mock.calls[0][0].items.map((item) => [item.key, item.sent])).toEqual([['line:a', 3], ['new:p1', 2]]);
+        expect(run.mock.calls[0][0].items[1].entry).not.toHaveProperty('key');
+        expect(run.mock.calls[0][0].items[1].entry.attempted).toBe(true);
+        expect(queue.pending()).toBe(false);
+    });
+
+    test('what the waiter tapped in this session wins over what was saved', async () => {
+        const gate = deferred();
+        const run = jest.fn(() => gate.promise);
+        const { queue } = make({ run });
+        queue.set('line:a', line('o1', 7));
+        queue.restore([{ key: 'line:a', kind: 'line', orderId: 'o1', lineId: 'a', quantity: 3 }]);
+
+        expect(queue.get('line:a').quantity).toBe(7);
+        await settle();
+        // Nothing new came back, so nothing was sent by the restore.
+        expect(run).not.toHaveBeenCalled();
+        gate.resolve({});
+    });
+
+    test('an empty or unusable list does nothing', async () => {
+        const { queue, run } = make();
+        queue.restore([]);
+        queue.restore([{ quantity: 1 }]);
+        await settle();
+        expect(run).not.toHaveBeenCalled();
+        expect(queue.pending()).toBe(false);
+    });
+
+    test('a failed connection keeps the restored entries for later', async () => {
+        const run = jest.fn().mockRejectedValue(networkError());
+        const { queue, onStalled } = make({ run });
+        queue.restore([{ key: 'line:a', kind: 'line', orderId: 'o1', lineId: 'a', quantity: 3 }]);
+        await settle();
+
+        expect(onStalled).toHaveBeenCalledTimes(1);
+        expect(queue.get('line:a')).toMatchObject({ quantity: 3 });
+    });
+});
+
 describe('observing the outbox', () => {
     test('busy, pending and inFlight follow the life of a batch', async () => {
         const gate = deferred();

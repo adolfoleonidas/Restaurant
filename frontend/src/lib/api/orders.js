@@ -1,4 +1,4 @@
-import { get, post, patch, put, del } from './request';
+import { get, post, patch, put, del, keepaliveRequest } from './request';
 
 // A batch that hangs on a dead connection must end so the outbox can keep the
 // lines and try again; the server applies a batch idempotently, so a retry is safe.
@@ -15,8 +15,15 @@ export const addOrderItems = (id, items) => post(`/orders/${id}/items`, items);
  * `lines` is `[{ client_line_id, quantity, product_id? }]` with absolute
  * quantities (0 removes the line). Answers with the whole order plus
  * `line_results`, one entry per line.
+ *
+ * `keepalive` is for the moments the page may disappear (hidden, closing, about
+ * to reload): the request is made with `fetch` so the browser finishes it.
  */
-export const saveDraftLines = (id, lines) => put(`/orders/${id}/draft-lines`, { lines }, { timeout: DRAFT_LINES_TIMEOUT_MS });
+export const saveDraftLines = (id, lines, { keepalive = false } = {}) => {
+    const path = `/orders/${id}/draft-lines`;
+    if (keepalive && typeof fetch === 'function') return keepaliveRequest('PUT', path, { lines });
+    return put(path, { lines }, { timeout: DRAFT_LINES_TIMEOUT_MS });
+};
 export const updateOrderItem = (id, itemId, body) => patch(`/orders/${id}/items/${itemId}`, body);
 export const removeOrderItem = (id, itemId) => del(`/orders/${id}/items/${itemId}`);
 export const voidOrderItem = (id, itemId, body) => post(`/orders/${id}/items/${itemId}/void`, body);

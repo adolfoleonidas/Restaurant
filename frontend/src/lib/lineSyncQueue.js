@@ -297,6 +297,23 @@ export function createLineSyncQueue({
                 request({ send: true, keepalive });
             });
         },
+        /**
+         * Takes back entries a previous session left on the device (`[{ key, ...entry }]`)
+         * and sends them. What the waiter tapped in this session wins: a key that is
+         * already in the outbox is left as it is.
+         */
+        restore(saved) {
+            if (destroyed) return;
+            let added = false;
+            saved.forEach(({ key, ...entry }) => {
+                if (!key || entries.has(key)) return;
+                entries.set(key, entry);
+                added = true;
+            });
+            if (!added) return;
+            changed();
+            request({ send: true });
+        },
         /** Forgets what is waiting (the waiter discarded the draft). */
         clear() {
             entries.clear();

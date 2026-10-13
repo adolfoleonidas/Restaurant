@@ -1,4 +1,5 @@
 import { registerServiceWorker } from '@/lib/serviceWorker';
+import { registerOutbox } from '@/lib/outboxRegistry';
 
 /**
  * Registro con auto-update (S11): el service worker usa skipWaiting +
@@ -75,6 +76,78 @@ describe('registro del service worker', () => {
         registerServiceWorker();
         listeners.controllerchange();
         expect(reload).not.toHaveBeenCalled();
+    });
+
+    describe('unsaved taps when an update reloads the page (BS-03)', () => {
+        // The reload would drop the taps a waiter made a moment ago: they get to the
+        // server first, and the reload waits at most a moment for them.
+        let unregister;
+        let outbox;
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            outbox = { waiting: true, flush: jest.fn() };
+            unregister = registerOutbox({
+                pending: () => outbox.waiting,
+                orderIds: () => ['o1'],
+                flush: (options) => outbox.flush(options),
+            });
+        });
+        afterEach(() => {
+            unregister();
+            jest.useRealTimers();
+        });
+
+        it('waits for the batch to reach the server and reloads once', async () => {
+            let finish;
+            outbox.flush.mockImplementation(() => new Promise((resolve) => { finish = () => { outbox.waiting = false; resolve(); }; }));
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            listeners.controllerchange();
+
+            expect(outbox.flush).toHaveBeenCalledTimes(1);
+            // A request that outlives the page, because the page is about to go.
+            expect(outbox.flush).toHaveBeenCalledWith({ keepalive: true });
+            await Promise.resolve();
+            expect(reload).not.toHaveBeenCalled();
+
+            finish();
+            for (let i = 0; i < 10; i += 1) await Promise.resolve(); // eslint-disable-line no-await-in-loop
+            expect(reload).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not wait forever: with the connection down it reloads anyway, what is pending stays on the device', async () => {
+            outbox.flush.mockImplementation(() => new Promise(() => {}));
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+
+            jest.advanceTimersByTime(1499);
+            for (let i = 0; i < 10; i += 1) await Promise.resolve(); // eslint-disable-line no-await-in-loop
+            expect(reload).not.toHaveBeenCalled();
+            jest.advanceTimersByTime(1);
+            for (let i = 0; i < 10; i += 1) await Promise.resolve(); // eslint-disable-line no-await-in-loop
+            expect(reload).toHaveBeenCalledTimes(1);
+        });
+
+        it('reloads anyway when saving fails', async () => {
+            outbox.flush.mockRejectedValue(new Error('boom'));
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            for (let i = 0; i < 10; i += 1) await Promise.resolve(); // eslint-disable-line no-await-in-loop
+            expect(reload).toHaveBeenCalledTimes(1);
+        });
+
+        it('reloads at once when nothing is pending, without touching the outboxes', () => {
+            outbox.waiting = false;
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            expect(reload).toHaveBeenCalledTimes(1);
+            expect(outbox.flush).not.toHaveBeenCalled();
+        });
     });
 
     describe('búsqueda de versiones nuevas con la app abierta', () => {

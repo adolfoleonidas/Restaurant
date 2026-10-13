@@ -4,12 +4,17 @@ import { newClientId } from '@/lib/clientId';
 import { buildDraftLine } from '@/lib/draftLines';
 import { ORDER_SYNC_DELAY_MS, createLineSyncQueue } from '@/lib/lineSyncQueue';
 import { overlayPendingLines, resolveLineChange, resolveTap } from '@/lib/optimisticOrder';
+import { registerOutbox } from '@/lib/outboxRegistry';
+import { outboxStorage } from '@/lib/outboxStorage';
 
 /** The server's per-line report travels with the order; the screens only want the order. */
 const withoutReport = ({ line_results: ignored, ...order }) => order;
 
 /** A line the server rejected, as the error `apiErrorMessage` knows how to read. */
 const rejection = (result) => ({ response: { status: 400, data: { detail: result.detail } } });
+
+/** What the overlay needs of a product to draw a line that is not on the server yet. */
+const slimProduct = (product) => (product ? { id: product.id, name: product.name, price: product.price } : product);
 
 /**
  * Optimistic quantities for an order composer, saved in batches.
@@ -22,6 +27,11 @@ const rejection = (result) => ({ response: { status: 400, data: { detail: result
  * account), when the app goes to the background or the page is hidden, and when
  * the connection comes back. Nothing is disabled while it syncs, so a quick
  * "+ + +" can never lose a tap.
+ *
+ * What is pending is also kept on the device, per user and order (see
+ * `lib/outboxStorage`), so a reload, a crash or an app update does not lose it:
+ * it is sent again when that order is opened. The outbox is also registered (see
+ * `lib/outboxRegistry`) so logout and the service-worker update can save it first.
  *
  * The caller provides the pieces that depend on where the order lives:
  * - `ensureOrderId()`: id of the order, creating it on the first product. It is
@@ -40,10 +50,11 @@ const rejection = (result) => ({ response: { status: 400, data: { detail: result
  *   outbox and are sent again by themselves.
  * - `onSynced()`: called when the outbox empties.
  * - `placeholder`: the empty order shown before the first product exists.
+ * - `userId`: whose outbox it is on the device; without it nothing is kept there.
  */
 export default function useOrderLineSync({
     order, placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onSynced,
-    delayMs = ORDER_SYNC_DELAY_MS,
+    userId = null, storage = outboxStorage, delayMs = ORDER_SYNC_DELAY_MS,
 }) {
     // What the outbox has not confirmed yet; a new object on every change, so the
     // screen re-renders whenever a tap is recorded or confirmed.
@@ -53,11 +64,40 @@ export default function useOrderLineSync({
     const latest = useRef(order);
     const handlers = useRef({});
     handlers.current = {
-        placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onSynced,
+        placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onSynced, userId, storage,
     };
     const queueRef = useRef(null);
 
     if (!queueRef.current) {
+        // What is on the device for each order (by order id), so it is written only when it
+        // changes and erased once the server has confirmed everything.
+        const kept = new Map();
+        const persist = () => {
+            const { userId: owner, storage: store } = handlers.current;
+            if (!owner || !store) return;
+            const byOrder = new Map();
+            Object.entries(queueRef.current.snapshot()).forEach(([key, entry]) => {
+                // Without an order the entry has nothing to be attached to yet.
+                if (!entry.orderId) return;
+                if (!byOrder.has(entry.orderId)) byOrder.set(entry.orderId, []);
+                byOrder.get(entry.orderId).push({ ...entry, key, product: slimProduct(entry.product) });
+            });
+            byOrder.forEach((list, orderId) => {
+                const signature = JSON.stringify(list);
+                if (kept.get(orderId) === signature) return;
+                kept.set(orderId, signature);
+                Promise.resolve(store.save(owner, orderId, list)).then((saved) => {
+                    // Not written: try again with the next change instead of trusting it is there.
+                    if (!saved && kept.get(orderId) === signature) kept.delete(orderId);
+                });
+            });
+            [...kept.keys()].forEach((orderId) => {
+                if (byOrder.has(orderId)) return;
+                kept.delete(orderId);
+                void store.remove(owner, orderId);
+            });
+        };
+
         // The order as the server has it after a write: taken from the write's own
         // response when it carries the order, otherwise read once more.
         const confirmed = async (orderId, response) => {
@@ -75,7 +115,7 @@ export default function useOrderLineSync({
         };
 
         // One batch: what each pending entry asks of the server, in one request.
-        const run = async ({ orderId, items }) => {
+        const run = async ({ orderId, items }, { keepalive = false } = {}) => {
             const known = latest.current?.id === orderId ? latest.current.items || [] : [];
             const lines = [];
             const sent = [];
@@ -89,8 +129,12 @@ export default function useOrderLineSync({
             });
             // Every tap netted out to what the server already has: nothing to write.
             if (!lines.length) return {};
+            // The flag must be on the device before the request, in case the page dies mid-flight.
+            persist();
 
-            const response = await saveDraftLines(orderId, lines);
+            const response = keepalive
+                ? await saveDraftLines(orderId, lines, { keepalive: true })
+                : await saveDraftLines(orderId, lines);
             const reports = new Map((response?.data?.line_results || []).map((report) => [report.client_line_id, report]));
             await confirmed(orderId, response);
             const rejected = sent
@@ -103,7 +147,10 @@ export default function useOrderLineSync({
             run,
             resolveOrder: () => handlers.current.ensureOrderId(),
             delayMs,
-            onChange: () => setEntries(queueRef.current.snapshot()),
+            onChange: () => {
+                setEntries(queueRef.current.snapshot());
+                persist();
+            },
             onError: (error, entry) => handlers.current.onError?.(error, entry),
             onStalled: (error) => handlers.current.onStalled?.(error),
             onDrain: () => handlers.current.onSynced?.(),
@@ -130,19 +177,40 @@ export default function useOrderLineSync({
 
     // The moments that cannot wait for the pause: the app goes to the background,
     // the page is hidden or closed, the connection comes back, the screen goes away.
+    // When the page may disappear the batch goes out in a request that survives it.
     useEffect(() => {
-        const saveNow = () => { if (queue.pending()) void queue.flush(); };
-        const onVisibility = () => { if (document.visibilityState === 'hidden') saveNow(); };
+        const saveNow = (options) => { if (queue.pending()) void queue.flush(options); };
+        const onVisibility = () => { if (document.visibilityState === 'hidden') saveNow({ keepalive: true }); };
+        const onPageHide = () => saveNow({ keepalive: true });
+        const onOnline = () => saveNow();
         document.addEventListener('visibilitychange', onVisibility);
-        window.addEventListener('pagehide', saveNow);
-        window.addEventListener('online', saveNow);
+        window.addEventListener('pagehide', onPageHide);
+        window.addEventListener('online', onOnline);
         return () => {
             document.removeEventListener('visibilitychange', onVisibility);
-            window.removeEventListener('pagehide', saveNow);
-            window.removeEventListener('online', saveNow);
+            window.removeEventListener('pagehide', onPageHide);
+            window.removeEventListener('online', onOnline);
             saveNow();
         };
     }, [queue]);
+
+    // Logout and the service-worker update ask every live outbox to save itself.
+    useEffect(() => registerOutbox({
+        pending: () => queue.pending(),
+        flush: (options) => queue.flush(options),
+        orderIds: () => [...new Set(Object.values(queue.snapshot()).map((entry) => entry.orderId).filter(Boolean))],
+    }), [queue]);
+
+    // Opening an order takes back what a previous session left unconfirmed on the device.
+    const orderId = order?.id || null;
+    useEffect(() => {
+        if (!orderId || !userId || !storage) return undefined;
+        let active = true;
+        storage.load(userId, orderId).then((saved) => {
+            if (active && saved.length) queue.restore(saved);
+        }).catch(() => {});
+        return () => { active = false; };
+    }, [orderId, userId, storage, queue]);
 
     const optimisticOrder = useMemo(
         () => overlayPendingLines(order, entries, placeholder),
@@ -164,8 +232,8 @@ export default function useOrderLineSync({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [queue]);
 
-    const changeLine = useCallback((item, delta, orderId) => {
-        const hit = resolveLineChange(item, delta, orderId);
+    const changeLine = useCallback((item, delta, targetOrderId) => {
+        const hit = resolveLineChange(item, delta, targetOrderId);
         if (hit.patch.quantity === Number(item.quantity ?? 1) && !queue.get(hit.key)) return Promise.resolve();
         queue.set(hit.key, hit.patch);
         return Promise.resolve();

@@ -84,7 +84,7 @@ export default function Salon() {
     const { activeOrders } = floorView;
 
     const sheet = useTableSheet({
-        tables, orders, activeOrders, canTake, refreshAll,
+        tables, orders, activeOrders, canTake, refreshAll, userId: user?.id,
     });
     const { openTable, closeSheet } = sheet;
     const selection = useTableSelection({
@@ -253,6 +253,7 @@ export default function Salon() {
                 products={products}
                 categories={categories}
                 canTake={canTake}
+                userId={user?.id}
                 onPickTable={pickTableForOrder}
                 onCreated={refreshAll}
             />

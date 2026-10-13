@@ -117,6 +117,7 @@ describe('compositor · paridad posView (S8)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers();
+        localStorage.clear();
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
@@ -606,6 +607,46 @@ describe('compositor · paridad posView (S8)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]').disabled).toBe(false);
     });
 
+    it('BS-03 the person strip says "Sin guardar" while a tap waits, "Guardando…" while the batch is on its way, then nothing', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        let release;
+        api.put.mockReturnValue(new Promise((resolve) => { release = () => resolve({ data: { ...draft, line_results: [] } }); }));
+        const status = () => sheet.querySelector('[data-testid="mesa-sheet-persona"] [data-testid="mesa-sheet-sync"]');
+
+        expect(status().textContent).toBe('');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        expect(status().textContent).toBe('Sin guardar');
+        await savePendingTaps();
+        expect(status().textContent).toBe('Guardando…');
+        await act(async () => release());
+        expect(status().textContent).toBe('');
+    });
+
+    it('BS-03 a connection that fails keeps the taps on the device and saves them when it comes back', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        api.put.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', request: {} }));
+        api.put.mockResolvedValue({ data: { ...draft, line_results: [] } });
+        const status = () => sheet.querySelector('[data-testid="mesa-sheet-persona"] [data-testid="mesa-sheet-sync"]');
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        await savePendingTaps();
+
+        // Nothing is rolled back; the screen says so once, and the tap is on the device, for this user and order.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]').textContent).toContain('S/ 36.00');
+        expect(status().textContent).toBe('Sin guardar');
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(toast.error.mock.calls[0][0]).toMatch(/Sin conexión/);
+        const stored = JSON.parse(localStorage.getItem('restoflow:outbox:v1:staff-1:order-1'));
+        expect(stored.entries).toEqual([expect.objectContaining({ key: 'line:i1', lineId: 'i1', quantity: 3, attempted: true })]);
+
+        await act(async () => { window.dispatchEvent(new Event('online')); });
+        expect(api.put).toHaveBeenCalledTimes(2);
+        expect(status().textContent).toBe('');
+        expect(localStorage.getItem('restoflow:outbox:v1:staff-1:order-1')).toBeNull();
+    });
+
     it('sends from the inline draft ticket after review confirmation', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
         api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
@@ -868,6 +909,7 @@ describe('edición explícita de borradores (T04)', () => {
 
     beforeEach(() => {
         jest.useFakeTimers();
+        localStorage.clear();
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();

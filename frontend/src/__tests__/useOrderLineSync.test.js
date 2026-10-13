@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client';
 import useOrderLineSync from '@/hooks/useOrderLineSync';
 import { saveDraftLines } from '@/lib/api/orders';
 import { ORDER_SYNC_DELAY_MS } from '@/lib/lineSyncQueue';
+import { flushAllOutboxes, hasPendingOutbox, ownsOrder } from '@/lib/outboxRegistry';
+import { outboxStorage } from '@/lib/outboxStorage';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -97,6 +99,7 @@ const tap = async (product = sopa, direction = 1) => {
 
 beforeEach(() => {
     jest.useFakeTimers();
+    localStorage.clear();
     ensureOrderId = jest.fn(async () => 'o1');
     loadOrder = jest.fn(async () => orderWith([line({ quantity: 3, subtotal: 30 })]));
     acceptOrder = jest.fn();
@@ -537,11 +540,12 @@ describe('the moments that save at once', () => {
 
     afterEach(() => { delete document.visibilityState; });
 
-    it('the app going to the background', async () => {
+    it('the app going to the background, with a request the browser finishes even if the page goes', async () => {
         await waiting();
         await act(async () => { setVisibility('hidden'); });
         await settle();
         expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }], { keepalive: true });
     });
 
     it('coming back to the foreground sends nothing by itself', async () => {
@@ -551,18 +555,20 @@ describe('the moments that save at once', () => {
         expect(saveDraftLines).not.toHaveBeenCalled();
     });
 
-    it('the page being hidden or closed', async () => {
+    it('the page being hidden or closed, with a request the browser finishes even if the page goes', async () => {
         await waiting();
         await act(async () => { window.dispatchEvent(new Event('pagehide')); });
         await settle();
         expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }], { keepalive: true });
     });
 
-    it('the connection coming back', async () => {
+    it('the connection coming back, as a normal request', async () => {
         await waiting();
         await act(async () => { window.dispatchEvent(new Event('online')); });
         await settle();
         expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }]);
     });
 
     it('leaving the screen', async () => {
@@ -613,5 +619,199 @@ describe('closing the tab with taps on their way', () => {
         const busy = new Event('beforeunload', { cancelable: true });
         window.dispatchEvent(busy);
         expect(busy.defaultPrevented).toBe(true);
+    });
+});
+
+describe('the device (BS-03)', () => {
+    const fakeStorage = () => ({
+        save: jest.fn().mockResolvedValue(true),
+        remove: jest.fn().mockResolvedValue(true),
+        load: jest.fn().mockResolvedValue([]),
+    });
+    const lastSaved = (storage) => storage.save.mock.calls.at(-1);
+
+    it('keeps what is pending per user and order, with the product trimmed to what the screen needs', async () => {
+        const storage = fakeStorage();
+        saveDraftLines.mockResolvedValue(answer(orderWith([])));
+        await mount(orderWith([]), { userId: 'u1', storage });
+        await tap({ ...lomo, description: 'a very long description', image_url: 'x'.repeat(500) }, 1);
+
+        const [userId, orderId, list] = lastSaved(storage);
+        expect(userId).toBe('u1');
+        expect(orderId).toBe('o1');
+        expect(list).toHaveLength(1);
+        expect(list[0]).toMatchObject({
+            key: 'new:p-b', kind: 'new', productId: 'p-b', orderId: 'o1', quantity: 1, clientLineId: expect.any(String),
+        });
+        expect(list[0].product).toEqual({ id: 'p-b', name: 'Lomo', price: 30 });
+    });
+
+    it('writes only when something changed, and writes again if a write did not go through', async () => {
+        const storage = fakeStorage();
+        saveDraftLines.mockResolvedValue(answer(orderWith([line({ quantity: 3, subtotal: 30 })])));
+        await mount(orderWith([line()]), { userId: 'u1', storage });
+        await tap();
+        // One tap, one write, however many times the screen re-rendered for it.
+        expect(storage.save).toHaveBeenCalledTimes(1);
+        await pass(ORDER_SYNC_DELAY_MS);
+        // The sent flag is the only change the batch itself brings.
+        expect(storage.save).toHaveBeenCalledTimes(2);
+
+        storage.save.mockClear();
+        storage.save.mockResolvedValueOnce(false);
+        await tap();
+        expect(storage.save).toHaveBeenCalledTimes(1);
+        await tap();
+        // The first write failed, the next change is written again.
+        expect(storage.save.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('erases it once the server confirmed everything', async () => {
+        const storage = fakeStorage();
+        saveDraftLines.mockResolvedValue(answer(orderWith([line({ quantity: 3, subtotal: 30 })])));
+        await mount(orderWith([line()]), { userId: 'u1', storage });
+        await tap();
+        expect(storage.remove).not.toHaveBeenCalled();
+        await pass(ORDER_SYNC_DELAY_MS);
+
+        expect(storage.remove).toHaveBeenCalledWith('u1', 'o1');
+    });
+
+    it('puts the sent flag on the device before the request leaves, in case the page dies mid-flight', async () => {
+        const storage = fakeStorage();
+        saveDraftLines.mockImplementation(() => new Promise(() => {}));
+        await mount(orderWith([line()]), { userId: 'u1', storage });
+        await tap();
+        expect(lastSaved(storage)[2][0].attempted).toBeUndefined();
+        await pass(ORDER_SYNC_DELAY_MS);
+
+        expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        expect(lastSaved(storage)[2][0]).toMatchObject({ key: 'line:a', quantity: 3, attempted: true });
+    });
+
+    it('keeps nothing when the line has no order yet, and nothing without a user', async () => {
+        const storage = fakeStorage();
+        ensureOrderId = jest.fn(() => new Promise(() => {}));
+        await mount(null, { userId: 'u1', storage });
+        await tap(sopa, 1);
+        expect(storage.save).not.toHaveBeenCalled();
+
+        const anonymous = fakeStorage();
+        await view.unmount();
+        ensureOrderId = jest.fn(async () => 'o1');
+        await mount(orderWith([line()]), { storage: anonymous });
+        await tap();
+        expect(anonymous.save).not.toHaveBeenCalled();
+        expect(anonymous.load).not.toHaveBeenCalled();
+    });
+
+    it('takes back and sends what a previous session left when that order is opened', async () => {
+        const storage = fakeStorage();
+        storage.load.mockResolvedValue([
+            { key: 'new:p-b', kind: 'new', productId: 'p-b', product: lomo, orderId: 'o1', clientLineId: 'c-saved', quantity: 2 },
+        ]);
+        saveDraftLines.mockResolvedValue(answer(orderWith([
+            line({ id: 'srv', client_line_id: 'c-saved', product_id: 'p-b', product_name: 'Lomo', unit_price: 30, quantity: 2, subtotal: 60 }),
+        ])));
+        await mount(orderWith([line()]), { userId: 'u1', storage });
+        await settle();
+
+        expect(storage.load).toHaveBeenCalledWith('u1', 'o1');
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'c-saved', product_id: 'p-b', quantity: 2 }]);
+        expect(quantityOf('p-b')).toBe(2);
+        expect(view.result.current.pending()).toBe(false);
+    });
+
+    it('shows the restored taps while they wait for the connection', async () => {
+        const storage = fakeStorage();
+        storage.load.mockResolvedValue([
+            { key: 'new:p-b', kind: 'new', productId: 'p-b', product: lomo, orderId: 'o1', clientLineId: 'c-saved', quantity: 2 },
+        ]);
+        saveDraftLines.mockRejectedValue(networkError());
+        await mount(orderWith([line()]), { userId: 'u1', storage });
+        await settle();
+
+        expect(quantityOf('p-b')).toBe(2);
+        expect(view.result.current.saveState).toBe('unsaved');
+        expect(onStalled).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look for anything on the device without an order or a user', async () => {
+        const storage = fakeStorage();
+        await mount(null, { userId: 'u1', storage });
+        await view.unmount();
+        await mount(orderWith([line()]), { storage });
+        expect(storage.load).not.toHaveBeenCalled();
+    });
+
+    it('survives the screen: a tap that could not be saved is on the device and goes out when the order is opened again', async () => {
+        saveDraftLines.mockRejectedValue(networkError());
+        await mount(orderWith([line()]), { userId: 'u1' });
+        await tap();
+        await pass(ORDER_SYNC_DELAY_MS);
+        expect(onStalled).toHaveBeenCalledTimes(1);
+        await view.unmount();
+        view = null;
+        await settle();
+        expect(await outboxStorage.load('u1', 'o1')).toEqual([
+            expect.objectContaining({ key: 'line:a', lineId: 'a', quantity: 3, attempted: true }),
+        ]);
+
+        // Reopened later, with the connection back.
+        saveDraftLines.mockReset().mockResolvedValue(answer(orderWith([line({ quantity: 3, subtotal: 30 })])));
+        await mount(orderWith([line()]), { userId: 'u1' });
+        await settle();
+        await settle();
+
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }]);
+        expect(view.result.current.pending()).toBe(false);
+        expect(await outboxStorage.load('u1', 'o1')).toEqual([]);
+    });
+
+    it('another user does not get what this one left', async () => {
+        saveDraftLines.mockRejectedValue(networkError());
+        await mount(orderWith([line()]), { userId: 'u1' });
+        await tap();
+        await pass(ORDER_SYNC_DELAY_MS);
+        await view.unmount();
+        view = null;
+
+        saveDraftLines.mockReset();
+        await mount(orderWith([line()]), { userId: 'u2' });
+        await settle();
+        expect(saveDraftLines).not.toHaveBeenCalled();
+        expect(quantityOf('p-a')).toBe(2);
+    });
+});
+
+describe('the registry (BS-03)', () => {
+    it('lets the rest of the app see and save what is waiting', async () => {
+        saveDraftLines.mockResolvedValue(answer(orderWith([line({ quantity: 3, subtotal: 30 })])));
+        await mount();
+        expect(hasPendingOutbox()).toBe(false);
+
+        await tap();
+        expect(hasPendingOutbox()).toBe(true);
+        expect(ownsOrder('o1')).toBe(true);
+        expect(ownsOrder('o2')).toBe(false);
+
+        let saved;
+        await act(async () => { saved = await flushAllOutboxes(); });
+        expect(saved).toBe(true);
+        expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        // A request that must survive a reload.
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }], { keepalive: true });
+        expect(hasPendingOutbox()).toBe(false);
+    });
+
+    it('forgets the outbox when the screen goes away', async () => {
+        saveDraftLines.mockRejectedValue(networkError());
+        await mount();
+        await tap();
+        expect(hasPendingOutbox()).toBe(true);
+        await view.unmount();
+        view = null;
+        await settle();
+        expect(hasPendingOutbox()).toBe(false);
     });
 });
