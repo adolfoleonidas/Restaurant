@@ -185,6 +185,26 @@ def _messages(caplog, level):
     return [record.getMessage() for record in caplog.records if record.levelno == level]
 
 
+def test_the_order_lists_the_floor_polls_have_their_filter_indexed(fake_db):
+    """`/orders` and `/tables` filter by branch and, with an `$or`, by active status
+    or by `attention_state` (see `list_orders`). The `attention_state` branch had no
+    index of its own, so that poll's cost grew with the venue's order history — on
+    every device, every 8 seconds.
+    """
+    fake = fake_db()
+    _start()
+
+    by_status = fake.orders.catalog.get("orders_by_branch_status")
+    assert by_status is not None, "orders has no index for the branch + active status filter"
+    assert by_status["key"] == {"restaurant_id": 1, "branch_id": 1, "status": 1, "created_at": -1}
+
+    by_attention = fake.orders.catalog.get("orders_by_branch_attention")
+    assert by_attention is not None, "orders has no index for the branch + attention_state filter"
+    assert by_attention["key"] == {
+        "restaurant_id": 1, "branch_id": 1, "attention_state": 1, "created_at": -1,
+    }
+
+
 def test_every_collection_looked_up_by_id_gets_a_unique_index_with_an_explicit_name(fake_db):
     fake = fake_db()
     _start()

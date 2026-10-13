@@ -199,6 +199,21 @@ async def ensure_indexes():
         },
         name="active_order_per_table",
     )
+    # Los listados que el piso y la caja sondean cada 8 s acotan por sucursal y,
+    # con un `$or`, por estado activo o por `attention_state` (ver
+    # `routes/orders.py` `list_orders` y `routes/tables.py`). Sin estos dos, la rama
+    # de `attention_state` no tenía ningún índice y el costo crecía con el
+    # historial de pedidos del local, en cada dispositivo y para siempre. El
+    # `created_at` final deja que el orden por fecha se resuelva sobre las filas ya
+    # acotadas.
+    await db.orders.create_index(
+        [("restaurant_id", 1), ("branch_id", 1), ("status", 1), ("created_at", -1)],
+        name="orders_by_branch_status",
+    )
+    await db.orders.create_index(
+        [("restaurant_id", 1), ("branch_id", 1), ("attention_state", 1), ("created_at", -1)],
+        name="orders_by_branch_attention",
+    )
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])

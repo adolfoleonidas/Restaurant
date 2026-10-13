@@ -20,7 +20,7 @@ import { buildMoreActions } from './sheetActions';
 export default function TableSheet({
     model, sheet, perms, data, actions,
 }) {
-    const { table: t, history, loading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
+    const { table: t, history, loading, accountsLoading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
     const { composerOpen, saveState, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
     const { canTake, canServe, canCharge, canVoidItems } = perms;
     const { products, categories, branchNames, activeOrders } = data;
@@ -86,7 +86,6 @@ export default function TableSheet({
                                 items={orderItems}
                                 products={products}
                                 categories={categories}
-                                savingItem={savingItem || sendingToKitchen || loading}
                                 canCompose={canCompose}
                                 showKitchen={showSend}
                                 sendLabel={sendState?.label}
@@ -136,7 +135,7 @@ export default function TableSheet({
                                 <p className="text-sm text-muted-foreground">Aún no hay pedidos en esta mesa.</p>
                                 {canCompose && (
                                     <NewOrderButton
-                                        disabled={savingItem || sendingToKitchen || loading}
+                                        disabled={savingItem || sendingToKitchen || loading || accountsLoading}
                                         onClick={startNewAccount}
                                         expanded={composerOpen}
                                     />
@@ -207,7 +206,7 @@ export default function TableSheet({
                             canCompose={canCompose}
                             savingItem={savingItem}
                             sendingToKitchen={sendingToKitchen}
-                            loading={loading}
+                            loading={loading || accountsLoading}
                             startNewAccount={startNewAccount}
                             composerOpen={composerOpen}
                             canCharge={canCharge}

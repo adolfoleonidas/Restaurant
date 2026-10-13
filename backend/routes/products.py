@@ -34,8 +34,41 @@ async def get_or_create_combos_category(restaurant_id: str):
     return cat
 
 
-async def combo_components_for(prod: dict, restaurant_id: str):
-    if not prod.get("is_combo"):
+def combo_component_ids(products) -> list:
+    """Every product id the combos in `products` are made of, without repeats."""
+    ids = []
+    for prod in products:
+        if not prod or not prod.get("is_combo"):
+            continue
+        for raw in prod.get("combo_items") or []:
+            pid = raw.get("product_id")
+            qty = int(raw.get("quantity") or 1)
+            if pid and qty >= 1 and pid not in ids:
+                ids.append(pid)
+    return ids
+
+
+async def combo_components_map(products, restaurant_id: str) -> dict:
+    """The components of every combo in `products`, in ONE query (id -> product).
+
+    `combo_components_for` asks for one product per component, so a menu with C
+    combos of K components cost `1 + C*K` round trips before it could be sent.
+    Every component needs the same four fields, so they are read once here and
+    looked up in memory by `components_from`.
+    """
+    ids = combo_component_ids(products)
+    if not ids:
+        return {}
+    children = await db.products.find(
+        {"restaurant_id": restaurant_id, "id": {"$in": ids}},
+        {"_id": 0, "id": 1, "name": 1, "is_combo": 1, "is_available": 1},
+    ).to_list(len(ids))
+    return {child["id"]: child for child in children}
+
+
+def components_from(prod: dict, index: dict) -> list:
+    """One combo's components, read out of a `combo_components_map`."""
+    if not prod or not prod.get("is_combo"):
         return []
     comps = []
     for raw in prod.get("combo_items") or []:
@@ -43,10 +76,7 @@ async def combo_components_for(prod: dict, restaurant_id: str):
         qty = int(raw.get("quantity") or 1)
         if not pid or qty < 1:
             continue
-        child = await db.products.find_one(
-            {"id": pid, "restaurant_id": restaurant_id},
-            {"_id": 0, "id": 1, "name": 1, "is_combo": 1, "is_available": 1},
-        )
+        child = index.get(pid)
         if not child or child.get("is_combo"):
             continue
         comps.append({
@@ -56,6 +86,14 @@ async def combo_components_for(prod: dict, restaurant_id: str):
             "is_available": bool(child.get("is_available", True)),
         })
     return comps
+
+
+async def combo_components_for(prod: dict, restaurant_id: str):
+    """One combo's components, on their own. A list of products uses the map:
+    this costs a query of its own for every call."""
+    if not prod.get("is_combo"):
+        return []
+    return components_from(prod, await combo_components_map([prod], restaurant_id))
 
 
 async def validate_combo_items(restaurant_id: str, is_combo: bool, combo_items):
@@ -92,9 +130,11 @@ async def list_products(user: dict = Depends(get_current_user)):
         {"restaurant_id": user["restaurant_id"]},
         {"_id": 0}
     ).sort("name", 1).to_list(1000)
+    # Every combo of the menu is resolved with one query, not one per component.
+    components = await combo_components_map(items, user["restaurant_id"])
     for item in items:
         if item.get("is_combo"):
-            comps = await combo_components_for(item, user["restaurant_id"])
+            comps = components_from(item, components)
             item["combo_components"] = comps
             item["components_available"] = len(comps) > 0 and all(c.get("is_available", True) for c in comps)
     return items

@@ -81,6 +81,11 @@ export default function useTableSheet({
     const floorChangedRef = useRef(false);
     const leavingRef = useRef(false);
     const [awaitingSend, setAwaitingSend] = useState(false);
+    // Taps that landed while the account in view was still being resolved, in the
+    // order they were made. They cannot name a line yet (the account's lines are
+    // not known), so they wait here and are applied as soon as they can be.
+    const heldTapsRef = useRef([]);
+    const holdTap = (tap) => { heldTapsRef.current = [...heldTapsRef.current, tap]; };
 
     openTableRef.current = openTable;
     if (createdAccountRef.current && openTable?.order?.id === createdAccountRef.current.id) {
@@ -119,7 +124,24 @@ export default function useTableSheet({
         const targetOrderId = preferredOrderId || t.active_order?.id || followed?.active_order?.id || null;
         let loadedOrder = null;
         setComposerOpen(false);
-        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: true, accounts: [], accountId: targetOrderId || null });
+        // `loading` es la cuenta que se está mirando (lo que la carta necesita);
+        // `accountsLoading` es el listado de cuentas de la mesa (lo que necesita
+        // saber si hay otras personas antes de dejar abrir una cuenta nueva).
+        setOpenTable({ table: t, order: null, history: null, group: t.group || null, accountTable: followed, loading: true, accountsLoading: true, accounts: [], accountId: targetOrderId || null });
+
+        // The other accounts and the history are a listing: it travels on its own
+        // and never holds the composer, which only needs the account in view. `null`
+        // means it did not answer (or answered something unusable): the sheet then
+        // keeps what it has instead of showing an empty table.
+        const listing = listOrders({ table_id: t.id, limit: 50 })
+            .then((r) => {
+                const data = r?.data;
+                if (data == null) return [];
+                if (Array.isArray(data)) return data;
+                throw new Error('listing');
+            })
+            .catch(() => null);
+
         if (targetOrderId) {
             try {
                 const { data } = await getOrder(targetOrderId);
@@ -127,26 +149,32 @@ export default function useTableSheet({
                     loadedOrder = data;
                     setOpenTable((s) => (s && s.table.id === t.id ? { ...s, order: data } : s));
                 }
-                // Un pedido a medio armar es el que la mesa retoma: ahí la carta se
-                // abre sola, sin obligar a buscar el botón.
-                if (canTake && isComposableTable(t) && canComposeAccountAt(loadedOrder, followed || t)
-                    && isComposingDraft(loadedOrder)) {
-                    setComposerOpen(true);
-                }
             } catch { /* Continue loading the optional account list. */ }
         }
-        try {
-            const { data } = await listOrders({ table_id: t.id, limit: 50 });
-            const all = data || [];
+        // The account in view is known (or there is none to know): the sheet is
+        // usable from here, whatever the listing is still doing.
+        setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+        // Un pedido a medio armar es el que la mesa retoma: ahí la carta se abre
+        // sola, sin obligar a buscar el botón.
+        if (canTake && isComposableTable(t) && canComposeAccountAt(loadedOrder, followed || t)
+            && isComposingDraft(loadedOrder)) {
+            setComposerOpen(true);
+        }
+
+        const all = await listing;
+        if (all) {
             const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
             const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? {
-                ...s, accounts: accountSnapshots({ ...s, accounts: active }, s.order), history: past,
+                ...s,
+                accounts: accountSnapshots({ ...s, accounts: active }, s.order),
+                history: past,
+                accountsLoading: false,
             } : s));
             // Sin orden objetivo pero con cuentas abiertas: seguí la primera.
             if (!targetOrderId && active.length) loadedOrder = await selectAccount(active[0].id);
-        } catch { /* historial opcional */ } finally {
-            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, loading: false } : s));
+        } else {
+            setOpenTable((s) => (s && s.table.id === t.id ? { ...s, accountsLoading: false } : s));
         }
         return loadedOrder;
     };
@@ -333,6 +361,21 @@ export default function useTableSheet({
     });
     // What the screen shows: the confirmed order plus the taps still on their way.
     const sheetOrder = sync.order;
+    const { tap: syncTap, changeLine: syncChangeLine } = sync;
+    // The account in view is known again: the taps that waited for it go in, in
+    // the order they were made. What was held for another table is dropped — the
+    // waiter moved on and those lines are not this account's.
+    useEffect(() => {
+        if (!openTable || openTable.loading || !heldTapsRef.current.length) return;
+        const tableId = openTable.table?.id;
+        const held = heldTapsRef.current;
+        heldTapsRef.current = [];
+        held.forEach((tap) => {
+            if (tap.tableId !== tableId) return;
+            if (tap.kind === 'line') void syncChangeLine(tap.item, tap.delta, tap.orderId);
+            else void syncTap(tap.product, tap.direction);
+        });
+    }, [openTable, syncTap, syncChangeLine]);
     // Other writes wait while a request is on the wire. Taps that still wait for their
     // pause are not a reason to refuse anything: whatever needs the account saved first
     // calls `settleTaps`.
@@ -356,14 +399,27 @@ export default function useTableSheet({
     };
 
     const addProductToAccount = async (product) => {
-        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        if (!canTake) return;
+        // The order is on its way to the kitchen: this tap has no account to land
+        // on yet (the screen is about to move to the next person), so it is
+        // refused out loud instead of disappearing.
+        if (sendingToKitchen) { busyToast(); return; }
+        if (openTable?.loading) {
+            holdTap({ tableId: openTable.table?.id, kind: 'tap', product, direction: 1 });
+            return;
+        }
         await sync.tap(product, 1);
     };
 
     // La cantidad de una línea concreta (el stepper del ticket).
     const changeItemQty = async (item, delta) => {
-        if (!canTake || sendingToKitchen || openTable?.loading) return;
+        if (!canTake) return;
+        if (sendingToKitchen) { busyToast(); return; }
         const orderId = openTable?.order?.id || openTable?.accountId || sync.latest()?.id || null;
+        if (openTable?.loading) {
+            holdTap({ tableId: openTable.table?.id, kind: 'line', item, delta, orderId });
+            return;
+        }
         await sync.changeLine(item, delta, orderId);
     };
 
@@ -388,7 +444,12 @@ export default function useTableSheet({
     // El "−" de la carta sólo baja lo que sigue en borrador. Si el plato ya
     // viajó a cocina, el backend lo rechaza y el camino es anularlo abajo.
     const removeProductFromAccount = async (product, item) => {
-        if (!item || !canTake || sendingToKitchen || openTable?.loading) return;
+        if (!item || !canTake) return;
+        if (sendingToKitchen) { busyToast(); return; }
+        if (openTable?.loading) {
+            holdTap({ tableId: openTable.table?.id, kind: 'tap', product, direction: -1 });
+            return;
+        }
         await sync.tap(product, -1);
     };
 
@@ -707,7 +768,10 @@ export default function useTableSheet({
     // A new independent account is created only when its first product is added.
     const startNewAccount = async () => {
         const table = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
-        if (!canTake || !isComposableTable(table) || writing() || sendingToKitchen || openTable?.loading) return;
+        // `accountsLoading`: starting an independent account before knowing whether
+        // the table already has one would create a second, incoherent one.
+        if (!canTake || !isComposableTable(table) || writing() || sendingToKitchen
+            || openTable?.loading || openTable?.accountsLoading) return;
         // Leaving the account in view saves its taps first.
         if (sync.busy() && !await settleTaps()) return;
         const leaving = freshOrder();

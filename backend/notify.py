@@ -106,6 +106,12 @@ def emit_order(restaurant_id: str, order_id: str, status: str, *, kitchen: bool 
 
     `kitchen=False` is for edits the kitchen never sees (draft lines), so the
     kitchen board and its alerts are not refetched for them.
+
+    `actor_user_id` names the user whose action caused the change, when it is
+    known. A client uses it to skip the echo of its OWN write: the write already
+    answered with the order, so re-reading the screen for it is pure cost. An
+    event without an actor (every other publisher) is treated as somebody else's
+    and refreshes as usual.
     """
     payload = {
         "type": "order",

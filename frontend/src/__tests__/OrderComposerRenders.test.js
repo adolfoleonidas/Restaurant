@@ -108,11 +108,19 @@ describe('OrderComposer card renders (CP-01)', () => {
         expect(rendersOf(33.33)).toBe(0);
     });
 
-    it('a busy composer (saving) still re-renders every card so they disable together', async () => {
-        await act(async () => root.render(<Harness />));
+    // TB-01 replaced the old rule. A save in flight used to re-render every card
+    // so they could disable together, and the waiter's tap went nowhere. Now the
+    // grid is never disabled by the screen's state: only a product that cannot be
+    // ordered (`out`) refuses the tap, and what the waiter taps while the outbox
+    // writes is held by the sheet and sent in the next batch.
+    it('saving the taps does not disable the cards', async () => {
+        await act(async () => root.render(<Harness extraProps={{ saveState: 'saving' }} />));
+        expect(q('producto-pa').disabled).toBe(false);
+        expect(q('producto-pc').disabled).toBe(false);
+
         fmtMoney.mockClear();
-        await act(async () => root.render(<Harness extraProps={{ savingItem: true }} />));
-        expect(q('producto-pa').disabled).toBe(true);
-        expect(q('producto-pc').disabled).toBe(true);
+        await act(async () => q('producto-nombre-pa').click());
+        expect(q('producto-cantidad-pa').textContent).toBe('1');
+        expect(rendersOf(33.33)).toBe(0);
     });
 });

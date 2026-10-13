@@ -166,3 +166,38 @@ def test_a_stale_version_answers_409_with_the_conflict_code(http):
 
     assert status == 409
     assert body["detail"]["code"] == "account_changed"
+
+
+def test_the_batch_publishes_an_order_event_that_names_the_waiter(http, monkeypatch):
+    """The waiter's own device has to be able to tell its own write apart.
+
+    Every batch publishes an order event. The event names the user whose action
+    caused it, so that device can skip the echo of its own write (the write
+    already answered with the whole order) while every other screen still
+    refreshes. The kitchen is not told at all: it never sees draft lines.
+    """
+    events = []
+    monkeypatch.setattr(order_routes, "emit_order", lambda *a, **k: events.append((a, k)))
+
+    status, _ = _request("PUT", URL, {"lines": [{"client_line_id": CID, "product_id": "p-sopa", "quantity": 1}]})
+
+    assert status == 200
+    assert len(events) == 1
+    args, kwargs = events[0]
+    assert args[:2] == (RID, "order-1")
+    assert kwargs["actor_user_id"] == "mozo-1"
+    assert kwargs["extra"] == "draft_lines"
+    assert kwargs["kitchen"] is False
+
+
+def test_a_counter_user_who_cannot_write_never_publishes(http, monkeypatch):
+    """A refused batch must not announce anything."""
+    _, act_as = http
+    events = []
+    monkeypatch.setattr(order_routes, "emit_order", lambda *a, **k: events.append((a, k)))
+    act_as("cajero")
+
+    status, _ = _request("PUT", URL, {"lines": [{"client_line_id": CID, "product_id": "p-sopa", "quantity": 1}]})
+
+    assert status == 403
+    assert events == []

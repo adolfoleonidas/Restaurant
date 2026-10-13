@@ -6,11 +6,21 @@ import { listProducts } from '@/lib/api/products';
 import { listCategories } from '@/lib/api/categories';
 import { renderHook, flush } from '@/test-utils/renderHook';
 
+// Filled by the mocked `useRealtimeGeneration` (the `mock` prefix is what lets
+// the hoisted factory reach it); reset per test in `beforeEach`.
+var mockSubscriptions = [];
+
 jest.mock('@/lib/api/tables', () => ({ listTables: jest.fn() }));
 jest.mock('@/lib/api/orders', () => ({ listOrders: jest.fn() }));
 jest.mock('@/lib/api/products', () => ({ listProducts: jest.fn() }));
 jest.mock('@/lib/api/categories', () => ({ listCategories: jest.fn() }));
-jest.mock('@/contexts/NotifyContext', () => ({ useRealtimeGeneration: () => 0 }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useRealtimeGeneration: (topics, filter) => {
+        mockSubscriptions.push({ topics, filter });
+        return 0;
+    },
+}));
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1' } }) }));
 
 const tables = [{ id: 't1', number: 1 }];
 const orders = [{ id: 'o1', table_id: 't1' }];
@@ -26,6 +36,7 @@ const mount = async (props) => {
 };
 
 beforeEach(() => {
+    mockSubscriptions = [];
     listTables.mockReset().mockImplementation((params) => Promise.resolve({
         data: params?.legacy_only ? [{ id: 'x' }, { id: 'y' }] : tables,
     }));
@@ -89,5 +100,41 @@ describe('useSalonData', () => {
         await flush();
         expect(listTables).toHaveBeenCalledTimes(1);
         expect(listOrders).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('useSalonData: the waiter does not re-read the floor for his own taps (TB-03)', () => {
+    const floorFilter = () => {
+        const entry = mockSubscriptions.find(({ topics }) => topics.includes('tables'));
+        return entry && entry.filter;
+    };
+
+    test('the tables and the orders ignore the draft-line echo of this same user', async () => {
+        await mount(base);
+        const filter = floorFilter();
+        expect(typeof filter).toBe('function');
+
+        // His own batch: the write already answered with the order.
+        expect(filter({ type: 'order', extra: 'draft_lines', actor_user_id: 'u1' })).toBe(false);
+        // Another waiter's batch: the floor must still follow it.
+        expect(filter({ type: 'order', extra: 'draft_lines', actor_user_id: 'mozo-2' })).toBe(true);
+        // Nobody named (an older backend): refresh, as before.
+        expect(filter({ type: 'order', extra: 'draft_lines' })).toBe(true);
+        // Anything else this user did is not an echo: it refreshes.
+        expect(filter({ type: 'order', extra: 'items_added', actor_user_id: 'u1' })).toBe(true);
+        expect(filter({ type: 'table', actor_user_id: 'u1' })).toBe(true);
+        expect(filter({})).toBe(true);
+    });
+
+    test('the orders subscription of the live list follows the same rule', async () => {
+        await mount(base);
+        // The hook subscribes again on every render, so the array holds one entry
+        // per render: every one of them carries the same rule.
+        const ownList = mockSubscriptions.filter(({ topics }) => topics.join('|') === 'orders');
+        expect(ownList.length).toBeGreaterThan(0);
+        ownList.forEach(({ filter }) => {
+            expect(filter({ extra: 'draft_lines', actor_user_id: 'u1' })).toBe(false);
+            expect(filter({ extra: 'draft_lines', actor_user_id: 'mozo-2' })).toBe(true);
+        });
     });
 });

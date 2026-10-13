@@ -22,7 +22,7 @@ from order_flow import (
     claim_order,
     version_conflict,
 )
-from routes.products import combo_components_for
+from routes.products import combo_components_map, components_from
 from routes.reports import BUSINESS_TIMEZONE
 from notify import emit_order, emit_notice
 from payment_policy import kitchen_visible, payment_label
@@ -124,19 +124,41 @@ async def _next_order_number(restaurant_id: str) -> int:
     return res.get("value", 1) if res else 1
 
 
-async def _compute_total(items: list, restaurant_id: str):
+async def _load_catalog(product_ids, restaurant_id: str):
+    """The products a request may need, in one query (plus one for the combos).
+
+    `_compute_total` used to read one product per line and then one more per combo
+    component: a batch of N new lines cost up to `N + N*K` round trips before it
+    could answer. Everything those lines can reference is known up front, so it is
+    read once here and looked up in memory. Returns `(products by id, components
+    by id)`.
+    """
+    wanted = sorted({pid for pid in product_ids if pid})
+    if not wanted:
+        return {}, {}
+    found = await db.products.find(
+        {"restaurant_id": restaurant_id, "id": {"$in": wanted}},
+        {"_id": 0},
+    ).to_list(len(wanted))
+    products = {prod["id"]: prod for prod in found}
+    return products, await combo_components_map(list(products.values()), restaurant_id)
+
+
+async def _compute_total(items: list, restaurant_id: str, catalog=None):
+    # `catalog` (see `_load_catalog`) saves a query per line; without it the
+    # products of these items are read here, one by one.
+    products, components = catalog if catalog is not None else await _load_catalog(
+        [it["product_id"] for it in items], restaurant_id
+    )
     enriched = []
     for it in items:
-        prod = await db.products.find_one(
-            {"id": it["product_id"], "restaurant_id": restaurant_id},
-            {"_id": 0}
-        )
+        prod = products.get(it["product_id"])
         if not prod:
             raise HTTPException(status_code=400, detail=f"Producto {it['product_id']} no existe")
         if not prod.get("is_available", True):
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
         line = line_subtotal(prod["price"], it["quantity"])
-        combo_components = await combo_components_for(prod, restaurant_id)
+        combo_components = components_from(prod, components)
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
         enriched.append({
@@ -625,7 +647,7 @@ def _rejected_line(client_line_id: str, code: str, detail: str) -> dict:
     return _line_result(client_line_id, "rejected", code=code, detail=detail)
 
 
-async def _create_draft_line(items: list, line, restaurant_id: str) -> dict:
+async def _create_draft_line(items: list, line, restaurant_id: str, catalog=None) -> dict:
     cid = line.client_line_id
     if line.quantity == 0:
         # Nothing to remove: asking twice for the same removal is not an error.
@@ -635,7 +657,7 @@ async def _create_draft_line(items: list, line, restaurant_id: str) -> dict:
     try:
         # Same checks and pricing as add_items: product exists, is on sale, combo is complete.
         enriched, _ = await _compute_total(
-            [{"product_id": line.product_id, "quantity": line.quantity, "notes": line.notes}], restaurant_id
+            [{"product_id": line.product_id, "quantity": line.quantity, "notes": line.notes}], restaurant_id, catalog
         )
     except HTTPException as exc:
         return _rejected_line(cid, "unavailable", str(exc.detail))
@@ -645,7 +667,7 @@ async def _create_draft_line(items: list, line, restaurant_id: str) -> dict:
     return _line_result(cid, "applied", created)
 
 
-async def _apply_draft_line(items: list, line, restaurant_id: str) -> dict:
+async def _apply_draft_line(items: list, line, restaurant_id: str, catalog=None) -> dict:
     """Bring one line of `items` to what the client asked for.
 
     A line is found by its `client_line_id` or, for lines created before batches
@@ -655,7 +677,7 @@ async def _apply_draft_line(items: list, line, restaurant_id: str) -> dict:
     cid = line.client_line_id
     match = next((it for it in items if it.get("client_line_id") == cid or it.get("id") == cid), None)
     if match is None:
-        return await _create_draft_line(items, line, restaurant_id)
+        return await _create_draft_line(items, line, restaurant_id, catalog)
     if line.product_id and match.get("product_id") != line.product_id:
         return _rejected_line(cid, "mismatch", "Esa línea es de otro producto. Vuelve a cargar el pedido.")
     quantity = int(match.get("quantity") or 0)
@@ -704,7 +726,11 @@ async def sync_draft_lines(order_id: str, data: DraftLinesBatch, user: dict = De
     if data.version is not None and data.version != o.get("updated_at"):
         raise HTTPException(status_code=409, detail=version_conflict(o))
     items = o.get("items") or []
-    results = [await _apply_draft_line(items, line, user["restaurant_id"]) for line in data.lines]
+    # Every product the batch may need, read once (2 queries) instead of once per
+    # line: the lines then apply with no round trip of their own, in the order the
+    # client sent them, over the one `items` list they all edit.
+    catalog = await _load_catalog([line.product_id for line in data.lines], user["restaurant_id"])
+    results = [await _apply_draft_line(items, line, user["restaurant_id"], catalog) for line in data.lines]
     if any(r["result"] in ("applied", "removed") for r in results):
         subtotal, total = guarded_totals(o, items)
         # One document write, guarded by the version read above: a concurrent
@@ -716,7 +742,7 @@ async def sync_draft_lines(order_id: str, data: DraftLinesBatch, user: dict = De
             "updated_at": _now(),
             **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
         })
-        emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="draft_lines", branch_id=o.get("branch_id"), kitchen=False)
+        emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="draft_lines", branch_id=o.get("branch_id"), kitchen=False, actor_user_id=user["id"])
     order = await _current_order_response(order_id, user)
     if order is not None:
         order["line_results"] = results
