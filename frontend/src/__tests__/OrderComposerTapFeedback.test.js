@@ -1,7 +1,9 @@
 /**
- * CP-03: tap feedback is CSS only. The card shrinks while pressed (`:active`,
- * transform only) instead of a React-state pulse that cost two extra commits and
- * a timer per tap; controls opt out of the double-tap-zoom delay.
+ * CP-03 + NA-01: tap feedback is CSS only and has no motion. The card changes
+ * colour the instant it is pressed (`:active`, background and border; it never
+ * moves, scales or transitions) instead of a React-state pulse that cost two
+ * extra commits and a timer per tap; controls opt out of the double-tap-zoom
+ * delay.
  */
 import React, { Profiler, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -92,13 +94,16 @@ describe('OrderComposer tap feedback (CP-03)', () => {
         expect(q('producto-menos-pa').getAttribute('aria-label')).toBe('Quitar uno de Sopa');
     });
 
-    it('index.css presses with a transform only and honours reduced motion', () => {
+    it('index.css presses with an instant background and border change, never a move or a scale', () => {
         const css = fs.readFileSync(path.resolve(__dirname, '..', 'index.css'), 'utf8');
         expect(css).not.toContain('composer-pulse');
-        expect(css).toMatch(/\.composer-card:active\s*\{[^}]*transform:\s*scale\(0?\.9\d*\)/);
-        expect(css).toMatch(/\.composer-card\s*\{[^}]*transition:\s*transform[^;}]*;/);
-        const rule = css.match(/\.composer-card\s*\{[^}]*\}/)[0];
-        expect(rule).not.toMatch(/transition:[^;]*(color|shadow|all)/);
-        expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*\.composer-card[^}]*\{[^}]*(transition:\s*none|transform:\s*none)/);
+        const pressed = css.match(/\.composer-card:active\s*\{[^}]*\}/)[0];
+        expect(pressed).toMatch(/background-color:\s*hsl\(var\(--muted\)\)/);
+        expect(pressed).toMatch(/border-color:\s*hsl\(var\(--primary\)\)/);
+        expect(pressed).not.toMatch(/transform|scale|translate|transition|animation/);
+        // The resting card declares no transition either: nothing eases in or out.
+        const resting = css.match(/\.composer-card\s*\{[^}]*\}/);
+        expect(resting === null || !/transition|animation|transform/.test(resting[0])).toBe(true);
+        expect(css).not.toMatch(/\.composer-card[^{]*\{[^}]*(transition|animation)\s*:/);
     });
 });

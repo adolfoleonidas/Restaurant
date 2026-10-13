@@ -26,7 +26,7 @@ export default function AccountCard({ activeOrders, account, currentAccountId, o
             key={account.id}
             data-testid={`mesa-sheet-pedido-${cardKey}`}
             onClick={() => { if (!isActive) selectAccount(account.id); }}
-            className={`grid min-w-0 gap-2.5 rounded-xl border bg-card p-3.5 transition-colors ${isActive ? 'border-primary' : 'cursor-pointer hover:border-primary/50'}`}
+            className={`grid min-w-0 gap-2.5 rounded-xl border bg-card p-3.5 ${isActive ? 'border-primary' : 'cursor-pointer hover:border-primary/50'}`}
         >
             <header className="flex items-start justify-between gap-2.5">
                 <div className="min-w-0">

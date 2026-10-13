@@ -128,7 +128,7 @@ export default function Landing() {
         const el = sectionRefs.current[id];
         if (el) {
             const y = el.getBoundingClientRect().top + window.pageYOffset - 130;
-            window.scrollTo({ top: y, behavior: 'smooth' });
+            window.scrollTo({ top: y, behavior: 'instant' });
         }
     };
 
@@ -201,7 +201,7 @@ export default function Landing() {
             {loading ? (
                 // Reserva el espacio de la portada para que la imagen no salte
                 // al cargar (CLS de la carta pública: 0,89 sin esto).
-                <div className="h-40 sm:h-52 md:h-64 w-full bg-secondary/50 animate-pulse" data-testid="public-cover-skeleton" aria-hidden="true" />
+                <div className="h-40 sm:h-52 md:h-64 w-full bg-secondary/50" data-testid="public-cover-skeleton" aria-hidden="true" />
             ) : restaurant?.cover_url && (
                 <section className="relative" data-testid="public-cover">
                     {/* La portada es el LCP de la carta: sin lazy, con
@@ -240,7 +240,7 @@ export default function Landing() {
                                 type="button"
                                 onClick={() => { setActiveCategory(g.category.id); scrollToCat(g.category.id); }}
                                 data-testid={`landing-cat-${g.category.id}`} aria-current={activeCategory === g.category.id ? 'location' : undefined}
-                                className={`shrink-0 snap-start rounded-full px-4 py-2 min-h-11 sm:min-h-0 inline-flex items-center text-sm font-medium border transition-colors ${activeCategory === g.category.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
+                                className={`shrink-0 snap-start rounded-full px-4 py-2 min-h-11 sm:min-h-0 inline-flex items-center text-sm font-medium border ${activeCategory === g.category.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                             >
                                 {g.category.name}
                             </button>
@@ -249,7 +249,7 @@ export default function Landing() {
                                     type="button"
                                     onClick={() => { setActiveCategory('combos'); scrollToCat('combos'); }}
                                     aria-current={activeCategory === 'combos' ? 'location' : undefined}
-                                    className={`shrink-0 snap-start rounded-full px-4 py-2 min-h-11 sm:min-h-0 inline-flex items-center text-sm font-medium border transition-colors ${activeCategory === 'combos' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
+                                    className={`shrink-0 snap-start rounded-full px-4 py-2 min-h-11 sm:min-h-0 inline-flex items-center text-sm font-medium border ${activeCategory === 'combos' ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                                 >
                                     Combos
                                 </button>

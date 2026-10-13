@@ -68,7 +68,7 @@ export default function SalesAreasDialog({ open, onOpenChange, pendingTable = nu
                                 type="button"
                                 onClick={() => chooseArea(area.key)}
                                 data-testid={`area-${area.key}`}
-                                className={`flex min-h-[96px] flex-col items-start justify-center gap-1 rounded-xl border-2 p-4 text-left transition-colors ${
+                                className={`flex min-h-[96px] flex-col items-start justify-center gap-1 rounded-xl border-2 p-4 text-left ${
                                     pickedType === area.key
                                         ? 'border-primary bg-primary/10'
                                         : 'border-border hover:border-primary hover:bg-primary/5'
@@ -90,7 +90,7 @@ export default function SalesAreasDialog({ open, onOpenChange, pendingTable = nu
                                         type="button"
                                         onClick={() => pickTable(t)}
                                         data-testid={`mesa-disponible-${t.number}`}
-                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                                        className="flex flex-col items-center justify-center p-4 rounded-lg border-2 border-border hover:border-primary hover:bg-primary/5"
                                     >
                                         <span className="font-display text-2xl font-bold">{t.number}</span>
                                         <span className="text-xs text-muted-foreground mt-1">{t.area}</span>

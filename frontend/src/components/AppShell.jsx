@@ -75,7 +75,7 @@ const NavItems = ({ items, onNav, readyCount = 0 }) => items.map((it) => (
         data-testid={`nav-${it.to.slice(1)}`}
         className={({ isActive }) =>
             // min-h-11: la fila mide 44 px, el mínimo cómodo para el dedo.
-            `flex min-h-11 items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium transition-colors ${
+            `flex min-h-11 items-center gap-3 rounded-sm px-3 py-2.5 text-sm font-medium ${
                 isActive
                     ? 'bg-primary text-primary-foreground'
                     : 'text-foreground/85 hover:bg-secondary'
@@ -115,7 +115,7 @@ const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
                         onClick={onNav}
                         data-testid="nav-mi-web"
                         title="Abrir la carta pública en otra pestaña"
-                        className="mt-3 flex min-h-11 items-center gap-3 rounded-sm border border-border px-3 py-2.5 text-sm font-medium text-foreground/85 transition-colors hover:border-primary hover:bg-secondary"
+                        className="mt-3 flex min-h-11 items-center gap-3 rounded-sm border border-border px-3 py-2.5 text-sm font-medium text-foreground/85 hover:border-primary hover:bg-secondary"
                     >
                         <Globe className="h-[18px] w-[18px]" />
                         <span>Mi página web</span>
@@ -154,7 +154,7 @@ const BottomNav = ({ items, showMore, onMore, readyCount = 0 }) => (
                     // En modo oscuro `primary` (#2463e0) sobre el fondo de la
                     // barra da 3,33:1: la etiqueta activa se aclara, como ya
                     // hace el pase de cocina con sus ámbar/azul claros.
-                    `flex min-h-touch min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-medium transition-colors ${
+                    `flex min-h-touch min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-medium ${
                         isActive ? 'text-primary dark:text-blue-300' : 'text-muted-foreground'
                     }`
                 }
@@ -180,7 +180,7 @@ const BottomNav = ({ items, showMore, onMore, readyCount = 0 }) => (
                 onClick={onMore}
                 aria-label="Más opciones"
                 data-testid="bottom-nav-more"
-                className="flex min-h-touch min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-medium text-muted-foreground transition-colors active:text-foreground"
+                className="flex min-h-touch min-w-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-xs font-medium text-muted-foreground active:text-foreground"
             >
                 <MoreHorizontal className="h-5 w-5 shrink-0" aria-hidden="true" />
                 <span className="leading-none">Más</span>
@@ -239,9 +239,9 @@ export const AppShell = () => {
                         </SheetContent>
                     </Sheet>
 
-                    {/* El pulso se mantiene en móvil (es el único indicador de
-                        que el tablero se refresca); el rótulo aparece cuando
-                        hay ancho para él. */}
+                    {/* The dot stays on mobile (it is the only sign that the
+                        board refreshes); it is static, the app has no motion.
+                        The label shows up when there is room for it. */}
                     <div className="flex flex-1 min-w-0 items-center gap-2 text-sm text-muted-foreground">
                         <span className="pulse-dot shrink-0" aria-hidden />
                         <span className="hidden font-medium sm:inline">En vivo</span>

@@ -419,7 +419,7 @@ export default function Checkout() {
                                 </div>
                             </div>
                         ) : (
-                            <label className="flex items-center justify-center border-2 border-dashed rounded-xl py-8 cursor-pointer hover:bg-secondary/30 transition-colors" data-testid="checkout-proof-dropzone">
+                            <label className="flex items-center justify-center border-2 border-dashed rounded-xl py-8 cursor-pointer hover:bg-secondary/30" data-testid="checkout-proof-dropzone">
                                 <input type="file" accept="image/*" className="hidden" onChange={onFile} />
                                 <div className="text-center text-sm text-muted-foreground">
                                     <ImageIcon className="h-8 w-8 mx-auto mb-2" />
@@ -549,7 +549,7 @@ export default function Checkout() {
                                     key={k}
                                     onClick={() => setOrderType(k)}
                                     data-testid={`checkout-tipo-${k}`}
-                                    className={`text-left rounded-xl border p-3 transition-all ${orderType === k ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-secondary/40'}`}
+                                    className={`text-left rounded-xl border p-3 ${orderType === k ? 'border-primary ring-2 ring-primary/30 bg-primary/5' : 'hover:bg-secondary/40'}`}
                                 >
                                     <v.icon className="h-5 w-5 text-primary mb-1" />
                                     <div className="font-semibold">{v.label}</div>

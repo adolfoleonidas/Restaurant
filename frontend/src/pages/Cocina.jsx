@@ -261,7 +261,7 @@ export default function Cocina() {
                             type="button"
                             onClick={() => setZone(z)}
                             data-testid={`cocina-zona-${z}`}
-                            className={`min-h-11 md:min-h-0 shrink-0 rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${zone === z ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
+                            className={`min-h-11 md:min-h-0 shrink-0 rounded-full px-4 py-1.5 text-sm font-medium border ${zone === z ? 'bg-primary text-primary-foreground border-primary' : 'bg-transparent hover:bg-secondary border-border'}`}
                         >
                             {z === 'todas' ? 'Todas' : z === 'llevar' ? 'Para llevar' : z}
                         </button>

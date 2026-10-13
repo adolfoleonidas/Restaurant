@@ -35,7 +35,7 @@ export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSe
                 type="button"
                 onClick={openTrackedSheet}
                 aria-label={`Pedido activo: Mesa ${trackedTable?.number}. ${statusSummary}`}
-                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 rounded-sm px-1 text-left transition-colors active:bg-secondary sm:min-h-9"
+                className="flex min-h-touch min-w-0 flex-1 items-center gap-2 rounded-sm px-1 text-left active:bg-secondary sm:min-h-9"
             >
                 <span
                     aria-hidden="true"

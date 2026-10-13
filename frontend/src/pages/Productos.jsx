@@ -176,7 +176,7 @@ function ImportarPlatos({ open, onOpenChange, onDone }) {
                         placeholder={'nombre\tcategoría\tprecio\tdescripción\ttiempo\timagen\tcódigo\nCausa Limeña\tEntradas\t18.00\tPuré de papa\t10\t\tCAU01'}
                         data-testid="import-text"
                     />
-                    <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-xl py-3 cursor-pointer hover:bg-secondary/30 transition-colors text-sm">
+                    <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-xl py-3 cursor-pointer hover:bg-secondary/30 text-sm">
                         <Upload className="h-4 w-4" /> Subir archivo CSV
                         <input type="file" accept=".csv,.txt,text/csv" className="hidden" onChange={onFile} data-testid="import-file" />
                     </label>

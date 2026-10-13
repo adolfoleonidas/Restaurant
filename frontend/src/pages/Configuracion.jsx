@@ -73,7 +73,7 @@ export function Temas() {
                         key={t.id}
                         onClick={() => saveTheme(t.id)}
                         disabled={saving}
-                        className={`p-4 rounded-lg border-2 text-left transition-all ${
+                        className={`p-4 rounded-lg border-2 text-left ${
                             theme === t.id 
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary/20' 
                                 : 'border-border hover:border-primary/50'

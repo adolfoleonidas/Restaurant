@@ -221,48 +221,31 @@ body,
 .state-reservada  { background: var(--brand-soft); color: var(--brand); border-color: hsl(var(--primary) / 0.3); }
 .state-inactiva   { background: var(--muted); color: var(--muted-ink); border-color: var(--line); }
 
+/* "En vivo" and loading dot. The class keeps its old name but it no longer
+   pulses: a static dot is all the app shows (the app has no motion). */
 .pulse-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background-color: var(--brand);
-    animation: pulse-soft 1.6s ease-in-out infinite;
 }
 
-@keyframes pulse-soft {
-    0%, 100% { opacity: 0.4; transform: scale(0.9); }
-    50% { opacity: 1; transform: scale(1.1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .pulse-dot { animation: none; }
-}
-
-/* Mesa tardía (Salón): borde de urgencia pulsante cuando la cuenta lleva
-   demasiado tiempo sin cobrar. */
+/* Late table (Salón): the bill has waited too long. A static indicator: a
+   destructive border and ring that never move. The card also prints the word
+   "Atrasada", so the signal is not colour only. The !important beats the
+   inline border colour that the card sets for its floor state. */
 .floor-late {
-    animation: floor-late-pulse 2s ease-in-out infinite;
-}
-@keyframes floor-late-pulse {
-    50% { box-shadow: 0 0 0 4px hsl(var(--destructive) / 0.25); }
-}
-@media (prefers-reduced-motion: reduce) {
-    .floor-late { animation: none; }
+    border-color: hsl(var(--destructive)) !important;
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.3);
 }
 
-/* Carta del mozo: la tarjeta se hunde mientras se toca un plato, para que el
-   toque se sienta respondido aunque la red tarde. Es solo CSS y solo transform
-   (no repinta ni mueve el layout): antes era estado de React y costaba dos
-   renders y un timer por toque. */
-.composer-card {
-    transition: transform 90ms ease-out;
-}
+/* Waiter's menu: the pressed dish card changes colour at once so the tap feels
+   answered even when the network is slow. Background and border only: no
+   transform and no transition. It used to be React state and cost two renders
+   and a timer per tap. */
 .composer-card:active {
-    transform: scale(0.97);
-}
-@media (prefers-reduced-motion: reduce) {
-    .composer-card { transition: none; }
-    .composer-card:active { transform: none; }
+    background-color: hsl(var(--muted));
+    border-color: hsl(var(--primary));
 }
 
 .App {

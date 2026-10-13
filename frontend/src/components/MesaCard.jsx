@@ -27,7 +27,10 @@ import { usePendingActions } from '@/contexts/PendingActionsContext';
  * `data-floor-state` and `aria-label="Requiere atencion"`.
  */
 
-const ACTION_BASE = 'touch-target-coarse min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
+// Pressed = an instant darker tone plus an inner ring. The button never moves
+// or scales, and the same two classes work on the solid, soft and outline
+// variants whose colours are set inline.
+const ACTION_BASE = 'touch-target-coarse min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold active:brightness-90 active:ring-2 active:ring-inset active:ring-black/20';
 
 // El fondo de los botones sólidos es el tono oscuro del estado (`fg`), no el
 // punto de color (`dot`): blanco sobre `dot` da 3,67:1 (Listo) y 2,95:1
@@ -146,7 +149,7 @@ export default function MesaCard({
             data-selected={picked ? 'true' : undefined}
             data-grouped={group ? 'true' : undefined}
             onClick={() => (selectMode ? onSelect(t) : onOpen(t))}
-            className={`relative rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${isLate ? 'floor-late' : ''}`}
+            className={`relative rounded-xl border-2 flex flex-col text-left cursor-pointer ${isLate ? 'floor-late' : ''}`}
             style={{
                 background: s.bg,
                 // Inherited by every child: no child repeats `color: s.fg`.
@@ -162,7 +165,7 @@ export default function MesaCard({
                 ...(group ? { borderLeftWidth: 6, borderLeftColor: '#7C6BC4' } : {}),
             }}
         >
-            <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 active:scale-[0.99] transition-transform">
+            <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 rounded-[inherit] active:bg-black/5">
                 <div className="flex items-start justify-between gap-1">
                     {groupOthers.length > 0 ? (
                         <div className="flex items-center gap-1 flex-wrap">
@@ -198,6 +201,17 @@ export default function MesaCard({
                 <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
                     <span className="text-sm font-semibold">{s.label}</span>
+                    {/* Late is a word, not only a colour: the border and ring of
+                        `.floor-late` are static, and this label says why. */}
+                    {isLate && (
+                        <span
+                            data-testid={`mesa-card-atrasada-${t.number}`}
+                            className="text-xs font-bold rounded-full px-2 py-0.5 text-white"
+                            style={{ background: '#B91C1C' }}
+                        >
+                            Atrasada
+                        </span>
+                    )}
                     {showBillBadge && (
                         <span
                             className="text-xs font-medium rounded-full px-2 py-0.5 border"

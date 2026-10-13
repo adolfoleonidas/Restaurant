@@ -48,7 +48,7 @@ function ComposerProductCard({
                     onClick={(e) => { e.stopPropagation(); onRemove(p); }}
                     aria-label={`Quitar uno de ${p.name}`}
                     data-testid={`${testIdPrefix}-producto-menos-${p.id}`}
-                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border text-muted-foreground hover:border-primary hover:text-foreground disabled:opacity-40 disabled:hover:border-border disabled:hover:text-muted-foreground"
                 >
                     <Minus className="h-4 w-4" />
                 </button>
@@ -64,7 +64,7 @@ function ComposerProductCard({
                     onClick={(e) => { e.stopPropagation(); onAdd(p); }}
                     aria-label={`Agregar uno de ${p.name}`}
                     data-testid={`${testIdPrefix}-producto-${p.id}`}
-                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                    className="touch-target-coarse touch-manipulation grid h-8 w-8 place-items-center rounded-lg border border-border hover:border-primary hover:bg-primary hover:text-primary-foreground"
                 >
                     <Plus className="h-4 w-4" />
                 </button>

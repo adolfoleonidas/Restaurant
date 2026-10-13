@@ -20,7 +20,7 @@ export default function FloorFilters({ setStateFilter, stateFilter, stateCounts,
                             onClick={() => setStateFilter(f.key)}
                             data-testid={`salon-filtro-${f.key}`}
                             title={countOf(stateCounts[f.key], 'mesa', 'mesas')}
-                            className={`touch-target-coarse shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                            className={`touch-target-coarse shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
                         >
                             {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
                         </button>
@@ -57,7 +57,7 @@ export default function FloorFilters({ setStateFilter, stateFilter, stateCounts,
                             onClick={() => setAreaFilter(a)}
                             aria-pressed={areaFilter === a}
                             data-testid={`mesas-area-${a}`}
-                            className={`shrink-0 min-h-touch rounded-sm px-3 text-sm font-medium transition-colors sm:min-h-9 ${areaFilter === a ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            className={`shrink-0 min-h-touch rounded-sm px-3 text-sm font-medium sm:min-h-9 ${areaFilter === a ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
                         >
                             {areaLabel(a)}
                         </button>

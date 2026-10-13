@@ -17,7 +17,9 @@ import { usePendingActions } from '@/contexts/PendingActionsContext';
  * else lives in the sheet, which lists members and accounts.
  */
 
-const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold transition-colors active:scale-[0.98]';
+// Pressed = an instant darker tone plus an inner ring; the button never moves
+// or scales (its colour is set inline, so a background class could not win).
+const ACTION_BASE = 'min-h-11 sm:min-h-9 rounded-lg text-sm font-semibold active:brightness-90 active:ring-2 active:ring-inset active:ring-black/20';
 
 export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpen, onOpenMember, onDeliver, onCharge }) {
     const pendingActions = usePendingActions();
@@ -43,7 +45,7 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
             data-floor-state={floor.key}
             data-grouped="true"
             onClick={() => { if (!selectMode) onOpen(); }}
-            className={`relative col-span-2 rounded-xl border-2 flex flex-col text-left transition-transform cursor-pointer ${selectMode ? 'opacity-60' : ''} ${isLate ? 'floor-late' : ''}`}
+            className={`relative col-span-2 rounded-xl border-2 flex flex-col text-left cursor-pointer ${selectMode ? 'opacity-60' : ''} ${isLate ? 'floor-late' : ''}`}
             style={{
                 background: s.bg,
                 color: s.fg,
@@ -81,6 +83,17 @@ export default function GroupCard({ unit, canServe, canCharge, selectMode, onOpe
                 <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: s.dot }} />
                     <span className="text-sm font-semibold">{s.label}</span>
+                    {/* Late is a word, not only a colour: the border and ring of
+                        `.floor-late` are static, and this label says why. */}
+                    {isLate && (
+                        <span
+                            data-testid="mesa-grupo-atrasada"
+                            className="text-xs font-bold rounded-full px-2 py-0.5 text-white"
+                            style={{ background: '#B91C1C' }}
+                        >
+                            Atrasada
+                        </span>
+                    )}
                     {accounts > 1 && (
                         <span data-testid="mesa-grupo-cuentas" className="text-xs font-medium rounded-full px-2 py-0.5 border" style={{ background: FLOOR_STYLE.cuenta.bg, color: FLOOR_STYLE.cuenta.fg, borderColor: FLOOR_STYLE.cuenta.border }}>
                             {countOf(accounts, 'cuenta', 'cuentas')}
