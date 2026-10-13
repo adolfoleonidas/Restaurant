@@ -10,6 +10,7 @@ import { ROLE_LABELS } from '@/lib/format';
 import { homeFor } from '@/lib/home';
 import { getPublicRestaurant } from '@/lib/api/public';
 import { BrandMark } from '@/components/BrandMark';
+import BuildStamp from '@/components/BuildStamp';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { apiErrorMessage } from '@/lib/apiError';
 
@@ -163,6 +164,10 @@ export default function Login() {
                             </div>
                         </div>
                     )}
+
+                    {/* La versión que corre este teléfono, sin tener que entrar:
+                        es lo primero que se mira cuando "sigue igual". */}
+                    <BuildStamp className="mt-6 text-center" prefix="login" />
                 </div>
             </div>
         </main>

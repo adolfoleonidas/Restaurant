@@ -6,6 +6,7 @@ import { isOwner as isOwnerUser, navItemsFor as permittedNavItems } from '@/lib/
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
+import BuildStamp from '@/components/BuildStamp';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
 import { AssistantBar } from '@/components/AssistantBar';
@@ -133,6 +134,9 @@ const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
                 <div className="page-kicker">En turno</div>
                 <div className="font-medium text-sm truncate mt-1">{user.full_name}</div>
                 <div className="text-xs text-muted-foreground">{ROLE_LABELS[user.role]}</div>
+                {/* Qué build está corriendo este teléfono: sin esto no hay forma de
+                    saber si quedó con una vieja guardada por el service worker. */}
+                <BuildStamp className="mt-1" prefix="nav" />
             </div>
         </div>
     );
