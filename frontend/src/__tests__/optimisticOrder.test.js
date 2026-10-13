@@ -53,6 +53,35 @@ describe('overlayPendingLines', () => {
         expect(out.items[0]).toMatchObject({ id: 'a', quantity: 3, __key: 'new:p1' });
     });
 
+    test('a new entry lands on the line the server created from its client id', () => {
+        // The first batch created the line (server id `srv`); more taps are still waiting.
+        const base = order([line('srv', 'p1', 1, { client_line_id: 'c-1' })]);
+        const out = overlayPendingLines(base, { 'new:p1': { kind: 'new', productId: 'p1', product, clientLineId: 'c-1', quantity: 4 } }, placeholder);
+        expect(out.items).toHaveLength(1);
+        expect(out.items[0]).toMatchObject({ id: 'srv', quantity: 4, subtotal: 40, __key: 'new:p1' });
+        expect(out.items[0]).not.toHaveProperty('__virtual');
+        expect(out.total).toBe(40);
+    });
+
+    test('a new entry whose line the server does not have yet is a virtual line, and zero hides the line it created', () => {
+        const none = order([]);
+        const virtual = overlayPendingLines(none, { 'new:p1': { kind: 'new', productId: 'p1', product, clientLineId: 'c-1', quantity: 2 } }, placeholder);
+        expect(virtual.items[0]).toMatchObject({ id: 'pending:new:p1', __virtual: true, quantity: 2 });
+
+        const created = order([line('srv', 'p1', 2, { client_line_id: 'c-1' })]);
+        const hidden = overlayPendingLines(created, { 'new:p1': { kind: 'new', productId: 'p1', product, clientLineId: 'c-1', quantity: 0 } }, placeholder);
+        expect(hidden.items).toEqual([]);
+        expect(hidden.total).toBe(0);
+    });
+
+    test('an entry with a client id does not touch a line of another client id', () => {
+        const base = order([line('srv', 'p1', 1, { client_line_id: 'c-other' })]);
+        const out = overlayPendingLines(base, { 'new:p1': { kind: 'new', productId: 'p1', product, clientLineId: 'c-1', quantity: 2 } }, placeholder);
+        expect(out.items).toHaveLength(2);
+        expect(out.items[0].quantity).toBe(1);
+        expect(out.items[1]).toMatchObject({ __virtual: true, quantity: 2 });
+    });
+
     test('an entry whose line is gone from the order is ignored', () => {
         const base = order([line('a', 'p1', 1)]);
         const out = overlayPendingLines(base, { 'line:z': { kind: 'line', lineId: 'z', quantity: 4 } }, placeholder);

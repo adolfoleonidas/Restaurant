@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import ComposerProductCard from '@/components/ComposerProductCard';
+import SyncStatus from '@/components/SyncStatus';
 import { setOrderNotes } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
 import { toast } from 'sonner';
@@ -78,6 +79,8 @@ export default function OrderComposer({
     products = [],
     categories = [],
     savingItem = false,
+    // 'saving' | 'unsaved' | 'idle': where the waiter's taps are (see `SyncStatus`).
+    saveState = 'idle',
     canCompose = false,
     showKitchen = false,
     testIdPrefix = 'mesa-sheet',
@@ -263,6 +266,7 @@ export default function OrderComposer({
                             {accountQty} en esta cuenta
                         </div>
                         <div className="font-mono text-sm font-semibold tabular-nums">{fmtMoney(order.total)}</div>
+                        <SyncStatus state={saveState} testId={`${testIdPrefix}-sync`} />
                     </div>
                     {showKitchen && (
                         <Button className="h-12 shrink-0" onClick={() => onSendToKitchen?.()} data-testid={`${testIdPrefix}-enviar-cocina`}>

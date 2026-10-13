@@ -1,8 +1,12 @@
 import React from 'react';
+import SyncStatus from '@/components/SyncStatus';
 import { Input } from '@/components/ui/input';
 import { personLabel } from '@/lib/orderDraft';
 
-export default function PersonStrip({ personNameEdit, aliasDraft, setAliasDraft, setPersonNameEdit, saveAlias, setSharedDraft, sharedDraft, order, t, canTake }) {
+// `saveState` ('saving' | 'unsaved' | 'idle') says where the waiter's taps are. The strip is
+// the one piece of the composer that stays at the top of the screen on a phone, so it is
+// where "Guardando…" / "Sin guardar" is read.
+export default function PersonStrip({ personNameEdit, aliasDraft, setAliasDraft, setPersonNameEdit, saveAlias, setSharedDraft, sharedDraft, order, t, canTake, saveState = 'idle' }) {
     return (
         <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2" data-testid="mesa-sheet-persona">
             {personNameEdit ? (
@@ -41,7 +45,8 @@ export default function PersonStrip({ personNameEdit, aliasDraft, setAliasDraft,
                         Para <strong>{aliasDraft.trim() || (sharedDraft ? 'Compartido' : order ? personLabel(order, 0) : `Mesa ${t.number}`)}</strong>
                     </span>
                     {canTake && (
-                        <span className="flex shrink-0 items-center gap-1">
+                        <span className="flex shrink-0 items-center gap-2">
+                            <SyncStatus state={saveState} testId="mesa-sheet-sync" />
                             <button
                                 type="button"
                                 onClick={() => setPersonNameEdit(true)}

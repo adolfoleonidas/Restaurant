@@ -21,7 +21,7 @@ export default function TableSheet({
     model, sheet, perms, data, actions,
 }) {
     const { table: t, history, loading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
-    const { composerOpen, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
+    const { composerOpen, saveState, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
     const { canTake, canServe, canCharge, canVoidItems } = perms;
     const { products, categories, branchNames, activeOrders } = data;
     const { navigate, deliver, closeAttention, requestBill, releaseTable, openCharge, openTransfer, dissolveGroup, removeGroupMember, closing, pending } = actions;
@@ -74,6 +74,7 @@ export default function TableSheet({
                                 order={order}
                                 t={t}
                                 canTake={canTake}
+                                saveState={saveState}
                             />
                         )}
                         {/* La carta se queda montada al plegarse: así conserva

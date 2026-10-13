@@ -8,15 +8,23 @@
  *
  * Entries (see `lineSyncQueue`):
  *   { kind: 'line', orderId, lineId, quantity }            an existing line
- *   { kind: 'new', productId, product, orderId, quantity } a product with no line
- *     yet; once the server creates the line the entry is bound with `lineId` and
- *     behaves like a line entry from then on.
+ *   { kind: 'new', productId, product, orderId, clientLineId, quantity }
+ *     a product with no line yet. The `clientLineId` is the id the line will have
+ *     in the batch; once the server has created it (its item carries that id as
+ *     `client_line_id`) the entry lands on that line and behaves like a line
+ *     entry from then on.
  */
 import { isCancelled, isDraft } from './orderDraft';
 
 const round = (value) => Math.round(value * 100) / 100;
 
 const hasNotes = (item) => Boolean(String(item?.notes || '').trim());
+
+/** Index of the order line an entry points at, or -1: by line id, or by the client id it was created with. */
+const lineIndexOf = (items, entry) => items.findIndex((item) => (
+    (entry.lineId && item.id === entry.lineId)
+    || (entry.clientLineId && item.client_line_id === entry.clientLineId)
+));
 
 /** Draft lines of the product with no notes: what a "+" merges into. */
 export function plainDraftLines(order, productId) {
@@ -52,9 +60,8 @@ export function overlayPendingLines(order, entries, placeholder) {
 
     list.forEach(([key, entry]) => {
         const quantity = Math.max(0, Number(entry.quantity || 0));
-        if (entry.lineId) {
-            const index = items.findIndex((item) => item.id === entry.lineId);
-            if (index < 0) return;
+        const index = lineIndexOf(items, entry);
+        if (index >= 0) {
             const item = items[index];
             const subtotal = round(unitPrice(item) * quantity);
             total += subtotal - Number(item.subtotal || 0);
@@ -63,6 +70,8 @@ export function overlayPendingLines(order, entries, placeholder) {
             else items[index] = { ...item, quantity, subtotal, __key: key };
             return;
         }
+        // The line this entry pointed at is gone from the order: nothing to show.
+        if (entry.lineId) return;
         if (entry.kind !== 'new' || quantity === 0) return;
         const price = Number(entry.product?.price || 0);
         const subtotal = round(price * quantity);

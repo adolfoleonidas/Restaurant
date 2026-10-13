@@ -4,14 +4,18 @@
  * - Optional account identity above the product catalog.
  * - One inline draft ticket with quantity, notes, clear, and send controls.
  * - The ticket send action opens review; only explicit confirmation submits.
+ *
+ * Taps are saved in one batch (`PUT /orders/:id/draft-lines`) when the waiter
+ * pauses (BS-02): `savePendingTaps()` plays that pause on fake timers.
  */
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
+import { ORDER_SYNC_DELAY_MS } from '@/lib/lineSyncQueue';
 import { toast } from 'sonner';
 
-jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
+jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: mockRole } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({
     useNotify: () => ({ generation: 0 }),
@@ -66,6 +70,22 @@ async function click(el) {
     await act(async () => el.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 }
 
+// The waiter pauses: the window runs out and the batch of taps goes out.
+async function savePendingTaps() {
+    await act(async () => {
+        jest.advanceTimersByTime(ORDER_SYNC_DELAY_MS);
+        for (let i = 0; i < 30; i += 1) await Promise.resolve();
+    });
+}
+
+/** The request the endpoint of a batch receives. */
+const batch = (...lines) => [
+    expect.stringMatching(/\/orders\/[^/]+\/draft-lines$/),
+    { lines },
+    { timeout: 15000 },
+];
+const newLine = (productId, quantity = 1) => ({ client_line_id: expect.any(String), product_id: productId, quantity });
+
 async function type(input, value) {
     await act(async () => {
         const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -96,14 +116,18 @@ describe('compositor · paridad posView (S8)', () => {
     let sheet;
 
     beforeEach(() => {
+        jest.useFakeTimers();
+        localStorage.clear();
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
         api.post.mockReset();
         api.patch.mockReset();
+        api.put.mockReset();
         api.delete.mockReset();
         api.patch.mockResolvedValue({ data: {} });
         api.post.mockResolvedValue({ data: {} });
+        api.put.mockResolvedValue({ data: {} });
         mockProducts.splice(0, mockProducts.length,
             { id: 'prod-n1', name: 'Ceviche', price: 38, is_available: true, category_id: 'c1' });
         mockOrders.splice(0, mockOrders.length);
@@ -116,6 +140,7 @@ describe('compositor · paridad posView (S8)', () => {
         container = null;
         sheet = null;
         document.body.innerHTML = '';
+        jest.useRealTimers();
     });
 
     it('muestra la franja "Para {persona}" con renombre reusando el alias existente', async () => {
@@ -154,11 +179,12 @@ describe('compositor · paridad posView (S8)', () => {
         });
         api.post.mockImplementation((url) => {
             if (url === '/orders') return Promise.resolve({ data: nextAccount });
-            if (url === '/orders/order-2/items') {
-                nextAccount.items = [item('next-1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })];
-                return Promise.resolve({ data: nextAccount });
-            }
             return Promise.resolve({ data: {} });
+        });
+        api.put.mockImplementation((url, body) => {
+            if (url !== '/orders/order-2/draft-lines') return Promise.resolve({ data: {} });
+            nextAccount.items = [item('next-1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1', client_line_id: body.lines[0].client_line_id })];
+            return Promise.resolve({ data: { ...nextAccount, line_results: [] } });
         });
         await click(sheet.querySelector('[data-testid="mesa-sheet-renombrar-11"]'));
         const name = sheet.querySelector('[data-testid="mesa-sheet-renombrar-input-11"]');
@@ -183,8 +209,10 @@ describe('compositor · paridad posView (S8)', () => {
         await click(product);
 
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
-        expect(api.post).toHaveBeenCalledWith('/orders/order-2/items', [{ product_id: 'prod-n1', quantity: 1 }]);
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/items', expect.anything());
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-2/draft-lines');
+        expect(api.put).not.toHaveBeenCalledWith('/orders/order-1/draft-lines', expect.anything(), expect.anything());
         expect(api.patch).not.toHaveBeenCalledWith('/orders/order-1/items/draft-1', expect.anything());
         expect(api.delete).not.toHaveBeenCalled();
         window.confirm.mockReturnValue(true);
@@ -236,12 +264,13 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([first]));
         api.get.mockImplementation((url) => Promise.resolve({ data: url === '/orders/order-next' ? next : first }));
         api.post.mockImplementation(async (url) => {
-            if (url === '/orders/order-next/items') {
-                next = { ...next, items: [item('d1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })] };
-            }
             if (url === '/orders/order-next/send-to-kitchen') {
                 next = { ...next, status: 'enviado_cocina', items: [{ ...next.items[0], status: 'pendiente' }] };
             }
+            return { data: next };
+        });
+        api.put.mockImplementation(async () => {
+            next = { ...next, items: [item('d1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })] };
             return { data: next };
         });
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
@@ -249,6 +278,8 @@ describe('compositor · paridad posView (S8)', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-next/send-to-kitchen');
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
+        // The confirmation saves the waiting tap first (no pause needed) and then sends.
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
         expect(api.post).toHaveBeenCalledWith('/orders/order-next/send-to-kitchen');
         expect(api.patch).not.toHaveBeenCalled();
         expect(sheet.querySelector('[data-testid="mesa-sheet-pedido-21"]').textContent).toContain('Juan');
@@ -435,6 +466,12 @@ describe('compositor · paridad posView (S8)', () => {
     it('mobile keeps exactly one ticket send action with inline editing and review cancellation', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')], { customer_name: 'Juan' });
         api.patch.mockResolvedValue({ data: {} });
+        api.put.mockImplementation(async (url, body) => {
+            draft.items[0].quantity = body.lines[0].quantity;
+            draft.items[0].subtotal = body.lines[0].quantity * 12;
+            draft.total = draft.items[0].subtotal;
+            return { data: { ...draft, items: draft.items.map((entry) => ({ ...entry })), line_results: [] } };
+        });
         ({ container, root, sheet } = await openTableWith([draft]));
         window.confirm = jest.fn().mockReturnValue(false);
 
@@ -461,7 +498,9 @@ describe('compositor · paridad posView (S8)', () => {
         expect(inlineTicket.querySelector('[data-testid="mesa-sheet-item-menos-i1"]')).not.toBeNull();
         expect(inlineTicket.querySelector('[data-testid="mesa-sheet-item-nota-i1"]')).not.toBeNull();
         await click(inlineTicket.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
-        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 3 });
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch({ client_line_id: 'i1', quantity: 3 }));
+        expect(api.patch).not.toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 3 });
         await click(inlineTicket.querySelector('[data-testid="mesa-sheet-item-nota-i1"]'));
         const itemNotes = inlineTicket.querySelector('[data-testid="mesa-sheet-item-notas-i1"]');
         await type(itemNotes, 'Sin cebolla');
@@ -484,24 +523,26 @@ describe('compositor · paridad posView (S8)', () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
         let resolveWrite;
-        api.patch.mockReturnValue(new Promise((resolve) => { resolveWrite = resolve; }));
+        api.put.mockReturnValue(new Promise((resolve) => { resolveWrite = resolve; }));
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
-        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 3 });
-        // The ticket already shows the tapped quantity (3 x 12) while the write is pending.
+        // The tap is on the device: the ticket already shows 3 x 12 and nothing has been written yet.
+        expect(api.put).not.toHaveBeenCalled();
         expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]').textContent).toContain('S/ 36.00');
 
-        // The review opens at once with the optimistic quantity; "Vaciar" stays guarded.
+        // The review opens at once with the optimistic quantity.
         await click(sheet.querySelector('[data-testid="mesa-sheet-ticket"] [data-testid="mesa-sheet-enviar-cocina"]'));
-        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).not.toBeNull();
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]').textContent).toContain('3× Sopa');
-        expect(window.confirm).not.toHaveBeenCalled();
-        expect(api.delete).not.toHaveBeenCalled();
 
-        // Confirming does not send until the write is saved.
+        // Confirming does not wait for the pause: it saves the tap now, and sends only once it is saved.
         api.post.mockResolvedValue({ data: { ...draft, status: 'enviado_cocina' } });
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
+        expect(api.put).toHaveBeenCalledWith(...batch({ client_line_id: 'i1', quantity: 3 }));
         expect(api.post).not.toHaveBeenCalled();
+        // While it is sending, "Vaciar" stays guarded.
+        await click(sheet.querySelector('[data-testid="mesa-sheet-vaciar"]'));
+        expect(window.confirm).not.toHaveBeenCalled();
+        expect(api.delete).not.toHaveBeenCalled();
         await act(async () => resolveWrite({ data: {} }));
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
         expect(api.post).toHaveBeenCalledTimes(1);
@@ -511,13 +552,13 @@ describe('compositor · paridad posView (S8)', () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 1, 38, 'borrador', { product_id: 'prod-n1' })]);
         ({ container, root, sheet } = await openTableWith([draft]));
         const releases = [];
-        // The fake server applies each write when the test releases it.
-        api.patch.mockImplementation((url, body) => new Promise((resolve) => {
+        // The fake server applies each batch when the test releases it.
+        api.put.mockImplementation((url, body) => new Promise((resolve) => {
             releases.push(() => {
-                draft.items[0].quantity = body.quantity;
-                draft.items[0].subtotal = body.quantity * 38;
+                draft.items[0].quantity = body.lines[0].quantity;
+                draft.items[0].subtotal = body.lines[0].quantity * 38;
                 draft.total = draft.items[0].subtotal;
-                resolve({ data: {} });
+                resolve({ data: { ...draft, items: draft.items.map((entry) => ({ ...entry })), line_results: [] } });
             });
         }));
         const plus = () => sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]');
@@ -526,36 +567,84 @@ describe('compositor · paridad posView (S8)', () => {
 
         await click(plus());
         expect(qty()).toBe('2');
-        // The control stays enabled while the first save is in flight.
+        // The control stays enabled while the taps wait for their batch.
         expect(plus().disabled).toBe(false);
         await click(plus());
         await click(plus());
         expect(qty()).toBe('4');
         expect(send().textContent).toContain('S/ 152.00');
-        expect(api.patch).toHaveBeenCalledTimes(1);
-        expect(api.patch).toHaveBeenLastCalledWith('/orders/order-1/items/i1', { quantity: 2 });
+        // Nothing is written while the waiter is tapping...
+        expect(api.put).not.toHaveBeenCalled();
+        // ...and the pause sends the net quantity once.
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledTimes(1);
+        expect(api.put).toHaveBeenLastCalledWith(...batch({ client_line_id: 'i1', quantity: 4 }));
 
+        // A tap made while that batch is in flight waits for the next one; the screen never dips back.
+        await click(plus());
+        expect(qty()).toBe('5');
         await act(async () => releases.shift()());
-        // One follow-up request carries the net quantity, and the screen never dips back.
-        expect(api.patch).toHaveBeenCalledTimes(2);
-        expect(api.patch).toHaveBeenLastCalledWith('/orders/order-1/items/i1', { quantity: 4 });
-        expect(qty()).toBe('4');
+        expect(qty()).toBe('5');
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledTimes(2);
+        expect(api.put).toHaveBeenLastCalledWith(...batch({ client_line_id: 'i1', quantity: 5 }));
         await act(async () => releases.shift()());
-        expect(qty()).toBe('4');
+        expect(qty()).toBe('5');
     });
 
     it('UX-14 a failed save puts the card back to the confirmed quantity and shows one toast', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Ceviche', 2, 38, 'borrador', { product_id: 'prod-n1' })]);
         ({ container, root, sheet } = await openTableWith([draft]));
-        api.patch.mockRejectedValue({ response: { data: { detail: 'Pedido cerrado' } } });
+        api.put.mockRejectedValue({ response: { status: 400, data: { detail: 'Pedido cerrado' } } });
         const qty = () => sheet.querySelector('[data-testid="mesa-sheet-producto-cantidad-prod-n1"]').textContent;
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]'));
-        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+        expect(qty()).toBe('3');
+        await savePendingTaps();
         expect(qty()).toBe('2');
         expect(toast.error).toHaveBeenCalledTimes(1);
         expect(toast.error).toHaveBeenCalledWith('Pedido cerrado');
         expect(sheet.querySelector('[data-testid="mesa-sheet-producto-prod-n1"]').disabled).toBe(false);
+    });
+
+    it('BS-03 the person strip says "Sin guardar" while a tap waits, "Guardando…" while the batch is on its way, then nothing', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        let release;
+        api.put.mockReturnValue(new Promise((resolve) => { release = () => resolve({ data: { ...draft, line_results: [] } }); }));
+        const status = () => sheet.querySelector('[data-testid="mesa-sheet-persona"] [data-testid="mesa-sheet-sync"]');
+
+        expect(status().textContent).toBe('');
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        expect(status().textContent).toBe('Sin guardar');
+        await savePendingTaps();
+        expect(status().textContent).toBe('Guardando…');
+        await act(async () => release());
+        expect(status().textContent).toBe('');
+    });
+
+    it('BS-03 a connection that fails keeps the taps on the device and saves them when it comes back', async () => {
+        const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
+        ({ container, root, sheet } = await openTableWith([draft]));
+        api.put.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', request: {} }));
+        api.put.mockResolvedValue({ data: { ...draft, line_results: [] } });
+        const status = () => sheet.querySelector('[data-testid="mesa-sheet-persona"] [data-testid="mesa-sheet-sync"]');
+
+        await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        await savePendingTaps();
+
+        // Nothing is rolled back; the screen says so once, and the tap is on the device, for this user and order.
+        expect(sheet.querySelector('[data-testid="mesa-sheet-ticket"]').textContent).toContain('S/ 36.00');
+        expect(status().textContent).toBe('Sin guardar');
+        expect(toast.error).toHaveBeenCalledTimes(1);
+        expect(toast.error.mock.calls[0][0]).toMatch(/Sin conexión/);
+        const stored = JSON.parse(localStorage.getItem('restoflow:outbox:v1:staff-1:order-1'));
+        expect(stored.entries).toEqual([expect.objectContaining({ key: 'line:i1', lineId: 'i1', quantity: 3, attempted: true })]);
+
+        await act(async () => { window.dispatchEvent(new Event('online')); });
+        expect(api.put).toHaveBeenCalledTimes(2);
+        expect(status().textContent).toBe('');
+        expect(localStorage.getItem('restoflow:outbox:v1:staff-1:order-1')).toBeNull();
     });
 
     it('sends from the inline draft ticket after review confirmation', async () => {
@@ -608,8 +697,9 @@ describe('compositor · paridad posView (S8)', () => {
 
         // Gesto real: tocar la tarjeta (el botón de nombre).
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+        await savePendingTaps();
 
-        expect(api.patch).toHaveBeenCalledWith('/orders/order-1/items/i1', { quantity: 2 });
+        expect(api.put).toHaveBeenCalledWith(...batch({ client_line_id: 'i1', quantity: 2 }));
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-1/items', expect.anything());
     });
 
@@ -619,8 +709,10 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([sent]));
         await click(sheet.querySelector('[data-testid="mesa-sheet-pedido-11"] [data-testid="mesa-sheet-editar-pedido"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+        await savePendingTaps();
         // Lo enviado no se toca: la unidad nueva entra como línea aparte.
-        expect(api.post).toHaveBeenCalledWith('/orders/order-1/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put).not.toHaveBeenCalledWith(...batch({ client_line_id: 'i1', quantity: 2 }));
     });
 
     it('S9c: no fusiona con líneas que tienen nota', async () => {
@@ -628,8 +720,10 @@ describe('compositor · paridad posView (S8)', () => {
         api.post.mockResolvedValue({ data: {} });
         ({ container, root, sheet } = await openTableWith([noted]));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
+        await savePendingTaps();
         // Una línea con nota no absorbe unidades sin nota.
-        expect(api.post).toHaveBeenCalledWith('/orders/order-2/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-2/draft-lines');
     });
 
     it('S9c: el − del borrador decrementa y borra la línea al llegar a 0', async () => {
@@ -638,7 +732,10 @@ describe('compositor · paridad posView (S8)', () => {
         ({ container, root, sheet } = await openTableWith([draft]));
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-menos-i1"]'));
-        expect(api.delete).toHaveBeenCalledWith('/orders/order-1/items/i1');
+        await savePendingTaps();
+        // One unit left: the batch carries a quantity of 0 for the line, which removes it.
+        expect(api.put).toHaveBeenCalledWith(...batch({ client_line_id: 'i1', quantity: 0 }));
+        expect(api.delete).not.toHaveBeenCalled();
     });
 
     it('S12: lo enviado va en su bloque `.sent` con el tag del pedido y líneas peladas', async () => {
@@ -727,7 +824,7 @@ describe('compositor · paridad posView (S8)', () => {
     it('la revisión usa el snapshot actualizado, no la cuenta histórica del listado', async () => {
         const initial = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 1, 12, 'borrador')], { customer_name: 'Juan' });
         const current = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 3, 12, 'borrador')], { customer_name: 'Juan' });
-        api.patch.mockResolvedValue({ data: {} });
+        api.put.mockResolvedValue({ data: {} });
         ({ container, root, sheet } = await openTableWith([initial]));
         api.get.mockImplementation((url) => {
             if (url === '/branches') return Promise.resolve({ data: [] });
@@ -736,6 +833,8 @@ describe('compositor · paridad posView (S8)', () => {
         });
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-item-mas-i1"]'));
+        // The batch answers without an order, so the account is read once more: the freshest one wins.
+        await savePendingTaps();
         await click(sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]'));
         const review = document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]');
 
@@ -809,14 +908,18 @@ describe('edición explícita de borradores (T04)', () => {
     let container;
 
     beforeEach(() => {
+        jest.useFakeTimers();
+        localStorage.clear();
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
         api.post.mockReset();
         api.patch.mockReset();
+        api.put.mockReset();
         api.delete.mockReset();
         api.post.mockResolvedValue({ data: {} });
         api.patch.mockResolvedValue({ data: {} });
+        api.put.mockResolvedValue({ data: {} });
         mockProducts.splice(0, mockProducts.length,
             { id: 'prod-n1', name: 'Ceviche', price: 38, is_available: true, category_id: 'c1' });
     });
@@ -826,6 +929,7 @@ describe('edición explícita de borradores (T04)', () => {
         root = null;
         container = null;
         document.body.innerHTML = '';
+        jest.useRealTimers();
     });
 
     it('permite editar solo la cuenta pulsada en una mesa con varias cuentas', async () => {
@@ -845,7 +949,9 @@ describe('edición explícita de borradores (T04)', () => {
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
-        expect(api.post).toHaveBeenCalledWith('/orders/order-mixed/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-mixed/draft-lines');
         expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
         expect(api.post).not.toHaveBeenCalledWith(expect.stringMatching(/\/kitchen|\/send/), expect.anything());
     });
@@ -861,7 +967,9 @@ describe('edición explícita de borradores (T04)', () => {
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
-        expect(api.post).toHaveBeenCalledWith('/orders/order-sent/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-sent/draft-lines');
         expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
         expect(api.patch).not.toHaveBeenCalledWith('/orders/order-sent/items/s1', expect.anything());
         expect(container.querySelector('[data-testid="mesa-sheet-item-mas-s1"]')).toBeNull();
@@ -911,7 +1019,9 @@ describe('edición explícita de borradores (T04)', () => {
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
-        expect(api.post).toHaveBeenCalledWith('/orders/order-stale/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-stale/draft-lines');
         expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
     });
 
@@ -965,7 +1075,9 @@ describe('edición explícita de borradores (T04)', () => {
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
-        expect(api.post).toHaveBeenCalledWith('/orders/order-second/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-second/draft-lines');
     });
 
     it('blocks switching targets while an optional card name is being saved', async () => {
@@ -1016,8 +1128,10 @@ describe('edición explícita de borradores (T04)', () => {
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
-        expect(api.post).toHaveBeenCalledWith('/orders/order-next/items', [{ product_id: 'prod-n1', quantity: 1 }]);
-        expect(api.post).not.toHaveBeenCalledWith('/orders/order-first/items', expect.anything());
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-next/draft-lines');
+        expect(api.put).not.toHaveBeenCalledWith('/orders/order-first/draft-lines', expect.anything(), expect.anything());
     });
 
     it('keeps draft card names visible and optional without changing shared identity', async () => {
@@ -1082,12 +1196,14 @@ describe('edición explícita de borradores (T04)', () => {
         const product = sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
         if (entry === 'new order') {
             expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-2', order_type: 'mesa', new_account: true });
-            expect(api.post).toHaveBeenCalledWith('/orders/order-next/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+            expect(api.put.mock.calls[0][0]).toBe('/orders/order-next/draft-lines');
         } else {
             expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
-            expect(api.post).toHaveBeenCalledWith('/orders/order-owner/items', [{ product_id: 'prod-n1', quantity: 1 }]);
+            expect(api.put.mock.calls[0][0]).toBe('/orders/order-owner/draft-lines');
         }
         expect(owner).toEqual(expect.objectContaining({ table_id: 'table-1', attention_id: 'att-1', customer_name: 'Juan', shared: true }));
     });

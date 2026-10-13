@@ -9,6 +9,7 @@ import { BrandMark } from '@/components/BrandMark';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
 import { AssistantBar } from '@/components/AssistantBar';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { RoleInbox } from '@/components/RoleInbox';
 import { NotifyProvider } from '@/contexts/NotifyContext';
 import useReadyDishes from '@/hooks/useReadyDishes';
@@ -17,11 +18,17 @@ import {
     Package, Users, Settings, LogOut, Menu, CreditCard, Store, Globe, MoreHorizontal,
 } from 'lucide-react';
 import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 import { getRestaurant } from '@/lib/api/restaurant';
+import { flushAllOutboxes, hasPendingOutbox } from '@/lib/outboxRegistry';
+import { replayStoredOutboxes } from '@/lib/outboxReplay';
 
 // Cuántos destinos caben en la barra inferior del móvil. El resto queda a un
 // toque, en la misma hoja lateral que abre la hamburguesa ("Más").
 const BOTTOM_NAV_MAX = 4;
+
+// How long logging out waits for the last taps to reach the server before it asks.
+const LOGOUT_FLUSH_MS = 2500;
 
 // The menu entries (who sees what) live in lib/permissions, next to the route
 // guards. The shell only knows how to draw them.
@@ -201,8 +208,47 @@ export const AppShell = () => {
         return () => { active = false; };
     }, []);
     const [open, setOpen] = useState(false);
+    const [confirmLogout, setConfirmLogout] = useState(false);
     const navigate = useNavigate();
     const items = useMemo(() => (user ? navItemsFor(user) : []), [user]);
+
+    // What the last session left unconfirmed on this device (taps that never reached the
+    // server: a reload, a crash, no signal) is saved as soon as the app opens for that user
+    // and whenever the connection comes back.
+    const userId = user?.id;
+    useEffect(() => {
+        if (!userId) return undefined;
+        let active = true;
+        const replay = async () => {
+            const summary = await replayStoredOutboxes(userId);
+            if (active && summary.rejected > 0) {
+                toast.error('Algunos productos que no se habían guardado ya no se pudieron agregar al pedido.');
+            }
+        };
+        void replay();
+        window.addEventListener('online', replay);
+        return () => {
+            active = false;
+            window.removeEventListener('online', replay);
+        };
+    }, [userId]);
+
+    const leave = () => {
+        logout();
+        navigate('/login');
+    };
+    // Logging out drops the screen that holds the unsaved taps: they get a moment to
+    // reach the server first, and only if they cannot is the waiter asked.
+    const requestLogout = async () => {
+        if (hasPendingOutbox()) {
+            await flushAllOutboxes({ timeoutMs: LOGOUT_FLUSH_MS });
+            if (hasPendingOutbox()) {
+                setConfirmLogout(true);
+                return;
+            }
+        }
+        leave();
+    };
     // El badge vive en Salón (como el #bReady del prototipo): se pollea sólo
     // para quien tiene ese destino en su navegación.
     const readyCount = useReadyDishes(items.some((n) => n.to === '/salon'));
@@ -265,7 +311,7 @@ export const AppShell = () => {
                             size="icon"
                             className="shrink-0 rounded-sm sm:h-8 sm:w-auto sm:px-3"
                             aria-label="Salir"
-                            onClick={() => { logout(); navigate('/login'); }}
+                            onClick={requestLogout}
                             data-testid="logout-button"
                         >
                             <LogOut className="h-4 w-4 sm:mr-1.5" />
@@ -285,6 +331,16 @@ export const AppShell = () => {
             </div>
 
             <BottomNav items={bottomItems} showMore={hasMore} onMore={() => setOpen(true)} readyCount={readyCount} />
+
+            <ConfirmDialog
+                open={confirmLogout}
+                title="Tienes pedidos sin guardar"
+                description="Algunos productos que tomaste todavía no llegaron al servidor. Si sales ahora, no se enviarán hasta que vuelvas a entrar."
+                confirmLabel="Salir igual"
+                cancelLabel="Quedarme"
+                onConfirm={() => { setConfirmLogout(false); leave(); }}
+                onCancel={() => setConfirmLogout(false)}
+            />
 
             {/* En móvil la barra inferior tapa los avisos si quedan pegados al
                 borde, así que se levantan por encima de ella. */}

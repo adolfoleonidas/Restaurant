@@ -30,6 +30,8 @@ const CASES = [
     ['getKitchenOrders', () => orders.getKitchenOrders(), 'get', ['/orders/kitchen']],
     ['createOrder', () => orders.createOrder({ x: 1 }), 'post', ['/orders', { x: 1 }]],
     ['addOrderItems', () => orders.addOrderItems('o1', [{ product_id: 'p' }]), 'post', ['/orders/o1/items', [{ product_id: 'p' }]]],
+    ['saveDraftLines', () => orders.saveDraftLines('o1', [{ client_line_id: 'c1', quantity: 2 }]), 'put',
+        ['/orders/o1/draft-lines', { lines: [{ client_line_id: 'c1', quantity: 2 }] }, { timeout: 15000 }]],
     ['updateOrderItem', () => orders.updateOrderItem('o1', 'i1', { quantity: 2 }), 'patch', ['/orders/o1/items/i1', { quantity: 2 }]],
     ['removeOrderItem', () => orders.removeOrderItem('o1', 'i1'), 'delete', ['/orders/o1/items/i1']],
     ['voidOrderItem', () => orders.voidOrderItem('o1', 'i1', { reason: 'r' }), 'post', ['/orders/o1/items/i1/void', { reason: 'r' }]],
