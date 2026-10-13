@@ -19,7 +19,7 @@ from attention_acceptance import AttentionAcceptanceError, capture_attention_con
 from attention_presentation import public_attention_reference
 from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token, sign_table
 from payment_policy import collection_policy, needs_counter_verification, order_acceptance
-from routes.products import combo_components_for
+from routes.products import combo_components_for, combo_components_map, components_from
 from notify import CLOSED, emit_order, emit_notice, subscribe, unsubscribe, public_allowed
 
 router = APIRouter()
@@ -330,9 +330,11 @@ async def public_products():
         {"restaurant_id": r["id"]},
         {"_id": 0}
     ).sort("name", 1).to_list(500)
+    # Every combo of the menu is resolved with one query, not one per component.
+    components = await combo_components_map(items, r["id"])
     for item in items:
         if item.get("is_combo"):
-            comps = await combo_components_for(item, r["id"])
+            comps = components_from(item, components)
             item["combo_components"] = comps
             item["components_available"] = len(comps) > 0 and all(c.get("is_available", True) for c in comps)
     return items
