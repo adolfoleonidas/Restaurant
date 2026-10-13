@@ -96,6 +96,16 @@ def test_free_text_is_length_limited():
     assert OrderCreate(notes="x" * 500, customer_name="n" * 100).notes == "x" * 500
 
 
+def test_a_staff_request_id_is_a_short_token_the_client_made_up():
+    uuid = "6b0f4f0e-0f6a-4f0e-9a52-0d1f3a6e0001"
+    without_crypto = "c-lk3j2h1g-abcdefghij-xyz123"  # what frontend/src/lib/clientId.js makes with no crypto
+    assert OrderCreate().request_id is None
+    for good in (uuid, without_crypto, "a" * 8, "a" * 64, "A.b_c:d-1"):
+        assert OrderCreate(request_id=good).request_id == good
+    for bad in ("", "a" * 7, "a" * 65, "has space", "semi;colon-1", "ñandú-ñandú", "id/with/slash"):
+        _invalid(OrderCreate, request_id=bad)
+
+
 def test_item_lists_are_capped():
     items = [OrderItemInput(product_id="p")] * 100
     assert len(OrderCreate(items=items).items) == 100

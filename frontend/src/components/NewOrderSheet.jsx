@@ -67,10 +67,13 @@ export default function NewOrderSheet({
     };
 
     // La orden nace con el primer producto, igual que en la mesa.
-    const ensureOrder = async () => {
+    // `requestId` names this one creation: if the answer was lost and the queue tries again it
+    // repeats the same id, and the server hands back the order it already made.
+    const ensureOrder = async ({ requestId } = {}) => {
         if (order?.id) return order.id;
         if (createdOrderRef.current) return createdOrderRef.current;
         const payload = { order_type: type };
+        if (requestId) payload.request_id = requestId;
         if (customerName.trim()) payload.customer_name = customerName.trim();
         if (customerPhone.trim()) payload.customer_phone = customerPhone.trim();
         if (type === 'delivery') {

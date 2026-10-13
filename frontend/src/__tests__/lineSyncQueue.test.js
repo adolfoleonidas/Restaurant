@@ -315,6 +315,97 @@ describe('a line with no order yet', () => {
     });
 });
 
+describe('the request id of an order creation', () => {
+    // What the server needs to recognise a retry: one id per creation, repeated while it is retried.
+    const want = (queue, key = 'new:p1') => {
+        queue.set(key, { kind: 'new', productId: key.slice(4), orderId: null, quantity: 1 });
+    };
+    const idsOf = (resolveOrder) => resolveOrder.mock.calls.map(([context]) => context?.requestId);
+
+    test('every retry of one creation sends the same id; the next account sends another', async () => {
+        const resolveOrder = jest.fn()
+            .mockRejectedValueOnce(networkError())
+            .mockRejectedValueOnce(networkError())
+            .mockResolvedValue('o9');
+        const { queue } = make({ resolveOrder });
+        want(queue);
+        await settle();
+        // The answer never arrived twice: the server may already hold the order.
+        await queue.flush();
+        await queue.flush();
+
+        expect(resolveOrder).toHaveBeenCalledTimes(3);
+        const [first, second, third] = idsOf(resolveOrder);
+        expect(first).toMatch(/^[A-Za-z0-9._:-]{8,64}$/);
+        expect([second, third]).toEqual([first, first]);
+
+        // The order exists now. Another account is another creation.
+        want(queue, 'new:p2');
+        await settle();
+        expect(resolveOrder).toHaveBeenCalledTimes(4);
+        expect(idsOf(resolveOrder)[3]).toMatch(/^[A-Za-z0-9._:-]{8,64}$/);
+        expect(idsOf(resolveOrder)[3]).not.toBe(first);
+    });
+
+    test('two products tapped before the order exists ask for it once, with one id', async () => {
+        const gate = deferred();
+        const resolveOrder = jest.fn(() => gate.promise);
+        const { queue } = make({ resolveOrder });
+        want(queue, 'new:p1');
+        want(queue, 'new:p2');
+        await settle();
+
+        expect(resolveOrder).toHaveBeenCalledTimes(1);
+        expect(idsOf(resolveOrder)[0]).toEqual(expect.any(String));
+        gate.resolve('o9');
+        await settle();
+    });
+
+    test('a creation the server refused leaves its id behind', async () => {
+        const resolveOrder = jest.fn()
+            .mockRejectedValueOnce(httpError(409, 'Esa solicitud ya se usó para otro pedido. Vuelve a intentarlo.'))
+            .mockResolvedValue('o9');
+        const { queue, onError } = make({ resolveOrder });
+        want(queue);
+        await settle();
+        expect(onError).toHaveBeenCalledTimes(1);
+
+        want(queue, 'new:p2');
+        await settle();
+        const ids = idsOf(resolveOrder);
+        expect(ids).toHaveLength(2);
+        expect(ids[1]).not.toBe(ids[0]);
+    });
+
+    test('an answer of "no order wanted" ends the creation too', async () => {
+        const resolveOrder = jest.fn().mockResolvedValueOnce(null).mockResolvedValue('o9');
+        const { queue } = make({ resolveOrder });
+        want(queue);
+        await settle();
+        want(queue, 'new:p2');
+        await settle();
+
+        const ids = idsOf(resolveOrder);
+        expect(ids).toHaveLength(2);
+        expect(ids[1]).not.toBe(ids[0]);
+    });
+
+    test('discarding the draft forgets the id of a creation that was still being retried', async () => {
+        const resolveOrder = jest.fn().mockRejectedValueOnce(networkError()).mockResolvedValue('o9');
+        const { queue } = make({ resolveOrder });
+        want(queue);
+        await settle();
+        expect(queue.pending()).toBe(true);
+
+        queue.clear();
+        want(queue, 'new:p2');
+        await settle();
+        const ids = idsOf(resolveOrder);
+        expect(ids).toHaveLength(2);
+        expect(ids[1]).not.toBe(ids[0]);
+    });
+});
+
 describe('what the server answers', () => {
     test('confirmed lines leave the outbox and one drain is announced', async () => {
         const { queue, onDrain } = make();

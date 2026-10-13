@@ -205,6 +205,27 @@ Windows ejecutá el comando del medio desde `cmd` (PowerShell no pasa binarios c
 | Un mozo no ve su mesa | mesa de otra sucursal o sin sucursal | revisá la sucursal de la mesa y del usuario |
 | El pedido muestra «Sin guardar» y no deja enviar a cocina | el celular no llega al servidor; lo tocado está guardado en el celular | que el mozo no cierre sesión ni borre los datos del navegador: al volver la señal se guarda solo. Si no vuelve, revisá la red del local |
 | Tras una actualización la cuenta tiene productos que el mozo no recuerda | un lote que no había llegado se guardó al reabrir la app (es idempotente: no duplica) | nada que hacer; revisá la cuenta y quitá lo que sobre antes de enviar |
+| El log del backend dice `ERROR orders: 2 id values repeated across 5 documents…` al arrancar | la base trae dos documentos con el mismo `id` en esa colección (por ejemplo, datos copiados o restaurados a mano). El sistema **arrancó igual**: busca por `id` con un índice normal y no toca ningún dato, pero no impide repetidos | corregí los repetidos y reiniciá, como se explica abajo |
+
+### Ids repetidos al arrancar
+
+Cada colección que el sistema consulta por `id` (pedidos, mesas, productos, usuarios, pagos, cajas, categorías, zonas, aprobaciones, restaurantes, visitas, sucursales y grupos de mesas) tiene un índice **único** por `id`: sin él, cada búsqueda recorre todos los documentos y se vuelve más lenta cada día. Si al arrancar la base ya trae `id` repetidos, ese índice no se puede crear. El backend **no se detiene**: crea en su lugar un índice normal (`order_id_lookup` para `orders`, y así `<colección>_id_lookup`), deja los datos como están y avisa con un `ERROR` que nombra la colección y cuántos `id` se repiten. Hasta que lo arregles nada impide crear otro documento con un `id` ya usado.
+
+Para dejarlo como corresponde:
+
+```bash
+docker compose exec mongo mongosh restaurant_db
+```
+
+```js
+// 1. Qué ids se repiten (cambiá orders por la colección del log)
+db.orders.aggregate([{ $group: { _id: "$id", n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }])
+// 2. Corregí o borrá los repetidos con cuidado, después de comprobar que tenés un backup (sección 12)
+// 3. Quitá el índice normal para que el próximo arranque cree el único
+db.orders.dropIndex("order_id_lookup")
+```
+
+Después `docker compose restart backend`. Mientras el índice normal siga ahí, cada arranque lo recuerda en el log: con un `ERROR` si todavía hay repetidos y con un `WARNING` si ya no los hay y solo falta quitarlo. Cambiá `restaurant_db` por tu `DB_NAME`.
 
 ## Lo que NO hay que hacer
 

@@ -264,7 +264,9 @@ export default function useTableSheet({
     // La cuenta de la mesa se crea recién al agregar el primer producto, así
     // abrir el sheet y arrepentirse no deja una orden vacía. La llama la cola de
     // sincronización (fuera del render), por eso lee la hoja desde refs.
-    const ensureAccount = async () => {
+    // `requestId` names this one creation: if the answer was lost and the queue tries
+    // again it repeats the same id, and the server hands back the account it already made.
+    const ensureAccount = async ({ requestId } = {}) => {
         const s = openTableRef.current;
         if (!s) return null;
         // Sólo la cuenta que el mozo tiene delante. El pedido activo de la mesa
@@ -275,6 +277,7 @@ export default function useTableSheet({
             || (created?.tableId === s.table.id ? created.id : null);
         if (existing) return existing;
         const payload = { table_id: s.table.id, order_type: 'mesa' };
+        if (requestId) payload.request_id = requestId;
         // Si la mesa ya tiene su visita abierta, esta cuenta es OTRA persona de
         // esa misma visita y hay que pedirla como tal: sin esto el backend la
         // rechaza por pertenecer a una visita en curso.

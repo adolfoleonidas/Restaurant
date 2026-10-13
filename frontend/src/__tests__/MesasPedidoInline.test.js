@@ -104,7 +104,7 @@ describe('pedido inline en el salón', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]'));
 
         // The account is created on the first tap, so the table shows as occupied...
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', request_id: expect.any(String) });
         expect(api.put).not.toHaveBeenCalled();
         // ...and the product goes in the batch that follows the pause.
         await savePendingTaps();
@@ -164,7 +164,7 @@ describe('pedido inline en el salón', () => {
         await click(document.body.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders', {
-            table_id: 'table-1', order_type: 'mesa', new_account: true,
+            table_id: 'table-1', order_type: 'mesa', new_account: true, request_id: expect.any(String),
         });
     });
 

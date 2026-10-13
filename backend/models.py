@@ -398,7 +398,8 @@ class OrderItemInput(BaseModel):
 
 
 # The id the composer makes up for a line (a UUID) or reads back from the order
-# (the server's own line id): letters, digits and a few separators, nothing else.
+# (the server's own line id), and the one it makes up for an order creation
+# (`OrderCreate.request_id`): letters, digits and a few separators, nothing else.
 _LINE_ID_PATTERN = r"^[A-Za-z0-9._:-]+$"
 
 
@@ -433,6 +434,9 @@ class DraftLinesBatch(BaseModel):
 
 
 class OrderCreate(BaseModel):
+    # Names one create, not one order: the client makes it up once per intent and repeats it on
+    # every retry, so a retry whose answer was lost gets the order back instead of a second one.
+    request_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=_LINE_ID_PATTERN)
     table_id: Optional[str] = None
     branch_id: Optional[str] = None
     order_type: OrderType = "mesa"

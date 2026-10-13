@@ -87,8 +87,9 @@ async def _current_order_response(order_id: str, user: dict) -> dict | None:
     return _order_for_user(order, user)
 
 
-async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, entity_id: str, details: dict = None):
-    await db.audit_logs.insert_one({
+async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, entity_id: str, details: dict = None,
+                 event_id: Optional[str] = None):
+    entry = {
         "id": str(uuid.uuid4()),
         "restaurant_id": restaurant_id,
         "user_id": user_id,
@@ -97,7 +98,11 @@ async def _audit(restaurant_id: str, user_id: str, action: str, entity: str, ent
         "entity_id": entity_id,
         "details": details or {},
         "created_at": _now(),
-    })
+    }
+    if event_id:
+        # `audit_logs.event_id` is unique: a second entry for the same event is refused.
+        entry["event_id"] = event_id
+    await db.audit_logs.insert_one(entry)
 
 
 def _order_counter_key(now: datetime) -> str:
@@ -310,11 +315,125 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
     return _order_for_user(o, user)
 
 
+# A request id names one create, not one order (`OrderCreate.request_id`). The client repeats it on
+# every retry of that create, and the orders index `uniq_public_order_request` (restaurant, request id)
+# keeps it to one order. Answering with that order, however many times the create is sent, is what
+# makes a retry after a lost answer safe: no second account at the table, no second take-out order.
+_REUSED_REQUEST = "Esa solicitud ya se usó para otro pedido. Vuelve a intentarlo."
+
+
+def _may_see(order: dict, user: dict) -> bool:
+    """The branch rule of every order lookup: tenant-wide roles see all, the rest only their own branch."""
+    return all(order.get(field) == value for field, value in record_branch_filter(user).items())
+
+
+def _asked_for(order: dict, data) -> bool:
+    """The stored order is what this request asks for: the same table and kind and, when named, the same branch.
+
+    `new_account` is left out on purpose: it is derived from the screen's state when the request is built,
+    and a retry may see that state changed (the first attempt opened the visit) while still being the same create.
+    """
+    return (
+        order.get("table_id") == data.table_id
+        and order.get("order_type") == data.order_type
+        and (data.branch_id is None or order.get("branch_id") == data.branch_id)
+    )
+
+
+async def _earlier_attempt(data, user: dict, request_id: str, *, in_flight: bool = False) -> Optional[dict]:
+    """The order an earlier attempt of this same request made, or None when there is none.
+
+    `in_flight` also finds an attempt that reserved the table but has not stored its order yet (it died, or is
+    still running): the table keeps the order it meant to write, and storing it is what the order's own
+    recovery route does. An order that is not this caller's to see, or is not what this request asks for,
+    is a 409: the id belongs to something else.
+    """
+    tenant = user["restaurant_id"]
+    order = await db.orders.find_one({"restaurant_id": tenant, "request_id": request_id}, {"_id": 0})
+    if order is None and in_flight and data.table_id:
+        table = await db.tables.find_one(
+            {"id": data.table_id, "restaurant_id": tenant, **record_branch_filter(user)}, {"_id": 0}
+        )
+        intent = (table or {}).get("opening_intent")
+        intent_id = intent.get("id") if isinstance(intent, dict) else None
+        if intent_id and intent.get("request_id") == request_id and table.get("opening_order_id") == intent_id:
+            order = await recover_opening_intent(db, table=table, order_id=intent_id, restaurant_id=tenant)
+            if order is None:
+                raise HTTPException(status_code=409, detail="La apertura requiere conciliación")
+    if order is None:
+        return None
+    if not _may_see(order, user) or not _asked_for(order, data):
+        raise HTTPException(status_code=409, detail=_REUSED_REQUEST)
+    return order
+
+
+async def _announce_staff_order(order: dict, user: dict) -> None:
+    """Audit and publish a staff-created order.
+
+    An order made with a request id is announced once, however often its create is sent again: the audit
+    entry carries a key built from the request id, and finding it means an earlier attempt already did this.
+    """
+    request_id = order.get("request_id")
+    audit = {}
+    if request_id:
+        audit["event_id"] = f"staff-order-create:{order['restaurant_id']}:{request_id}"
+        if await db.audit_logs.find_one({"event_id": audit["event_id"]}, {"_id": 1}):
+            return
+    try:
+        await _audit(
+            order["restaurant_id"], user["id"], "create", "order", order["id"],
+            {"order_number": order["order_number"]}, **audit,
+        )
+    except DuplicateKeyError:
+        if not request_id:
+            raise
+        return  # a concurrent attempt of the same request got there first
+    emit_order(
+        order["restaurant_id"], order["id"], order["status"], source="staff",
+        order_number=order["order_number"], branch_id=order.get("branch_id"),
+    )
+
+
+async def _finish_staff_order(order: dict, user: dict) -> Optional[dict]:
+    """Leave a staff-created order the way its create ends, then answer with it.
+
+    The first attempt calls this right after the insert. A replay calls it too: when the create finished
+    there is nothing left to do and it only reads; when it stopped halfway (the visit still `opening`, no
+    audit entry) the missing steps are done now, once.
+    """
+    if order.get("attention_state") == "opening":
+        try:
+            await open_table_attention(db, order=order, user=user, now=_now())
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintenta /orders/{order['id']}/attention/open. {exc.detail}")
+    await _announce_staff_order(order, user)
+    return await _current_order_response(order["id"], user)
+
+
 @router.post("")
 async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["admin", "mozo"]))):
     assigned_branch_id = await validate_user_branch(user, db.branches)
     if assigned_branch_id is not None and data.branch_id is not None and data.branch_id != assigned_branch_id:
         raise HTTPException(status_code=403, detail="No puede crear pedidos para otra sucursal")
+    request_id = getattr(data, "request_id", None)
+    if not request_id:
+        return await _create_new_order(data, user, assigned_branch_id)
+    earlier = await _earlier_attempt(data, user, request_id)
+    if earlier is None:
+        try:
+            return await _create_new_order(data, user, assigned_branch_id, request_id)
+        except HTTPException:
+            # An attempt of this same request may have won while this one was working (a retry that
+            # raced the original), and that is what refused it: answer with the winner.
+            earlier = await _earlier_attempt(data, user, request_id, in_flight=True)
+            if earlier is None:
+                raise
+    return await _finish_staff_order(earlier, user)
+
+
+async def _create_new_order(
+    data: OrderCreate, user: dict, assigned_branch_id: Optional[str], request_id: Optional[str] = None
+) -> Optional[dict]:
     table = None
     reused_attention_id = None
     if data.order_type == "mesa" and not data.table_id:
@@ -383,6 +502,8 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     }
     if branch_id is not None:
         o["branch_id"] = branch_id
+    if request_id:
+        o["request_id"] = request_id
     for field in ("customer_name", "customer_phone", "customer_address"):
         value = (getattr(data, field, None) or "").strip()
         if value:
@@ -418,21 +539,14 @@ async def create_order(data: OrderCreate, user: dict = Depends(require_roles(["a
     except Exception:
         # Keep the durable intent: an insert may have committed before its error reached us.
         raise
-    if attention_id:
-        if reused_attention_id:
-            # Registra la nueva cuenta en la visita existente (no abre visita nueva).
-            await db.attentions.update_one(
-                {"id": reused_attention_id, "restaurant_id": user["restaurant_id"]},
-                {"$addToSet": {"order_ids": order_id}},
-            )
-        else:
-            try:
-                await open_table_attention(db, order=o, user=user, now=_now())
-            except AttentionBlocked as exc:
-                raise HTTPException(status_code=409, detail=f"La apertura quedó pendiente; reintenta /orders/{order_id}/attention/open. {exc.detail}")
-    await _audit(user["restaurant_id"], user["id"], "create", "order", order_id, {"order_number": order_no})
-    emit_order(user["restaurant_id"], order_id, o["status"], source="staff", order_number=order_no, branch_id=o.get("branch_id"))
-    return await _current_order_response(order_id, user)
+    if reused_attention_id:
+        # Registra la nueva cuenta en la visita existente (no abre visita nueva).
+        await db.attentions.update_one(
+            {"id": reused_attention_id, "restaurant_id": user["restaurant_id"]},
+            {"$addToSet": {"order_ids": order_id}},
+        )
+    # Opens the visit of a first account (its order is still `opening`), audits and publishes.
+    return await _finish_staff_order(o, user)
 
 
 @router.post("/{order_id}/attention/open")

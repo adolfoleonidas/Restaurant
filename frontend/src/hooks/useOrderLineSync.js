@@ -34,9 +34,12 @@ const slimProduct = (product) => (product ? { id: product.id, name: product.name
  * `lib/outboxRegistry`) so logout and the service-worker update can save it first.
  *
  * The caller provides the pieces that depend on where the order lives:
- * - `ensureOrderId()`: id of the order, creating it on the first product. It is
- *   called as soon as the first product is tapped, not after the pause, so the
- *   table shows as occupied.
+ * - `ensureOrderId({ requestId })`: id of the order, creating it on the first
+ *   product. It is called as soon as the first product is tapped, not after the
+ *   pause, so the table shows as occupied. `requestId` names that one creation:
+ *   a retry after a lost answer is called with the same one, so it must go in the
+ *   create request (`request_id`) and the server hands back the order it already
+ *   made instead of making another.
  * - `loadOrder(orderId)`: re-reads the order, applies it to the caller's state
  *   and returns it (null when it cannot be read). It must throw on network errors.
  * - `acceptOrder(order)` (optional): applies an order the server just returned
@@ -145,7 +148,7 @@ export default function useOrderLineSync({
 
         queueRef.current = createLineSyncQueue({
             run,
-            resolveOrder: () => handlers.current.ensureOrderId(),
+            resolveOrder: (creation) => handlers.current.ensureOrderId(creation),
             delayMs,
             onChange: () => {
                 setEntries(queueRef.current.snapshot());
