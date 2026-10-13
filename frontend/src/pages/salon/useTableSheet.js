@@ -18,6 +18,7 @@ import {
     voidOrderItem,
 } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
+import { STALLED_MESSAGE, UNSAVED_MESSAGE } from '@/lib/syncMessages';
 import { draftCount, editableItems, isDraft } from '@/lib/orderDraft';
 import { plainDraftLine } from '@/lib/optimisticOrder';
 import { groupAccountTables, groupMembers } from '@/lib/tableGroups';
@@ -73,10 +74,10 @@ export default function useTableSheet({
     const escapeActionsRef = useRef(null);
     // The queue worker runs between renders, so it reads the sheet through refs.
     const openTableRef = useRef(null);
-    // Id of an account created by the queue that the sheet state has not shown yet:
+    // Id of an account created by the outbox that the sheet state has not shown yet:
     // it keeps the next queued product from creating a second account.
     const createdAccountRef = useRef(null);
-    // Set when the queue created an account: only then does saving taps change what the floor shows.
+    // Set when the outbox created an account: only then does saving taps change what the floor shows.
     const floorChangedRef = useRef(false);
     const leavingRef = useRef(false);
     const [awaitingSend, setAwaitingSend] = useState(false);
@@ -108,6 +109,8 @@ export default function useTableSheet({
 
     const openSheet = async (t, preferredOrderId = null) => {
         if (writing() || sendingToKitchen || openTable?.loading) return null;
+        // Opening a table replaces the account in view: its taps are saved first.
+        if (sync.busy() && !await settleTaps()) return null;
         // A joined table with no account of its own reads the group's account,
         // but only when the group holds exactly one: with two separate bills
         // there is nothing unambiguous to follow, so the sheet lists them.
@@ -152,9 +155,12 @@ export default function useTableSheet({
 
     // Multi-cuenta: cambia la cuenta activa que se muestra en el sheet.
     const selectAccount = async (orderId, validate = null) => {
-        if (!orderId || writing() || sendingToKitchen || openTable?.loading) return null;
+        if (!orderId || savingItem || sendingToKitchen || openTable?.loading) return null;
+        // Switching account saves the taps of the one in view first.
+        if (sync.busy() && !await settleTaps()) return null;
+        const leaving = freshOrder();
         setOpenTable((s) => (s ? {
-            ...s, accounts: accountSnapshots(s, serverOrder), accountId: orderId, loading: true,
+            ...s, accounts: accountSnapshots(s, leaving), accountId: orderId, loading: true,
         } : s));
         try {
             const { data } = await getOrder(orderId);
@@ -307,10 +313,14 @@ export default function useTableSheet({
             ));
             if (entry.orderId) void reloadCurrentOrder(entry.orderId);
         },
-        // A quantity change is confirmed from the write's own response and the
-        // realtime stream refreshes the floor; the floor is refreshed here only
-        // when the taps opened a new account (its table changes state).
+        // The connection failed: the taps stay on screen and are sent again by themselves.
+        onStalled: () => { toast.error(STALLED_MESSAGE, { id: 'sheet-stalled' }); },
+        // A batch is confirmed from the write's own response and the realtime
+        // stream refreshes the floor; the floor is refreshed here only when the
+        // taps opened a new account (its table changes state).
         onSynced: () => {
+            // Everything is saved: the "no connection" notice no longer applies.
+            toast.dismiss?.('sheet-stalled');
             if (!floorChangedRef.current) return;
             floorChangedRef.current = false;
             refreshAll();
@@ -318,8 +328,27 @@ export default function useTableSheet({
     });
     // What the screen shows: the confirmed order plus the taps still on their way.
     const sheetOrder = sync.order;
-    // Other writes wait while taps are still being saved (leaving and sending flush them).
-    const writing = () => savingItem || sync.busy();
+    // Other writes wait while a request is on the wire. Taps that still wait for their
+    // pause are not a reason to refuse anything: whatever needs the account saved first
+    // calls `settleTaps`.
+    const writing = () => savingItem || sync.inFlight();
+
+    // Saves the taps that are waiting, before an action that writes to the account,
+    // leaves it or switches to another. False (and a toast) when they could not be
+    // saved: the connection is down, and going on would leave them behind.
+    const settleTaps = async () => {
+        if (!sync.busy()) return true;
+        await sync.flush();
+        if (!sync.pending()) return true;
+        toast.error(UNSAVED_MESSAGE, { id: 'sheet-unsaved' });
+        return false;
+    };
+
+    // The account in view as the server has it right now, taps that were just saved included.
+    const freshOrder = () => {
+        const fresh = sync.latest();
+        return fresh?.id && fresh.id === serverOrder?.id ? fresh : serverOrder;
+    };
 
     const addProductToAccount = async (product) => {
         if (!canTake || sendingToKitchen || openTable?.loading) return;
@@ -363,8 +392,8 @@ export default function useTableSheet({
     const saveItemNotes = async (item, notes) => {
         if (!canTake || sendingToKitchen || openTable?.loading) return;
         // The line may still be waiting to be created, or a tap may be moving its
-        // quantity: let the queue finish so the note lands on the real line.
-        if (sync.busy()) await sync.flush();
+        // quantity: let the outbox finish so the note lands on the real line.
+        if (sync.busy() && !await settleTaps()) return;
         const fresh = sync.latest();
         const orderId = fresh?.id || openTable?.order?.id || openTable?.accountId;
         const real = item.__virtual ? plainDraftLine(fresh, item.product_id) : item;
@@ -453,12 +482,12 @@ export default function useTableSheet({
         const sent = await run(`send:${targetId}`, async () => {
             setSendingToKitchen(true);
             try {
-                // Never send a stale draft: wait for the taps still on their way, and
-                // stop if one of them failed (the waiter never saw that quantity confirmed).
+                // Never send a stale draft: save the taps still waiting right now, and stop if
+                // one of them failed or could not be saved (the waiter never saw that quantity confirmed).
                 if (sync.busy()) {
                     const failedBefore = sync.failures();
                     await sync.flush();
-                    if (sync.failures() > failedBefore) return false;
+                    if (sync.failures() > failedBefore || sync.pending()) return false;
                 }
                 // El alias viaja con la comanda: se guarda acá, sin botón aparte.
                 if (targetId === openId) await persistAlias(targetId);
@@ -518,12 +547,18 @@ export default function useTableSheet({
     // the queue has just created.
     const requestSendRef = useRef(null);
     requestSendRef.current = requestSend;
+    const accountReady = Boolean(openTable?.order?.id || openTable?.accountId);
     const syncing = sync.syncing;
     useEffect(() => {
-        if (!awaitingSend || syncing) return;
-        setAwaitingSend(false);
-        requestSendRef.current();
-    }, [awaitingSend, syncing]);
+        if (!awaitingSend) return;
+        if (accountReady) {
+            setAwaitingSend(false);
+            requestSendRef.current();
+        // Nothing is creating the account any more (it was refused): give up quietly.
+        } else if (!syncing) {
+            setAwaitingSend(false);
+        }
+    }, [awaitingSend, accountReady, syncing]);
 
     const confirmReviewedSend = async () => {
         if (!reviewOrderId || !reviewItems.length) return;
@@ -543,6 +578,7 @@ export default function useTableSheet({
     const saveAlias = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
         if (!orderId || !canTake || writing() || sendingToKitchen) return;
+        if (sync.busy() && !await settleTaps()) return;
         setSavingItem(true);
         try {
             await persistAlias(orderId);
@@ -562,6 +598,8 @@ export default function useTableSheet({
      */
     const renamePerson = async (orderId, alias) => {
         if (!canTake || !orderId || writing() || sendingToKitchen || openTable?.loading) return;
+        // The rename writes to the account: the taps that are waiting go first.
+        if (sync.busy() && !await settleTaps()) return;
         const account = (openTable?.accounts || []).find((o) => o.id === orderId)
             || (openTable?.order?.id === orderId ? openTable.order : null);
         const nextName = alias || null;
@@ -618,11 +656,12 @@ export default function useTableSheet({
         if (leavingRef.current) return;
         leavingRef.current = true;
         try {
-            // Taps still on their way are saved first, so the draft check below
-            // sees what the waiter really ordered.
+            // Taps still waiting are saved first, so the draft check below sees what
+            // the waiter really ordered. If they cannot be saved the waiter stays: leaving
+            // would leave them behind.
             let fresh = null;
             if (sync.busy()) {
-                await sync.flush();
+                if (!await settleTaps()) return;
                 fresh = sync.latest();
             }
             const orderId = fresh?.id || openTable?.order?.id || openTable?.accountId;
@@ -653,16 +692,22 @@ export default function useTableSheet({
     const clearDraft = async () => {
         const orderId = openTable?.order?.id || openTable?.accountId;
         if (!orderId || !canTake || writing() || sendingToKitchen || openTable?.loading) return;
+        // Clearing the account first saves the taps that are waiting, so none is left behind.
+        if (sync.busy() && !await settleTaps()) return;
         if (!window.confirm('¿Vaciar los productos sin enviar? Los productos enviados se conservarán.')) return;
-        await discardDraftItems(orderId);
+        const fresh = sync.latest();
+        await discardDraftItems(orderId, fresh?.id === orderId ? fresh : null);
     };
 
     // A new independent account is created only when its first product is added.
-    const startNewAccount = () => {
+    const startNewAccount = async () => {
         const table = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
         if (!canTake || !isComposableTable(table) || writing() || sendingToKitchen || openTable?.loading) return;
+        // Leaving the account in view saves its taps first.
+        if (sync.busy() && !await settleTaps()) return;
+        const leaving = freshOrder();
         setOpenTable((s) => (s ? {
-            ...s, accounts: accountSnapshots(s, serverOrder), order: null, accountId: null, accountTable: null,
+            ...s, accounts: accountSnapshots(s, leaving), order: null, accountId: null, accountTable: null,
         } : s));
         createdAccountRef.current = null;
         setReviewOrderId(null);
@@ -709,6 +754,7 @@ export default function useTableSheet({
 
     const editAccount = async (account) => {
         if (!canTake || !account?.id || writing() || sendingToKitchen || openTable?.loading) return;
+        if (sync.busy() && !await settleTaps()) return;
         const selectedTable = (tables || []).find((entry) => entry.id === openTable?.table?.id) || openTable?.table;
         if (!isComposableTable(selectedTable)) return;
         const table = composeTableFor(account);
@@ -778,6 +824,7 @@ export default function useTableSheet({
         setMoveAccountId,
         savingItem,
         syncing: sync.syncing,
+        saveState: sync.saveState,
         sendingToKitchen,
         aliasDraft,
         setAliasDraft,

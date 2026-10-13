@@ -2,8 +2,9 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
+import { ORDER_SYNC_DELAY_MS } from '@/lib/lineSyncQueue';
 
-jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
+jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({
     useNotify: () => ({ generation: 0 }),
@@ -52,14 +53,24 @@ async function renderPage() {
 
 async function click(el) { await act(async () => el.dispatchEvent(new MouseEvent('click', { bubbles: true }))); }
 
+// The waiter pauses: taps are saved in one batch once the window runs out (BS-02).
+async function savePendingTaps() {
+    await act(async () => {
+        jest.advanceTimersByTime(ORDER_SYNC_DELAY_MS);
+        for (let i = 0; i < 30; i += 1) await Promise.resolve();
+    });
+}
+
 describe('pedido inline en el salón', () => {
     let container;
     let root;
 
     beforeEach(() => {
+        jest.useFakeTimers();
         api.get.mockReset();
         api.post.mockReset();
         api.patch.mockReset();
+        api.put.mockReset();
         api.delete.mockReset();
         mockProducts.splice(0, mockProducts.length, { id: 'prod-1', name: 'Ceviche', price: 38, is_available: true, category_id: 'c1' });
         mockOrders.splice(0, mockOrders.length);
@@ -69,6 +80,7 @@ describe('pedido inline en el salón', () => {
         if (root) await act(async () => root.unmount());
         root = null;
         document.body.innerHTML = '';
+        jest.useRealTimers();
     });
 
     it('crea la cuenta recién al agregar el primer producto', async () => {
@@ -82,6 +94,7 @@ describe('pedido inline en el salón', () => {
             if (url === '/orders') return Promise.resolve({ data: order('order-new', 30, 'nuevo', [], 0) });
             return Promise.resolve({ data: {} });
         });
+        api.put.mockResolvedValue({ data: order('order-new', 30, 'nuevo', [item('i1', 'Ceviche', 1, 38)], 38) });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
 
@@ -90,8 +103,17 @@ describe('pedido inline en el salón', () => {
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]'));
 
+        // The account is created on the first tap, so the table shows as occupied...
         expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
-        expect(api.post).toHaveBeenCalledWith('/orders/order-new/items', [{ product_id: 'prod-1', quantity: 1 }]);
+        expect(api.put).not.toHaveBeenCalled();
+        // ...and the product goes in the batch that follows the pause.
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(
+            '/orders/order-new/draft-lines',
+            { lines: [{ client_line_id: expect.any(String), product_id: 'prod-1', quantity: 1 }] },
+            { timeout: 15000 }
+        );
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-new/items', expect.anything());
     });
 
     it('agrega el producto a la cuenta que se está viendo sin crear otra', async () => {
@@ -104,15 +126,22 @@ describe('pedido inline en el salón', () => {
             return Promise.resolve({ data: [existing] });
         });
         api.post.mockResolvedValue({ data: existing });
+        api.put.mockResolvedValue({ data: existing });
         ({ container, root } = await renderPage());
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
         await click(document.body.querySelector('[data-testid="mesa-sheet-pedido-11"] [data-testid="mesa-sheet-editar-pedido"]'));
         const product = document.body.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
+        await savePendingTaps();
 
         expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());
-        expect(api.post).toHaveBeenCalledWith('/orders/order-1/items', [{ product_id: 'prod-1', quantity: 1 }]);
+        // The sent line is not merged into: the unit travels as a new line of the same account.
+        expect(api.put).toHaveBeenCalledWith(
+            '/orders/order-1/draft-lines',
+            { lines: [{ client_line_id: expect.any(String), product_id: 'prod-1', quantity: 1 }] },
+            { timeout: 15000 }
+        );
     });
 
     it('el pedido de otra persona abre una cuenta nueva de la misma visita', async () => {

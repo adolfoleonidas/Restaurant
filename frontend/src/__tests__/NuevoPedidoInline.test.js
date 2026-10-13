@@ -2,9 +2,10 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import Salon from '@/pages/Salon';
 import { api } from '@/lib/api';
+import { ORDER_SYNC_DELAY_MS } from '@/lib/lineSyncQueue';
 import { toast } from 'sonner';
 
-jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
+jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), put: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
 jest.mock('@/contexts/NotifyContext', () => ({
     useNotify: () => ({ generation: 0 }),
@@ -46,6 +47,14 @@ async function click(el) {
     await act(async () => el.dispatchEvent(new MouseEvent('click', { bubbles: true })));
 }
 
+// The waiter pauses: taps are saved in one batch once the window runs out (BS-02).
+async function savePendingTaps() {
+    await act(async () => {
+        jest.advanceTimersByTime(ORDER_SYNC_DELAY_MS);
+        for (let i = 0; i < 30; i += 1) await Promise.resolve();
+    });
+}
+
 async function openComposer(host, type) {
     await click(host.querySelector('[data-testid="salon-nuevo-pedido"]'));
     if (type && type !== 'mesa') await click(document.body.querySelector(`[data-testid="nuevo-pedido-tipo-${type}"]`));
@@ -56,9 +65,11 @@ describe('nuevo pedido sin mesa', () => {
     let root;
 
     beforeEach(() => {
+        jest.useFakeTimers();
         api.get.mockReset();
         api.post.mockReset();
         api.patch.mockReset();
+        api.put.mockReset();
         api.delete.mockReset();
         toast.error.mockClear();
         toast.success.mockClear();
@@ -73,12 +84,14 @@ describe('nuevo pedido sin mesa', () => {
             if (url === '/orders') return Promise.resolve({ data: createdOrder({ items: [], total: 0 }) });
             return Promise.resolve({ data: {} });
         });
+        api.put.mockImplementation(() => Promise.resolve({ data: createdOrder() }));
     });
 
     afterEach(async () => {
         if (root) await act(async () => root.unmount());
         root = null;
         document.body.innerHTML = '';
+        jest.useRealTimers();
     });
 
     it('crea el pedido para llevar recién con el primer producto', async () => {
@@ -94,28 +107,46 @@ describe('nuevo pedido sin mesa', () => {
 
         await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
 
+        // The order exists as soon as the first product is tapped; its line follows in the batch.
         expect(api.post).toHaveBeenCalledWith('/orders', { order_type: 'llevar' });
-        expect(api.post).toHaveBeenCalledWith('/orders/order-9/items', [{ product_id: 'prod-1', quantity: 1 }]);
+        expect(api.put).not.toHaveBeenCalled();
+        await savePendingTaps();
+        expect(api.put).toHaveBeenCalledWith(
+            '/orders/order-9/draft-lines',
+            { lines: [{ client_line_id: expect.any(String), product_id: 'prod-1', quantity: 1 }] },
+            { timeout: 15000 }
+        );
+        expect(api.post).not.toHaveBeenCalledWith('/orders/order-9/items', expect.anything());
     });
 
     it('UX-14 quick taps before the order exists create it once and keep every unit', async () => {
         const server = { items: [] };
         let releaseCreate;
-        api.post.mockImplementation((url, body) => {
+        api.post.mockImplementation((url) => {
             if (url === '/orders') {
                 return new Promise((resolve) => { releaseCreate = () => resolve({ data: createdOrder({ items: [], total: 0 }) }); });
             }
-            if (url === '/orders/order-9/items') {
-                body.forEach((entry) => server.items.push({
-                    id: `i${server.items.length + 1}`, product_id: entry.product_id, product_name: 'Ceviche', quantity: entry.quantity, unit_price: 38, subtotal: 38 * entry.quantity, status: 'borrador', notes: null,
-                }));
-            }
             return Promise.resolve({ data: {} });
         });
-        api.patch.mockImplementation((url, body) => {
-            server.items[0].quantity = body.quantity;
-            server.items[0].subtotal = 38 * body.quantity;
-            return Promise.resolve({ data: {} });
+        api.put.mockImplementation((url, body) => {
+            body.lines.forEach((line) => {
+                const existing = server.items.find((i) => i.client_line_id === line.client_line_id);
+                if (existing) {
+                    existing.quantity = line.quantity;
+                    existing.subtotal = 38 * line.quantity;
+                } else {
+                    server.items.push({
+                        id: `i${server.items.length + 1}`, client_line_id: line.client_line_id, product_id: line.product_id, product_name: 'Ceviche', quantity: line.quantity, unit_price: 38, subtotal: 38 * line.quantity, status: 'borrador', notes: null,
+                    });
+                }
+            });
+            return Promise.resolve({
+                data: createdOrder({
+                    items: server.items.map((i) => ({ ...i })),
+                    total: server.items.reduce((sum, i) => sum + i.subtotal, 0),
+                    line_results: body.lines.map((line) => ({ client_line_id: line.client_line_id, result: 'applied' })),
+                }),
+            });
         });
         api.get.mockImplementation((url) => (url === '/orders/order-9'
             ? Promise.resolve({ data: createdOrder({ items: server.items.map((i) => ({ ...i })), total: server.items.reduce((sum, i) => sum + i.subtotal, 0) }) })
@@ -133,8 +164,10 @@ describe('nuevo pedido sin mesa', () => {
         expect(card().disabled).toBe(false);
 
         await act(async () => releaseCreate());
-        await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+        await savePendingTaps();
         expect(api.post.mock.calls.filter(([url]) => url === '/orders')).toHaveLength(1);
+        // Three taps, one request, one line with the net quantity.
+        expect(api.put).toHaveBeenCalledTimes(1);
         expect(server.items).toHaveLength(1);
         expect(server.items[0].quantity).toBe(3);
         expect(qty()).toBe('3');
@@ -159,9 +192,14 @@ describe('nuevo pedido sin mesa', () => {
 
         const send = document.body.querySelector('[data-testid="nuevo-pedido-enviar-cocina"]');
         expect(send).not.toBeNull();
+        // Sending does not wait for the pause: it saves the waiting taps right away, then sends.
         await click(send);
 
+        expect(api.put).toHaveBeenCalledTimes(1);
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
+        expect(api.put.mock.invocationCallOrder[0]).toBeLessThan(
+            api.post.mock.invocationCallOrder[api.post.mock.calls.findIndex(([url]) => url === '/orders/order-9/send-to-kitchen')]
+        );
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina');
     });
 });

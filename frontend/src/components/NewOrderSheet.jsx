@@ -8,6 +8,7 @@ import { ORDER_AREAS, ORDER_TYPE_LABELS } from '@/lib/format';
 import OrderComposer from '@/components/OrderComposer';
 import { PersonOrderSummary } from '@/components/OrderSummary';
 import { apiErrorMessage } from '@/lib/apiError';
+import { STALLED_MESSAGE } from '@/lib/syncMessages';
 
 /**
  * Compositor único de "Nuevo pedido": las cuatro áreas de venta son pestañas del
@@ -33,10 +34,13 @@ export default function NewOrderSheet({
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
-    // Account created by the queue that the state has not shown yet.
+    // Account created by the outbox that the state has not shown yet.
     const createdOrderRef = useRef(null);
-    // Set when the queue created the order: saving taps then changes the list behind the sheet.
+    // Set when the outbox created the order: saving taps then changes the list behind the sheet.
     const orderCreatedRef = useRef(false);
+    // What the server answers after the sheet was closed must not bring the order back.
+    const openRef = useRef(open);
+    openRef.current = open;
 
     const availableTables = useMemo(
         () => (tables || [])
@@ -44,18 +48,6 @@ export default function NewOrderSheet({
             .sort((a, b) => Number(a.number) - Number(b.number)),
         [tables]
     );
-
-    // Al cerrar se limpia todo: el próximo "Nuevo pedido" arranca de cero.
-    useEffect(() => {
-        if (open) return;
-        setType('mesa');
-        setOrder(null);
-        setCustomerName('');
-        setCustomerPhone('');
-        setCustomerAddress('');
-        createdOrderRef.current = null;
-        orderCreatedRef.current = false;
-    }, [open]);
 
     const isTable = type === 'mesa';
 
@@ -65,7 +57,7 @@ export default function NewOrderSheet({
         try {
             const { data } = await getOrder(orderId);
             if (data?.id !== orderId) return null;
-            setOrder(data);
+            if (openRef.current) setOrder(data);
             return data;
         } catch (e) {
             if (strict) throw e;
@@ -94,8 +86,8 @@ export default function NewOrderSheet({
         return data.id;
     };
 
-    // Taps update the screen at once and reach the server through a serial queue
-    // (see `useOrderLineSync`), so a quick "+ + +" never loses a unit.
+    // Taps update the screen at once and reach the server in one batch when the
+    // waiter pauses (see `useOrderLineSync`), so a quick "+ + +" never loses a unit.
     const emptyOrder = useMemo(() => ({
         id: null, status: 'nuevo', items: [], total: 0,
     }), []);
@@ -104,7 +96,8 @@ export default function NewOrderSheet({
         placeholder: emptyOrder,
         ensureOrderId: ensureOrder,
         loadOrder: (orderId) => reload(orderId, { strict: true }),
-        acceptOrder: setOrder,
+        // The sheet may have been closed while the batch was on its way.
+        acceptOrder: (saved) => { if (openRef.current) setOrder(saved); },
         onError: (error, entry) => {
             toast.error(apiErrorMessage(
                 error,
@@ -112,14 +105,32 @@ export default function NewOrderSheet({
             ));
             if (entry.orderId) void reload(entry.orderId);
         },
-        // Quantity changes are confirmed from the write's response; the list
-        // behind the sheet only needs a refresh once the order exists.
+        // The connection failed: the taps stay on screen and are sent again by themselves.
+        onStalled: () => { toast.error(STALLED_MESSAGE, { id: 'nuevo-pedido-stalled' }); },
+        // Batches are confirmed from the write's response; the list behind the
+        // sheet only needs a refresh once the order exists.
         onSynced: () => {
+            // Everything is saved: the "no connection" notice no longer applies.
+            toast.dismiss?.('nuevo-pedido-stalled');
             if (!orderCreatedRef.current) return;
             orderCreatedRef.current = false;
             onCreated?.();
         },
     });
+
+    // Al cerrar se limpia todo: el próximo "Nuevo pedido" arranca de cero. Lo que
+    // el mozo ya tocó se guarda antes, en el pedido que quedó creado.
+    useEffect(() => {
+        if (open) return;
+        void sync.flush();
+        setType('mesa');
+        setOrder(null);
+        setCustomerName('');
+        setCustomerPhone('');
+        setCustomerAddress('');
+        createdOrderRef.current = null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
     // The order as the waiter sees it: confirmed lines plus the taps on their way.
     const shownOrder = sync.order;
     const items = (shownOrder?.items || []).filter((i) => i.status !== 'cancelado');
@@ -141,11 +152,11 @@ export default function NewOrderSheet({
 
     const sendToKitchen = async () => {
         if (!canTake) return;
-        // Never send a stale draft: wait for the taps still on their way.
+        // Never send a stale draft: save the taps still waiting, and stop if one failed or could not be saved.
         if (sync.busy()) {
             const failedBefore = sync.failures();
             await sync.flush();
-            if (sync.failures() > failedBefore) return;
+            if (sync.failures() > failedBefore || sync.pending()) return;
         }
         const orderId = sync.latest()?.id || order?.id;
         if (!orderId) return;

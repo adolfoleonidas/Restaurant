@@ -3,8 +3,9 @@ import { toast } from 'sonner';
 import useTableSheet from '@/pages/salon/useTableSheet';
 import {
     addOrderItems, createOrder, getOrder, listOrders, mergeOrder, moveOrder, moveOrderItem, removeOrderItem,
-    sendOrderToKitchen, setOrderAlias, splitOrder, updateOrderItem, voidOrderItem,
+    saveDraftLines, sendOrderToKitchen, setOrderAlias, splitOrder, updateOrderItem, voidOrderItem,
 } from '@/lib/api/orders';
+import { ORDER_SYNC_DELAY_MS } from '@/lib/lineSyncQueue';
 import { renderHook, flush } from '@/test-utils/renderHook';
 
 jest.mock('@/lib/api/orders', () => ({
@@ -16,6 +17,7 @@ jest.mock('@/lib/api/orders', () => ({
     moveOrder: jest.fn(),
     moveOrderItem: jest.fn(),
     removeOrderItem: jest.fn(),
+    saveDraftLines: jest.fn(),
     sendOrderToKitchen: jest.fn(),
     setOrderAlias: jest.fn(),
     splitOrder: jest.fn(),
@@ -39,7 +41,13 @@ const order = (id, tableId, extra = {}) => ({
 
 const apis = {
     addOrderItems, createOrder, getOrder, listOrders, mergeOrder, moveOrder, moveOrderItem, removeOrderItem,
-    sendOrderToKitchen, setOrderAlias, splitOrder, updateOrderItem, voidOrderItem,
+    saveDraftLines, sendOrderToKitchen, setOrderAlias, splitOrder, updateOrderItem, voidOrderItem,
+};
+
+// The waiter pauses: the window that precedes a batch runs out (taps are saved in one batch).
+const saveTaps = async () => {
+    await act(async () => { jest.advanceTimersByTime(ORDER_SYNC_DELAY_MS); });
+    await flush();
 };
 const refreshAll = jest.fn();
 let mounted;
@@ -52,6 +60,7 @@ const mount = async (props = {}) => {
 };
 
 beforeEach(() => {
+    jest.useFakeTimers();
     mockLive = null;
     refreshAll.mockReset();
     Object.values(apis).forEach((fn) => fn.mockReset().mockResolvedValue({ data: {} }));
@@ -63,6 +72,7 @@ beforeEach(() => {
 afterEach(async () => {
     if (mounted) await mounted.unmount();
     mounted = null;
+    jest.useRealTimers();
 });
 
 describe('useTableSheet: opening and closing', () => {
@@ -194,7 +204,7 @@ describe('useTableSheet: ordering', () => {
         return view;
     };
 
-    test('the first product of a free table creates the account, then adds the product', async () => {
+    test('the first product of a free table creates the account at once, then its line goes in the next batch', async () => {
         const free = table('t2', 2);
         createOrder.mockResolvedValue({ data: order('o5', 't2', { status: 'nuevo' }) });
         getOrder.mockResolvedValue({ data: order('o5', 't2', { status: 'nuevo' }) });
@@ -202,26 +212,36 @@ describe('useTableSheet: ordering', () => {
         await act(async () => { await result.current.openSheet(free); });
         await act(async () => { await result.current.addProductToAccount({ id: 'prod-1' }); });
         expect(createOrder).toHaveBeenCalledWith({ table_id: 't2', order_type: 'mesa' });
-        expect(addOrderItems).toHaveBeenCalledWith('o5', [{ product_id: 'prod-1', quantity: 1 }]);
+        expect(saveDraftLines).not.toHaveBeenCalled();
+        await saveTaps();
+        expect(saveDraftLines).toHaveBeenCalledWith('o5', [
+            { client_line_id: expect.any(String), product_id: 'prod-1', quantity: 1 },
+        ]);
+        expect(addOrderItems).not.toHaveBeenCalled();
         expect(refreshAll).toHaveBeenCalled();
         expect(result.current.savingItem).toBe(false);
     });
 
     test('a second person on an open visit is requested as a new account', async () => {
         const { result } = await open({}, { active_attention_id: 'att-1' });
-        await act(async () => { result.current.startNewAccount(); });
+        await act(async () => { await result.current.startNewAccount(); });
         expect(result.current.openTable.order).toBeNull();
         expect(result.current.composerOpen).toBe(true);
         createOrder.mockResolvedValue({ data: order('o6', 't1', { status: 'nuevo' }) });
         await act(async () => { await result.current.addProductToAccount({ id: 'prod-2' }); });
         expect(createOrder).toHaveBeenCalledWith({ table_id: 't1', order_type: 'mesa', new_account: true });
-        expect(addOrderItems).toHaveBeenCalledWith('o6', [{ product_id: 'prod-2', quantity: 1 }]);
+        await saveTaps();
+        expect(saveDraftLines).toHaveBeenCalledWith('o6', [
+            { client_line_id: expect.any(String), product_id: 'prod-2', quantity: 1 },
+        ]);
     });
 
     test('tapping a product that already has an unannotated draft line adds one unit there', async () => {
         const { result } = await open();
         await act(async () => { await result.current.addProductToAccount({ id: 'p-a' }); });
-        expect(updateOrderItem).toHaveBeenCalledWith('o1', 'a', { quantity: 3 });
+        await saveTaps();
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [{ client_line_id: 'a', quantity: 3 }]);
+        expect(updateOrderItem).not.toHaveBeenCalled();
         expect(addOrderItems).not.toHaveBeenCalled();
     });
 
@@ -234,16 +254,27 @@ describe('useTableSheet: ordering', () => {
         await act(async () => { await result.current.openSheet(t); });
         await act(async () => { await result.current.addProductToAccount({ id: 'p-a' }); });
         await act(async () => { await result.current.addProductToAccount({ id: 'p-b' }); });
+        await saveTaps();
+        // Two new lines, one request: the sent line and the annotated one stay as they are.
+        expect(saveDraftLines).toHaveBeenCalledTimes(1);
+        expect(saveDraftLines).toHaveBeenCalledWith('o1', [
+            { client_line_id: expect.any(String), product_id: 'p-a', quantity: 1 },
+            { client_line_id: expect.any(String), product_id: 'p-b', quantity: 1 },
+        ]);
         expect(updateOrderItem).not.toHaveBeenCalled();
-        expect(addOrderItems).toHaveBeenCalledTimes(2);
+        expect(addOrderItems).not.toHaveBeenCalled();
     });
 
     test('lowering a quantity to zero removes the line, otherwise it updates it', async () => {
         const { result } = await open();
         await act(async () => { await result.current.changeItemQty({ id: 'a', quantity: 2 }, -1); });
-        expect(updateOrderItem).toHaveBeenCalledWith('o1', 'a', { quantity: 1 });
+        await saveTaps();
+        expect(saveDraftLines).toHaveBeenLastCalledWith('o1', [{ client_line_id: 'a', quantity: 1 }]);
         await act(async () => { await result.current.changeItemQty({ id: 'a', quantity: 1 }, -1); });
-        expect(removeOrderItem).toHaveBeenCalledWith('o1', 'a');
+        await saveTaps();
+        expect(saveDraftLines).toHaveBeenLastCalledWith('o1', [{ client_line_id: 'a', quantity: 0 }]);
+        expect(updateOrderItem).not.toHaveBeenCalled();
+        expect(removeOrderItem).not.toHaveBeenCalled();
     });
 
     test('item notes are saved on the line of the chosen account', async () => {
@@ -275,6 +306,8 @@ describe('useTableSheet: ordering', () => {
         await act(async () => { await result.current.changeItemQty({ id: 'a', quantity: 2 }, -1); });
         await act(async () => { await result.current.voidProduct({ id: 'a' }, 'x'); });
         await act(async () => { await result.current.saveItemNotes({ id: 'a' }, 'x'); });
+        await saveTaps();
+        expect(saveDraftLines).not.toHaveBeenCalled();
         expect(updateOrderItem).not.toHaveBeenCalled();
         expect(voidOrderItem).not.toHaveBeenCalled();
     });
