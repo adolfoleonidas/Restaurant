@@ -208,7 +208,7 @@ describe('compositor · paridad posView (S8)', () => {
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
 
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true, request_id: expect.any(String) });
         await savePendingTaps();
         expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
         expect(api.put.mock.calls[0][0]).toBe('/orders/order-2/draft-lines');
@@ -1127,7 +1127,7 @@ describe('edición explícita de borradores (T04)', () => {
         const product = container.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]');
         expect(product.closest('[hidden]')).toBeNull();
         await click(product);
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true });
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', new_account: true, request_id: expect.any(String) });
         await savePendingTaps();
         expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
         expect(api.put.mock.calls[0][0]).toBe('/orders/order-next/draft-lines');
@@ -1199,7 +1199,7 @@ describe('edición explícita de borradores (T04)', () => {
         await savePendingTaps();
         expect(api.put).toHaveBeenCalledWith(...batch(newLine('prod-n1')));
         if (entry === 'new order') {
-            expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-2', order_type: 'mesa', new_account: true });
+            expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-2', order_type: 'mesa', new_account: true, request_id: expect.any(String) });
             expect(api.put.mock.calls[0][0]).toBe('/orders/order-next/draft-lines');
         } else {
             expect(api.post).not.toHaveBeenCalledWith('/orders', expect.anything());

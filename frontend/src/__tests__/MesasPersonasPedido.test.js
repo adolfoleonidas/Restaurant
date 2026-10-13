@@ -306,7 +306,7 @@ describe('pedido por personas en el salón', () => {
         await click(product);
 
         expect(api.post).toHaveBeenCalledWith('/orders', {
-            table_id: 'table-1', order_type: 'mesa', new_account: true,
+            table_id: 'table-1', order_type: 'mesa', new_account: true, request_id: expect.any(String),
         });
     });
 
@@ -331,7 +331,7 @@ describe('pedido por personas en el salón', () => {
 
         await click(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]'));
         await click(sheet.querySelector('[data-testid="mesa-sheet-producto-nombre-prod-n1"]'));
-        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa' });
+        expect(api.post).toHaveBeenCalledWith('/orders', { table_id: 'table-1', order_type: 'mesa', request_id: expect.any(String) });
     });
 
     it('deja fusionar al final, fuera del camino de carga', async () => {

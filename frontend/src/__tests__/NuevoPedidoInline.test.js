@@ -108,7 +108,7 @@ describe('nuevo pedido sin mesa', () => {
         await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
 
         // The order exists as soon as the first product is tapped; its line follows in the batch.
-        expect(api.post).toHaveBeenCalledWith('/orders', { order_type: 'llevar' });
+        expect(api.post).toHaveBeenCalledWith('/orders', { order_type: 'llevar', request_id: expect.any(String) });
         expect(api.put).not.toHaveBeenCalled();
         await savePendingTaps();
         expect(api.put).toHaveBeenCalledWith(
@@ -171,6 +171,35 @@ describe('nuevo pedido sin mesa', () => {
         expect(server.items).toHaveLength(1);
         expect(server.items[0].quantity).toBe(3);
         expect(qty()).toBe('3');
+    });
+
+    it('a creation whose answer was lost is asked again with the same request id and makes one order', async () => {
+        const made = new Map();
+        let answersLost = 1;
+        api.post.mockImplementation((url, body) => {
+            if (url !== '/orders') return Promise.resolve({ data: {} });
+            if (!made.has(body.request_id)) made.set(body.request_id, createdOrder({ items: [], total: 0 }));
+            if (answersLost > 0) {
+                answersLost -= 1;
+                return Promise.reject(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', request: {} }));
+            }
+            return Promise.resolve({ data: made.get(body.request_id) });
+        });
+        ({ host, root } = await renderSalon());
+        await openComposer(host, 'llevar');
+
+        await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
+        const creations = () => api.post.mock.calls.filter(([url]) => url === '/orders');
+        expect(creations()).toHaveLength(1);
+        // The pause runs out: the outbox asks again, as it does after any lost answer.
+        await savePendingTaps();
+
+        expect(creations()).toHaveLength(2);
+        expect(creations()[1][1].request_id).toMatch(/^[A-Za-z0-9._:-]{8,64}$/);
+        expect(creations()[1][1].request_id).toBe(creations()[0][1].request_id);
+        expect(made.size).toBe(1);
+        expect(api.put).toHaveBeenCalledTimes(1);
+        expect(api.put.mock.calls[0][0]).toBe('/orders/order-9/draft-lines');
     });
 
     it('exige la dirección antes de crear un envío', async () => {

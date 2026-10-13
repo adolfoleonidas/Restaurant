@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listCategories } from '@/lib/api/categories';
 import { createOrder, sendOrderToKitchen } from '@/lib/api/orders';
 import { listProducts } from '@/lib/api/products';
 import { listTables, releaseTable } from '@/lib/api/tables';
+import { newClientId } from '@/lib/clientId';
+import { isTransientError } from '@/lib/lineSyncQueue';
 import usePolling from '@/hooks/usePolling';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +32,11 @@ export default function PedidoNuevo() {
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerAddress, setCustomerAddress] = useState('');
     const [loading, setLoading] = useState(false);
+    // The create being sent: the order it asks for and the request id that names it. Pressing send
+    // again after a lost answer (or after the kitchen step failed) repeats the same id, so the
+    // server hands back the order it already made instead of making a second; a changed order is
+    // another create. Forgotten once the order is sent or the server refused it.
+    const pendingCreate = useRef(null);
     // The free-table list follows a table's status, which opening an order changes
     // without a table event of its own.
     const tablesGeneration = useRealtimeGeneration(['tables', 'orders']);
@@ -109,12 +116,19 @@ export default function PedidoNuevo() {
                 ...(customerPhone.trim() ? { customer_phone: customerPhone.trim() } : {}),
                 ...(orderType === 'delivery' ? { customer_address: customerAddress.trim() } : {}),
             };
-            const { data: order } = await createOrder(payload);
+            const signature = JSON.stringify(payload);
+            if (pendingCreate.current?.signature !== signature) {
+                pendingCreate.current = { signature, requestId: newClientId() };
+            }
+            const { data: order } = await createOrder({ ...payload, request_id: pendingCreate.current.requestId });
             await sendOrderToKitchen(order.id);
+            pendingCreate.current = null;
             const where = isTableOrder ? `Mesa ${table?.number || ''}` : (ORDER_TYPE_LABELS[orderType] || 'Pedido');
             toast.success(`${where.trim()} enviado a cocina`);
             navigate('/salon', { replace: true });
         } catch (e) {
+            // A connection that failed decided nothing: sending again is the same create. A refusal is not.
+            if (!isTransientError(e)) pendingCreate.current = null;
             toast.error(apiErrorMessage(e, 'No se pudo enviar'));
         } finally {
             setLoading(false);

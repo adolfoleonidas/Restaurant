@@ -211,7 +211,7 @@ describe('useTableSheet: ordering', () => {
         const { result } = await mount({ tables: [free] });
         await act(async () => { await result.current.openSheet(free); });
         await act(async () => { await result.current.addProductToAccount({ id: 'prod-1' }); });
-        expect(createOrder).toHaveBeenCalledWith({ table_id: 't2', order_type: 'mesa' });
+        expect(createOrder).toHaveBeenCalledWith({ table_id: 't2', order_type: 'mesa', request_id: expect.any(String) });
         expect(saveDraftLines).not.toHaveBeenCalled();
         await saveTaps();
         expect(saveDraftLines).toHaveBeenCalledWith('o5', [
@@ -229,11 +229,73 @@ describe('useTableSheet: ordering', () => {
         expect(result.current.composerOpen).toBe(true);
         createOrder.mockResolvedValue({ data: order('o6', 't1', { status: 'nuevo' }) });
         await act(async () => { await result.current.addProductToAccount({ id: 'prod-2' }); });
-        expect(createOrder).toHaveBeenCalledWith({ table_id: 't1', order_type: 'mesa', new_account: true });
+        expect(createOrder).toHaveBeenCalledWith({ table_id: 't1', order_type: 'mesa', new_account: true, request_id: expect.any(String) });
         await saveTaps();
         expect(saveDraftLines).toHaveBeenCalledWith('o6', [
             { client_line_id: expect.any(String), product_id: 'prod-2', quantity: 1 },
         ]);
+    });
+
+    describe('when the answer to a create is lost', () => {
+        const networkError = () => Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK', request: {} });
+
+        // The backend as far as a create goes: one account per request id, however often it is asked.
+        const backend = (answersLost) => {
+            const made = new Map();
+            let lost = answersLost;
+            createOrder.mockImplementation(async (payload) => {
+                if (!made.has(payload.request_id)) {
+                    made.set(payload.request_id, order(`o${made.size + 5}`, payload.table_id, { status: 'nuevo' }));
+                }
+                if (lost > 0) {
+                    lost -= 1;
+                    throw networkError();
+                }
+                return { data: made.get(payload.request_id) };
+            });
+            getOrder.mockImplementation(async (id) => ({ data: order(id, 't2', { status: 'nuevo' }) }));
+            return made;
+        };
+
+        test('the retry asks with the same request id, so the table ends with one account', async () => {
+            const made = backend(1);
+            const free = table('t2', 2);
+            const { result } = await mount({ tables: [free] });
+            await act(async () => { await result.current.openSheet(free); });
+
+            await act(async () => { await result.current.addProductToAccount({ id: 'prod-1' }); });
+            expect(createOrder).toHaveBeenCalledTimes(1);
+            // The pause runs out: the outbox asks again, as it does after any lost answer.
+            await saveTaps();
+
+            expect(createOrder).toHaveBeenCalledTimes(2);
+            const [first, second] = createOrder.mock.calls.map(([payload]) => payload.request_id);
+            expect(first).toMatch(/^[A-Za-z0-9._:-]{8,64}$/);
+            expect(second).toBe(first);
+            expect(made.size).toBe(1);
+            expect(saveDraftLines).toHaveBeenCalledWith('o5', [
+                { client_line_id: expect.any(String), product_id: 'prod-1', quantity: 1 },
+            ]);
+        });
+
+        test('the next account of the table asks with another request id', async () => {
+            const made = backend(0);
+            const free = table('t2', 2);
+            const { result } = await mount({ tables: [free] });
+            await act(async () => { await result.current.openSheet(free); });
+            await act(async () => { await result.current.addProductToAccount({ id: 'prod-1' }); });
+            await saveTaps();
+
+            await act(async () => { await result.current.startNewAccount(); });
+            await act(async () => { await result.current.addProductToAccount({ id: 'prod-2' }); });
+            await saveTaps();
+
+            expect(createOrder).toHaveBeenCalledTimes(2);
+            const [first, second] = createOrder.mock.calls.map(([payload]) => payload);
+            expect(second).toMatchObject({ table_id: 't2', order_type: 'mesa', new_account: true });
+            expect(second.request_id).not.toBe(first.request_id);
+            expect(made.size).toBe(2);
+        });
     });
 
     test('tapping a product that already has an unannotated draft line adds one unit there', async () => {

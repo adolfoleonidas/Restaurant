@@ -32,9 +32,15 @@
  * `[{ key, entry, sent }]` with the quantity each entry had when the batch was
  * taken. It resolves to `{ rejected: [{ key, error }] }` for lines the server
  * rejected on their own, and rejects when the whole request failed.
- * `resolveOrder()` creates the order for lines that have none and resolves to its
- * id (or null when the caller already told the waiter why there is none).
+ * `resolveOrder({ requestId })` creates the order for lines that have none and
+ * resolves to its id (or null when the caller already told the waiter why there
+ * is none). `requestId` names that one creation: a lost answer means the server
+ * may already hold the order, so every retry of the creation carries the same id
+ * and the server answers with the order it made instead of making a second one.
+ * A new creation (the next account) gets a new id.
  */
+import { newClientId } from '@/lib/clientId';
+
 export const ORDER_SYNC_DELAY_MS = 1500;
 const RETRY_FIRST_MS = 4000;
 const RETRY_MAX_MS = 30000;
@@ -81,6 +87,11 @@ export function createLineSyncQueue({
     let failures = 0;
     let destroyed = false;
     let waiters = [];
+    // Names the order creation in progress, so a retry is recognised as the same creation. It lives
+    // from the first attempt until the creation is over: the order exists, the caller wants none,
+    // the server refused, or the draft was discarded. Not kept on the device: lines without an
+    // order are not either (see `restore`), so no creation is replayed after a reload.
+    let creationId = null;
 
     const changed = () => quietly(onChange);
 
@@ -132,8 +143,13 @@ export function createLineSyncQueue({
     const createOrders = async () => {
         if (!withoutOrder().length) return false;
         setFlying(true);
+        // The same id on every retry of this creation: if the answer was lost the server already
+        // holds the order, and it hands that one back.
+        creationId = creationId || newClientId();
         try {
-            const orderId = await resolveOrder();
+            const orderId = await resolveOrder({ requestId: creationId });
+            // The creation is over (an order, or none wanted): the next one is a new creation.
+            creationId = null;
             // Every line that was waiting for the order joins it, the ones tapped meanwhile too.
             withoutOrder().forEach(({ key, entry }) => {
                 // The caller already told the waiter why there is no order: forget the taps.
@@ -142,8 +158,12 @@ export function createLineSyncQueue({
             });
         } catch (error) {
             const lacking = withoutOrder();
+            // A connection that failed decided nothing: the retry is the same creation, same id.
             if (isTransientError(error)) stalled(error);
-            else if (lacking.length) refused(error, lacking);
+            else {
+                creationId = null;
+                if (lacking.length) refused(error, lacking);
+            }
         } finally {
             setFlying(false);
         }
@@ -317,6 +337,7 @@ export function createLineSyncQueue({
         /** Forgets what is waiting (the waiter discarded the draft). */
         clear() {
             entries.clear();
+            creationId = null;
             clearWindow();
             clearRetry();
             changed();

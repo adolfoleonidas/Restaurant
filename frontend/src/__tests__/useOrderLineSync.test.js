@@ -386,6 +386,24 @@ describe('the first product of an account', () => {
         ]);
     });
 
+    it('hands the creation a request id and repeats it when the answer to the first try never came', async () => {
+        ensureOrderId = jest.fn()
+            .mockRejectedValueOnce(networkError())
+            .mockResolvedValue('o1');
+        saveDraftLines.mockResolvedValue(answer(orderWith([line({ id: 'srv', client_line_id: 'x', quantity: 1, subtotal: 10 })])));
+        await mount(null);
+
+        await tap(sopa, 1);
+        await settle();
+        expect(onStalled).toHaveBeenCalledTimes(1);
+        await act(async () => { await view.result.current.flush(); });
+
+        expect(ensureOrderId).toHaveBeenCalledTimes(2);
+        const [first, second] = ensureOrderId.mock.calls.map(([context]) => context.requestId);
+        expect(first).toMatch(/^[A-Za-z0-9._:-]{8,64}$/);
+        expect(second).toBe(first);
+    });
+
     it('drops the taps quietly when the caller says there is no order', async () => {
         ensureOrderId = jest.fn(async () => null);
         await mount(null);
