@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import usePolling from '@/hooks/usePolling';
+import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { listTables } from '@/lib/api/tables';
 import { listOrders } from '@/lib/api/orders';
@@ -10,11 +11,25 @@ import { listCategories } from '@/lib/api/categories';
 export default function useSalonData({
     isOwner, scope, scopeKey, scopeParams, scopePending,
 }) {
+    const { user } = useAuth();
+    // Cada tanda de toques que el mozo guarda publica un evento `orders` (ver
+    // `sync_draft_lines`). En ESTE dispositivo ese evento no trae nada: la
+    // escritura ya volvió con el pedido entero (ver `useOrderLineSync`) y los
+    // caminos que sí cambian el piso —abrir una cuenta, enviar a cocina, anular,
+    // mover, cerrar— lo refrescan a propósito. Sin esto, cada pausa del mozo se
+    // bajaba la lista de mesas (~60 KB medidos con 60 mesas y 20 cuentas) y la de
+    // pedidos para no ver nada nuevo.
+    //
+    // Se salta sólo eso: el eco de las líneas de borrador de este mismo usuario.
+    // Todo lo demás sigue refrescando, y un evento sin actor es de otro o de una
+    // versión anterior a este cambio: se refresca.
+    const ownDraftEcho = (event) => event?.extra === 'draft_lines' && event.actor_user_id === user?.id;
+    const somebodyElse = (event) => !ownDraftEcho(event);
     // Each query refetches only for the realtime topics it renders. `/tables`
     // embeds every table's open orders (`active_order`), so it follows both.
-    const tablesGeneration = useRealtimeGeneration(['tables', 'orders']);
-    const floorGeneration = useRealtimeGeneration(['tables']);
-    const ordersGeneration = useRealtimeGeneration(['orders']);
+    const tablesGeneration = useRealtimeGeneration(['tables', 'orders'], somebodyElse);
+    const floorGeneration = useRealtimeGeneration(['tables'], somebodyElse);
+    const ordersGeneration = useRealtimeGeneration(['orders'], somebodyElse);
     const catalogGeneration = useRealtimeGeneration(['catalog']);
     const {
         data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables,

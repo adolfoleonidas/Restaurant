@@ -716,7 +716,7 @@ async def sync_draft_lines(order_id: str, data: DraftLinesBatch, user: dict = De
             "updated_at": _now(),
             **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
         })
-        emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="draft_lines", branch_id=o.get("branch_id"), kitchen=False)
+        emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="draft_lines", branch_id=o.get("branch_id"), kitchen=False, actor_user_id=user["id"])
     order = await _current_order_response(order_id, user)
     if order is not None:
         order["line_results"] = results

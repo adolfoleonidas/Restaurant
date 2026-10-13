@@ -77,8 +77,9 @@ function controllableStream() {
     };
 }
 
-// What the server publishes (see backend/notify.py).
-const DRAFT_EDIT = { type: 'order', order_id: 'order-9', status: 'nuevo', topic: 'orders', topics: ['orders'] };
+// What the server publishes (see backend/notify.py). A staff draft-line batch
+// carries `extra: draft_lines` and names the waiter who caused it.
+const DRAFT_EDIT = { type: 'order', order_id: 'order-9', status: 'nuevo', topic: 'orders', topics: ['orders'], extra: 'draft_lines' };
 const KITCHEN = { type: 'order', order_id: 'order-9', status: 'enviado_cocina', topic: 'orders', topics: ['orders', 'kitchen'] };
 const PAYMENT = {
     type: 'order', order_id: 'order-9', status: 'pagado', payment_status: 'pagado',
@@ -178,10 +179,28 @@ describe('global alerts (every screen has them mounted)', () => {
 describe('Salón data', () => {
     const urls = ['/tables', '/orders', '/products', '/categories'];
 
-    it('a composer tap refetches the orders and the tables (which embed them), not the menu', async () => {
+    it('a composer tap of this same waiter refetches nothing: his own write already answered with the order', async () => {
+        await mount(<SalonProbe />);
+        await emit({ ...DRAFT_EDIT, actor_user_id: 'u1' });
+        expect(fetched(...urls)).toEqual({ '/tables': 0, '/orders': 0, '/products': 0, '/categories': 0 });
+    });
+
+    it("another waiter's draft edit still refetches the orders and the tables (which embed them), not the menu", async () => {
+        await mount(<SalonProbe />);
+        await emit({ ...DRAFT_EDIT, actor_user_id: 'mozo-2' });
+        expect(fetched(...urls)).toEqual({ '/tables': 1, '/orders': 1, '/products': 0, '/categories': 0 });
+    });
+
+    it('a draft edit that names no actor refreshes like any other event', async () => {
         await mount(<SalonProbe />);
         await emit(DRAFT_EDIT);
         expect(fetched(...urls)).toEqual({ '/tables': 1, '/orders': 1, '/products': 0, '/categories': 0 });
+    });
+
+    it('a table event caused by this same waiter still refetches the tables: only the draft echo is skipped', async () => {
+        await mount(<SalonProbe />);
+        await emit({ ...TABLE, actor_user_id: 'u1' });
+        expect(fetched(...urls)).toEqual({ '/tables': 1, '/orders': 0, '/products': 0, '/categories': 0 });
     });
 
     it('a table event refetches only the tables', async () => {
