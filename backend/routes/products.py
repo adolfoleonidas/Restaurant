@@ -126,6 +126,7 @@ async def create_product(data: ProductCreate, user: dict = Depends(require_roles
         "updated_at": _now(),
     }
     await db.products.insert_one(p)
+    emit_notice(user["restaurant_id"], "product", product_id=p["id"], change="created")
     return {k: v for k, v in p.items() if k != "_id"}
 
 
@@ -194,6 +195,8 @@ async def import_products(data: ProductsImport, user: dict = Depends(require_rol
         await db.products.insert_one(p)
         created.append({"id": p["id"], "name": name, "category": category, "price": price})
 
+    if created:
+        emit_notice(restaurant_id, "product", change="imported", count=len(created))
     return {"created": created, "skipped": skipped, "categories_created": categories_created}
 
 
@@ -255,7 +258,7 @@ async def set_availability(product_id: str, data: ProductAvailability, user: dic
                     "status": o.get("status"),
                     "quantity": qty,
                 })
-    emit_notice(user["restaurant_id"], "product", product_id=product_id, is_available=data.is_available)
+    emit_notice(user["restaurant_id"], "product", product_id=product_id, is_available=data.is_available, change="availability")
     updated = await db.products.find_one({"id": product_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     return {"product": updated, "pending_orders": pending}
 
@@ -285,6 +288,7 @@ async def update_product(product_id: str, data: ProductUpdate, user: dict = Depe
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    emit_notice(user["restaurant_id"], "product", product_id=product_id, change="updated")
     return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 
@@ -293,4 +297,5 @@ async def delete_product(product_id: str, user: dict = Depends(require_roles(["a
     res = await db.products.delete_one({"id": product_id, "restaurant_id": user["restaurant_id"]})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    emit_notice(user["restaurant_id"], "product", product_id=product_id, change="deleted")
     return {"ok": True}

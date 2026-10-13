@@ -6,11 +6,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { apiErrorMessage } from '@/lib/apiError';
 
 export default function Disponibilidad() {
-    const { generation } = useNotify();
+    const generation = useRealtimeGeneration(['catalog']);
     const [q, setQ] = useState('');
     const [pending, setPending] = useState(null);
     const { data: products, refetch } = usePolling(() => listProducts().then((r) => r.data), 20000, [generation]);

@@ -11,7 +11,7 @@ import usePolling from '@/hooks/usePolling';
 import { listOrders } from '@/lib/api/orders';
 import { buildRoleNotifications } from '@/lib/roleNotifications';
 import { fmtElapsed } from '@/lib/format';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 
 const SEEN_KEY = (userId) => `role-inbox-seen:${userId}`;
 
@@ -35,7 +35,9 @@ export function RoleInbox() {
     const navigate = useNavigate();
     const [seen, setSeen] = useState(() => loadSeen(user?.id));
     const [open, setOpen] = useState(false);
-    const { generation } = useNotify();
+    // The inbox is built from the orders the kitchen, the cashier and the waiter
+    // act on, so it skips the draft-line edits that never reach them.
+    const generation = useRealtimeGeneration(['kitchen', 'payments', 'prepay']);
 
     const { data: orders } = usePolling(
         () => listOrders({ active_only: true, limit: 80 }).then((r) => r.data),

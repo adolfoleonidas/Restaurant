@@ -13,7 +13,10 @@ import { toast } from 'sonner';
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: mockRole } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 global.IS_REACT_ACT_ENVIRONMENT = true;

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from database import db
 from auth import require_roles, verify_password
+from notify import emit_notice
 
 router = APIRouter()
 
@@ -92,6 +93,10 @@ async def reset_operational_data(data: DataResetRequest, user: dict = Depends(re
         "created_at": now,
     })
 
+    # Orders, payments, cash and the floor all changed: no topic, so every open
+    # screen refreshes everything.
+    emit_notice(rid, "data_reset")
+
     return {"status": "ok", "cleared": cleared, "tables_reset": tables.modified_count}
 
 
@@ -141,5 +146,8 @@ async def reset_catalog(data: DataResetRequest, user: dict = Depends(require_rol
         "details": {"cleared": cleared},
         "created_at": _now(),
     })
+
+    emit_notice(rid, "product", change="reset")
+    emit_notice(rid, "category", change="reset")
 
     return {"status": "ok", "cleared": cleared}

@@ -4,6 +4,7 @@ import uuid
 from database import db
 from auth import get_current_user, require_roles
 from models import ZoneCreate, ZoneUpdate
+from notify import emit_notice
 from branch_access import assert_owned_branch, validate_user_branch
 
 router = APIRouter()
@@ -50,6 +51,7 @@ async def create_zone(data: ZoneCreate, user: dict = Depends(require_roles(["adm
     if data.branch_id:
         z["branch_id"] = data.branch_id
     await db.zones.insert_one(z)
+    emit_notice(user["restaurant_id"], "zone", zone_id=z["id"], branch_id=z.get("branch_id"), change="created")
     return {k: v for k, v in z.items() if k != "_id"}
 
 
@@ -151,7 +153,11 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
             )
             raise HTTPException(status_code=409, detail="Una mesa cambió durante la reasignación de sucursal")
     
-    return await db.zones.find_one({"id": zone_id}, {"_id": 0})
+    updated = await db.zones.find_one({"id": zone_id}, {"_id": 0})
+    # Renaming or re-branching a zone also changes its tables, so floor screens refresh too.
+    emit_notice(user["restaurant_id"], "zone", zone_id=zone_id,
+                branch_id=(updated or {}).get("branch_id"), change="updated")
+    return updated
 
 
 @router.delete("/{zone_id}")
@@ -163,4 +169,5 @@ async def delete_zone(zone_id: str, user: dict = Depends(require_roles(["admin"]
     if in_use:
         raise HTTPException(status_code=400, detail="La zona está en uso por mesas")
     await db.zones.delete_one({"id": zone_id})
+    emit_notice(user["restaurant_id"], "zone", zone_id=zone_id, branch_id=z.get("branch_id"), change="deleted")
     return {"ok": True}

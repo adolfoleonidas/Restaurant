@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import usePolling from '@/hooks/usePolling';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { listTables } from '@/lib/api/tables';
 import { listOrders } from '@/lib/api/orders';
 import { listProducts } from '@/lib/api/products';
@@ -7,8 +8,14 @@ import { listCategories } from '@/lib/api/categories';
 
 /** Everything the Salón polls: the floor, the live orders and the menu. */
 export default function useSalonData({
-    generation, isOwner, scope, scopeKey, scopeParams, scopePending,
+    isOwner, scope, scopeKey, scopeParams, scopePending,
 }) {
+    // Each query refetches only for the realtime topics it renders. `/tables`
+    // embeds every table's open orders (`active_order`), so it follows both.
+    const tablesGeneration = useRealtimeGeneration(['tables', 'orders']);
+    const floorGeneration = useRealtimeGeneration(['tables']);
+    const ordersGeneration = useRealtimeGeneration(['orders']);
+    const catalogGeneration = useRealtimeGeneration(['catalog']);
     const {
         data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables,
     } = usePolling(
@@ -18,14 +25,14 @@ export default function useSalonData({
             ? Promise.resolve(null)
             : listTables(scopeParams)).then((r) => (r ? r.data : null)),
         8000,
-        [generation, scopeKey, scopePending]
+        [tablesGeneration, scopeKey, scopePending]
     );
     const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
         () => (scopePending
             ? Promise.resolve(null)
             : listOrders({ active_only: true, ...scopeParams })).then((r) => (r ? r.data : null)),
         8000,
-        [generation, scopeKey, scopePending]
+        [ordersGeneration, scopeKey, scopePending]
     );
     const orders = useMemo(() => (Array.isArray(liveOrders) ? liveOrders : []), [liveOrders]);
 
@@ -37,15 +44,15 @@ export default function useSalonData({
             ? listTables({ legacy_only: true }).then((r) => r.data)
             : Promise.resolve(null)),
         30000,
-        [generation, isOwner, scopeKey, scopePending]
+        [floorGeneration, isOwner, scopeKey, scopePending]
     );
     const unassignedCount = Array.isArray(unassigned) ? unassigned.length : 0;
 
-    // Carta para componer el pedido sin salir del salón. No sigue a `generation`:
-    // la carta cambia pocas veces al día y refetcharla en cada evento del salón
-    // (cada toque del mozo lo genera) solo repinta el compositor.
-    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, []);
-    const { data: liveCategories } = usePolling(() => listCategories().then((r) => r.data), 60000);
+    // Menu used to compose an order without leaving the floor. It follows only
+    // the `catalog` topic: a waiter's taps (order events) never refetch it, while
+    // a menu or availability change arrives without waiting for the slow poll.
+    const { data: liveProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: liveCategories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
     const products = useMemo(() => (Array.isArray(liveProducts) ? liveProducts : []), [liveProducts]);
     const categories = useMemo(() => (Array.isArray(liveCategories) ? liveCategories : []), [liveCategories]);
 

@@ -11,7 +11,7 @@ import { StateBadge } from '@/components/StateBadge';
 import { fmtMoney, fmtTime, fmtDateTime, elapsedMinutes, PAYMENT_LABELS, countOf } from '@/lib/format';
 import { Wallet, DollarSign, Lock, Search } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { accountLabel } from '@/lib/cash';
 import CobrarDialog from '@/components/CobrarDialog';
 import AccountPaymentAudit from '@/components/AccountPaymentAudit';
@@ -34,7 +34,12 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
     const [histKind, setHistKind] = useState('pagos');
     const [query, setQuery] = useState('');
 
-    const { generation } = useNotify();
+    // Each query follows only the topics it renders. Every payment also emits an
+    // order event, so `orders` already covers the pending list's totals.
+    const cashGeneration = useRealtimeGeneration(['cash', 'payments']);
+    const pendingGeneration = useRealtimeGeneration(['orders', 'payments', 'prepay']);
+    const tablesGeneration = useRealtimeGeneration(['tables']);
+    const paymentsGeneration = useRealtimeGeneration(['payments', 'prepay']);
     const scopeOptions = useCallback((baseParams = {}) => {
         const params = { ...baseParams, ...scopeParams };
         return Object.keys(params).length ? { params } : undefined;
@@ -44,20 +49,20 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         return apiGet(path, options);
     }, [scopeOptions]);
     const { data: register, error: registerError, loading, refetch: refetchReg } = usePolling(
-        () => scopedGet('/cash/current').then((r) => r.data), 12000, [generation, contextKey]
+        () => scopedGet('/cash/current').then((r) => r.data), 12000, [cashGeneration, contextKey]
     );
     const { data: pending, error: pendingError, refetch: refetchPending } = usePolling(
         () => scopedGet('/orders', { active_only: true }).then((r) => r.data),
         12000,
-        [generation, contextKey]
+        [pendingGeneration, contextKey]
     );
-    const { data: tables } = usePolling(() => scopedGet('/tables').then((r) => r.data), 20000, [generation, contextKey]);
+    const { data: tables } = usePolling(() => scopedGet('/tables').then((r) => r.data), 20000, [tablesGeneration, contextKey]);
     // Pagos de hoy: la misma fuente que el historial (`/payments?period=day`),
     // sólo para los KPIs. El cobro anulado/devuelto no cuenta como venta.
     const { data: dayPayments } = usePolling(
         () => scopedGet('/payments', { period: 'day', limit: 200 }).then((r) => r.data),
         12000,
-        [generation, contextKey]
+        [paymentsGeneration, contextKey]
     );
 
     const selectOrder = useCallback((order) => {

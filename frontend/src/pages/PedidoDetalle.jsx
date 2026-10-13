@@ -28,7 +28,7 @@ import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { ACTIONS, can } from '@/lib/permissions';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import CobrarDialog from '@/components/CobrarDialog';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
@@ -45,14 +45,21 @@ export default function PedidoDetalle() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
-    const { generation } = useNotify();
+    // Only this order's events refetch it (also those of an operation that
+    // touched it from another order, e.g. a merge or a split).
+    const orderGeneration = useRealtimeGeneration(
+        ['orders'],
+        (event) => event.order_id === id || (event.related_order_ids || []).includes(id)
+    );
+    const tablesGeneration = useRealtimeGeneration(['tables']);
+    const catalogGeneration = useRealtimeGeneration(['catalog']);
     // El ✕ de cancelar ítem por ítem es una flag apagada por defecto (Ajustes).
     const features = useRestaurantFeatures();
 
-    const { data: order, refetch } = usePolling(() => getOrder(id).then((r) => r.data), 12000, [id, generation]);
-    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000);
-    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000);
-    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
+    const { data: order, refetch } = usePolling(() => getOrder(id).then((r) => r.data), 12000, [id, orderGeneration]);
+    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [tablesGeneration]);
     const { data: staff } = usePolling(
         () => (can(user, ACTIONS.ORDER_REASSIGN) ? listUsers().then((r) => r.data) : Promise.resolve([])),
         60000,

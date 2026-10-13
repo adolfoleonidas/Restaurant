@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import { fmtElapsed, elapsedMinutes, ORDER_TYPE_LABELS, countOf } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import AttentionReference from '@/components/AttentionReference';
 import useBranchNames from '@/hooks/useBranchNames';
@@ -160,13 +160,14 @@ const KitchenCard = ({ order, items, stage, added, onBump, onItem, branchNames, 
 export default function Cocina() {
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
-    const { generation } = useNotify();
+    const kitchenGeneration = useRealtimeGeneration(['kitchen']);
+    const tablesGeneration = useRealtimeGeneration(['tables']);
     const { data: orders, error: ordersError, loading: ordersLoading, refetch } = usePolling(
         () => getKitchenOrders().then((r) => r.data),
         12000,
-        [generation]
+        [kitchenGeneration]
     );
-    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [generation]);
+    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [tablesGeneration]);
     const [zone, setZone] = useState('todas');
     const [run, pending] = usePendingAction();
 

@@ -28,7 +28,10 @@ var mockTables = [
 
 jest.mock('@/lib/api', () => ({ api: { get: jest.fn(), post: jest.fn() } }));
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', restaurant_id: 'restaurant-1', role: 'admin' } }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('@/hooks/usePolling', () => ({
     __esModule: true,

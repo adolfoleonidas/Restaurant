@@ -12,7 +12,10 @@ global.IS_REACT_ACT_ENVIRONMENT = true;
 
 let mockUser = null;
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mockUser }) }));
-jest.mock('@/contexts/NotifyContext', () => ({ useNotify: () => ({ generation: 0 }) }));
+jest.mock('@/contexts/NotifyContext', () => ({
+    useNotify: () => ({ generation: 0 }),
+    useRealtimeGeneration: () => 0,
+}));
 jest.mock('react-router-dom', () => ({ useNavigate: () => jest.fn() }));
 jest.mock('sonner', () => ({ toast: Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() }) }));
 jest.mock('@/lib/api/orders', () => ({ getKitchenOrders: jest.fn() }));

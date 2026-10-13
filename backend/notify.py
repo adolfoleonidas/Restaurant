@@ -49,7 +49,64 @@ def _close(q: asyncio.Queue) -> None:
     q.put_nowait(CLOSED)
 
 
-def emit_order(restaurant_id: str, order_id: str, status: str, **extra) -> None:
+# Topics: what a client refetches when an event arrives. Every event carries
+# `topic` (the primary one) and `topics` (all of them). An event without a topic
+# makes clients refresh everything, which is the safe default for unknown kinds.
+#
+#   orders    any change to an order (its lines, totals, status, account)
+#   kitchen   the subset of order changes the kitchen board / kitchen alerts show
+#   payments  collections, voids, refunds and payment-proof reviews
+#   prepay    prepaid / pay-at-counter proofs waiting for the cashier
+#   tables    floor state: seating, releasing, moving, table and zone CRUD
+#   cash      cash register open / close / movements
+#   catalog   products, categories and availability
+#   approvals void / refund requests waiting for an owner decision
+ORDERS = "orders"
+KITCHEN = "kitchen"
+PAYMENTS = "payments"
+PREPAY = "prepay"
+TABLES = "tables"
+CASH = "cash"
+CATALOG = "catalog"
+APPROVALS = "approvals"
+
+# Notice kind -> topics. Kinds not listed carry no topic.
+_NOTICE_TOPICS = {
+    "table": (TABLES,),
+    "zone": (TABLES,),
+    "product": (CATALOG,),
+    "category": (CATALOG,),
+    "cash": (CASH,),
+    "approval": (APPROVALS,),
+}
+
+
+def _with_topics(payload: Dict[str, Any], topics) -> Dict[str, Any]:
+    ordered = list(dict.fromkeys(topics))
+    if ordered:
+        payload["topic"] = ordered[0]
+        payload["topics"] = ordered
+    return payload
+
+
+def order_topics(status, payment_status=None, kitchen: bool = True, extra_topics=()) -> list:
+    topics = [ORDERS]
+    if kitchen:
+        topics.append(KITCHEN)
+    if payment_status or status == "pagado":
+        topics.append(PAYMENTS)
+    if payment_status == "comprobante_subido":
+        topics.append(PREPAY)
+    topics.extend(extra_topics)
+    return list(dict.fromkeys(topics))
+
+
+def emit_order(restaurant_id: str, order_id: str, status: str, *, kitchen: bool = True, topics=(), **extra) -> None:
+    """Publish an order change.
+
+    `kitchen=False` is for edits the kitchen never sees (draft lines), so the
+    kitchen board and its alerts are not refetched for them.
+    """
     payload = {
         "type": "order",
         "restaurant_id": restaurant_id,
@@ -57,12 +114,14 @@ def emit_order(restaurant_id: str, order_id: str, status: str, **extra) -> None:
         "status": status,
     }
     payload.update(extra)
+    _with_topics(payload, order_topics(status, extra.get("payment_status"), kitchen, topics))
     publish(payload)
 
 
 def emit_notice(restaurant_id: str, kind: str, **extra) -> None:
     payload = {"type": kind, "restaurant_id": restaurant_id}
     payload.update(extra)
+    _with_topics(payload, _NOTICE_TOPICS.get(kind, ()))
     publish(payload)
 
 
@@ -71,4 +130,4 @@ def public_allowed(event: Dict[str, Any], rid: str, order_id: str = None) -> boo
         return False
     if order_id:
         return event.get("type") == "order" and event.get("order_id") == order_id
-    return event.get("type") in ("product", "table")
+    return event.get("type") in ("product", "category", "table")

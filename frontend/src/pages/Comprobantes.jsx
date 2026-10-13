@@ -11,7 +11,7 @@ import { fmtMoney, fmtDateTime, PAYMENT_LABELS } from '@/lib/format';
 import { proofPending, orderPaymentStatusLabel } from '@/constants/status';
 import { Search, Receipt, Image as ImageIcon, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import { toast } from 'sonner';
 
@@ -29,7 +29,7 @@ export default function Comprobantes() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
-    const { generation } = useNotify();
+    const generation = useRealtimeGeneration(['payments', 'prepay']);
     const [filter, setFilter] = useState('all');
     const [search, setSearch] = useState('');
     const [detail, setDetail] = useState(null);

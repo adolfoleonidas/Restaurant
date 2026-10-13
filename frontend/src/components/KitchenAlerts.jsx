@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import usePolling from '@/hooks/usePolling';
 import { getKitchenOrders } from '@/lib/api/orders';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { countOf } from '@/lib/format';
 
 const ROLES = ['admin', 'cocina', 'mozo'];
@@ -93,7 +93,7 @@ export function KitchenAlerts() {
     const [permission, setPermission] = useState(
         typeof Notification === 'undefined' ? 'denied' : Notification.permission
     );
-    const { generation } = useNotify();
+    const generation = useRealtimeGeneration(['kitchen']);
     const { data: orders } = usePolling(
         () => (enabled ? getKitchenOrders().then((r) => r.data) : Promise.resolve([])),
         20000,

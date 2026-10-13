@@ -10,7 +10,7 @@ import { fmtMoney, fmtElapsed, fmtTime, elapsedMinutes, ORDER_TYPE_LABELS } from
 import { Plus, Receipt, DollarSign, ShieldCheck, Clock } from 'lucide-react';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNotify } from '@/contexts/NotifyContext';
+import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import AttentionReference from '@/components/AttentionReference';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import useBranchNames from '@/hooks/useBranchNames';
@@ -32,7 +32,7 @@ export default function Pedidos() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
-    const { generation } = useNotify();
+    const generation = useRealtimeGeneration(['orders']);
 
     const { data } = usePolling(
         () => {
