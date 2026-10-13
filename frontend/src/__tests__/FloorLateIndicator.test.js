@@ -78,6 +78,8 @@ describe('late tables on the Salón floor (NA-01)', () => {
         const card = cardOf(5);
         expect(card.getAttribute('data-floor-state')).toBe('cuenta');
         expect(card.className).toContain('floor-late');
+        // The CSS turns the left edge red only on cards that are not `data-grouped`.
+        expect(card.getAttribute('data-grouped')).toBeNull();
         const label = card.querySelector('[data-testid="mesa-card-atrasada-5"]');
         expect(label).not.toBeNull();
         expect(label.textContent).toBe('Atrasada');
@@ -122,6 +124,8 @@ describe('late tables on the Salón floor (NA-01)', () => {
         expect(card).not.toBeNull();
         expect(card.getAttribute('data-floor-state')).toBe('cuenta');
         expect(card.className).toContain('floor-late');
+        // A joined group keeps its purple left edge: the CSS skips `data-grouped` cards.
+        expect(card.getAttribute('data-grouped')).toBe('true');
         const label = card.querySelector('[data-testid="mesa-grupo-atrasada"]');
         expect(label).not.toBeNull();
         expect(label.textContent).toBe('Atrasada');
@@ -147,10 +151,19 @@ describe('static indicators in index.css (NA-01)', () => {
 
     it('draws .floor-late as a destructive border and ring that never move', () => {
         const rule = ruleOf('.floor-late');
-        expect(rule).toMatch(/border-color:\s*hsl\(var\(--destructive\)\)/);
+        for (const side of ['top', 'right', 'bottom']) {
+            expect(rule).toMatch(new RegExp(`border-${side}-color:\\s*hsl\\(var\\(--destructive\\)\\)\\s*!important`));
+        }
         expect(rule).toMatch(/box-shadow:\s*0 0 0 \d+px hsl\(var\(--destructive\)/);
         expect(rule).not.toMatch(/animation|transition/);
         expect(css).not.toContain('floor-late-pulse');
+    });
+
+    it('turns the left edge red too, except on a joined group, which keeps the purple edge it sets inline', () => {
+        // A `border-left-color` on .floor-late itself (or a `border-color` shorthand) would beat the
+        // inline `borderLeftColor` of the group card, so the left edge has its own rule.
+        expect(ruleOf('.floor-late')).not.toMatch(/border-left-color|border-color/);
+        expect(css).toMatch(/\.floor-late:not\(\[data-grouped='true'\]\)\s*\{[^}]*border-left-color:\s*hsl\(var\(--destructive\)\)\s*!important/);
     });
 
     it('keeps .pulse-dot as a plain dot', () => {

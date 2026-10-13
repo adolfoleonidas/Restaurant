@@ -247,10 +247,16 @@ body,
 /* Late table (Salón): the bill has waited too long. A static indicator: a
    destructive border and ring that never move. The card also prints the word
    "Atrasada", so the signal is not colour only. The !important beats the
-   inline border colour that the card sets for its floor state. */
+   inline border colour that the card sets for its floor state. The left edge
+   has its own rule: a joined group sets a purple left edge inline and keeps it. */
 .floor-late {
-    border-color: hsl(var(--destructive)) !important;
+    border-top-color: hsl(var(--destructive)) !important;
+    border-right-color: hsl(var(--destructive)) !important;
+    border-bottom-color: hsl(var(--destructive)) !important;
     box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.3);
+}
+.floor-late:not([data-grouped='true']) {
+    border-left-color: hsl(var(--destructive)) !important;
 }
 
 /* Waiter's menu: the pressed dish card changes colour at once so the tap feels
