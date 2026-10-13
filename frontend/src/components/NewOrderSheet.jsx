@@ -120,8 +120,8 @@ export default function NewOrderSheet({
         },
     });
 
-    // Al cerrar se limpia todo: el próximo "Nuevo pedido" arranca de cero. Lo que
-    // el mozo ya tocó se guarda antes, en el pedido que quedó creado.
+    // Closing resets everything: the next "Nuevo pedido" starts from zero. What the waiter
+    // already tapped is saved first, into the order that was created.
     useEffect(() => {
         if (open) return;
         void sync.flush();

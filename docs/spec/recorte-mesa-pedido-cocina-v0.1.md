@@ -98,6 +98,19 @@ No debe obligarlo a: crear una cuenta, crear un comensal, poner un nombre, elegi
 13. Confirma al mozo: "Pedido enviado".
 ```
 
+### 6.1 Draft saving (engineering note)
+
+Step 6 ("keeps the order as a draft") is local-first and batched, so a tap costs no request:
+
+- A tap changes the screen at once and only records, on the device, the quantity the waiter wants for that line.
+- The first product of an account creates the order straight away (the table shows as occupied); its lines follow.
+- The pending lines of an account are saved in ONE `PUT /orders/{id}/draft-lines`, 1.5 s after the last tap, or at once when the waiter confirms the send, leaves the composer, switches or renames an account, clears the draft, or when the app goes to the background, the page is hidden or closed, the connection returns, the app updates or the waiter logs out.
+- The batch is idempotent. Lines are named by an id the device makes up (`client_line_id`), quantities are absolute (0 removes a draft line), sent lines are never touched, and a line that cannot be applied (product off sale, already sent) is rejected on its own while the rest apply. Replaying a batch never duplicates a line.
+- Pending lines are also kept on the device per user and order (IndexedDB, with `localStorage` as fallback), so a reload, a crash or an app update does not lose them. They are saved when that order is opened and when the app opens for that user.
+- The composer shows "Guardando…" while a batch is on its way and "Sin guardar" while lines wait on the device. Sending to the kitchen always waits for the lines to be saved: a stale draft is never sent.
+
+Details, failure modes and limits: [`odd/tasks/batched-order-sync.md`](../../odd/tasks/batched-order-sync.md).
+
 Y del lado de cocina:
 
 ```text
@@ -206,6 +219,10 @@ R-MP-13. La vista avanzada de Cocina está apagada por defecto.
 | F | Cocina marca listo y nadie lo retira | El pedido queda en "Listos" con su tiempo a la vista |
 | G | Se cancela un pedido ya en preparación | Requiere autorización; queda registrado con motivo |
 | H | El mozo cierra el compositor sin enviar | No queda nada: el borrador no crea pedido ni visita |
+| I | El mozo toca varios productos seguidos | Se guardan juntos, un instante después del último toque; ningún toque se pierde |
+| J | Se va la señal mientras arma el pedido | Lo tocado sigue en pantalla con «Sin guardar» y se guarda solo al volver la señal; mientras tanto no se puede enviar a cocina, cambiar de cuenta ni salir del compositor |
+| K | La app se recarga, se cierra o se actualiza con productos sin guardar | Lo tocado queda en el equipo y se guarda al abrir esa cuenta o la app; una actualización espera un instante a que llegue |
+| L | El mozo cierra sesión con productos sin guardar | Intenta guardarlos; si no puede, avisa antes de salir |
 
 ---
 

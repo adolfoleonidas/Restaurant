@@ -185,6 +185,30 @@ describe('nuevo pedido sin mesa', () => {
         expect(toast.error).toHaveBeenCalledWith('Falta la dirección del envío');
     });
 
+    it('BS-02 closing the sheet saves what was tapped at once, in the order that was created, and starts the next one clean', async () => {
+        ({ host, root } = await renderSalon());
+        await openComposer(host, 'llevar');
+        await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
+        await click(document.body.querySelector('[data-testid="nuevo-pedido-producto-prod-1"]'));
+        expect(api.put).not.toHaveBeenCalled();
+
+        // Escape closes the sheet: no pause is waited for.
+        await act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+        await act(async () => { for (let i = 0; i < 30; i += 1) await Promise.resolve(); });
+        expect(document.body.querySelector('[data-testid="nuevo-pedido-sheet"]')).toBeNull();
+        expect(api.put).toHaveBeenCalledTimes(1);
+        expect(api.put).toHaveBeenCalledWith(
+            '/orders/order-9/draft-lines',
+            { lines: [{ client_line_id: expect.any(String), product_id: 'prod-1', quantity: 2 }] },
+            { timeout: 15000 }
+        );
+
+        // The answer of that batch must not bring the old order back into the next sheet.
+        await openComposer(host, 'llevar');
+        const qty = document.body.querySelector('[data-testid="nuevo-pedido-producto-cantidad-prod-1"]');
+        expect(qty.textContent).toBe('0');
+    });
+
     it('envía a cocina el pedido sin mesa', async () => {
         ({ host, root } = await renderSalon());
         await openComposer(host, 'recojo');

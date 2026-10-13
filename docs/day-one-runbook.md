@@ -203,6 +203,8 @@ Windows ejecutá el comando del medio desde `cmd` (PowerShell no pasa binarios c
 | `409 Hay N pedido(s) activo(s)` al vaciar la carta | hay pedidos abiertos | cerralos o restablecé los datos operativos |
 | La carta pública muestra platos demo | la base traía el seed | **Vaciar carta** y volver a importar |
 | Un mozo no ve su mesa | mesa de otra sucursal o sin sucursal | revisá la sucursal de la mesa y del usuario |
+| El pedido muestra «Sin guardar» y no deja enviar a cocina | el celular no llega al servidor; lo tocado está guardado en el celular | que el mozo no cierre sesión ni borre los datos del navegador: al volver la señal se guarda solo. Si no vuelve, revisá la red del local |
+| Tras una actualización la cuenta tiene productos que el mozo no recuerda | un lote que no había llegado se guardó al reabrir la app (es idempotente: no duplica) | nada que hacer; revisá la cuenta y quitá lo que sobre antes de enviar |
 
 ## Lo que NO hay que hacer
 

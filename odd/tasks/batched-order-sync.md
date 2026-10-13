@@ -35,7 +35,7 @@ User decision (2026-10-12): option B. Taps stay on the phone and are saved in on
 - [x] **BS-01 Idempotent batch endpoint.** Backend endpoint that applies a list of draft-line upserts by `client_line_id` (absolute quantity, notes, person/account fields as the composer uses them) to one order atomically with an optimistic version check, rejects edits to non-draft lines per line, publishes one `orders` event (topic per #92, `kitchen=False`), and returns the order. Hermetic tests: replay idempotency, quantity 0 removal, non-draft protection, per-line rejection, branch/tenant scoping, one event per batch.
 - [x] **BS-02 Debounced outbox in the composer.** Replace per-tap writes in `useOrderLineSync`/`lineSyncQueue` with the batch window and immediate-flush triggers above; first tap still creates the order immediately; send/leave/switch await the flush (existing UX-14 guarantees stay green).
 - [x] **BS-03 Durable outbox.** Persist pending changes on the device and replay them on reopen; flush on hidden/pagehide/online and before the service-worker reload; "Guardando…"/"Sin guardar" state; logout warning while pending.
-- [ ] **BS-04 Docs.** Record the sync model (what is local, when it flushes, idempotency, failure modes) in this document and in the relevant project doc.
+- [x] **BS-04 Docs.** Record the sync model (what is local, when it flushes, idempotency, failure modes) in this document and in the relevant project doc.
 
 ## Endpoint contract (BS-01)
 
@@ -64,6 +64,68 @@ Answer `200`: the whole order, as every write answers since #91, plus `line_resu
 Errors: `400` closed order, `403` role, `404` order not found in the caller's tenant and branch, `409` stale `version` or a concurrent change, `422` invalid body (repeated `client_line_id`, negative quantity, more than 100 lines, bad id).
 
 Realtime: one `order` event per batch that changed something, `topics: ["orders"]` (`kitchen=False`, `extra: "draft_lines"`), the same as the per-tap draft edits it replaces.
+
+## Sync model (BS-04)
+
+How composer taps reach the server since this change. The functional summary is in `docs/spec/recorte-mesa-pedido-cocina-v0.1.md` (6.1 and the exceptional cases I to L); the operator view is in `docs/day-one-runbook.md` ("Si algo falla").
+
+### What is local and what is on the server
+
+- The server holds the drafts (lines with status `borrador`), so other waiters see them and the table stays occupied. What is local is the gap between the last answer of the server and now: the taps of the waiter that no answer has confirmed.
+- That gap is an outbox: one entry per line, keyed `line:<line id>` for a line the server has and `new:<product id>` for a product with no line yet. An entry holds the wanted **absolute** quantity (not clicks), the order it belongs to, and, for a new product, the product and the `clientLineId` its line will have. Entries are plain objects in `lib/lineSyncQueue.js`; nothing is written per tap.
+- The screen is always the last order the server confirmed with the outbox laid over it (`overlayPendingLines`), so the cards, the ticket and the send bar read the same optimistic numbers, and a confirmed answer replaces the base without the numbers moving.
+- The waiter reads the state in the person strip of the table sheet and in the footer of the new order sheet: "Guardando…" while a request is on the wire, "Sin guardar" while lines wait (nothing when everything is saved).
+
+### When it flushes
+
+| Moment | What happens |
+| --- | --- |
+| 1500 ms after the last tap (`ORDER_SYNC_DELAY_MS`, injectable) | the whole outbox of an order goes out in one request; every new tap re-arms the window |
+| First product of an account with no order | the order is created at once (a create-only pass), so the table shows as occupied; its line goes with the next batch |
+| Confirming the send to the kitchen | flush now; the send waits and is cancelled if a line failed or could not be saved |
+| Leaving the composer, switching or starting an account, editing another account, opening another table, renaming (card or strip), "Vaciar", item notes | flush now; the action stops with "Hay productos sin guardar..." if the lines could not be saved |
+| App to the background (`visibilitychange` hidden) and `pagehide` | flush now with `fetch` and `keepalive`, which the browser finishes even if the page goes |
+| `online` | flush now (and the stored outboxes of the user are replayed) |
+| Closing the take-out sheet, or any composer unmounting | flush now |
+| Service-worker update (`controllerchange`) | flush now with `keepalive`, wait at most 1500 ms, then reload once |
+| Logout | flush, wait at most 2500 ms; if lines are still unsaved the waiter is asked (`ConfirmDialog`) |
+
+One request is in flight per outbox. Taps made meanwhile stay in the outbox and travel in the next batch, which the next pause (or flush) sends: a long burst of taps is never a chain of requests.
+
+### Idempotency
+
+- Each line has an id the server dedupes on: the `client_line_id` made once per product line (`crypto.randomUUID`, with fallbacks), or the line's own id for lines that were created before batches. The id of an entry never changes, so "down to zero and up again" while the first batch is in flight still names the same line.
+- Quantities are absolute and the endpoint upserts by id, so a batch sent twice (a lost answer, a reload, a replay, a 409 retry) changes nothing the second time.
+- A tap that nets out to what the server already has is not sent. The exception is an entry flagged `attempted` (it went out once): its answer may have been lost, so the server can hold a different quantity than the last confirmed order says, and it is always sent again. The flag is written to the device before the request leaves.
+
+### Failure modes
+
+| What happened | What the outbox does | What the waiter sees |
+| --- | --- | --- |
+| The server rejects one line (product off sale, already sent, already charged) | that line goes back to the last confirmed quantity, the other lines apply | one toast with the server's reason (`apiErrorMessage`) |
+| The server refuses the batch (400 closed order, 403, 404, 422, 500) | all its lines go back to the confirmed quantities, the order is re-read | one toast |
+| 409 (the order changed under the batch) | the same batch is sent again, up to twice; then it counts as a refusal | nothing, or the toast of a refusal |
+| No answer, timeout (15 s), 401, 408, 425, 429, 502, 503, 504 | nothing is rolled back; the lines stay on screen and on the device; retried after 4, 8, 16, 30 s (capped), at the next flush and on `online` | "Sin guardar" and one toast ("Sin conexión..."); send, leave, switch and rename are refused with "Hay productos sin guardar..." until it is saved |
+| The answer of a batch is lost | the entries stay flagged `attempted` and go again; the server dedupes | nothing |
+| The page dies (reload, crash, battery, app update) | entries are on the device (IndexedDB, else `localStorage`), written on every change and before every request | on reopening that order the taps are back, then saved; at app start they are saved without opening anything |
+| Logout or an update with unsaved lines | they get a moment to be sent (2.5 s and 1.5 s); what does not make it stays on the device | the logout dialog, or nothing |
+| The device storage is blocked or full | the outbox keeps working in memory; only the durability is lost | nothing |
+
+### Persistence and replay
+
+- `lib/outboxStorage.js`: one record per `userId:orderId` with the entries, the serialized `signature` and `savedAt`. IndexedDB database `restoflow-outbox`, store `draft-lines`; `localStorage` key `restoflow:outbox:v1:<user>:<order>` when IndexedDB is missing or fails to open. No method throws or rejects. Entries without an order (the order is still being created) are not stored.
+- Replay on reopen: `useOrderLineSync` loads the record of the order it shows and `restore`s it into the outbox (what the waiter tapped in this session wins by key), then flushes at once.
+- Replay at app start and on `online`: `AppShell` calls `replayStoredOutboxes(userId)`, which sends every stored record of that user as the same idempotent batch, skips the orders a live composer owns (`outboxRegistry.ownsOrder`) and deletes a record only if its signature did not change since it was read. A refused batch is dropped; a connection failure keeps the record. Rejected lines raise one toast.
+- Records are per user: another user on the same device never replays them.
+
+### Limits
+
+- A tap on the first product is on screen but not on the device until the order exists (the create request is in flight, usually well under a second).
+- Closing the take-out sheet while offline and tapping the same product in a new sheet before the connection returns takes the key of the old pending entry (`new:<product>`), which replaces it. The old order keeps the lines it already had.
+- Two tabs of the same user on the same account share one record on the device: the last one to write wins. Each tab still sends its own lines.
+- Two devices on the same account merge per line with absolute quantities; the last write wins for a quantity, and a draft line one device removed can come back if the other one still has it pending.
+- `version` (optimistic check) exists on the endpoint but the composer does not send it.
+- A request that hangs is cut after 15 s (`saveDraftLines`); `createOrder` has no timeout, as before.
 
 ## Progress and evidence
 
@@ -105,6 +167,10 @@ Realtime: one `order` event per batch that changed something, `topics: ["orders"
 - BS-03 GREEN: full frontend suite 126 suites, 1233 tests passed (BS-02: 119 / 1146: +7 suites, +87 tests); `CI=true npx craco build`: compiled successfully with no warnings (`NoMotion` guard included in the suite). Mutation check, 13 changes, each made 1 to 7 tests fail and was reverted: nothing kept on the device, nothing taken back, `pagehide` without `keepalive`, the sent flag not kept before the request, confirmed entries left on the device, outbox not registered, update reloading without saving, logout never asking, logout not giving the taps a moment, no replay at app start, replay racing a live composer, a conditional remove that ignores the signature, the strip showing no state.
 - Tests added or changed in BS-03: new `outboxStorage` (IndexedDB double and `localStorage`, same contract), `outboxRegistry`, `outboxReplay`, `SyncStatus`, `SyncStatusWiring`, `keepaliveRequest`, `AppShellOutbox`; `useOrderLineSync` gains the device, the registry and the keepalive events (the background and `pagehide` cases now expect `{ keepalive: true }`); `lineSyncQueue` gains `restore` and "a failed connection stops the pass"; `serviceWorker` gains the flush-before-reload cases; `SalonComposerProto` gains two Salon-level cases (the strip text through a batch, and a failed connection that keeps the tap on the device until `online`) and clears `localStorage` between tests because the outbox now writes there.
 
+- BS-03 commit: `fabeb04`.
+- BS-04 done: the model (what is local, when it flushes, idempotency, failure modes, persistence, limits) is the "Sync model" section of this file; the functional contract is `docs/spec/recorte-mesa-pedido-cocina-v0.1.md` (new 6.1 "Draft saving" and exceptional cases I to L); the operator view is two rows of "Si algo falla" in `docs/day-one-runbook.md`. Docs only plus one comment translated to English in `NewOrderSheet.jsx`.
+- Also covered after BS-03: closing the new order sheet saves what was tapped at once and ignores the answer that arrives after the reset (`NuevoPedidoInline`, two mutations checked: the guard on late answers and the flush on close).
+
 ## Next step
 
-BS-04 (document the sync model in this file, in the table-order-kitchen spec and in the runbook), then the parent's browser and performance check.
+The parent rebuilds the stack, checks the Salón in a browser (offline and reload with taps pending, the "Guardando…" and "Sin guardar" text, the logout dialog) and re-runs the Playwright comparison: writes, GETs, commits and long tasks per tap burst against main.
