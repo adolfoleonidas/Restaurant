@@ -474,7 +474,7 @@ export function selectFreshOrder(openOrder, liveOrder) {
 export function selectSheetModel({
     openTable, sheetOrder, tables, activeOrders, canTake, canClose,
 }) {
-    const { table: openedTable, history, loading, accountTable, accounts, accountId } = openTable;
+    const { table: openedTable, history, loading, accountsLoading, accountTable, accounts, accountId } = openTable;
     // El estado sale de la mesa viva del piso, no de la copia que se guardó al abrir la hoja.
     const t = (tables || []).find((candidate) => candidate.id === openedTable.id) || openedTable;
     const group = openTable.group || t.group || null;
@@ -561,6 +561,9 @@ export function selectSheetModel({
         table: t,
         history,
         loading,
+        // The table's account list is still on its way: what it must not allow is
+        // starting an independent account before knowing whether one exists.
+        accountsLoading: Boolean(accountsLoading),
         accountTable,
         accounts,
         group,

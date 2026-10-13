@@ -70,15 +70,19 @@ export function OrderNote({ order = null, testIdPrefix = 'mesa-sheet' }) {
  * pie pegajoso con lo que se lleva la cuenta y la acción de enviar. El pie es el
  * que evita que el mozo tenga que subir a buscar el botón después de agregar.
  *
- * Cada toque responde al instante: el número cambia, la tarjeta se hunde mientras
- * se toca (CSS) y (si el sonido está activo) suena un clic seco.
+ * Cada toque responde al instante: el número cambia, la tarjeta cambia de color
+ * mientras se toca (CSS) y (si el sonido está activo) suena un clic seco.
+ *
+ * La carta NUNCA se deshabilita por el estado de la pantalla: un producto que no
+ * se puede pedir (`out`) es el único que no acepta el toque. Lo que el mozo toca
+ * mientras la cuenta se está guardando o cargando no se pierde: lo retiene la cola
+ * de la hoja (ver `useTableSheet`) y viaja en el lote siguiente.
  */
 export default function OrderComposer({
     order = null,
     items,
     products = [],
     categories = [],
-    savingItem = false,
     // 'saving' | 'unsaved' | 'idle': where the waiter's taps are (see `SyncStatus`).
     saveState = 'idle',
     canCompose = false,
@@ -232,7 +236,7 @@ export default function OrderComposer({
                                 product={p}
                                 qty={entry?.qty || 0}
                                 out={out}
-                                busy={out || savingItem}
+                                busy={out}
                                 canRemove={Boolean(entry?.target)}
                                 testIdPrefix={testIdPrefix}
                                 onAdd={add}
