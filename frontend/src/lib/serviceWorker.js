@@ -22,11 +22,9 @@
 // recargar. Por eso se pide `registration.update()` al volver a primer plano y
 // cada 15 minutos con la app visible; si hay build nueva, el `controllerchange`
 // de arriba hace el resto.
-import { flushAllOutboxes, hasPendingOutbox } from '@/lib/outboxRegistry';
+import { reloadWithPendingTaps } from '@/lib/reloadWithPendingTaps';
 
 const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
-// How long the reload waits for pending taps to reach the server.
-const RELOAD_FLUSH_TIMEOUT_MS = 1500;
 const watched = new WeakSet();
 
 function watchForUpdates(registration) {
@@ -55,13 +53,7 @@ export function registerServiceWorker() {
     navigator.serviceWorker.addEventListener?.('controllerchange', () => {
         if (!hadController || reloading) return;
         reloading = true;
-        if (!hasPendingOutbox()) {
-            window.location.reload();
-            return;
-        }
-        flushAllOutboxes({ timeoutMs: RELOAD_FLUSH_TIMEOUT_MS })
-            .catch(() => {})
-            .then(() => window.location.reload());
+        void reloadWithPendingTaps(window);
     });
 
     window.addEventListener('load', () => {
