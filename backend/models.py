@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict, EmailStr, constr, field_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, constr, field_validator, model_validator
 from typing import List, Optional, Literal
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -395,6 +395,41 @@ class OrderItemInput(BaseModel):
     product_id: str
     quantity: int = Field(ge=1, default=1)
     notes: Optional[str] = Field(default=None, max_length=200)
+
+
+# The id the composer makes up for a line (a UUID) or reads back from the order
+# (the server's own line id): letters, digits and a few separators, nothing else.
+_LINE_ID_PATTERN = r"^[A-Za-z0-9._:-]+$"
+
+
+class DraftLineUpsert(BaseModel):
+    """One draft line the composer wants in the order: an absolute state, not a delta.
+
+    `client_line_id` names the line: the id the client made up when it first
+    tapped the product or, for a line the server already had, that line's own
+    `id`. `product_id` is only needed to create the line. `quantity` 0 removes it.
+    """
+
+    client_line_id: str = Field(min_length=1, max_length=64, pattern=_LINE_ID_PATTERN)
+    product_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    quantity: int = Field(ge=0)
+    notes: Optional[str] = Field(default=None, max_length=200)
+
+
+class DraftLinesBatch(BaseModel):
+    """Every pending line of one order, saved together (`PUT /orders/{id}/draft-lines`)."""
+
+    lines: List[DraftLineUpsert] = Field(min_length=1, max_length=100)
+    # `updated_at` of the order as the client last saw it. Optional: when it is
+    # sent, a batch for an order that has changed since is refused as a conflict.
+    version: Optional[str] = Field(default=None, max_length=64)
+
+    @model_validator(mode="after")
+    def lines_are_distinct(self):
+        ids = [line.client_line_id for line in self.lines]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Una línea no puede repetirse en el mismo lote")
+        return self
 
 
 class OrderCreate(BaseModel):

@@ -5,7 +5,7 @@ import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
 from auth import get_current_user, require_roles, user_functions
-from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderNotes, OrderItemVoid, OrderItemMove
+from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderNotes, OrderItemVoid, OrderItemMove, DraftLinesBatch
 from billing import assert_can_cancel, guarded_totals, line_subtotal, split_group_totals, sum_line_subtotals
 from order_flow import (
     DRAFT_STATUS,
@@ -493,6 +493,120 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     await _save_order(o, patch)
     emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"), kitchen=False)
     return await _current_order_response(order_id, user)
+
+
+_NOT_DRAFT_DETAIL = "Ese producto ya fue enviado a cocina. Anúlalo y vuelve a pedirlo."
+
+
+def _line_result(client_line_id: str, result: str, line: dict | None = None, **extra) -> dict:
+    """What happened to one line of a batch. `line_id` is the server's id for it."""
+    out = {"client_line_id": client_line_id, "result": result}
+    if line is not None:
+        out["line_id"] = line["id"]
+    out.update(extra)
+    return out
+
+
+def _rejected_line(client_line_id: str, code: str, detail: str) -> dict:
+    return _line_result(client_line_id, "rejected", code=code, detail=detail)
+
+
+async def _create_draft_line(items: list, line, restaurant_id: str) -> dict:
+    cid = line.client_line_id
+    if line.quantity == 0:
+        # Nothing to remove: asking twice for the same removal is not an error.
+        return _line_result(cid, "unchanged")
+    if not line.product_id:
+        return _rejected_line(cid, "not_found", "Ítem no encontrado")
+    try:
+        # Same checks and pricing as add_items: product exists, is on sale, combo is complete.
+        enriched, _ = await _compute_total(
+            [{"product_id": line.product_id, "quantity": line.quantity, "notes": line.notes}], restaurant_id
+        )
+    except HTTPException as exc:
+        return _rejected_line(cid, "unavailable", str(exc.detail))
+    created = enriched[0]
+    created.update(status=DRAFT_STATUS, added_at=_now(), client_line_id=cid)
+    items.append(created)
+    return _line_result(cid, "applied", created)
+
+
+async def _apply_draft_line(items: list, line, restaurant_id: str) -> dict:
+    """Bring one line of `items` to what the client asked for.
+
+    A line is found by its `client_line_id` or, for lines created before batches
+    existed, by its own `id`. Only draft lines are ever changed. `items` is only
+    mutated for a line that is applied or removed.
+    """
+    cid = line.client_line_id
+    match = next((it for it in items if it.get("client_line_id") == cid or it.get("id") == cid), None)
+    if match is None:
+        return await _create_draft_line(items, line, restaurant_id)
+    if line.product_id and match.get("product_id") != line.product_id:
+        return _rejected_line(cid, "mismatch", "Esa línea es de otro producto. Vuelve a cargar el pedido.")
+    quantity = int(match.get("quantity") or 0)
+    if not is_draft(match):
+        # A replay of a batch whose line was sent meanwhile already got what it
+        # wanted; anything else would edit what the kitchen knows.
+        if line.quantity == quantity and line.notes in (None, match.get("notes")):
+            return _line_result(cid, "unchanged", match)
+        return _rejected_line(cid, "not_draft", _NOT_DRAFT_DETAIL)
+    paid = int(match.get("paid_qty") or 0)
+    if line.quantity == 0:
+        if paid > 0:
+            return _rejected_line(cid, "paid", "No puedes quitar un producto que ya fue cobrado")
+        items[:] = [it for it in items if it is not match]
+        return _line_result(cid, "removed")
+    if line.quantity < paid:
+        return _rejected_line(cid, "paid", "No puedes dejar un producto por debajo de lo ya cobrado")
+    changed = False
+    if line.quantity != quantity:
+        match["quantity"] = line.quantity
+        match["subtotal"] = line_subtotal(match["unit_price"], line.quantity)
+        changed = True
+    if line.notes is not None and line.notes != match.get("notes"):
+        match["notes"] = line.notes
+        changed = True
+    return _line_result(cid, "applied" if changed else "unchanged", match)
+
+
+@router.put("/{order_id}/draft-lines")
+async def sync_draft_lines(order_id: str, data: DraftLinesBatch, user: dict = Depends(require_roles(["admin", "mozo"]))):
+    """Save every pending draft line of an account in one idempotent request.
+
+    The composer keeps taps on the device and sends them here when the waiter
+    pauses, leaves or sends. Each line states what it should look like now (an
+    absolute quantity, 0 removes it) and is found by `client_line_id`, so
+    replaying a batch, which a lost answer or a reload makes necessary, never
+    duplicates a line. Sent lines are never touched. A line that cannot be applied
+    (product off sale, already sent, ...) is rejected on its own and the rest of
+    the batch still applies. The answer is the whole order plus `line_results`.
+    """
+    o = await db.orders.find_one(await record_lookup_scope(user, db.branches, order_id))
+    if not o:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    if o["status"] in ("pagado", "cancelado"):
+        raise HTTPException(status_code=400, detail="No se puede modificar un pedido cerrado")
+    if data.version is not None and data.version != o.get("updated_at"):
+        raise HTTPException(status_code=409, detail=version_conflict(o))
+    items = o.get("items") or []
+    results = [await _apply_draft_line(items, line, user["restaurant_id"]) for line in data.lines]
+    if any(r["result"] in ("applied", "removed") for r in results):
+        subtotal, total = guarded_totals(o, items)
+        # One document write, guarded by the version read above: a concurrent
+        # change is a 409 and the client simply sends the same batch again.
+        await _save_order(o, {
+            "items": items,
+            "subtotal": subtotal,
+            "total": total,
+            "updated_at": _now(),
+            **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
+        })
+        emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="draft_lines", branch_id=o.get("branch_id"), kitchen=False)
+    order = await _current_order_response(order_id, user)
+    if order is not None:
+        order["line_results"] = results
+    return order
 
 
 async def _resume_merge_operation(operation: dict, user: dict) -> None:
