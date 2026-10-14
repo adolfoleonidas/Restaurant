@@ -11,11 +11,53 @@ const trim = (args) => {
     return out;
 };
 
-export const get = (url, config) => api.get(...trim([url, config]));
 export const post = (url, body, config) => api.post(...trim([url, body, config]));
 export const patch = (url, body, config) => api.patch(...trim([url, body, config]));
 export const put = (url, body, config) => api.put(...trim([url, body, config]));
 export const del = (url, config) => api.delete(...trim([url, config]));
+
+/**
+ * Lecturas de sondeo que se comparten cuando ya están viajando.
+ *
+ * Medido en el teléfono del mozo: al abrir el Salón la app pedía dos y tres veces
+ * la misma lista (`/api/orders?active_only=true`, 12 KB) en paralelo, y las
+ * peticiones se encolaban entre ellas — una respuesta de 0 KB
+ * (`/api/categories`) tardaba 300-536 ms porque había cinco en vuelo.
+ *
+ * NO se comparte cualquier lectura. Hay pantallas que piden lo mismo dos veces a
+ * propósito para poder descartar una respuesta vieja (el catálogo de sucursales al
+ * cambiar de alcance, los reportes al cambiar de filtro): compartir ahí le daría a
+ * la segunda el resultado de la primera, que es justo el que quiere ignorar. Se
+ * comparten solo las lecturas de sondeo, donde varias pantallas montan a la vez y
+ * todas quieren lo mismo.
+ *
+ * No es una caché: cuando la respuesta llega, la próxima lectura vuelve a pedir,
+ * así que ninguna pantalla lee datos viejos.
+ */
+const SHARED_GETS = new Set([
+    '/restaurants/current',
+    '/orders',
+    '/orders/kitchen',
+    '/tables',
+    '/categories',
+    '/products',
+]);
+
+const inFlightGets = new Map();
+
+const getKey = (url, config) => `${url}|${JSON.stringify(config?.params ?? null)}`;
+
+export const get = (url, config) => {
+    if (!SHARED_GETS.has(url)) return api.get(...trim([url, config]));
+    const key = getKey(url, config);
+    const flying = inFlightGets.get(key);
+    if (flying) return flying;
+    const request = api.get(...trim([url, config])).finally(() => {
+        if (inFlightGets.get(key) === request) inFlightGets.delete(key);
+    });
+    inFlightGets.set(key, request);
+    return request;
+};
 
 /** `{ params }` when there are params, otherwise no config at all. */
 export const withParams = (params) => (params ? { params } : undefined);
