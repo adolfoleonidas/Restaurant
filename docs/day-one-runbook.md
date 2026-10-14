@@ -193,6 +193,61 @@ Windows ejecutá el comando del medio desde `cmd` (PowerShell no pasa binarios c
 
 ---
 
+## 13. Actualizar una instalación que ya está corriendo
+
+El camino normal es un push a `main`: el workflow `.github/workflows/deploy.yml`
+corre los tests y después entra por SSH, hace `git merge --ff-only` y
+`docker compose up -d --build`.
+
+**Si GitHub Actions no está disponible** —hoy está bloqueado por facturación— hay
+un camino equivalente desde tu máquina, que hace exactamente los mismos pasos en
+el servidor:
+
+```powershell
+# 1. Ver qué se va a desplegar, sin tocar nada
+powershell -ExecutionPolicy Bypass -File scripts\deploy-ssh.ps1 -DryRun
+
+# 2. Desplegar (corre la verja local, pide confirmación, despliega y verifica)
+powershell -ExecutionPolicy Bypass -File scripts\deploy-ssh.ps1
+```
+
+Qué hace `scripts\deploy-ssh.ps1`:
+
+1. **Verja local** (`scripts\pre-deploy-check.ps1`): los mismos comandos que el
+   trabajo `test` de CI — `pytest -m "not integration"`, la suite de Jest y el
+   build de producción. Si algo está en rojo, no despliega.
+   - Con `-SkipGate` se salta, a sabiendas. No hay que usarlo salvo emergencia.
+   - **No corre `npm ci`** (borra y reinstala `node_modules`): una deriva entre
+     `package.json` y el lockfile no se detecta en local, solo en CI.
+2. **Se niega a desplegar algo que no esté en `origin/main`**, para que el VPS
+   corra siempre lo mismo que está publicado.
+3. **Entra por SSH** (`root@179.236.76.74`, llave `~/.ssh/gh-deploy`) y ejecuta
+   `scripts\deploy-remote.sh`: comprueba que el servidor esté en `main` y con el
+   árbol limpio, trae el commit, `git merge --ff-only`, `docker compose up -d
+   --build` y espera el `/api/health` hasta 2 minutos.
+4. **Verifica desde fuera**: imprime el hash del bundle servido y el health,
+   desde la misma URL que usa el restaurante. La salida del servidor puede decir
+   «listo» mientras el proxy sigue sirviendo el bundle viejo.
+
+### Dos cosas que el script NO hace, a propósito
+
+- **No toca el `.env`.** El workflow rota `JWT_SECRET` si lo considera débil, y
+  eso **desconecta a todos los usuarios**: rotarlo tiene que ser una decisión
+  explícita, no un efecto colateral de desplegar.
+- **No vuelve atrás.** Solo avanza. `git merge --ff-only` con un commit anterior
+  responde «Already up to date» con éxito, así que el script comprueba que el
+  servidor haya quedado **exactamente** en el commit pedido y falla si no. Volver
+  atrás es una operación aparte: `git log --oneline -5` en el servidor para
+  elegir el commit bueno, `git reset --hard <sha>`, `docker compose up -d
+  --build`, y verificar el health. Hacelo con el local cerrado.
+
+### Después de desplegar
+
+- Mirá el bundle y el health que imprime el script: si el health está verde y el
+  bundle cambió, quedó.
+- Tu otro worktree (`C:\Users\adolf\Downloads\cobro-restaurante`) tiene `main`
+  en el commit viejo: ahí toca `git pull`.
+
 ## Si algo falla
 
 | Síntoma | Causa | Arreglo |

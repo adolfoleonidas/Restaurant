@@ -1,0 +1,15 @@
+# Normalización de finales de línea.
+#
+# El repo se trabaja en Windows con core.autocrlf=true, así que sin esto un
+# checkout futuro devolvería los .sh con CRLF. En un script que se manda por
+# SSH con `bash -s`, un \r al final de cada línea rompe la ejecución: git
+# responde `fatal: '1a26ea2?': not a non-negative integer` al intentar el merge
+# y el despliegue falla sin decir por qué.
+#
+# Los .sh SIEMPRE en LF, sin importar la plataforma.
+*.sh text eol=lf
+# Los .ps1 en CRLF: es lo que espera Windows PowerShell 5.1 al leerlos, y estos
+# scripts son de la máquina del operador.
+*.ps1 text eol=crlf
+# .env real nunca se versiona (el patrón está en .gitignore); este es el ejemplo.
+*.env.example text eol=lf
