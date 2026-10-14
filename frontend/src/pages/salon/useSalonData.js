@@ -35,7 +35,7 @@ export default function useSalonData({
     const ordersGeneration = useRealtimeGeneration(['orders'], somebodyElse);
     const catalogGeneration = useRealtimeGeneration(['catalog']);
     const {
-        data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables,
+        data: tables, error: tablesError, loading: tablesLoading, refetch: refetchTables, patch: patchTables,
     } = usePolling(
         // Sin sucursal elegida el pedido va sin parámetros: el servidor ya acota
         // a la sucursal del usuario.
@@ -45,7 +45,7 @@ export default function useSalonData({
         8000,
         [tablesGeneration, scopeKey, scopePending]
     );
-    const { data: liveOrders, error: ordersError, refetch: refetchOrders } = usePolling(
+    const { data: liveOrders, error: ordersError, refetch: refetchOrders, patch: patchOrders } = usePolling(
         () => (scopePending
             ? Promise.resolve(null)
             : listOrders({ active_only: true, ...scopeParams })).then((r) => (r ? r.data : null)),
@@ -76,6 +76,28 @@ export default function useSalonData({
 
     const refreshAll = () => { refetchTables?.(); refetchOrders?.(); };
 
+    /**
+     * Cambia un pedido en pantalla YA, sin esperar a que vuelvan las listas.
+     *
+     * Lo usan las acciones del piso (entregar, cerrar la visita): son dos viajes —el
+     * POST y el refresco— y hasta el segundo la tarjeta quedaba como estaba. Se toca
+     * también el pedido embebido en su mesa (`active_order`), que es de donde la
+     * tarjeta saca el estado. Si la acción falla, quien la llamó hace `refreshAll()`
+     * y lo que se ve vuelve a ser lo del servidor.
+     *
+     * `change` es un objeto para reemplazar campos o una función `(order) => patch`.
+     */
+    const patchOrder = (orderId, change) => {
+        const apply = (order) => {
+            if (!order || order.id !== orderId) return order;
+            return typeof change === 'function' ? change(order) : { ...order, ...change };
+        };
+        patchOrders?.((list) => (Array.isArray(list) ? list.map(apply) : list));
+        patchTables?.((list) => (Array.isArray(list)
+            ? list.map((t) => (t.active_order ? { ...t, active_order: apply(t.active_order) } : t))
+            : list));
+    };
+
     return {
         tables,
         tablesError,
@@ -88,5 +110,6 @@ export default function useSalonData({
         products,
         categories,
         refreshAll,
+        patchOrder,
     };
 }

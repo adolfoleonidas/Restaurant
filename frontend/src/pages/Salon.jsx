@@ -76,7 +76,7 @@ export default function Salon() {
 
     const {
         tables, tablesError, tablesLoading, refetchTables, orders, ordersError, refetchOrders,
-        unassignedCount, products, categories, refreshAll,
+        unassignedCount, products, categories, refreshAll, patchOrder,
     } = useSalonData({
         isOwner, scope, scopeKey, scopeParams, scopePending,
     });
@@ -100,7 +100,7 @@ export default function Salon() {
         tables, activeOrders, closeSheet, refreshAll,
     });
     const floorActions = useFloorActions({
-        canTake, closeSheet, refreshAll, refetchTables, navigate,
+        canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
     });
 
     const closeAreas = () => setShowNewOrder(false);

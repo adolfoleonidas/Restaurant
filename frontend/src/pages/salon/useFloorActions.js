@@ -11,7 +11,7 @@ import usePendingAction from '@/hooks/usePendingAction';
  * (`deliver:<orderId>`, `close:<orderId>`, `bill:<orderId>`, `release:<tableId>`).
  */
 export default function useFloorActions({
-    canTake, closeSheet, refreshAll, refetchTables, navigate,
+    canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
 }) {
     const [run, pending] = usePendingAction();
     const closingKey = [...pending].find((key) => key.startsWith('close:'));
@@ -23,12 +23,27 @@ export default function useFloorActions({
         navigate(`/pedidos/${order.id}`);
     };
 
+    // Entregar son dos viajes: el POST y el refresco de las listas. La tarjeta se
+    // pinta al toque con lo que el servidor va a confirmar, y el refresco la corrige.
+    // Sin esto, entre el toque y el cambio pasaba más de un segundo y el mozo creía
+    // que el botón no funcionaba (volvía a tocar y ya estaba deshabilitado).
     const deliver = (orderId) => run(`deliver:${orderId}`, async () => {
-        await serveOrder(orderId);
+        patchOrder?.(orderId, (order) => ({
+            items: (order.items || []).map((item) => (
+                item.status === 'listo' ? { ...item, status: 'entregado' } : item
+            )),
+        }));
+        try {
+            await serveOrder(orderId);
+        } catch (error) {
+            // Falló: lo pintado se descarta y la pantalla vuelve a lo del servidor.
+            refreshAll();
+            throw error;
+        }
         toast.success('Pedido entregado');
         closeSheet();
         refreshAll();
-    }, { errorMessage: 'No se pudo entregar' });
+    }, { errorMessage: 'No se pudo entregar', onError: () => refreshAll() });
 
     const closeAttention = (order) => run(`close:${order.id}`, async () => {
         await closeOrderAttention(order.id);

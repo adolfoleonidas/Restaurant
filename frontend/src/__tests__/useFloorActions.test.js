@@ -15,18 +15,19 @@ const closeSheet = jest.fn();
 const refreshAll = jest.fn();
 const refetchTables = jest.fn();
 const navigate = jest.fn();
+const patchOrder = jest.fn();
 let mounted;
 
 const mount = async (canTake = true) => {
     mounted = await renderHook((p) => useFloorActions(p), {
-        canTake, closeSheet, refreshAll, refetchTables, navigate,
+        canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
     });
     return mounted.result;
 };
 
 beforeEach(() => {
     [closeOrderAttention, serveOrder, setOrderStatus, releaseTable].forEach((fn) => fn.mockReset().mockResolvedValue({ data: {} }));
-    [closeSheet, refreshAll, refetchTables, navigate].forEach((fn) => fn.mockReset());
+    [closeSheet, refreshAll, refetchTables, navigate, patchOrder].forEach((fn) => fn.mockReset());
     Object.values(toast).forEach((fn) => fn.mockReset());
 });
 
@@ -43,6 +44,35 @@ describe('useFloorActions', () => {
         expect(toast.success).toHaveBeenCalledWith('Pedido entregado');
         expect(closeSheet).toHaveBeenCalled();
         expect(refreshAll).toHaveBeenCalled();
+    });
+
+    test('deliver pinta la tarjeta ANTES de que el servidor conteste', async () => {
+        // Entregar son dos viajes (el POST y el refresco): sin pintar al toque, la
+        // tarjeta quedaba igual más de un segundo y el mozo creía que no funcionaba.
+        let resolveServe;
+        serveOrder.mockReturnValue(new Promise((r) => { resolveServe = r; }));
+        const result = await mount();
+
+        let running;
+        await act(async () => { running = result.current.deliver('o1'); });
+        expect(patchOrder).toHaveBeenCalledTimes(1);
+        const [patchedId, change] = patchOrder.mock.calls[0];
+        expect(patchedId).toBe('o1');
+        const order = { id: 'o1', items: [{ id: 'i1', status: 'listo' }, { id: 'i2', status: 'en_preparacion' }] };
+        expect(change(order).items.map((i) => i.status)).toEqual(['entregado', 'en_preparacion']);
+
+        await act(async () => { resolveServe({ data: {} }); await running; });
+    });
+
+    test('si el servidor falla, lo pintado se descarta y vuelve la verdad', async () => {
+        serveOrder.mockRejectedValue({ response: { data: { detail: 'Ya entregado' } } });
+        const result = await mount();
+        await act(async () => { await result.current.deliver('o1'); });
+
+        expect(patchOrder).toHaveBeenCalledTimes(1);
+        // Dos veces: una al fallar y otra al terminar la acción.
+        expect(refreshAll).toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledWith('Ya entregado');
     });
 
     test('deliver reports the server detail on failure', async () => {
