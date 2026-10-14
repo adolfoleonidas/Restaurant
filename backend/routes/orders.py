@@ -627,7 +627,7 @@ async def add_items(order_id: str, items: List[OrderItemInput], user: dict = Dep
     patch = {"items": combined, "subtotal": subtotal, "total": total, "updated_at": _now()}
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
-    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"), kitchen=False)
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="items_added", branch_id=o.get("branch_id"), kitchen=False, actor_user_id=user["id"])
     return await _current_order_response(order_id, user)
 
 
@@ -1063,7 +1063,7 @@ async def remove_item(order_id: str, item_id: str, user: dict = Depends(require_
         "updated_at": _now(),
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
-    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed", branch_id=o.get("branch_id"), kitchen=False)
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_removed", branch_id=o.get("branch_id"), kitchen=False, actor_user_id=user["id"])
     return await _current_order_response(order_id, user)
 
 
@@ -1096,7 +1096,7 @@ async def void_item(order_id: str, item_id: str, data: OrderItemVoid, user: dict
     patch.update(ticket_fields(o, new_status, o.get("amount_paid"), total))
     await _save_order(o, patch)
     await _audit(user["restaurant_id"], user["id"], "void_item", "order", order_id, {"item_id": item_id, "reason": reason})
-    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_voided", branch_id=o.get("branch_id"))
+    emit_order(user["restaurant_id"], order_id, new_status, source=o.get("source"), extra="item_voided", branch_id=o.get("branch_id"), actor_user_id=user["id"])
     return await _current_order_response(order_id, user)
 
 
@@ -1217,7 +1217,7 @@ async def update_item(order_id: str, item_id: str, data: OrderItemUpdate, user: 
         "updated_at": _now(),
         **ticket_fields(o, o.get("fulfillment_status") or o.get("status"), o.get("amount_paid"), total),
     })
-    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated", branch_id=o.get("branch_id"), kitchen=False)
+    emit_order(user["restaurant_id"], order_id, o["status"], source=o.get("source"), extra="item_updated", branch_id=o.get("branch_id"), kitchen=False, actor_user_id=user["id"])
     return await _current_order_response(order_id, user)
 
 
@@ -1280,7 +1280,13 @@ async def send_to_kitchen(order_id: str, user: dict = Depends(require_roles(["ad
     # Only the request that wins the acceptance CAS owns the existing side effects.
     # Number propagation is separately retryable and must not repeat these effects.
     await _audit(user["restaurant_id"], user["id"], "send_to_kitchen", "order", order_id)
-    emit_order(user["restaurant_id"], order_id, "enviado_cocina", source="staff", branch_id=o.get("branch_id"))
+    # `extra` y actor: el dispositivo que envía ya refresca a propósito al enviar,
+    # así que el eco de su propio envío solo le costaba ~600 ms de peticiones de más
+    # justo cuando empieza el pedido siguiente (medido en el teléfono del mozo).
+    emit_order(
+        user["restaurant_id"], order_id, "enviado_cocina", source="staff",
+        extra="send_to_kitchen", branch_id=o.get("branch_id"), actor_user_id=user["id"],
+    )
     if o.get("attention_number_pending"):
         await number_accepted_order(db, order=o)
     return await _current_order_response(order_id, user)

@@ -149,6 +149,31 @@ def test_first_send_promotes_the_drafts():
     assert _statuses(order) == {"item-1": "pendiente"}
 
 
+def test_the_send_names_its_author_so_his_own_device_can_skip_the_echo():
+    """El dispositivo que envía ya refresca el piso a propósito al enviar.
+
+    Volver a pedir las listas por el eco de su propio envío le costaba otra ronda
+    de peticiones —medido en el teléfono del mozo, unos 600 ms— justo cuando
+    empieza el pedido siguiente. Para poder ignorarlo, el evento tiene que decir
+    quién lo causó y de qué se trata.
+    """
+    events = []
+
+    async def run():
+        db = _FakeDB(orders=[_order(items=[_item("item-1", "prod-1", "Lomo", 20.0)])])
+        _bind(db)
+        order_routes.emit_order = lambda *a, **k: events.append((a, k))
+        return await order_routes.send_to_kitchen("order-1", _user())
+
+    asyncio.run(run())
+
+    assert len(events) == 1
+    args, kwargs = events[0]
+    assert args[:3] == (RID, "order-1", "enviado_cocina")
+    assert kwargs["extra"] == "send_to_kitchen"
+    assert kwargs["actor_user_id"] == "mozo-1"
+
+
 def test_sending_again_only_carries_the_new_products():
     async def run():
         db = _FakeDB(orders=[_order(

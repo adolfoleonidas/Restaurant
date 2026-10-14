@@ -109,7 +109,7 @@ describe('useSalonData: the waiter does not re-read the floor for his own taps (
         return entry && entry.filter;
     };
 
-    test('the tables and the orders ignore the draft-line echo of this same user', async () => {
+    test('the tables and the orders ignore the echo of this same user own changes', async () => {
         await mount(base);
         const filter = floorFilter();
         expect(typeof filter).toBe('function');
@@ -120,8 +120,17 @@ describe('useSalonData: the waiter does not re-read the floor for his own taps (
         expect(filter({ type: 'order', extra: 'draft_lines', actor_user_id: 'mozo-2' })).toBe(true);
         // Nobody named (an older backend): refresh, as before.
         expect(filter({ type: 'order', extra: 'draft_lines' })).toBe(true);
-        // Anything else this user did is not an echo: it refreshes.
-        expect(filter({ type: 'order', extra: 'items_added', actor_user_id: 'u1' })).toBe(true);
+        // Editing and sending already refreshed on purpose in this same device, so
+        // its own echo is not worth another round of requests.
+        expect(filter({ type: 'order', extra: 'items_added', actor_user_id: 'u1' })).toBe(false);
+        expect(filter({ type: 'order', extra: 'item_removed', actor_user_id: 'u1' })).toBe(false);
+        expect(filter({ type: 'order', extra: 'item_updated', actor_user_id: 'u1' })).toBe(false);
+        expect(filter({ type: 'order', extra: 'item_voided', actor_user_id: 'u1' })).toBe(false);
+        expect(filter({ type: 'order', extra: 'send_to_kitchen', actor_user_id: 'u1' })).toBe(false);
+        // Somebody else editing is not an echo.
+        expect(filter({ type: 'order', extra: 'items_added', actor_user_id: 'mozo-2' })).toBe(true);
+        // The floor itself always refreshes, even when this user caused it: the local
+        // state is not enough to know how the floor ended up.
         expect(filter({ type: 'table', actor_user_id: 'u1' })).toBe(true);
         expect(filter({})).toBe(true);
     });
