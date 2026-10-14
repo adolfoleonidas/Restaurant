@@ -41,7 +41,9 @@ registerServiceWorker();
 // también los trozos que se piden mucho después.
 installChunkRecovery();
 
-// Medidor en pantalla, solo si se pide con `?diag=1`. Apagado no existe ni cuesta
-// nada; encendido dice dónde se va el tiempo de cada toque en ESTE dispositivo,
-// que es el único dato que no se puede medir desde el servidor.
-if (perfMeterEnabled(window.location.search)) installPerfMeter();
+// Medidor en pantalla, solo si se pide con `?diag=1` (y se recuerda en el
+// dispositivo, así también mide el enlace normal y una sesión de todo el turno;
+// `?diag=0` lo apaga). Apagado no existe ni cuesta nada; encendido dice dónde se
+// va el tiempo de cada toque en ESTE dispositivo y en qué petición, que es el
+// único dato que no se puede medir desde el servidor.
+if (perfMeterEnabled(window.location.search, window.localStorage)) installPerfMeter();
