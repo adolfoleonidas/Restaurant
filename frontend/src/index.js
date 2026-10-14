@@ -7,6 +7,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { registerServiceWorker } from "@/lib/serviceWorker";
 import { installChunkRecovery } from "@/lib/chunkRecovery";
+import { installPerfMeter, perfMeterEnabled } from "@/lib/perfMeter";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,3 +40,8 @@ registerServiceWorker();
 // build nueva en lugar de quedarse así. Se instala antes de montar para cubrir
 // también los trozos que se piden mucho después.
 installChunkRecovery();
+
+// Medidor en pantalla, solo si se pide con `?diag=1`. Apagado no existe ni cuesta
+// nada; encendido dice dónde se va el tiempo de cada toque en ESTE dispositivo,
+// que es el único dato que no se puede medir desde el servidor.
+if (perfMeterEnabled(window.location.search)) installPerfMeter();
