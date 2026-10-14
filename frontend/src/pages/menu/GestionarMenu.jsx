@@ -31,6 +31,10 @@ export default function GestionarMenu() {
     const [tab, setTab] = useState('today');
     const [seleccion, setSeleccion] = useState(null);
     const [desde, setDesde] = useState('');
+    // Solo los precios que el dueño ha tocado. Los demás van sin precio, para que
+    // sigan el del catálogo: mandar el que se muestra lo congelaría en este día, y
+    // un precio viejo arrastrado es cobrar mal sin que nadie lo note.
+    const [precios, setPrecios] = useState({});
     // Tarjetas o lista: en computadora la tabla del salón es más cómoda para el
     // trabajo en bloque; en el celular, la lista compacta.
     const [modo, setModo] = useState('cards');
@@ -43,13 +47,27 @@ export default function GestionarMenu() {
     // La carta fija se ofrece siempre: se refleja aquí para que la pantalla diga la
     // verdad antes de guardar, y no después.
     const catalogo = useMemo(
-        () => (data?.catalog || []).map((p) => ({ ...p, offered_today: p.is_fixed || ids.has(p.product_id) })),
-        [data, ids],
+        () => (data?.catalog || []).map((p) => ({
+            ...p,
+            offered_today: p.is_fixed || ids.has(p.product_id),
+            today_price: precios[p.product_id] !== undefined && precios[p.product_id] !== ''
+                ? precios[p.product_id]
+                : p.today_price,
+        })),
+        [data, ids, precios],
     );
+
+    /** La selección que se manda al servidor, con los precios que se tocaron. */
+    const seleccionParaGuardar = () => [...ids].map((product_id) => {
+        const bruto = precios[product_id];
+        if (bruto === undefined || bruto === '') return { product_id, price: null };
+        const importe = Number(bruto);
+        return { product_id, price: Number.isFinite(importe) && importe >= 0 ? importe : null };
+    });
 
     const publicar = async () => {
         try {
-            await save([...ids].map((product_id) => ({ product_id })), true);
+            await save(seleccionParaGuardar(), true);
             setSeleccion(null);
             toast.success('Menú publicado: la carta ya lo muestra');
         } catch (e) {
@@ -59,7 +77,7 @@ export default function GestionarMenu() {
 
     const guardarBorrador = async () => {
         try {
-            await save([...ids].map((product_id) => ({ product_id })), false);
+            await save(seleccionParaGuardar(), false);
             setSeleccion(null);
             toast.success('Guardado como borrador. La carta no cambia hasta publicar');
         } catch (e) {
@@ -164,6 +182,7 @@ export default function GestionarMenu() {
                             saving={saving}
                             onToggleOffered={alternarOfrecido}
                             onToggleSoldOut={alternarAgotado}
+                            onPriceChange={(productId, valor) => setPrecios((previos) => ({ ...previos, [productId]: valor }))}
                         />
                     )}
                 </>

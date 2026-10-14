@@ -132,6 +132,42 @@ describe('GestionarMenu', () => {
         await act(async () => root.unmount());
     });
 
+    it('el precio editado viaja, y el que no se toca va sin precio', async () => {
+        const { container, root } = await render();
+        const input = container.querySelector('[data-testid="menu-precio-p1"]');
+        expect(input).not.toBeNull();
+
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, '9.5');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(container.querySelector('[data-testid="menu-publicar"]'));
+
+        const items = saveMenuDay.mock.calls[0][0].items;
+        // El tocado lleva su precio nuevo…
+        expect(items.find((i) => i.product_id === 'p1').price).toBe(9.5);
+        // …y el que no se tocó va SIN precio, para que siga el del catálogo. Mandar
+        // el que se muestra lo congelaría solo para hoy.
+        expect(items.find((i) => i.product_id === 'p2')).toBeUndefined();
+        await act(async () => root.unmount());
+    });
+
+    it('borrar el precio vuelve al del catálogo, no a cero', async () => {
+        const { container, root } = await render();
+        const input = container.querySelector('[data-testid="menu-precio-p1"]');
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, '');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(container.querySelector('[data-testid="menu-publicar"]'));
+
+        // `null` = «usa el del catálogo». Un 0 cobraría el plato gratis.
+        expect(saveMenuDay.mock.calls[0][0].items.find((i) => i.product_id === 'p1').price).toBeNull();
+        await act(async () => root.unmount());
+    });
+
     it('las otras pestañas dicen qué falta en vez de quedarse en blanco', async () => {
         const { container, root } = await render();
         await click(container.querySelector('[data-testid="menu-tab-week"]'));

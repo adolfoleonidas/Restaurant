@@ -1,7 +1,7 @@
 import { LayoutGrid, List } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { fmtMoney } from '@/lib/format';
+import { Input } from '@/components/ui/input';
 
 /**
  * El catálogo del día, en tarjetas o en lista.
@@ -20,6 +20,7 @@ export default function MenuDayView({
     onModeChange,
     onToggleOffered,
     onToggleSoldOut,
+    onPriceChange,
     saving = false,
 }) {
     const ofrecidos = catalog.filter((p) => p.offered_today).length;
@@ -70,7 +71,21 @@ export default function MenuDayView({
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <span className="font-medium min-w-0 truncate" title={p.name}>{p.name}</span>
-                                <span className="tabular-nums text-sm shrink-0">{fmtMoney(p.today_price)}</span>
+                                {/* El precio se edita aquí mismo. Vacío = «el del
+                                    catálogo», que no es lo mismo que escribir el
+                                    que se ve: eso lo fijaría solo para hoy. */}
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.50"
+                                    inputMode="decimal"
+                                    aria-label={`Precio de ${p.name}`}
+                                    className="h-9 w-24 shrink-0 text-right tabular-nums"
+                                    value={p.today_price}
+                                    disabled={saving || !p.offered_today}
+                                    onChange={(e) => onPriceChange?.(p.product_id, e.target.value)}
+                                    data-testid={`menu-precio-${p.product_id}`}
+                                />
                             </div>
                             <p className="text-xs text-muted-foreground">
                                 {p.sold_out ? 'Agotado' : (p.offered_today ? 'Se ofrece hoy' : 'Fuera del menú de hoy')}
@@ -106,7 +121,18 @@ export default function MenuDayView({
                     {catalog.map((p) => (
                         <div key={p.product_id} className="flex items-center gap-3 px-3 py-2" data-testid={`menu-fila-${p.product_id}`}>
                             <span className="min-w-0 flex-1 truncate font-medium" title={p.name}>{p.name}</span>
-                            <span className="tabular-nums text-sm shrink-0">{fmtMoney(p.today_price)}</span>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.50"
+                                inputMode="decimal"
+                                aria-label={`Precio de ${p.name}`}
+                                className="h-9 w-24 shrink-0 text-right tabular-nums"
+                                value={p.today_price}
+                                disabled={saving || !p.offered_today}
+                                onChange={(e) => onPriceChange?.(p.product_id, e.target.value)}
+                                data-testid={`menu-precio-${p.product_id}`}
+                            />
                             <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
                                 {p.sold_out ? 'Agotado' : (p.offered_today ? 'Se ofrece' : 'Fuera')}
                             </span>
