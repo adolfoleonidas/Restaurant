@@ -898,7 +898,10 @@ describe('compositor · paridad posView (S8)', () => {
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
 
         expect(api.post).toHaveBeenCalledWith('/orders/order-1/send-to-kitchen');
-        expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
+        // Dentro de la hoja, no como cartel flotante sobre el "←".
+        expect(document.body.querySelector('[data-testid="mesa-sheet-enviado"]').textContent)
+            .toContain('Enviado a cocina · Mesa 1');
+        expect(toast.success).not.toHaveBeenCalled();
         expect(document.body.querySelector('[data-testid="mesa-sheet-revision-envio"]')).toBeNull();
     });
 });

@@ -576,6 +576,8 @@ export function selectSheetModel({
         allItems,
         orderItems,
         sendState,
+        // La confirmación del envío que se muestra dentro de la hoja (ver `flashSent`).
+        sentNotice: openTable.sentNotice || null,
         showSend,
         allAccounts,
         hasAccount,

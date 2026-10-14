@@ -20,7 +20,7 @@ import { buildMoreActions } from './sheetActions';
 export default function TableSheet({
     model, sheet, perms, data, actions,
 }) {
-    const { table: t, history, loading, accountsLoading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
+    const { table: t, history, loading, accountsLoading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, sentNotice, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
     const { composerOpen, saveState, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
     const { canTake, canServe, canCharge, canVoidItems } = perms;
     const { products, categories, branchNames, activeOrders } = data;
@@ -94,6 +94,7 @@ export default function TableSheet({
                                 onSendToKitchen={() => requestSend()}
                                 showActions={!composerOpen}
                                 showHeader={!composerOpen}
+                                sentNotice={sentNotice}
                                 hideUnavailable
                             />
                         </div>
