@@ -26,6 +26,7 @@ import { api } from '@/lib/api';
 
 export const PANEL_ID = 'dmi-perf';
 export const DIAG_KEY = 'restaurant_diag';
+export const DIAG_POS_KEY = 'restaurant_diag_pos';
 const PANEL_ROWS = ['version', 'viewport', 'tap', 'effect', 'net', 'long', 'fps'];
 
 /** Un toque que no cambió nada en este plazo cuenta como "no hizo nada". */
@@ -219,28 +220,109 @@ export function installPerfMeter({
     let reportedTaps = 0;
     let lastReportAt = 0;
     let slowTapPending = false;
+    let blockedMs = 0;
 
     const clock = () => (win.performance && win.performance.now ? win.performance.now() : Date.now());
 
+    // El panel NO se pone encima de lo que el mozo tiene que tocar: arranca
+    // minimizado (una barrita de ~18 px), se arrastra con el dedo a donde no
+    // estorbe y su posición se recuerda. Solo la barra recibe toques —el resto
+    // sigue en `pointer-events: none`— así que la carta y los botones de debajo
+    // nunca se bloquean.
     const panel = doc.createElement('div');
     panel.id = PANEL_ID;
     panel.setAttribute('data-testid', 'perf-meter');
     panel.style.cssText = [
-        'position:fixed', 'left:8px', 'right:8px', 'bottom:8px', 'z-index:2147483647',
-        'background:#0b0f17', 'color:#e8eef7', 'padding:10px 12px', 'border-radius:10px',
-        'box-shadow:0 6px 20px rgba(0,0,0,.45)', 'pointer-events:none',
+        'position:fixed', 'z-index:2147483647',
+        'background:#0b0f17', 'color:#e8eef7', 'padding:3px 8px', 'border-radius:10px',
+        'box-shadow:0 4px 14px rgba(0,0,0,.4)', 'pointer-events:none',
+        'max-width:calc(100vw - 16px)',
     ].join(';');
-    const title = doc.createElement('div');
-    title.textContent = 'MEDIDOR · apágalo con ?diag=0';
-    title.style.cssText = 'font:10px/1.4 ui-monospace,monospace;letter-spacing:.08em;opacity:.6;margin-bottom:6px';
-    panel.appendChild(title);
+
+    const bar = doc.createElement('div');
+    bar.setAttribute('data-testid', 'perf-meter-barra');
+    bar.style.cssText = [
+        'pointer-events:auto', 'display:flex', 'gap:6px', 'align-items:center',
+        'font:11px/1.6 ui-monospace,monospace', 'letter-spacing:.04em',
+        'cursor:move', 'user-select:none', '-webkit-user-select:none', 'touch-action:none',
+    ].join(';');
+    const caret = doc.createElement('span');
+    caret.textContent = '▸';
+    const summary = doc.createElement('span');
+    summary.setAttribute('data-testid', 'perf-meter-resumen');
+    bar.append(caret, summary);
+
+    const body = doc.createElement('div');
+    body.setAttribute('data-testid', 'perf-meter-cuerpo');
+    panel.append(bar, body);
+
     const rows = {};
     for (const name of PANEL_ROWS) {
         const { line, value } = row(doc, name);
         rows[name] = value;
-        panel.appendChild(line);
+        body.appendChild(line);
     }
     doc.body.appendChild(panel);
+
+    const readPos = () => {
+        try {
+            const raw = win.localStorage?.getItem(DIAG_POS_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
+            return parsed && Number.isFinite(parsed.left) && Number.isFinite(parsed.top) ? parsed : null;
+        } catch { return null; }
+    };
+    const savePos = (left, top) => {
+        try { win.localStorage?.setItem(DIAG_POS_KEY, JSON.stringify({ left, top })); } catch { /* sin storage */ }
+    };
+    const clampLeft = (value) => Math.max(2, Math.min(value, (win.innerWidth || 360) - 60));
+    const clampTop = (value) => Math.max(2, Math.min(value, (win.innerHeight || 600) - 24));
+    const place = (left, top) => {
+        panel.style.left = `${clampLeft(left)}px`;
+        panel.style.top = `${clampTop(top)}px`;
+    };
+    const stored = readPos();
+    if (stored) place(stored.left, stored.top);
+    else place(((win.innerWidth || 375) - 120) / 2, 2);
+
+    let collapsed = true;
+    let drag = null;
+    const render = () => {
+        body.style.display = collapsed ? 'none' : 'block';
+        caret.textContent = collapsed ? '▸' : '▾';
+        const effect = summarize(visible);
+        const event = summarize(taps.map((tap) => tap.duration));
+        summary.textContent = collapsed
+            ? ` ${effect.p50 === null ? '—' : effect.p50} ms`
+                + `${silent ? ` · ${silent}✗` : ''}`
+                + `${blockedMs >= 1 ? ` · ⛔${Math.round(blockedMs)}` : ''}`
+                + ` · ${event.p50 === null ? '—' : event.p50} ms`
+            : ' MEDIDOR · toca para minimizar · ?diag=0 para apagar';
+    };
+
+    const onBarDown = (event) => {
+        event.stopPropagation();
+        drag = {
+            x: event.clientX, y: event.clientY, left: panel.offsetLeft, top: panel.offsetTop, moved: false,
+        };
+    };
+    const onBarMove = (event) => {
+        if (!drag) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (!drag.moved && Math.abs(dx) + Math.abs(dy) < 8) return;
+        drag.moved = true;
+        place(drag.left + dx, drag.top + dy);
+    };
+    const onBarUp = () => {
+        if (!drag) return;
+        if (drag.moved) savePos(panel.offsetLeft, panel.offsetTop);
+        else { collapsed = !collapsed; render(); }
+        drag = null;
+    };
+    bar.addEventListener('pointerdown', onBarDown);
+    bar.addEventListener('pointermove', onBarMove);
+    bar.addEventListener('pointerup', onBarUp);
+    bar.addEventListener('pointercancel', () => { drag = null; });
 
     const paint = () => {
         rows.version.textContent = runningVersion(doc);
@@ -267,6 +349,8 @@ export function installPerfMeter({
         const worst = longs.length ? Math.max(...longs) : 0;
         rows.long.textContent = `${longs.length} tareas >50 ms · peor ${worst} ms`;
         rows.fps.textContent = fps === null ? '…' : `${fps} fps`;
+        // La barrita minimizada muestra lo esencial aunque el detalle esté cerrado.
+        render();
     };
 
     if (typeof win.PerformanceObserver === 'function') {
@@ -335,7 +419,6 @@ export function installPerfMeter({
         ? (fn) => win.requestAnimationFrame(fn)
         : (fn) => win.setTimeout(fn, 16);
     let windowStart = Date.now();
-    let blockedMs = 0;
     let lastFrameAt = clock();
     const tick = () => {
         frames += 1;

@@ -7,7 +7,7 @@
  * también el enlace normal) y cada muestra viaja al servidor.
  */
 import {
-    buildSample, DIAG_KEY, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile,
+    buildSample, DIAG_KEY, DIAG_POS_KEY, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile,
     productIdFrom, runningVersion, slowestRequests, summarize,
 } from '@/lib/perfMeter';
 import { api } from '@/lib/api';
@@ -170,6 +170,7 @@ function fakeWindow() {
     }
     return {
         document,
+        localStorage,
         innerWidth: 375,
         innerHeight: 689,
         devicePixelRatio: 3.25,
@@ -316,6 +317,55 @@ describe('perfMeter: el panel en pantalla', () => {
         } finally {
             jest.useRealTimers();
         }
+    });
+
+    it('arranca minimizado: una barrita, no un panel encima de la carta', () => {
+        const stop = installPerfMeter({ win: fakeWindow(), doc: document });
+
+        const body = document.querySelector('[data-testid="perf-meter-cuerpo"]');
+        expect(body.style.display).toBe('none');
+        // La barrita igual muestra lo esencial mientras sigue midiendo.
+        expect(document.querySelector('[data-testid="perf-meter-resumen"]').textContent).toContain('ms');
+        // Y solo la barra recibe toques: el resto no bloquea los botones de debajo.
+        expect(document.getElementById(PANEL_ID).style.pointerEvents).toBe('none');
+        expect(document.querySelector('[data-testid="perf-meter-barra"]').style.pointerEvents).toBe('auto');
+
+        stop();
+    });
+
+    it('se abre y se cierra tocando la barra', () => {
+        const stop = installPerfMeter({ win: fakeWindow(), doc: document });
+        const bar = document.querySelector('[data-testid="perf-meter-barra"]');
+        const body = document.querySelector('[data-testid="perf-meter-cuerpo"]');
+        const press = () => {
+            bar.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 }));
+            bar.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 10, clientY: 10 }));
+        };
+
+        press();
+        expect(body.style.display).toBe('block');
+        press();
+        expect(body.style.display).toBe('none');
+
+        stop();
+    });
+
+    it('se arrastra con el dedo y recuerda dónde quedó', () => {
+        const win = fakeWindow();
+        win.localStorage.removeItem(DIAG_POS_KEY);
+        const stop = installPerfMeter({ win, doc: document });
+        const bar = document.querySelector('[data-testid="perf-meter-barra"]');
+
+        bar.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 20 }));
+        bar.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 40, clientY: 120 }));
+        expect(document.getElementById(PANEL_ID).style.left).not.toBe('');
+        bar.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 40, clientY: 120 }));
+
+        // Queda donde el mozo lo dejó, también en la próxima visita.
+        expect(JSON.parse(win.localStorage.getItem(DIAG_POS_KEY))).toEqual(expect.objectContaining({ left: expect.any(Number) }));
+        expect(document.querySelector('[data-testid="perf-meter-cuerpo"]').style.display).toBe('none');
+
+        stop();
     });
 
     it('manda la muestra al servidor cuando hubo toques', () => {
