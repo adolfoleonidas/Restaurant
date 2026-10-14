@@ -8,6 +8,7 @@ import usePolling from '@/hooks/usePolling';
 import { getKitchenOrders } from '@/lib/api/orders';
 import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { countOf } from '@/lib/format';
+import { isOwnKitchenSend } from '@/lib/ownKitchenSends';
 
 const ROLES = ['admin', 'cocina', 'mozo'];
 const SEEN_KEY = (userId) => `kitchen-seen-ids:${userId}`;
@@ -112,7 +113,10 @@ export function KitchenAlerts() {
             return;
         }
 
-        const fresh = incoming.filter((o) => !seen.has(o.id));
+        // Un pase que mandaste tú no es una novedad para ti: sin esto, el propio
+        // teléfono del mozo le tapaba la pantalla al enviar, justo cuando iba a otra
+        // mesa. Lo que importa es lo que pidió OTRO.
+        const fresh = incoming.filter((o) => !seen.has(o.id) && !isOwnKitchenSend(o.id));
         const next = new Set([...(orders || []).map((o) => o.id), ...seen]);
         saveSeen(user.id, next);
 
