@@ -11,16 +11,11 @@ const trim = (args) => {
     return out;
 };
 
-export const post = (url, body, config) => api.post(...trim([url, body, config]));
-export const patch = (url, body, config) => api.patch(...trim([url, body, config]));
-export const put = (url, body, config) => api.put(...trim([url, body, config]));
-export const del = (url, config) => api.delete(...trim([url, config]));
-
 /**
- * Lecturas de sondeo que se comparten cuando ya están viajando.
+ * Lecturas de sondeo que se comparten entre pantallas.
  *
  * Medido en el teléfono del mozo: al abrir el Salón la app pedía dos y tres veces
- * la misma lista (`/api/orders?active_only=true`, 12 KB) en paralelo, y las
+ * la misma lista (`/api/orders?active_only=true`, 12-16 KB) en paralelo, y las
  * peticiones se encolaban entre ellas — una respuesta de 0 KB
  * (`/api/categories`) tardaba 300-536 ms porque había cinco en vuelo.
  *
@@ -30,9 +25,6 @@ export const del = (url, config) => api.delete(...trim([url, config]));
  * la segunda el resultado de la primera, que es justo el que quiere ignorar. Se
  * comparten solo las lecturas de sondeo, donde varias pantallas montan a la vez y
  * todas quieren lo mismo.
- *
- * No es una caché: cuando la respuesta llega, la próxima lectura vuelve a pedir,
- * así que ninguna pantalla lee datos viejos.
  */
 const SHARED_GETS = new Set([
     '/restaurants/current',
@@ -58,6 +50,11 @@ export const get = (url, config) => {
     inFlightGets.set(key, request);
     return request;
 };
+
+export const post = (url, body, config) => api.post(...trim([url, body, config]));
+export const patch = (url, body, config) => api.patch(...trim([url, body, config]));
+export const put = (url, body, config) => api.put(...trim([url, body, config]));
+export const del = (url, config) => api.delete(...trim([url, config]));
 
 /** `{ params }` when there are params, otherwise no config at all. */
 export const withParams = (params) => (params ? { params } : undefined);
