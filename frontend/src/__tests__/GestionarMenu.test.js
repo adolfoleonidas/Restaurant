@@ -1,0 +1,151 @@
+/**
+ * «Gestionar menú»: el armazón que une el estado (useMenuDay) y la vista.
+ *
+ * Lo que se fija aquí es lo que puede costar dinero o tiempo:
+ *
+ * * publicar manda la selección **editada en local**, no la que vino del servidor
+ *   (si no, montar el menú del día no serviría de nada);
+ * * guardar borrador **no** publica;
+ * * copiar de otro día pide la fecha en vez de inventarla;
+ * * un fallo se cuenta en vez de dejar «Cargando…» para siempre.
+ */
+import React, { act } from 'react';
+import { createRoot } from 'react-dom/client';
+
+global.IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock('@/lib/api/menu', () => ({
+    __esModule: true,
+    getMenuDay: jest.fn(),
+    saveMenuDay: jest.fn(),
+    setMenuSoldOut: jest.fn(),
+    copyMenuFrom: jest.fn(),
+}));
+jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+
+import { copyMenuFrom, getMenuDay, saveMenuDay, setMenuSoldOut } from '@/lib/api/menu';
+import { toast } from 'sonner';
+import GestionarMenu from '@/pages/menu/GestionarMenu';
+
+const DIA = {
+    date: '2026-03-10',
+    status: 'draft',
+    published: false,
+    has_menu: true,
+    selection: [{ product_id: 'p1', price: null, sold_out: false }],
+    catalog: [
+        { product_id: 'p1', name: 'Arroz con pollo', base_price: 12, today_price: 12, is_fixed: false, offered_today: true, sold_out: false },
+        { product_id: 'p2', name: 'Inca Kola', base_price: 6, today_price: 6, is_fixed: true, offered_today: true, sold_out: false },
+        { product_id: 'p3', name: 'Ceviche', base_price: 38, today_price: 38, is_fixed: false, offered_today: false, sold_out: false },
+    ],
+};
+
+async function render() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => { root.render(<GestionarMenu />); await Promise.resolve(); });
+    return { container, root };
+}
+
+const click = async (node) => {
+    await act(async () => { node.dispatchEvent(new MouseEvent('click', { bubbles: true })); await Promise.resolve(); });
+};
+
+describe('GestionarMenu', () => {
+    beforeEach(() => {
+        getMenuDay.mockResolvedValue({ data: DIA });
+        saveMenuDay.mockResolvedValue({ data: { ...DIA, status: 'published', published: true } });
+        setMenuSoldOut.mockResolvedValue({ data: { ok: true } });
+        copyMenuFrom.mockResolvedValue({ data: { ...DIA, copied: 2, copied_from: '2026-03-09' } });
+    });
+
+    afterEach(() => { document.body.innerHTML = ''; });
+
+    it('muestra el catálogo del día y el resumen de lo que se ofrece', async () => {
+        const { container, root } = await render();
+        expect(container.querySelector('[data-testid="menu-day-tarjetas"]')).not.toBeNull();
+        // p1 y p2 (fija) se ofrecen; p3 no.
+        expect(container.querySelector('[data-testid="menu-day-resumen"]').textContent).toContain('2 de 3');
+        await act(async () => root.unmount());
+    });
+
+    it('publicar manda la selección editada, no la que vino del servidor', async () => {
+        const { container, root } = await render();
+        // El dueño añade el ceviche al menú de hoy…
+        await click(container.querySelector('[data-testid="menu-ofrecer-p3"]'));
+        // …y publica.
+        await click(container.querySelector('[data-testid="menu-publicar"]'));
+
+        const enviado = saveMenuDay.mock.calls[0][0];
+        expect(enviado.publish).toBe(true);
+        // La Inca Kola (p2) NO viaja, y es lo correcto: es carta fija, se ofrece por
+        // su propia bandera. Meterla en el menú del día la ataría a hoy, que es justo
+        // lo que la carta fija evita.
+        expect(enviado.items.map((i) => i.product_id).sort()).toEqual(['p1', 'p3']);
+        expect(toast.success).toHaveBeenCalled();
+        await act(async () => root.unmount());
+    });
+
+    it('quitar del menú de hoy también viaja al publicar', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-ofrecer-p1"]'));
+        await click(container.querySelector('[data-testid="menu-publicar"]'));
+
+        // Hoy no se ofrece nada en especial: queda solo la carta fija, que no se
+        // lista porque no depende del día.
+        expect(saveMenuDay.mock.calls[0][0].items).toEqual([]);
+        await act(async () => root.unmount());
+    });
+
+    it('guardar borrador no publica', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-guardar"]'));
+        expect(saveMenuDay.mock.calls[0][0].publish).toBe(false);
+        expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('borrador'));
+        await act(async () => root.unmount());
+    });
+
+    it('copiar pide la fecha en vez de inventarla', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-copiar"]'));
+        expect(copyMenuFrom).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledWith('Elige de qué día copiar');
+
+        const input = container.querySelector('[data-testid="menu-copiar-desde"]');
+        await act(async () => {
+            // Los inputs controlados de React necesitan el setter nativo.
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(input, '2026-03-09');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(container.querySelector('[data-testid="menu-copiar"]'));
+        expect(copyMenuFrom).toHaveBeenCalledWith({ date: undefined, from_date: '2026-03-09' });
+        await act(async () => root.unmount());
+    });
+
+    it('agotar avisa y deja claro que los pedidos tomados siguen', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-agotar-p1"]'));
+        expect(setMenuSoldOut).toHaveBeenCalledWith({ date: undefined, product_id: 'p1', sold_out: true });
+        expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('siguen'));
+        await act(async () => root.unmount());
+    });
+
+    it('las otras pestañas dicen qué falta en vez de quedarse en blanco', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-week"]'));
+        expect(container.querySelector('[data-testid="menu-tab-pendiente"]').textContent).toContain('programación semanal');
+        await click(container.querySelector('[data-testid="menu-tab-catalog"]'));
+        expect(container.querySelector('[data-testid="menu-tab-pendiente"]').textContent).toContain('carta fija');
+        await act(async () => root.unmount());
+    });
+
+    it('un fallo de carga se cuenta, no se queda cargando para siempre', async () => {
+        getMenuDay.mockRejectedValue({ response: { data: { detail: 'Sin conexión' } } });
+        const { container, root } = await render();
+        expect(container.querySelector('[data-testid="menu-error"]').textContent).toBe('Sin conexión');
+        expect(container.querySelector('[data-testid="menu-cargando"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+});
