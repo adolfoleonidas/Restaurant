@@ -60,7 +60,13 @@ const click = async (node) => {
 
 describe('GestionarMenu', () => {
     beforeEach(() => {
-        getMenuDay.mockResolvedValue({ data: DIA });
+        // El mock distingue fechas: si devolviera lo mismo para todas, el test de la
+        // semana no podría comprobar el estado de cada día (y pasaría sin probar nada).
+        getMenuDay.mockImplementation((fecha) => Promise.resolve({
+            data: fecha === '2026-03-12'
+                ? { ...DIA, date: fecha, has_menu: false, published: false, selection: [] }
+                : { ...DIA, date: fecha || '2026-03-10' },
+        }));
         saveMenuDay.mockResolvedValue({ data: { ...DIA, status: 'published', published: true } });
         setMenuSoldOut.mockResolvedValue({ data: { ok: true } });
         copyMenuFrom.mockResolvedValue({ data: { ...DIA, copied: 2, copied_from: '2026-03-09' } });
@@ -195,14 +201,33 @@ describe('GestionarMenu', () => {
         await act(async () => root.unmount());
     });
 
-    it('la pestaña Semana dice qué falta en vez de quedarse en blanco', async () => {
+    it('la semana lista los siete días con su estado y deja abrir uno', async () => {
+        // El «hoy» lo dice el servidor: la primera carga devuelve 2026-03-10.
         const { container, root } = await render();
         await click(container.querySelector('[data-testid="menu-tab-week"]'));
-        expect(container.querySelector('[data-testid="menu-tab-pendiente"]').textContent).toContain('programación semanal');
-        // Catálogo ya no es un cartel: tiene su contenido de verdad.
-        await click(container.querySelector('[data-testid="menu-tab-catalog"]'));
-        expect(container.querySelector('[data-testid="menu-tab-pendiente"]')).toBeNull();
-        expect(container.querySelector('[data-testid="menu-catalogo"]')).not.toBeNull();
+
+        await waitFor(() => expect(container.querySelector('[data-testid="menu-dia-2026-03-10"]')).not.toBeNull());
+        // Siete días contando desde el de hoy, no ocho ni seis.
+        expect(container.querySelectorAll('[data-testid^="menu-dia-2026-"]').length).toBe(7);
+        expect(container.querySelector('[data-testid="menu-dia-estado-2026-03-10"]').textContent).toBe('Borrador');
+        expect(container.querySelector('[data-testid="menu-dia-estado-2026-03-12"]').textContent).toBe('Sin menú');
+
+        // Abrir un día cambia la fecha de trabajo de TODA la pantalla.
+        getMenuDay.mockClear();
+        await click(container.querySelector('[data-testid="menu-dia-abrir-2026-03-12"]'));
+        expect(container.querySelector('[data-testid="menu-dia-abierto"]').textContent).toContain('2026-03-12');
+        await waitFor(() => expect(getMenuDay).toHaveBeenCalledWith('2026-03-12'));
+
+        // Y se puede volver a hoy.
+        await click(container.querySelector('[data-testid="menu-volver-hoy"]'));
+        expect(container.querySelector('[data-testid="menu-dia-abierto"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('la semana avisa de que programar no es repetir', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-week"]'));
+        expect(container.querySelector('[data-testid="menu-semana"]').textContent).toContain('no repite todas las semanas');
         await act(async () => root.unmount());
     });
 

@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
+import { getMenuDay } from '@/lib/api/menu';
 import { toast } from 'sonner';
 
 import MenuDayView from './MenuDayView';
@@ -29,10 +30,22 @@ const TABS = [
 ];
 
 export default function GestionarMenu() {
-    const { data, loading, error, saving, save, toggleSoldOut, copyFrom, reload } = useMenuDay();
+    // El día que se está editando. `undefined` = hoy, y quien decide cuál es hoy es
+    // el servidor (con su zona horaria): un dispositivo con la hora mal puesta
+    // publicaría el menú del día equivocado.
+    const [diaAbierto, setDiaAbierto] = useState(undefined);
+    const { data, loading, error, saving, save, toggleSoldOut, copyFrom, reload } = useMenuDay(diaAbierto);
     const [tab, setTab] = useState('today');
     const [seleccion, setSeleccion] = useState(null);
     const [desde, setDesde] = useState('');
+    // El «hoy» del servidor, que llega en el primer día cargado. Se guarda aparte
+    // para que la semana no se mueva cuando el dueño abre otro día.
+    const [hoyServidor, setHoyServidor] = useState(null);
+    const [semana, setSemana] = useState(null);
+
+    useEffect(() => {
+        if (!hoyServidor && data?.date && diaAbierto === undefined) setHoyServidor(data.date);
+    }, [data, diaAbierto, hoyServidor]);
     // Solo los precios que el dueño ha tocado. Los demás van sin precio, para que
     // sigan el del catálogo: mandar el que se muestra lo congelaría en este día, y
     // un precio viejo arrastrado es cobrar mal sin que nadie lo note.
@@ -66,6 +79,24 @@ export default function GestionarMenu() {
         const importe = Number(bruto);
         return { product_id, price: Number.isFinite(importe) && importe >= 0 ? importe : null };
     });
+
+    // La semana: los siete días desde el «hoy» del servidor, con su estado real.
+    // Se piden al abrir la pestaña, no al montar, para no castigar la pantalla que
+    // el dueño usa a diario con siete peticiones que no va a mirar.
+    useEffect(() => {
+        if (tab !== 'week' || !hoyServidor) return;
+        let vivo = true;
+        setSemana(null);
+        const sumaDias = (fecha, dias) => {
+            const d = new Date(`${fecha}T00:00:00Z`);
+            d.setUTCDate(d.getUTCDate() + dias);
+            return d.toISOString().slice(0, 10);
+        };
+        const fechas = Array.from({ length: 7 }, (_, i) => sumaDias(hoyServidor, i));
+        Promise.all(fechas.map((fecha) => getMenuDay(fecha).then((r) => ({ fecha, dia: r.data })).catch(() => ({ fecha, dia: null }))))
+            .then((filas) => { if (vivo) setSemana(filas); });
+        return () => { vivo = false; };
+    }, [tab, hoyServidor]);
 
     const publicar = async () => {
         try {
@@ -167,9 +198,34 @@ export default function GestionarMenu() {
             </div>
 
             {tab === 'week' && (
-                <p className="text-sm text-muted-foreground" data-testid="menu-tab-pendiente">
-                    La programación semanal llega después: primero tiene que estar firme el menú del día.
-                </p>
+                <section className="space-y-3" data-testid="menu-semana">
+                    <p className="text-sm text-muted-foreground">
+                        Los próximos siete días. Programar esta semana no repite todas las semanas:
+                        eso se activará aparte, porque no es lo mismo.
+                    </p>
+                    {semana === null && <p className="text-sm text-muted-foreground" data-testid="menu-semana-cargando">Leyendo la semana…</p>}
+                    {semana !== null && (
+                        <div className="rounded-xl border border-border divide-y">
+                            {semana.map(({ fecha, dia }) => (
+                                <div key={fecha} className="flex items-center gap-3 px-3 py-2" data-testid={`menu-dia-${fecha}`}>
+                                    <span className="tabular-nums text-sm w-28 shrink-0">{fecha}</span>
+                                    <span className="min-w-0 flex-1 text-sm text-muted-foreground" data-testid={`menu-dia-estado-${fecha}`}>
+                                        {dia?.published ? 'Publicado' : (dia?.has_menu ? 'Borrador' : 'Sin menú')}
+                                    </span>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => { setDiaAbierto(fecha); setTab('today'); setSeleccion(null); setPrecios({}); }}
+                                        data-testid={`menu-dia-abrir-${fecha}`}
+                                    >
+                                        Abrir
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
             )}
 
             {tab === 'catalog' && (
@@ -200,6 +256,22 @@ export default function GestionarMenu() {
 
             {tab === 'today' && (
                 <>
+                    {/* Abrir otro día desde la semana no puede ser invisible: si no,
+                        se publicaría en la fecha equivocada sin darse cuenta. */}
+                    {diaAbierto && (
+                        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border bg-muted/40 px-3 py-2" data-testid="menu-dia-abierto">
+                            <span className="text-sm font-medium">Estás editando el {diaAbierto}</span>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => { setDiaAbierto(undefined); setSeleccion(null); setPrecios({}); }}
+                                data-testid="menu-volver-hoy"
+                            >
+                                Volver a hoy
+                            </Button>
+                        </div>
+                    )}
                     <div className="flex items-end gap-2 flex-wrap">
                         <div>
                             <label className="block text-xs text-muted-foreground mb-1" htmlFor="menu-desde">Copiar de otro día</label>
