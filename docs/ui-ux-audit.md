@@ -465,18 +465,18 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 | # | Ítem del backlog | Cambio | Archivo |
 |---|---|---|---|
-| R7-1 | .page-kicker a 11,2 px | La clase global de los antetítulos pasa de  .7rem (11,2 px) a  .75rem (**12 px**), que es el mínimo declarado en design_guidelines.md. Con esto desaparece la última fuente de texto por debajo de 12 px que apuntaba el hallazgo P3 de la ronda 6 | src/index.css |
+| R7-1 | .page-kicker a 11,2 px | La clase global de los antetítulos pasa de 0.7rem (11,2 px) a 0.75rem (**12 px**), que es el mínimo declarado en design_guidelines.md. Con esto desaparece la última fuente de texto por debajo de 12 px que apuntaba el hallazgo P3 de la ronda 6 | src/index.css |
 
 ### Verificación
 
 - **Matriz de regresión** (4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe en toda la matriz** y sin desbordamientos horizontales — el antetítulo, que aparece en casi todas las pantallas, se mueve 0,8 px sin romper ningún layout.
-- Este es el cierre del hallazgo de texto pequeño: primero se eliminaron las 9 instancias de 	ext-[10px]/	ext-[11px] de los componentes operativos (ronda 6) y ahora la clase que alimentaba al resto de la interfaz.
+- Este es el cierre del hallazgo de texto pequeño: primero se eliminaron las 9 instancias de text-[10px]/text-[11px] de los componentes operativos (ronda 6) y ahora la clase que alimentaba al resto de la interfaz.
 
 ### Pendiente (siguientes rondas)
 
 | Pendiente | Por qué quedó fuera |
 |---|---|
-| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
+| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, aria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
 
 ---
 
@@ -491,13 +491,13 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 ### Verificación
 
 - **Código:** 15 sustituciones, **0 ocurrencias restantes** de los literales antiguos en los 8 archivos, reescritas como UTF-8 sin BOM y releyéndolas para confirmar que no hubo mojibake ni pérdida de acentos (el mensaje usa "Revisá", con tilde, y se comprobó al releer).
-- **Matriz de regresión** (90 visitas comparables: 4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe** en las 90 visitas y 0 desbordamientos horizontales. Las métricas de la ronda quedan cerradas con este dato: egion **35 → 0**, landmark-one-main **8 → 0**, page-has-heading-one **14 → 0**, controles <24 px **65 → 38** y, el dato que cierra el hallazgo de texto pequeño, **nodos de texto <12 px: 215 → 70** (el salto se debía sobre todo a .page-kicker, corregido en la ronda 7).
+- **Matriz de regresión** (90 visitas comparables: 4 roles × desktop + móvil, más público × 2 viewports): **0 banderas de axe** en las 90 visitas y 0 desbordamientos horizontales. Las métricas de la ronda quedan cerradas con este dato: region **35 → 0**, landmark-one-main **8 → 0**, page-has-heading-one **14 → 0**, controles <24 px **65 → 38** y, el dato que cierra el hallazgo de texto pequeño, **nodos de texto <12 px: 215 → 70** (el salto se debía sobre todo a .page-kicker, corregido en la ronda 7).
 
 ### Pendiente (siguientes rondas)
 
 | Pendiente | Por qué quedó fuera |
 |---|---|
-| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, ria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
+| Migrar CobrarDialog al Dialog de Radix | Ya tiene trampa de foco, aria-modal, Escape y retorno de foco a mano; Radix añadiría inert nativo y un manejo más limpio de los subdiálogos. Es la migración más arriesgada que queda, porque es el diálogo de dinero |
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | El AlertDialog de producto/usuario/zona/mesa no calcula el impacto (combos que incluyen el plato, pedidos activos); requiere datos que hoy no están en el cliente |
 
 ---
@@ -506,11 +506,11 @@ desvío pendiente de esta ronda es el texto por debajo de 12 px en el salón y l
 
 ### Qué se hizo
 
-El único ítem que quedaba del objetivo original es **"CobrarDialog migrado al Dialog de Radix"**. La pasada de interacción del arnés siempre lo saltaba, porque en cada corrida no había ninguna cuenta por cobrar: el P0-3 del informe (foco, ria-modal, Escape, retorno de foco) quedó verificado por código, no en vivo.
+El único ítem que quedaba del objetivo original es **"CobrarDialog migrado al Dialog de Radix"**. La pasada de interacción del arnés siempre lo saltaba, porque en cada corrida no había ninguna cuenta por cobrar: el P0-3 del informe (foco, aria-modal, Escape, retorno de foco) quedó verificado por código, no en vivo.
 
 | # | Ítem del objetivo | Cambio | Archivo |
 |---|---|---|---|
-| R9-1 | Verificación en vivo del cobro | Nuevo ixture-bill.mjs: crea una cuenta pendiente a través de la API (producto disponible + mesa libre + pedido), que es lo que hace que /caja la muestre en "Cuentas solicitadas" y que el botón *Cobrar* abra el diálogo. Es el mismo patrón que ya usan e2e/fixtures/seed-roles.js y global-setup.ts | e2e/audit/fixture-bill.mjs |
+| R9-1 | Verificación en vivo del cobro | Nuevo fixture-bill.mjs: crea una cuenta pendiente a través de la API (producto disponible + mesa libre + pedido), que es lo que hace que /caja la muestre en "Cuentas solicitadas" y que el botón *Cobrar* abra el diálogo. Es el mismo patrón que ya usan e2e/fixtures/seed-roles.js y global-setup.ts | e2e/audit/fixture-bill.mjs |
 
 ### Estado de esa comprobación (honesto)
 
@@ -532,14 +532,14 @@ El único ítem que quedaba del objetivo original es **"CobrarDialog migrado al 
 
 Se completó el paso que faltaba para poder tocar el diálogo de dinero con red de seguridad: **verificar en vivo que el cobro se comporta como modal**. El P0-3 del informe ("el diálogo de cobro no se comporta como modal") quedó probado por código en las rondas 0 y 3; ahora queda probado **en ejecución**.
 
-Para eso se avanzó el pedido #17 (creado en la ronda 9) por su ruta real: send-to-kitchen (mozo) → dos ump (cocina) → status: pendiente_pago (mozo), lo que lo deja como **cuenta solicitada** en /caja.
+Para eso se avanzó el pedido #17 (creado en la ronda 9) por su ruta real: send-to-kitchen (mozo) → dos bump (cocina) → status: pendiente_pago (mozo), lo que lo deja como **cuenta solicitada** en /caja.
 
 ### Verificación en vivo (e2e/audit/checks7.mjs, cajero, build de :3001)
 
 | Comprobación | Resultado |
 |---|---|
 | El botón *Cobrar* abre el diálogo ("Mesa 20 · #17") | ✅ |
-| ole="dialog" + ria-modal="true" + ria-labelledby con título | ✅ |
+| role="dialog" + aria-modal="true" + aria-labelledby con título | ✅ |
 | El foco entra al diálogo al abrirlo | ✅ |
 | **25 tabulaciones sin salir del diálogo** (trampa de foco) | ✅ 0 escapes |
 | **Escape cierra** el diálogo (sin cobro en curso) | ✅ |
@@ -569,7 +569,7 @@ La migración completa a Dialog de Radix sigue **pendiente y deliberadamente no 
 | Comprobación | Antes (hand-rolled) | Ahora (Radix) |
 |---|---|---|
 | El botón *Cobrar* abre el diálogo | ✅ | ✅ |
-| ole="dialog" + ria-modal="true" | ✅ | ✅ |
+| role="dialog" + aria-modal="true" | ✅ | ✅ |
 | El foco entra al diálogo al abrirlo | ✅ | ✅ |
 | 25 tabulaciones sin salir del diálogo | ✅ 0 escapes | ✅ 0 escapes |
 | Escape cierra | ✅ | ✅ |
@@ -580,7 +580,7 @@ problems: [] → **PASS** en ambas configuraciones.
 
 ### Nota honesta sobre inert
 
-El sondeo sigue mostrando inertBackground: 0: Radix **no** escribe el atributo inert en los hijos de ody, sino que oculta el fondo para los lectores de pantalla con ria-hidden y bloquea la interacción externa con su propia capa dismissable. El efecto práctico —foco atrapado, ria-modal, Escape, retorno de foco y cierre al clic fuera— queda cubierto; queda anotado para no dar por resuelto algo que el medidor dice que no lo está.
+El sondeo sigue mostrando inertBackground: 0: Radix **no** escribe el atributo inert en los hijos de body, sino que oculta el fondo para los lectores de pantalla con aria-hidden y bloquea la interacción externa con su propia capa dismissable. El efecto práctico —foco atrapado, aria-modal, Escape, retorno de foco y cierre al clic fuera— queda cubierto; queda anotado para no dar por resuelto algo que el medidor dice que no lo está.
 
 ### Pendiente (siguientes rondas)
 
@@ -601,13 +601,13 @@ La matriz de la ronda 11 destapó dos pantallas que hasta ahora se medían **vac
 
 | # | Ítem | Cambio | Archivo |
 |---|---|---|---|
-| R12-1 | Campos sin etiqueta asociada | **15 pares** <Label> + <Input> reciben htmlFor e id con un identificador derivado del texto de la etiqueta (anco, 	itular, 
+| R12-1 | Campos sin etiqueta asociada | **15 pares** <Label> + <Input> reciben htmlFor e id con un identificador derivado del texto de la etiqueta (banco, titular, 
 umero-de-cuenta, cci, 
-ombre-del-restaurante, uc, direccion, 	elefono, moneda, zona-horaria, horario, instagram, acebook, whatsapp…): 5 en Pagos y 10 en Configuración | pages/Pagos.jsx, pages/Configuracion.jsx |
+ombre-del-restaurante, ruc, direccion, telefono, moneda, zona-horaria, horario, instagram, facebook, whatsapp…): 5 en Pagos y 10 en Configuración | pages/Pagos.jsx, pages/Configuracion.jsx |
 
 ### Verificación
 
-- **Captura dirigida** (admin × escritorio, build de :3001): /pagos y /configuracion pasan de **xe:1 y xe:2** (reglas label y utton-name, críticas) a **ninguna bandera**. La matriz vuelve a quedar limpia.
+- **Captura dirigida** (admin × escritorio, build de :3001): /pagos y /configuracion pasan de **axe:1 y axe:2** (reglas label y button-name, críticas) a **ninguna bandera**. La matriz vuelve a quedar limpia.
 - El cambio es de atributos (htmlFor/id), sin tocar estilos ni estructura, y se comprobó que la escritura preservó el UTF-8 sin BOM releyendo los archivos.
 
 ### Pendiente
@@ -616,6 +616,192 @@ ombre-del-restaurante, uc, direccion, 	elefono, moneda, zona-horaria, horario, 
 |---|---|
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
 | P2-16: la función proof_ocr se puede activar pero no existe en pantalla | Decisión de producto (retirarla o marcarla "próximamente") |
+
+## 🔄 Ronda 15 del objetivo — el parche optimista rompía la tarjeta, y la cocina ordena al revés
+
+### Contexto
+
+Reportado por el dueño, tres cosas concretas:
+
+1. «En cocina también debe estar ordenado de lo más reciente a lo más antiguo.»
+2. «Cuando le doy clic en Entregar, el número de monto que aparece en la mesa cambia por un momento y luego se muestra la original.»
+3. «El botón se demora en cambiar el estado o simplemente no cambia; recién cambia cuando abro el pedido y ahí se muestra Cobrar, Entregar.»
+
+Los puntos 2 y 3 eran **el mismo fallo**: `patchOrder` usaba la función de parche
+como objeto **completo** en vez de fusionarla sobre el pedido vivo
+(`useSalonData.js:93`). Al pulsar «Entregar», el pedido quedaba reducido a
+`{ items }` y la tarjeta perdía `id`, `table_id`, `status` y `total`: el importe
+desaparecía y el estado no se movía. Y el parche solo tocaba los platos, no el
+estado del pedido, así que la mesa seguía diciendo «Listo» hasta el sondeo de 8 s.
+
+### Arreglos aplicados
+
+| # | Ítem | Cambio | Archivo |
+|---|---|---|---|
+| R15-1 | **Cocina de más antiguo a más reciente** | Las tres columnas activas ordenan por recencia descendente. Un ticket recién llegado aparecía al final de la columna, fuera de la vista; «Retirados» ya iba al derecho. El subtítulo de la columna pasa de «Más antiguas primero» a «Más recientes primero» | `pages/Cocina.jsx` |
+| R15-2 | **El parche del piso destruía el pedido** | La función de parche ahora devuelve el **parche** y se fusiona sobre el pedido (`{ ...order, ...fields }`), tanto si `change` es función como objeto | `pages/salon/useSalonData.js` |
+| R15-3 | **Servir no movía el estado de la mesa** | `servedOrderPatch` espeja `ticket_fields(o, "entregado", ...)`: los platos listos pasan a entregados y el pedido queda «entregado» —o «pagado» si el cobro ya estaba completo—, así que la tarjeta cambia al toque y no ocho segundos después | `pages/salon/useFloorActions.js` |
+
+### Verificación
+
+- **Frontend: 140 suites / 1381 pruebas** en verde (antes 139/1374) y
+  `CI=true npx craco build` compila.
+- **Los dos arreglos se comprobaron con dientes, por separado**, revirtiendo cada
+  uno y viendo el fallo que le corresponde:
+  - revirtiendo **solo la fusión** el monto desaparece de la tarjeta
+    (`Expected substring: "45.00"` / `Received: "44 asientosEntregado"`) y se cae el
+    botón de finalizar: es exactamente lo que se reportó;
+  - revirtiendo **solo el estado** la tarjeta se queda en `"listo"`
+    (`Expected: "entregado"` / `Received: "listo"`).
+- Suites nuevas y ampliadas: `SalonDeliverFeedback.test.js` (2 casos, con el
+  `usePolling` **real** para que el parche llegue de verdad a la tarjeta),
+  `useSalonData.test.js` (3 casos del parche), `useFloorActions.test.js` (2 del
+  espejo de estado) y `Cocina.test.js` (el orden, con la aserción invertida).
+- **No verificado en vivo**: se sostiene en pruebas con jsdom, no en el teléfono
+  del mozo.
+
+## 🔄 Ronda 14 del objetivo — normalización de los estados: de tres listas a una, y dos estados sin salida
+
+### Contexto
+
+El levantamiento completo de estados ([`estados-y-flujo.md`](estados-y-flujo.md),
+[`mapa-estados.html`](mapa-estados.html)) encontró 25 inconsistencias. Esta ronda
+cierra las ocho de mayor consecuencia, en unidades verificables por separado.
+
+### Arreglos aplicados
+
+| # | Ítem | Cambio | Archivo |
+|---|---|---|---|
+| R14-1 | **Tres listas de estados que ya habían divergido** | La leyenda y los filtros se derivan de `FLOOR_STYLE`, que pasa a ser la única lista. `filterUnits` filtra con el **mismo** mapa con el que `countByState` cuenta (antes tenía la lista escrita otra vez y podían contradecirse). Se añaden los filtros que faltaban —*Por cerrar*, *Reservadas*, *Inactivas*, *Anuladas*— y `FloorStateCoverage.test.js` fija que todo estado esté en la leyenda y se pueda aislar | `pages/salon/selectors.js`, `pages/salon/FloorFilters.jsx`, `lib/floorStyle.js` |
+| R14-2 | **La guarda de «cuenta pedida» no funcionaba** | Probaba `status == "pendiente_pago"`, un estado que ningún camino guarda: el cliente por QR podía seguir añadiendo platos a una cuenta ya impresa y el contador del informe era siempre 0. Ahora lee `payment_requested` mediante `bill_requested()`, con el estado antiguo tolerado para filas históricas | `order_flow.py`, `routes/public.py`, `routes/reports.py` |
+| R14-3 | **Una cuenta totalmente anulada no se podía cerrar** | `close_block_reason` y `canCloseAttention` aceptan una cuenta **sin nada que cobrar** (total y pagado en cero): todos los platos anulados y sin dinero. Antes el cierre exigía un pago que ya no existía, «Finalizar mesa» desaparecía y la mesa no tenía salida. Sigue bloqueado lo que protege el dinero: deuda pendiente, comprobante por verificar y platos sin entregar | `attention.py`, `lib/attentionClose.js` |
+| R14-4 | **«Finalizar mesa» se ofrecía y el servidor lo rechazaba** | El cliente ahora mira **todas** las cuentas vivas de la visita, como el servidor. `decorateTables` expone `visitOrders` y la hoja recibe `orders` para calcular las hermanas | `lib/attentionClose.js`, `pages/salon/selectors.js`, `components/MesaCard.jsx`, `pages/Salon.jsx` |
+| R14-5 | **«Entregado» no tenía ninguna acción en el piso** | La tarjeta ofrece «Solicitar cuenta» con la regla compartida `canRequestBill`, la misma que usa la hoja: antes había que abrir mesa por mesa | `components/MesaCard.jsx`, `pages/salon/sheetActions.js`, `pages/salon/FloorGrid.jsx` |
+| R14-6 | **Servir marcaba como entregados platos que nunca se cocinaron** | `serve_order` pasa a `entregado` solo lo que está `listo`; un borrador sigue siendo borrador. Es la regla que ya aplicaba el endpoint de estado | `routes/orders.py` |
+| R14-7 | **Un estado anulado se pintaba «Atención abierta»** y se contaba como ocupado | La etiqueta pasa a «Cuenta anulada» y las anuladas dejan de contarse dentro de «Ocupadas» («En curso») | `lib/floorStyle.js`, `pages/salon/selectors.js` |
+| R14-8 | **Un conteo ausente se pintaba «undefined»** | `FloorFilters` cae a 0 en vez de imprimir el valor crudo | `pages/salon/FloorFilters.jsx` |
+
+### Verificación
+
+- **Frontend: 139 suites / 1374 pruebas** en verde (antes 137/1357) y
+  `CI=true npx craco build` compila.
+- **Backend hermético: 717 pruebas** en verde (antes 716). Las suites que exigen un
+  servidor en `127.0.0.1:8000` siguen sin poder correr aquí: 480 menciones de error
+  de conexión y **cero** fallos de aserción, así que no son regresiones de esta ronda.
+- **Dos pruebas nuevas se comprobaron con dientes**, revirtiendo el arreglo y viendo
+  el fallo: la guarda del pedido público (`assert blocked is not None` →
+  `AssertionError`) y `serve_order` (`assert 'entregado' == 'borrador'`).
+- Nuevas suites: `FloorStateCoverage.test.js` (7 casos: leyenda, cobertura,
+  filtros sin estados fantasma, conteo = filtrado, y que una anulada ya no cuente
+  como ocupada), `SalonBillRequest.test.js` (4 casos) y ampliaciones en
+  `attentionClose.test.js` (8), `salonSelectors.test.js` y `test_money_integrity.py`.
+- **No verificado en vivo**: todo se sostiene en pruebas de integración con jsdom y
+  en la suite hermética del backend, no en una sesión real con datos.
+
+### Pendiente
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Retirar `pendiente_pago` del `Literal` de `OrderStatus` | Es un cambio de contrato de API: hoy el frontend lo envía como el verbo «solicitar cuenta». Decidir si se renombra el verbo o se conserva |
+| `assert_order_transition` se llama en **un** endpoint | Llevar la validación a los doce escritores, o dejar escrito que el mapa es documentación |
+| Declarar los nueve ejes sin `Literal` | `payment_status`, `fulfillment_status`, `attention_state` y compañía son cadenas libres |
+| `fulfillment_status` desincronizado tras `merge`/`move_item` | Requiere decidir si el campo se deriva siempre o se retira |
+| Un prepago rechazado bloquea la mesa (`opening_order_id`) | Toca el flujo de apertura de visita |
+| La mesa puede quedar ocupada tras un cierre sin comprobar el resultado | Alcanzabilidad sin confirmar; el arreglo es comprobar el `UpdateResult` |
+
+## 🔄 Ronda 13 del objetivo — Cobrar es cobrar: el botón del salón deja de abrir el tomador de pedidos
+
+### Contexto
+
+Reportado por el dueño: en el salón, **Cobrar** llevaba a `/pedidos/<cuenta>`, que es el
+detalle del pedido **con tomador de pedidos** (buscador, chips de categoría y rejilla de
+productos). El mozo pedía cobrar y aterrizaba en la carta, con el botón de cobro al final
+de un scroll largo.
+
+Al revisarlo apareció que el destino correcto **ya existía**: `CajaWorkspace` sabe abrir
+el cobro de una cuenta concreta por `?order=<id>`, y `PedidoDetalle` ya navegaba ahí
+cuando no hay turno de caja abierto (`PedidoDetalle.jsx:230`). El salón era el único que
+ignoraba ese contrato.
+
+Esto además cierra la brecha con lo que pide el PRD: un mozo con la función de cobro
+**cobra sin intervención adicional de caja** (`PRD-restaurante-saas-v1.0.md:574`), y un
+mozo sin ella **no ve el botón**: la cuenta espera en caja
+(`PRD-restaurante-saas-v1.0.md:355`).
+
+### Arreglos aplicados
+
+| # | Ítem | Cambio | Archivo |
+|---|---|---|---|
+| R13-1 | Cobrar abría el tomador de pedidos | `openCharge` navega a `/caja?order=<id>`. Se conserva el respaldo a `/pedidos/<id>` para quien no pueda abrir la caja (hoy no ocurre: `salon.charge` exige la función de cobro, y esa función abre la ruta) | `pages/salon/useFloorActions.js`, `pages/Salon.jsx` |
+| R13-2 | **P0 latente**: el enlace `?order=` se releía en cada sondeo | Cualquier cambio del piso volvía a abrir el diálogo de cobro que el mozo acababa de cerrar. Ahora el enlace **se consume una sola vez** y se quita de la URL (`replace`), así la barra de dirección dice lo que hay en pantalla y recargar no reabre el cobro por sorpresa | `pages/caja/CajaWorkspace.jsx` |
+| R13-3 | El enlace no tenía pruebas del lado que lo consume | Solo se probaba que se **emite** (`PedidoDetalleCollection.test.js:187`), nunca que la caja lo **atienda**. Se añade la otra mitad, incluido el caso del cierre | `__tests__/CajaOrderLink.test.js` |
+
+### Verificación
+
+- `__tests__/SalonChargeDestination.test.js`: con `mozo` y funciones `[atencion, cobro]`,
+  tocar **Cobrar** llama a `navigate('/caja?order=order-4')`; con `mozo` sin `cobro` el
+  botón **no existe** (la mesa se paga en caja).
+- `__tests__/CajaOrderLink.test.js`: el enlace abre el cobro de esa cuenta y, tras
+  cerrarlo, **no vuelve a abrirse** aunque el sondeo entregue una lista nueva (el caso
+  que fallaba: `expect(dialog()).toBeNull()` sobre un diálogo reabierto).
+- `__tests__/permissions.test.js`: invariante **quien puede cobrar puede abrir la caja**,
+  sobre 8 perfiles (4 de ellos con `salon.charge`), para que las dos reglas no puedan
+  separarse sin que falle una prueba.
+- `__tests__/useFloorActions.test.js`: destino de cobro y su respaldo.
+- `__tests__/SalonSheetParity.test.js`: el Cobrar de la hoja de mesa se actualiza al
+  nuevo destino.
+- Frontend completo: **137 suites / 1357 pruebas** en verde; `CI=true npx craco build`
+  compila. Backend sin tocar.
+- No se pudo verificar en vivo (navegador/VPS): el arreglo se sostiene en pruebas de
+  integración con jsdom, no en una sesión real de caja.
+
+### Daño reparado en este mismo documento
+
+`docs/ui-ux-audit.md` estaba **corrupto** y las herramientas lo trataban como binario:
+contenía 2 bytes NUL, más `\x07`, `\x08`, `\x0c`, tabs y CRs. El patrón era un escapado
+que se había comido la barra inversa y convertido la letra siguiente en carácter de
+control (`\aria-modal` → BEL + `ria-modal`, `\body` → BS + `ody`, `\facebook` → FF +
+`acebook`). Se restauraron los 14 renglones afectados con la letra que correspondía
+(`aria-modal`, `body`, `bump`, `banco`, `titular`, `ruc`, `telefono`, `facebook`,
+`region`, `role="dialog"`, `axe:1`, `0.7rem`, `fixture-bill.mjs`). El archivo vuelve a ser
+UTF-8 plano y editable.
+
+### Hallazgo abierto: hay tres implementaciones de "elegir productos"
+
+Levantado a partir de la sospecha del dueño ("creo hay dos tomadores"). Inventario con
+evidencia; es análisis estático del código, no una traza en vivo:
+
+| Superficie | Entrada | Implementación |
+|---|---|---|
+| Hoja de mesa (inline) y "Nuevo pedido" del salón | `/salon` | **Comparten** `components/OrderComposer.jsx` |
+| `/pedidos/nuevo` | `/pedidos` → "Nuevo pedido" → `SalesAreasDialog` | Rejilla propia en `pages/PedidoNuevo.jsx:212-248` |
+| `/pedidos/:id` | 10+ enlaces "Ver pedido" | Rejilla propia en `pages/PedidoDetalle.jsx:339-367` |
+
+Las dos rejillas propias son casi copias: el memo de filtro y orden es idéntico byte a byte
+(`PedidoNuevo.jsx:55-61` vs `PedidoDetalle.jsx:137-143`). Además la decisión de las cuatro
+áreas de venta está implementada dos veces desde los mismos datos
+(`NewOrderSheet.jsx:189-207` en pestañas vs `SalesAreasDialog.jsx:64-81` en tarjetas).
+
+Lo redundante de verdad es **`/pedidos/nuevo` ≡ pestañas no-mesa de `NewOrderSheet`**
+(mismo resultado: crear un pedido de llevar/recojo/delivery y mandarlo a cocina).
+`/pedidos/:id` **no** es redundante: es la única superficie que agrega productos a un
+pedido que no creó (por id, sin restricción de tipo) y la única que cobra, entrega,
+solicita cuenta, reasigna mozo y anula.
+
+**No se consolidó en esta ronda** a propósito: unificar `/pedidos/nuevo` con
+`OrderComposer` obliga a decidir dónde se compone un pedido de **mesa** cuando no estás en
+el piso (`NewOrderSheet` delega esa pestaña al salón vía `onPickTable`), y arrastra el
+comportamiento de la cola offline (`useOrderLineSync`, `request_id`, reintentos). Es una
+decisión de producto con su propia verificación, no un ajuste de pasada. Coincide con la
+recomendación ya registrada en `docs/audit/auditoria-flujo-roles-2026-10-05.md`.
+
+### Pendiente
+
+| Pendiente | Por qué quedó fuera |
+|---|---|
+| Consolidar `/pedidos/nuevo` con `OrderComposer` y borrar uno de los dos selectores de área | Necesita decidir dónde se compone la pestaña "mesa" fuera del piso, y verificar la cola offline |
+| `/pedidos/:id` conserva su rejilla propia | Reutilizar `OrderComposer` ahí exige soportar "agregar a un pedido existente de cualquier tipo", que hoy `OrderComposer` no hace |
+| `docs/audit/auditoria-flujo-roles-2026-10-05.md` §5.1 quedó obsoleto | Afirma que "Enviar a cocina" es inalcanzable; el backend ahora deja el pedido en `nuevo` cuando solo hay borradores (`backend/routes/orders.py:618`, `backend/order_flow.py:115`). Corregir una auditoría fechada se decide aparte |
 
 ## Datos duros de la corrida
 

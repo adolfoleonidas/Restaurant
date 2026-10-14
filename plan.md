@@ -147,3 +147,53 @@ La implementación T1–T4 de aislamiento operativo y contexto de reportes está
 ## Unir mesas y mover el pedido de mesa (rama publicada `feat/unir-mesas`)
 
 Implementado en la worktree `.worktrees/unir-mesas` y publicado como rama `feat/unir-mesas` (sin merge a main, así que no dispara el deploy): agrupar mesas como marca del salón (cada mesa conserva su propia cuenta) y mover una visita abierta —pedido y visita— a otra mesa libre de la misma sucursal. Alcance, decisiones y evidencia en el [tracker de unir mesas](odd/tasks/unir-mesas.md). Se pueden unir mesas libres entre sí, una mesa con pedido con una libre, y también **dos mesas que ya tienen su propio pedido**: cada una conserva su cuenta y el grupo indica cuántas cuentas tiene (F1). Lo que sigue sin existir es **fusionar** esas dos cuentas en una sola (F2), diferido por el dueño en el [issue #40](https://github.com/adolfoleonidas/Restaurant/issues/40). Nada de esto está desplegado ni mergeado.
+
+### La interfaz de unir mesas, rehecha para el mozo
+
+Sobre esa base, la pantalla cambió después para que la operación se pueda hacer
+durante el servicio sin adivinar nada (detalle y evidencia en
+[§9 de adaptación móvil](docs/mobile-adaptation.md)):
+
+- **Ampliar un grupo ya no obliga a separarlo.** Sumar la mesa 5 al grupo 3 + 4
+  se hacía separando y volviendo a unir las tres. La API ya tenía el endpoint
+  (`POST /table-groups/:id/tables`); ahora la interfaz lo usa: se toca el grupo y
+  después la mesa libre.
+- **Elegir un grupo es elegir la fiesta entera**, no una silla, y sus mini-mesas
+  eligen el grupo en vez de abrir la hoja.
+- **Lo elegido son fichas quitables** de una en una, con la suma de asientos y una
+  línea de guía que ya no desaparece justo cuando falta una mesa más.
+- **La mesa no elegible lo dice en su propia tarjeta** (borde discontinuo, `No` y
+  el motivo): el error ya no vive solo en la barra del fondo de la pantalla.
+- **Separar está en la tarjeta del grupo**, con confirmación, en vez de tres
+  toques dentro de la hoja.
+- **La mesa principal del grupo se puede elegir**, cuando hay más de una
+  candidata; la regla del servidor no cambia (con cuentas abiertas, la principal
+  tiene que ser una de ellas).
+
+## Cobrar es cobrar (ronda 13 de la auditoría de UI/UX)
+
+En el salón, **Cobrar** abría `/pedidos/<cuenta>`, que es el detalle del pedido
+**con tomador de pedidos**: el mozo pedía cobrar y aterrizaba en la carta, con el
+botón de cobro al final de un scroll largo. El destino correcto ya existía y se
+usaba desde otra pantalla: la caja abre el cobro de una cuenta concreta por
+`?order=<id>` (`CajaWorkspace`), y el detalle del pedido ya navegaba ahí cuando no
+hay turno abierto. El salón era el único que ignoraba ese contrato.
+
+- **Cobrar lleva a la caja** (`/caja?order=<id>`). Quien no pueda abrir la caja
+  conserva el respaldo, aunque hoy no ocurre: `salon.charge` exige la función de
+  cobro y esa función abre la ruta, invariante que ahora fija una prueba.
+- **Se corrigió un P0 latente**: el enlace `?order=` se releía en cada sondeo, así
+  que cualquier cambio del piso volvía a abrir el diálogo de cobro que el mozo
+  acababa de cerrar. Ahora se consume una sola vez y se quita de la URL.
+- **Hay tres implementaciones de "elegir productos"**, no dos: la compartida
+  (`OrderComposer`, que sirve a la hoja de mesa y a "Nuevo pedido" del salón) y dos
+  rejillas propias casi idénticas (`/pedidos/nuevo` y `/pedidos/:id`). Lo redundante
+  es `/pedidos/nuevo`; `/pedidos/:id` es la única superficie que agrega productos a
+  un pedido que no creó y la única que cobra, entrega, solicita cuenta, reasigna
+  mozo y anula. **Consolidar `/pedidos/nuevo` queda pendiente de decisión**: exige
+  definir dónde se compone un pedido de mesa fuera del piso.
+- **Se reparó `docs/ui-ux-audit.md`**, que estaba corrupto (bytes NUL y de control
+  de un escapado que se comió letras) y las herramientas trataban como binario.
+
+Detalle, evidencia y pendientes en la
+[ronda 13 de la auditoría](docs/ui-ux-audit.md).

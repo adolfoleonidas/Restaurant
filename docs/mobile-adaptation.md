@@ -247,7 +247,7 @@ multi-cuenta.
 | Banda "Ahora" | `Salon.jsx` (`salon-ahora`) | `role="region"` con carril `.scroll-x`: cuentas con platos listos → *Servir*; mesas por cobrar → *Cobrar*. Usa los tokens `FLOOR_STYLE`, no colores nuevos |
 | Zonas segmentadas | `Salon.jsx` (`salon-zonas`) | `role="group"` + `aria-pressed`, conserva los `data-testid` de cada zona |
 | Cuentas como tarjetas | `Salon.jsx` (`mesa-sheet-cuentas`) | Con más de una cuenta, carril de tarjetas con alias, total y estado de sus platos; la activa lleva `aria-pressed` |
-| Deshacer | `Salon.jsx` | Tras unir mesas y **solo si la API devuelve el id del grupo**, aviso con deshacer que disuelve con `DELETE /table-groups/:id`. Sin inversa fiel no se promete: en dinero no se aplica |
+| Deshacer | `pages/salon/useTableSelection.js` | Tras unir mesas y **solo si la API devuelve el id del grupo**, aviso con deshacer que disuelve con `DELETE /table-groups/:id`. Al **ampliar** un grupo la inversa es `DELETE /table-groups/:id/tables/:tableId` por cada mesa sumada. Sin inversa fiel no se promete: en dinero no se aplica (ver §9) |
 
 Pruebas nuevas: `src/__tests__/SalonActiveOrderBar.test.js` (4 casos: reabrir la
 cuenta desde la barra, servir desde ella, pintar la banda y no pintarla cuando
@@ -281,6 +281,65 @@ comparar (la estimación de la captura anterior, ~450 px, sale de mirar una
 imagen, no de medir). Y el mini-reproductor y la banda "Ahora" midieron 0 en esta
 corrida porque la sesión de auditoría no tenía ningún pedido abierto: son
 condicionales, y cuando aparecen suman ~56 px y ~90 px respectivamente.
+
+---
+
+## 9. "Unir mesas": una sola selección para dos operaciones
+
+La primera versión unía mesas sueltas y nada más. Para sumar la mesa 5 al grupo
+3 + 4 había que **separar el grupo y volver a unir las tres**, perdiendo la
+identidad del grupo en el camino. La API ya tenía el endpoint
+(`POST /table-groups/:id/tables`, probado en `tests/test_table_groups.py`) y la
+interfaz no lo usaba.
+
+Ahora la selección es un conjunto de elecciones —mesas, más **como mucho un grupo
+ya unido**— y lo que esa selección significa se deduce, no se pregunta:
+
+| Lo que el mozo elige | Lo que la app hace |
+|---|---|
+| Dos o más mesas sueltas | `POST /table-groups` — un grupo nuevo |
+| Un grupo unido + una o más mesas | `POST /table-groups/:id/tables` por cada mesa — el grupo se amplía |
+| Dos grupos unidos | Se rechaza: "Solo se puede ampliar un grupo a la vez" |
+| Un grupo solo, sin mesas | Todavía no es una operación: la barra pide las mesas que se suman |
+
+### 9.1 Qué cambió para el mozo
+
+| Antes | Ahora |
+|---|---|
+| Elegir la mesa 5 para el grupo 3 + 4 obligaba a separar y reunir todo | Se toca el grupo (**la fiesta entera**, no una silla) y después la mesa libre |
+| Lo elegido eran números en una frase, sin forma de deshacer un toque suelto | Fichas quitables de una en una: `Mesa 3 ✕`; quitar una no cancela la selección |
+| La instrucción desaparecía justo al elegir la primera mesa, que es cuando falta una más | Una línea de guía que **nunca** se va: "Elige al menos una mesa más", "1 mesa se suma a Mesas 3 + 4" |
+| El motivo de un rechazo vivía solo en la barra del fondo, lejos de la mesa tocada | La tarjeta lo dice en su sitio: borde discontinuo, `No` y el motivo (`mesa-card-motivo-N`) |
+| Una mesa no elegible se veía igual que una elegible y fallaba al tocarla | `data-pick="blocked"` con `aria-disabled`: no se deja tocar y dice por qué |
+| La tarjeta de un grupo se apagaba en modo unir y no respondía; sus mini-mesas sí abrían la hoja | La tarjeta del grupo se elige entero y sus mini-mesas eligen el grupo, no abren la hoja |
+| El grupo tenía que ir a la hoja de la mesa para separarse | `Separar` en la propia tarjeta del grupo, con confirmación |
+| La mesa principal del grupo la elegía siempre el servidor | Selector `Principal` cuando hay más de una candidata; solo se manda si el mozo cambia la que el servidor ya habría elegido |
+
+La regla de la mesa principal sigue siendo la del servidor (`_resolve_anchor`):
+si alguna mesa elegida ya tiene cuenta, la principal **tiene** que ser una de
+ellas — una mesa libre no puede nombrar al grupo.
+
+### 9.2 Lo que no cabe esperar
+
+Unir mesas sigue siendo una **marca del salón**: no mueve ni fusiona cuentas.
+Cada mesa conserva la suya y el grupo dice cuántas tiene. Fusionarlas es otra
+capacidad que toca dinero, y sigue fuera de alcance
+([issue #40](https://github.com/adolfoleonidas/Restaurant/issues/40)).
+
+### 9.3 Pruebas
+
+- `src/__tests__/tableGroups.test.js` — las reglas puras: qué mesa se puede
+  elegir y por qué no, qué operación se deduce, la mesa principal, la guía.
+- `src/__tests__/useTableSelection.test.js` — el hook: ampliar un grupo sin
+  disolverlo, deshacer mesa por mesa, una elección que envejece y bloquea la
+  confirmación, separar desde el piso.
+- `src/__tests__/SalonTableGroups.test.js` — la pantalla: el motivo en la
+  tarjeta, ampliar el grupo por su endpoint, separar con confirmación, las
+  fichas, el selector de principal.
+- `src/__tests__/MesaCardBorder.test.js` — el contorno sigue en el borde (ahora
+  con los cuatro lados escritos uno por uno: mezclar el atajo `borderWidth` con
+  `borderLeftWidth` hacía que React avisara en cada repintado).
+
 
 
 

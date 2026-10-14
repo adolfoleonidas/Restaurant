@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de estados — Salón, pedido, cocina y caja</title>
+<style>
+  :root {
+    --page: #f7f7f6; --paper: #ffffff; --line: #e3e3e1; --ink: #1c1c1b; --muted: #6b6b68;
+    --soft: #f1f1ef; --accent: #3f3f46;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 96px; background: var(--page); color: var(--ink);
+    font: 15px/1.55 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 21px; margin: 44px 0 4px; padding-top: 22px; border-top: 2px solid var(--ink); }
+  h3 { font-size: 16px; margin: 26px 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 8px; }
+  .meta { font-size: 13px; color: var(--muted); }
+  code { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12.5px; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  .note { background: var(--paper); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 12px 16px; border-radius: 6px; margin: 14px 0; }
+  .note.warn { border-left-color: #b45309; background: #fffaf0; }
+  .note.bad { border-left-color: #b91c1c; background: #fff5f5; }
+  .note.good { border-left-color: #15803d; background: #f4fbf6; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; background: var(--paper); font-size: 13.5px; }
+  th, td { text-align: left; padding: 8px 10px; border: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--soft); font-weight: 600; }
+  td.no { color: #b91c1c; font-weight: 600; }
+  td.yes { color: #15803d; font-weight: 600; }
+
+  /* ── Línea de tiempo ───────────────────────────────────────────── */
+  .rail { display: flex; align-items: stretch; gap: 0; overflow-x: auto; padding: 18px 0 6px; }
+  .step { flex: 0 0 176px; position: relative; padding: 0 14px 0 0; }
+  .step:last-child { flex-basis: 150px; }
+  .card {
+    border-radius: 12px; border: 2px solid; padding: 10px 12px; min-height: 132px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .card .num { font-size: 26px; font-weight: 700; line-height: 1; }
+  .card .lbl { font-size: 13px; font-weight: 600; }
+  .card .sub { font-size: 11.5px; color: var(--muted); }
+  .card .btns { margin-top: auto; font-size: 11.5px; }
+  .pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; border: 1px solid var(--line); background: var(--paper); }
+  .pill.act { border-color: #a1a1aa; background: #fff; }
+  .pill.none { color: #b91c1c; border-color: #f3c9c9; background: #fff5f5; }
+  .arrow { position: absolute; right: 2px; top: 58px; font-size: 18px; color: var(--muted); }
+  .axis { font-size: 11px; font-family: ui-monospace, Consolas, monospace; color: var(--muted); margin-top: 6px; }
+
+  .legendbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .tag { font-size: 11px; border-radius: 4px; padding: 1px 6px; font-weight: 600; }
+  .tag.dead { background: #fee2e2; color: #991b1b; }
+  .tag.hidden { background: #fef3c7; color: #92400e; }
+  .tag.ok { background: #dcfce7; color: #166534; }
+  ol.tight li, ul.tight li { margin-bottom: 5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Mapa de estados del sistema</h1>
+<p class="lead">Salón · pedido · cocina · caja. Cada estado con la etiqueta y el color con que <strong>realmente</strong> aparece, y todos los ejes paralelos que corren sobre el mismo pedido.</p>
+<p class="meta">Levantado leyendo el código en <code>backend/order_flow.py</code>, <code>backend/attention.py</code>, <code>backend/payment_policy.py</code>, <code>backend/routes/*.py</code>, <code>frontend/src/lib/floorStyle.js</code> y <code>frontend/src/pages/salon/selectors.js</code>. Cada afirmación lleva su archivo y línea.</p>
+
+<h2>1. La línea de tiempo del salón (lo que ve el mozo)</h2>
+<p class="lead">Mesa de salón con visita. Este es el camino que el sistema <em>sí</em> recorre de punta a punta.</p>
+
+<div class="rail">
+  <div class="step">
+    <div class="card" style="background:#E7F6EE;color:#0F5132;border-color:#BFE7D0">
+      <div class="num">1</div><div class="lbl">Libre</div>
+      <div class="sub">mesa sin visita</div>
+      <div class="btns"><span class="pill act">Tomar pedido</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">table=disponible<br>sin active_order</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#FFF6DB;color:#6B4E00;border-color:#F3E2A6">
+      <div class="num">2</div><div class="lbl">Preparando</div>
+      <div class="sub">borrador o en cocina</div>
+      <div class="btns"><span class="pill none">ninguno</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">order = nuevo ·<br>enviado_cocina ·<br>en_preparacion</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#E0EEFF;color:#0B3A66;border-color:#A9CFF5">
+      <div class="num">3</div><div class="lbl">Listo</div>
+      <div class="sub">cocina terminó</div>
+      <div class="btns"><span class="pill act">Entregar</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">order = listo</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#EAF6F5;color:#0F4F49;border-color:#BFE5E0">
+      <div class="num">4</div><div class="lbl">Entregado</div>
+      <div class="sub">platos en la mesa</div>
+      <div class="btns"><span class="pill none">ninguno</span> ⚠</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">order = entregado</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#FFE0CC;color:#8C3A12;border-color:#F5B488">
+      <div class="num">5</div><div class="lbl">Cuenta</div>
+      <div class="sub">pidió la cuenta</div>
+      <div class="btns"><span class="pill act">Cobrar</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">table = esperando_pago<br>order sigue en listo/<br>entregado<br>payment_requested</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#F2F2F2;color:#3F3F46;border-color:#D4D4D8">
+      <div class="num">6</div><div class="lbl">Cuenta pagada</div>
+      <div class="sub">cobrada, sin cerrar</div>
+      <div class="btns"><span class="pill act">Finalizar mesa</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="axis">order = pagado<br>attention_state = open</div>
+  </div>
+
+  <div class="step">
+    <div class="card" style="background:#E7F6EE;color:#0F5132;border-color:#BFE7D0">
+      <div class="num">7</div><div class="lbl">Libre</div>
+      <div class="sub">visita cerrada</div>
+      <div class="btns"><span class="pill act">Tomar pedido</span></div>
+    </div>
+    <div class="axis">table=disponible<br>attention_state=closed</div>
+  </div>
+</div>
+
+<div class="note warn">
+  <strong>Corrección importante sobre el paso 5.</strong> El paso «Cuenta» <strong>no</strong> se marca con <code>order.status = pendiente_pago</code>: ese valor está declarado pero <strong>ningún camino lo guarda</strong>. El endpoint que lo pide se pisa a sí mismo — <code>orders.py:1467</code> pone <code>pendiente_pago</code> y <code>:1503-1505</code> lo sobrescribe con el estado de <em>comida</em> — y lo fija el propio test del repositorio:
+  <br><br>
+  <code>tests/test_money_integrity.py:1528,1541</code><br>
+  <code>requested = await change_status("order-1", _flow("pendiente_pago"), _mozo())</code><br>
+  <code>assert stored["status"] == "listo"&nbsp;&nbsp;&nbsp;# ← sigue en «listo»</code>
+  <br><br>
+  Lo que sí queda escrito es <code>payment_requested = true</code> (<code>orders.py:1506</code>) y <code>tables.status = "esperando_pago"</code> (<code>orders.py:1511-1519</code>). El piso muestra «Cuenta» porque <code>floorState</code> mira el estado de la <em>mesa</em> antes que el del pedido (<code>selectors.js:118-119</code>). El resultado en pantalla es correcto; el mecanismo es otro — y un pedido <strong>sin mesa</strong> (llevar, recojo, delivery) no tiene ningún estado visible de «cuenta pedida».
+</div>
+
+<div class="note bad">
+  <strong><code>_ORDER_NEXT</code> no es la máquina de estados del sistema: es la de un solo endpoint.</strong> <code>assert_order_transition</code> se llama únicamente en <code>orders.py:1453</code>. Los otros doce escritores de <code>order.status</code> la esquivan, y entre ellos está el flujo principal: <code>nuevo → enviado_cocina</code> (<code>send-to-kitchen</code>, <code>orders.py:1254-1256</code>) <strong>no es una arista del mapa</strong> (<code>_ORDER_NEXT["nuevo"] = {"cancelado"}</code>). Léelo como documentación de intención, no como invariante.
+</div>
+
+<div class="note good">
+  <strong>El camino principal es consistente.</strong> Los seis pasos tienen salida y el último vuelve al primero.
+  «Cuenta pagada» es un estado intermedio real y con sentido: el dinero ya está, la fiesta todavía no se fue.
+  Cerrar la visita (<code>attention.py:343-363</code>) devuelve la mesa a <code>disponible</code> y sin <code>active_attention_id</code>, así que la tarjeta vuelve a «Libre».
+</div>
+
+<h3>Dónde se rompe la línea</h3>
+<table>
+  <tr><th>Paso</th><th>Qué pasa</th><th>Evidencia</th></tr>
+  <tr>
+    <td><strong>4 · Entregado</strong></td>
+    <td>La tarjeta no ofrece <strong>ninguna</strong> acción. El siguiente paso real es «Solicitar cuenta», y ese botón solo existe dentro de la hoja de la mesa. En el piso hay que abrir mesa por mesa.</td>
+    <td><code>MesaCard.jsx:94-100</code> (los cuatro predicados fallan) vs <code>sheetActions.js:50-57</code></td>
+  </tr>
+  <tr>
+    <td><strong>2 · Preparando</strong></td>
+    <td>Se llama «Preparando» a dos cosas distintas: una cuenta con <strong>solo borradores</strong> (nada viajó a cocina) y una que cocina ya está trabajando. La cabecera dice «En cocina: 0 platos» mientras la tarjeta dice «Preparando».</td>
+    <td><code>selectors.js:121</code> mapea <code>nuevo</code> → <code>preparando</code>; <code>summarizeOrders</code> excluye borradores (<code>selectors.js:259</code>)</td>
+  </tr>
+  <tr>
+    <td><strong>6 · Cuenta pagada</strong></td>
+    <td>«Finalizar mesa» se calcula mirando <strong>una sola</strong> cuenta, pero el backend exige que <strong>todas</strong> las de la visita estén liquidadas. Con dos cuentas se puede ofrecer el botón y que falle al pulsarlo.</td>
+    <td><code>attentionClose.js:24-37</code> vs <code>attention.py:444-451</code> («La cuenta #N no está lista»)</td>
+  </tr>
+</table>
+
+<h2>2. Todos los ejes que corren en paralelo</h2>
+<p class="lead">Un pedido no tiene «un» estado: tiene <strong>ocho</strong> campos de estado que cambian por caminos distintos. Esto es lo que hay que normalizar.</p>
+
+<h3>2.1 <code>order.status</code> — el eje que ve el mozo</h3>
+<p class="meta">Máquina de estados en <code>order_flow.py:84-93</code> (<code>_ORDER_NEXT</code>), validada por <code>assert_order_transition()</code>.</p>
+<table>
+  <tr><th>Estado</th><th>Puede pasar a</th><th>Etiqueta en el piso</th><th>Terminal</th></tr>
+  <tr><td><code>nuevo</code></td><td>cancelado</td><td>Preparando</td><td></td></tr>
+  <tr><td><code>enviado_cocina</code></td><td>en_preparacion, cancelado</td><td>Preparando</td><td></td></tr>
+  <tr><td><code>en_preparacion</code></td><td>listo, cancelado</td><td>Preparando</td><td></td></tr>
+  <tr><td><code>listo</code></td><td>entregado, pendiente_pago, cancelado</td><td>Listo</td><td></td></tr>
+  <tr><td><code>entregado</code></td><td>pendiente_pago, cancelado</td><td>Entregado</td><td></td></tr>
+  <tr><td><code>pendiente_pago</code></td><td>cancelado</td><td>Cuenta</td><td class="no">NO — muerto</td></tr>
+  <tr><td><code>pagado</code></td><td>—</td><td>Cuenta pagada</td><td class="yes">sí</td></tr>
+  <tr><td><code>cancelado</code></td><td>—</td><td>Atención abierta (morado)</td><td class="yes">sí</td></tr>
+</table>
+<p class="meta">Nótese que <code>pagado</code> <strong>no</strong> se alcanza desde <code>pendiente_pago</code> por la máquina: lo escribe <code>ticket_fields()</code> (<code>order_flow.py:193-198</code>) cuando el pago está completo <em>y</em> la comida salió. Son dos mecanismos distintos escribiendo el mismo campo.</p>
+
+<h3>2.2 <code>fulfillment_status</code> — la comida</h3>
+<p class="meta">Lo deriva <code>ticket_fields()</code> (<code>order_flow.py:184-197</code>). Valores: <code>nuevo</code>, <code>enviado_cocina</code>, <code>en_preparacion</code>, <code>listo</code>, <code>entregado</code>, <code>cancelado</code>. <code>pagado</code> se reescribe al valor anterior de comida, para que el dinero no pise a la cocina. La única salida que cuenta es <code>_FOOD_OUT = {"entregado"}</code>.</p>
+
+<h3>2.3 <code>payment_status</code> — el dinero interno</h3>
+<table>
+  <tr><th>Valor</th><th>Quién lo escribe</th><th>Efecto</th></tr>
+  <tr><td><code>pendiente</code></td><td><code>ticket_fields</code> <code>order_flow.py:177-178</code></td><td>nada cobrado</td></tr>
+  <tr><td><code>parcial</code></td><td><code>order_flow.py:182</code></td><td>pago parcial; <strong>bloquea «Finalizar mesa»</strong></td></tr>
+  <tr><td><code>pagado</code></td><td><code>order_flow.py:180</code></td><td>habilita «Finalizar mesa»</td></tr>
+  <tr><td><code>comprobante_subido</code></td><td>pago web con comprobante</td><td><strong>bloquea «Finalizar mesa»</strong> (<code>attentionClose.js:30</code>)</td></tr>
+  <tr><td><code>confirmado</code></td><td>verificación en caja</td><td>ídem</td></tr>
+</table>
+<p class="meta">Estados <strong>preservados</strong>: si no hay dinero cobrado, <code>ticket_fields</code> respeta <code>comprobante_subido</code>/<code>confirmado</code> en vez de bajarlos a <code>pendiente</code> (<code>order_flow.py:175-176</code>).</p>
+
+<h3>2.4 <code>payment_state</code> — el dinero visible al cliente</h3>
+<p class="meta"><code>payment_policy.py:92-131</code>. Valores: <code>no_requerido</code>, <code>pendiente</code>, <code>reportado</code>, <code>confirmado</code>, <code>rechazado</code>.</p>
+<div class="note warn">
+  <strong>Es un tercer vocabulario para el mismo dinero.</strong> Además de <code>payment_status</code> y <code>payment_state</code>, <code>payment_label()</code> (<code>payment_policy.py:148-156</code>) inventa un cuarto juego de etiquetas para el ticket de cocina: <code>pagado</code>, <code>cobra_en_caja</code>, <code>sin_confirmar</code>, <code>al_final</code>.
+</div>
+
+<h3>2.5 <code>acceptance_status</code> — la puerta de cocina</h3>
+<p class="meta"><code>pendiente</code> | <code>aceptado</code>. Es el <em>único</em> gate que la cocina respeta: <code>kitchen_visible()</code> (<code>payment_policy.py:143-145</code>). Un pedido por transferencia con prepago queda <code>pendiente</code> y cocina no lo ve hasta que alguien confirma el dinero.</p>
+
+<h3>2.6 <code>attention_state</code> — la visita</h3>
+<table>
+  <tr><th>Valor</th><th>Significado</th><th>Evidencia</th></tr>
+  <tr><td><code>opening</code></td><td>la visita aún no abrió; el pedido <strong>sí</strong> se puede corregir</td><td><code>order_flow.py:27-30</code></td></tr>
+  <tr><td><code>open</code></td><td>visita viva</td><td><code>attention.py:261</code></td></tr>
+  <tr><td><code>mutating</code></td><td>una operación de dinero reclamó el pedido</td><td><code>order_flow.py:66</code></td></tr>
+  <tr><td><code>closing</code></td><td>hay un cierre en vuelo</td><td><code>attention.py:395</code></td></tr>
+  <tr><td><code>closed</code></td><td>visita terminada</td><td><code>attention.py:356</code></td></tr>
+</table>
+<p class="meta"><code>mutating</code>, <code>closing</code> y <code>closed</code> congelan el pedido (<code>claim_order</code>, <code>order_flow.py:35</code>); <code>opening</code> explícitamente no.</p>
+
+<h3>2.7 <code>item.status</code> — cada plato</h3>
+<p class="meta"><code>order_flow.py:95-101</code>. <code>borrador</code> → <code>pendiente</code> → <code>en_preparacion</code> → <code>listo</code> → <code>entregado</code>; <code>cancelado</code> como salida lateral.</p>
+<div class="note bad">
+  <code>borrador</code> <strong>no aparece</strong> en <code>_ITEM_NEXT</code>: un producto en borrador no tiene transición declarada, así que el endpoint de cambio de estado de ítem lo rechaza (<code>order_flow.py:141-145</code>). Su único camino es «enviar a cocina». Y <code>is_draft()</code> usa <code>DRAFT_STATUS</code> (<code>order_flow.py:115</code>), un valor que no está en el <code>Literal</code> de <code>models.py:390</code>.
+</div>
+
+<h3>2.8 <code>table.status</code> — la mesa</h3>
+<table>
+  <tr><th>Valor</th><th>Quién lo escribe</th><th>¿Llega al piso?</th></tr>
+  <tr><td><code>disponible</code></td><td>cierre de visita (<code>attention.py:350</code>), liberar (<code>tables.py:469</code>), traslado</td><td class="yes">sí — «Libre»</td></tr>
+  <tr><td><code>ocupada</code></td><td>apertura de visita (<code>tables.py:463</code>), unir mesas (<code>table_groups.py:259</code>)</td><td class="yes">sí</td></tr>
+  <tr><td><code>esperando_pago</code></td><td>«Solicitar cuenta» (<code>orders.py:1511-1519</code>)</td><td class="yes">sí — «Cuenta»</td></tr>
+  <tr><td><code>pagada</code></td><td><code>_release_paid_table</code> (<code>orders.py:190-200</code>, <code>payments.py:156-168</code>)</td><td class="no">inalcanzable ⚠</td></tr>
+  <tr><td><code>reservada</code></td><td>solo el editor de Local (<code>Local.jsx:535</code>)</td><td class="yes">sí — «Reservada»</td></tr>
+  <tr><td><code>inactiva</code></td><td>editor de Local; <code>tables.py:367</code> protege mesas unidas</td><td class="yes">sí — «Inactiva»</td></tr>
+</table>
+<div class="note bad">
+  <strong><code>pagada</code> como estado de mesa no lo escribe ningún flujo actual.</strong>
+  <code>orders.py:191</code> y <code>payments.py:156</code> exigen <code>not order.get("attention_id")</code>: solo aplican a pedidos con mesa y <strong>sin visita</strong>. Pero toda orden de mesa recibe visita — el personal en <code>orders.py:533-538</code> y el QR del cliente en <code>public.py:745-747</code>, que genera un <code>attention_id</code> nuevo si la mesa estaba libre. El editor de Local tampoco lo ofrece (<code>Local.jsx:535</code>). Consecuencias:
+  <ul class="tight">
+    <li>El «Cuenta pagada» que ve el mozo lo produce el <strong>pedido</strong> (<code>order.status = pagado</code> con la visita aún abierta, <code>selectors.js:116</code>), nunca la mesa.</li>
+    <li><code>auto_release_table</code> —«Liberar mesa automáticamente al cobrar» (<code>Configuracion.jsx:135</code>)— está detrás del mismo guard, así que <strong>no tiene ningún efecto en el flujo de mesa</strong>.</li>
+    <li>La acción «Liberar mesa» de la hoja (<code>sheetActions.js:95-103</code>) exige justamente <code>t.status === 'pagada'</code> sin cuentas vivas: <strong>no se puede alcanzar</strong>. La función <code>releaseTable</code> sí se usa, pero desde otro sitio: abandonar el compositor de pedido nuevo (<code>PedidoNuevo.jsx:94</code>).</li>
+  </ul>
+</div>
+
+<h2>3. Matriz de visibilidad: ¿este estado se puede ver y aislar?</h2>
+<p class="lead">Cada estado del piso frente a los tres sitios donde el mozo lo busca: la tarjeta, la leyenda y los filtros.</p>
+<div class="legendbar">
+  <span class="chip"><span class="dot" style="background:#22C55E"></span>Libre</span>
+  <span class="chip"><span class="dot" style="background:#EF4444"></span>Ocupada</span>
+  <span class="chip"><span class="dot" style="background:#F59E0B"></span>Preparando</span>
+  <span class="chip"><span class="dot" style="background:#3B82F6"></span>Listo</span>
+  <span class="chip"><span class="dot" style="background:#E07A5F"></span>Cuenta</span>
+  <span class="chip"><span class="dot" style="background:#14B8A6"></span>Entregado</span>
+  <span class="chip"><span class="dot" style="background:#71717A"></span>Cuenta pagada</span>
+  <span class="chip"><span class="dot" style="background:#7C6BC4"></span>Atención abierta</span>
+  <span class="chip"><span class="dot" style="background:#7C6BC4"></span>Reservada</span>
+  <span class="chip"><span class="dot" style="background:#A1A1AA"></span>Inactiva</span>
+</div>
+<p class="meta">Los diez estados de <code>FLOOR_STYLE</code> (<code>floorStyle.js:8-19</code>). Los ocho primeros son los que declara <code>LEGEND</code> (<code>selectors.js:18</code>).</p>
+
+<table>
+  <tr><th>Estado del piso</th><th>En la tarjeta</th><th>En la leyenda</th><th>Filtro que lo aísla</th></tr>
+  <tr><td>Libre</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Libres</code></td></tr>
+  <tr><td>Ocupada</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Ocupadas</code></td></tr>
+  <tr><td>Preparando</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Ocupadas</code></td></tr>
+  <tr><td>Listo</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Por entregar</code></td></tr>
+  <tr><td>Cuenta</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Por cobrar</code></td></tr>
+  <tr><td>Entregado</td><td class="yes">sí</td><td class="no">no ⚠</td><td><code>Ocupadas</code></td></tr>
+  <tr><td>Cuenta pagada</td><td class="yes">sí</td><td class="yes">sí</td><td class="no">ninguno ⚠</td></tr>
+  <tr><td>Atención abierta</td><td class="yes">sí</td><td class="yes">sí</td><td><code>Ocupadas</code></td></tr>
+  <tr><td>Reservada</td><td class="yes">sí</td><td class="yes">sí</td><td class="no">ninguno ⚠</td></tr>
+  <tr><td>Inactiva</td><td class="yes">sí</td><td class="no">no ⚠</td><td class="no">ninguno ⚠</td></tr>
+</table>
+<p class="meta">Fuente: <code>LEGEND</code> y <code>STATE_FILTER_FLOORS</code> en <code>selectors.js:18-34</code>. Todo estado que no esté en <code>STATE_FILTER_FLOORS</code> desaparece en cuanto el mozo elige cualquier filtro que no sea «Todas» — no se atenúa, <strong>desaparece de la pantalla</strong> (<code>filterUnits</code>, <code>selectors.js:398-411</code>).</p>
+
+<h2>4. Inconsistencias, por gravedad</h2>
+
+<h3>Graves</h3>
+<ol class="tight">
+  <li><strong><code>pendiente_pago</code> es un estado muerto, y con él toda una función.</strong> Está declarado y ningún camino lo guarda. El contador de cuentas pedidas del informe es siempre 0, y <strong>un cliente por QR puede seguir añadiendo platos a una cuenta ya impresa</strong> porque la guarda que debía impedirlo prueba ese estado (<code>public.py:234</code>). Los pedidos sin mesa no tienen ningún estado visible de «cuenta pedida». <span class="meta"><code>orders.py:1467,1503-1505</code>, <code>test_money_integrity.py:1541</code></span></li>
+  <li><strong>Una cuenta totalmente anulada no se puede cerrar, y su mesa no se puede liberar.</strong> Anular todos los platos deja <code>payment_status = 'pendiente'</code> (<code>order_flow.py:177-178</code>), el servidor responde «El estado del pago no confirma una liquidación completa» (<code>attention.py:36-37</code>) y el botón «Finalizar mesa» desaparece (<code>attentionClose.js:36</code>). La única salida es anular el pedido entero. <strong>Esta es la respuesta a «¿finalizar aparece solo a veces?»: hay un estado del que no se sale.</strong></li>
+  <li><strong>El filtro esconde mesas.</strong> Con cualquier filtro distinto de «Todas», una mesa <em>Reservada</em>, <em>Cuenta pagada</em> o <em>Inactiva</em> se vuelve invisible. Y <em>Inactiva</em> es el único estado que no está <strong>ni en la leyenda ni en ningún filtro</strong>. <span class="meta"><code>selectors.js:18-34</code></span></li>
+  <li><strong>«Finalizar mesa» puede ofrecerse y fallar.</strong> El gate del cliente mira una sola cuenta; el del servidor exige todas. En una visita con dos cuentas el mozo ve el botón, lo pulsa y recibe un error. <span class="meta"><code>attentionClose.js:24-37</code> vs <code>attention.py:444-451</code></span></li>
+  <li><strong>«Entregado» no tiene salida en el piso.</strong> La tarjeta queda sin ninguna acción y «Solicitar cuenta» solo vive dentro de la hoja. <span class="meta"><code>MesaCard.jsx:94-143</code>, <code>sheetActions.js:50-57</code></span></li>
+  <li><strong>La tarjeta de un grupo no puede cerrar la visita.</strong> Solo ofrece Entregar, Cobrar y Separar: no tiene «Finalizar mesa». Cobrar un grupo unido obliga a abrir la hoja de un miembro para poder finalizar. Y para un rol sin <code>canTake</code> (cajero, cocina), un grupo sin exactamente una cuenta por cobrar se queda sin ningún botón. <span class="meta"><code>GroupCard.jsx:48-53</code></span></li>
+  <li><strong>Estados que se imprimen como enum crudo al personal.</strong> La cola de prepagos etiqueta 3 de los 7 valores de <code>payment_state</code> y cae al valor crudo en el resto: <code>confirmado</code>, <code>expirado</code>, <code>reembolsado</code>, <code>no_requerido</code>. <code>StateBadge</code> hace lo mismo con cualquier estado sin etiqueta. <span class="meta"><code>PrepayQueue.jsx:12-16,79</code>, <code>StateBadge.jsx:17</code></span></li>
+  <li><strong>Servir marca como entregados platos que nunca se cocinaron.</strong> <code>serve_order</code> pasa a <code>entregado</code> todo ítem no anulado y <code>assert_can_serve</code> tolera los borradores a propósito, así que una línea en borrador salta <code>borrador → entregado</code> sin pasar por cocina. <code>_ITEM_NEXT</code> ni tiene entrada para <code>borrador</code>. <span class="meta"><code>orders.py:1375-1377</code>, <code>order_flow.py:95-101,153-157</code></span></li>
+</ol>
+
+<h3>Medias</h3>
+<ol class="tight" start="9">
+  <li><strong>El cierre puede dejar la mesa ocupada sin decirlo.</strong> La liberación de la mesa está condicionada a <code>active_attention_id == attention.id</code> y <strong>descarta el resultado</strong>: es la única escritura con guarda de ese archivo cuyo <code>UpdateResult</code> no se comprueba. Si la condición falla, las cuentas quedan cerradas pero la mesa sigue ocupada, sin cuentas y con el menú ⋯ vacío. Alcanzabilidad sin carrera: <strong>no confirmada</strong>. <span class="meta"><code>attention.py:347-351</code></span></li>
+  <li><strong>Un prepago rechazado se queda en la cola de caja y bloquea la mesa.</strong> Se escribe <code>payment_state = 'rechazado'</code> y nada más: la mesa queda <code>disponible</code> pero con <code>opening_order_id</code>, lo que hace fallar sentarla o liberarla y da 409 a un segundo cliente por QR. Confirmarlo es 400 para siempre. <span class="meta"><code>prepay.py:212-215</code>, <code>tables.py:248,275</code></span></li>
+  <li><strong><code>fulfillment_status</code> puede quedar desincronizado.</strong> <code>merge</code> y <code>move_item</code> escriben <code>status = 'cancelado'</code> sin tocar el campo de comida, así que persiste un par que ningún <code>ticket_fields</code> produce. Y el mismo caso lo resuelven de dos maneras distintas. <span class="meta"><code>orders.py:816,1157</code> vs <code>807-809,1166-1168</code></span></li>
+  <li><strong><code>comprobante_subido</code> no tiene camino de salida.</strong> No existe endpoint para rechazar el comprobante, y bloquea cerrar la caja y cerrar la visita. <span class="meta"><code>order_flow.py:175-176</code>, <code>cash.py:212</code>, <code>attention.py:31-32</code></span></li>
+  <li><strong>Dos verbos para liberar una mesa</strong>, con efectos distintos, y el segundo <strong>no se puede alcanzar</strong>: su rama exige <code>t.status === 'pagada'</code>, un valor que ningún flujo escribe, y además queda sombreada por <code>hasAccount</code>. <span class="meta"><code>attention.py:343-363</code> vs <code>tables.py:266-283</code>, <code>sheetActions.js:95-103</code></span></li>
+  <li><strong>«Preparando» miente en un caso.</strong> Una cuenta recién cargada, con todo en borrador y nada enviado, se pinta «Preparando» igual que una que cocina ya trabaja. <span class="meta"><code>selectors.js:121</code>, <code>order_flow.py:203-207</code></span></li>
+  <li><strong>Un ajuste que promete algo que no hace.</strong> «Liberar mesa automáticamente al cobrar» no aplica a mesas con visita, que son todas las del salón. <span class="meta"><code>Configuracion.jsx:135</code>, <code>orders.py:191</code>, <code>payments.py:156</code></span></li>
+  <li><strong>Cuatro vocabularios para el dinero</strong> (§2).</li>
+  <li><strong><code>pendiente_pago</code> tiene siete nombres</strong> según la pantalla: «Cuenta», «Por cobrar», «Cuenta solicitada», «Pendiente de pago», «Pendiente pago», «Solicitar cuenta» y «Cobrar». <span class="meta"><code>floorStyle.js:13</code>, <code>selectors.js:25</code>, <code>MesaCard.jsx:261</code>, <code>constants/status.js:14</code>, <code>Pedidos.jsx:23</code>, <code>sheetActions.js:53</code></span></li>
+</ol>
+
+<h3>Menores</h3>
+<ol class="tight" start="18">
+  <li><strong><code>fulfillment_status</code> no se dibuja en ninguna parte</strong>: se escribe en el backend y el frontend no lo lee nunca. <span class="meta"><code>order_flow.py:170-198</code></span></li>
+  <li><strong><code>payment_status === 'pendiente'</code> no tiene palabra</strong>: solo existe como insignia ausente. Ninguna pantalla dice «sin pagar». <span class="meta"><code>Pedidos.jsx:122</code>, <code>CajaWorkspace.jsx:277</code></span></li>
+  <li><strong>Las seis palabras de estado de ítem son código muerto</strong>: <code>itemState().label</code> no lo lee ningún componente. <span class="meta"><code>orderDraft.js:87-95</code></span></li>
+  <li><code>borrador</code> no está en el <code>Literal</code> de <code>OrderItemStatus</code> ni en <code>_ITEM_NEXT</code>. <span class="meta"><code>models.py:390</code>, <code>order_flow.py:95-101</code></span></li>
+  <li><code>cancelado</code> en el piso se pinta «Atención abierta» (morado), no «Anulada». <span class="meta"><code>selectors.js:115</code>, <code>floorStyle.js:16</code></span></li>
+  <li>El chip «Ocupadas» se traga <code>entregado</code> y <code>atencion</code>, así que una mesa con el pedido <strong>anulado</strong> se cuenta como «ocupada». <span class="meta"><code>selectors.js:31</code></span></li>
+  <li>El selector de estado de mesa de Local muestra los valores crudos (<code>esperando_pago</code>), y <code>TABLE_STATUS_LABELS.pagada</code> no se dibuja nunca. <span class="meta"><code>Local.jsx:532-536</code></span></li>
+  <li>Ninguna mesa en <code>esperando_pago</code>, <code>pagada</code>, <code>reservada</code> o <code>inactiva</code> admite tomar pedido: <code>canCompose</code> exige <code>['disponible','ocupada']</code>. Pedir la cuenta cierra la puerta a añadir un plato. <span class="meta"><code>selectors.js:229</code></span></li>
+</ol>
+
+<h2>5. Otros ejes del sistema</h2>
+<p class="lead">Mismo patrón, otros documentos.</p>
+<table>
+  <tr><th>Eje</th><th>Valores</th><th>Dónde se escribe</th></tr>
+  <tr><td><code>attention.status</code></td><td>opening, open, closing, closed</td><td><code>attention.py:226, 233, 294, 406, 426, 456-457</code></td></tr>
+  <tr><td><code>payment.status</code></td><td>open, completed, voided, refunded</td><td><code>payments.py:245, 602, 777, 891, 1031</code></td></tr>
+  <tr><td><code>cash register.status</code></td><td>open, closed</td><td><code>cash.py:191, 236</code></td></tr>
+  <tr><td><code>table_group.status</code></td><td>active, dissolved</td><td><code>table_groups.py:84, 303</code></td></tr>
+  <tr><td><code>approval.status</code></td><td>pending, approved, rejected</td><td><code>approvals.py:43, 83</code></td></tr>
+  <tr><td><code>order_type</code></td><td>mesa, local, llevar, recojo, delivery</td><td><code>models.py:391</code></td></tr>
+</table>
+<div class="note warn">
+  <strong><code>attention.status</code> y <code>order.attention_state</code> son el mismo estado escrito dos veces</strong>, en dos documentos, con el mismo vocabulario. Se escriben juntos (<code>attention.py:350-357</code>) y hay código dedicado a reconciliarlos (<code>attention.py:454-462</code>), lo que ya admite que pueden divergir.
+</div>
+<div class="note warn">
+  <strong>El tipo de pedido no significa lo mismo para el personal y para el invitado.</strong> El personal solo elige cuatro (<code>format.js:92-97</code>: mesa, llevar, recojo, delivery) — <code>local</code> no está en el selector. El invitado crea <code>local</code>, <code>recojo</code> o <code>delivery</code> (<code>models.py:509</code>). Así que <code>llevar</code> y <code>local</code> son dos nombres del mismo concepto según quién creó el pedido, y <code>local</code> no se puede crear desde el personal aunque su etiqueta sí se muestre en las listas (<code>format.js:81</code>).
+</div>
+
+<h2>6. Propuesta de normalización</h2>
+<ol class="tight">
+  <li><strong>Decidir qué hacer con <code>pendiente_pago</code></strong> (hallazgo 1). Es el de mayor alcance: o se guarda de verdad —y vuelven a la vida los consumidores muertos, incluida la guarda que impide añadir platos a una cuenta impresa—, o se retira y se sustituye por <code>payment_requested</code> en todas partes.</li>
+  <li><strong>Dar salida al estado atascado</strong> (hallazgo 2): una cuenta totalmente anulada no se puede cerrar.</li>
+  <li><strong>Una sola lista de estados.</strong> Que leyenda, filtros y tarjeta se deriven de <code>FLOOR_STYLE</code> en vez de tres arrays a mano, con un test que exija que toda clave esté en la leyenda y en algún filtro. Cierra los hallazgos 3 y 23.</li>
+  <li><strong>Filtros completos o explícitamente parciales</strong> (hallazgo 3).</li>
+  <li><strong>Un solo verbo para terminar la estancia</strong> (hallazgo 13). Con «Finalizar mesa» como única salida, desaparece el estado de mesa <code>pagada</code> y <code>auto_release_table</code> pasa a significar algo.</li>
+  <li><strong>Alinear el gate del cierre con el del servidor</strong> (hallazgo 4), y comprobar el resultado de la liberación de la mesa (hallazgo 9).</li>
+  <li><strong>Nombrar los intermedios</strong> (hallazgo 14): separar «Con borradores» de «Preparando», y dar salida a «Entregado».</li>
+  <li><strong>Un vocabulario de dinero</strong> (hallazgo 16).</li>
+  <li><strong>Una sola puerta para el estado del pedido.</strong> Hoy <code>assert_order_transition</code> se llama en un endpoint y doce escritores la esquivan, incluido el flujo principal.</li>
+  <li><strong>Declarar los ejes sin <code>Literal</code>.</strong> Nueve de los doce ejes de estado son cadenas libres: nada impide escribir un valor fuera del conjunto.</li>
+</ol>
+
+<div class="note">
+  <strong>Nada de esto se ha cambiado todavía.</strong> Este documento es el levantamiento: describe lo que hay, con evidencia. La propuesta es material para decidir qué se normaliza primero.
+</div>
+
+<div class="note bad">
+  <strong>Corrección y límites.</strong> La primera versión de este mapa daba por bueno que pedir la cuenta guarda <code>pendiente_pago</code>: era falso y está corregido arriba. Es <strong>análisis estático</strong>: no se ejecutó la app ni se recorrió el flujo con datos reales. Queda <strong>una alcanzabilidad sin confirmar</strong> —si la liberación de la mesa en el cierre puede fallar su condición sin una carrera—; lo seguro es que su resultado no se comprueba. Y solo 3 de los 12 ejes de estado tienen <code>Literal</code>: los demás son cadenas libres, así que lo que aquí se llama «valores» son los que el código escribe hoy, no un conjunto validado.
+</div>
+
+</div>
+</body>
+</html>
