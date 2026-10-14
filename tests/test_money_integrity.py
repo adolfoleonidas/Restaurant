@@ -1514,6 +1514,37 @@ def test_paying_the_bill_does_not_pull_food_out_of_the_kitchen():
     assert table_after["status"] == "pagada"
 
 
+def test_serving_does_not_mark_never_cooked_drafts_as_delivered():
+    """Servir mueve lo que cocina terminó, no lo que nunca salió de la cuenta.
+
+    `serve_order` pasaba a «entregado» todo lo que no estuviera anulado, así que
+    una línea en borrador —cargada pero nunca enviada— quedaba registrada como
+    servida y se saltaba la máquina de estados del plato. La regla es la misma que
+    la del endpoint de estado: `listo` pasa a `entregado`, y nada más.
+    """
+    async def run():
+        db = _DB()
+        ready = _order(status="listo", fulfillment_status="listo")
+        ready["items"] = [
+            {**ready["items"][0], "id": "item-listo", "status": "listo"},
+            {**ready["items"][0], "id": "item-borrador", "status": "borrador"},
+            {**ready["items"][0], "id": "item-anulado", "status": "cancelado"},
+            {**ready["items"][0], "id": "item-ya-entregado", "status": "entregado"},
+        ]
+        db.orders.docs.append(ready)
+        _bind(db)
+        await serve_order("order-1", _mozo())
+        stored = await db.orders.find_one({"id": "order-1"})
+        return {item["id"]: item["status"] for item in stored["items"]}
+
+    statuses = asyncio.run(run())
+    assert statuses["item-listo"] == "entregado"
+    assert statuses["item-ya-entregado"] == "entregado"
+    assert statuses["item-anulado"] == "cancelado"
+    # El borrador sigue siendo borrador: el mozo todavía tiene que enviarlo.
+    assert statuses["item-borrador"] == "borrador"
+
+
 def test_request_bill_then_pay_ready_order_keeps_ready_food_serviceable():
     async def run():
         db = _DB()

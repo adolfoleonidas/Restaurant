@@ -1373,7 +1373,12 @@ async def serve_order(order_id: str, user: dict = Depends(require_roles(["admin"
         raise HTTPException(status_code=400, detail=exc.detail)
     items = o.get("items") or []
     for it in items:
-        if it.get("status") != "cancelado":
+        # Solo lo que cocina terminó. Antes esto pasaba a «entregado» **todo** lo
+        # que no estuviera anulado, incluidos los borradores —que nunca viajaron a
+        # cocina—, y con eso una línea sin preparar quedaba registrada como
+        # servida, saltándose toda la máquina de estados del plato. Es la misma
+        # regla que aplica `POST /orders/{id}/status` con «entregado».
+        if it.get("status") == "listo":
             it["status"] = "entregado"
     patch = {"items": items, "updated_at": _now()}
     patch.update(ticket_fields(o, "entregado", o.get("amount_paid"), o.get("total")))

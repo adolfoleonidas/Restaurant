@@ -6,6 +6,7 @@ from database import db
 from auth import require_roles, get_current_user
 from billing import rank_products, summarize_payments
 from branch_access import read_branch_filter
+from order_flow import bill_requested
 
 _OPEN_END = "9999-12-31T23:59:59+00:00"
 BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
@@ -236,7 +237,10 @@ async def today_board(
         {"_id": 0},
     ).to_list(500)
     kitchen_orders = sum(1 for o in active if o.get("status") in ("enviado_cocina", "en_preparacion"))
-    bill_requests = sum(1 for o in active if o.get("status") == "pendiente_pago")
+    # Cuentas con la cuenta ya pedida. Se leía `status == "pendiente_pago"`, que
+    # ningún camino guarda, así que el contador era siempre 0
+    # (ver `order_flow.bill_requested`).
+    bill_requests = sum(1 for o in active if bill_requested(o))
     products = await db.products.find({"restaurant_id": rid}, {"_id": 0, "id": 1, "name": 1, "preparation_time": 1, "is_available": 1}).to_list(1000)
     by_prod = {p["id"]: p for p in products}
     table_by_id = {t["id"]: t for t in tables}

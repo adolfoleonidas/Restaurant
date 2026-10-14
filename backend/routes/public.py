@@ -13,7 +13,7 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from billing import guarded_totals, line_subtotal, public_order_totals, sum_line_subtotals
-from order_flow import VersionError, claim_order, ticket_fields, version_conflict
+from order_flow import VersionError, bill_requested, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
@@ -231,7 +231,11 @@ def _public_mutate_guard(o: dict, request: Request):
     # pago sí, porque nada se está preparando.
     if o.get("acceptance_status") == "pendiente":
         return
-    if o["status"] == "pendiente_pago":
+    # La cuenta ya pedida se cierra a cambios: antes esto probaba
+    # `status == "pendiente_pago"`, un estado que ningún camino guarda, así que la
+    # guarda nunca disparaba y el cliente podía seguir añadiendo platos a una
+    # cuenta ya impresa (ver `order_flow.bill_requested`).
+    if bill_requested(o):
         raise HTTPException(status_code=400, detail="La cuenta ya fue solicitada. Acércate a caja para pagar o consulta al mozo.")
 
 

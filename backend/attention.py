@@ -30,16 +30,22 @@ def close_block_reason(order: dict, payments: list) -> str | None:
     payment_status = order.get("payment_status")
     if payment_status in ("comprobante_subido", "confirmado"):
         return "Hay un pago por verificar"
+    total = _money(order.get("total"))
+    paid = _money(order.get("amount_paid"))
+    # Una cuenta sin nada que cobrar ya está liquidada: todos los platos se
+    # anularon y no entró dinero. Sin esto la mesa quedaba **atrapada**: el pedido
+    # no está «cancelado» —se anularon los platos, no el pedido—, así que el
+    # cierre exigía un pago que ya no existe, «Finalizar mesa» desaparecía y no
+    # había ninguna otra salida desde el piso.
+    settled_without_money = total <= 0.009 and paid <= 0.009
     if order.get("status") == "cancelado":
         if payment_status not in (None, "pendiente", "cancelado"):
             return "El estado del pago cancelado requiere revisión"
-    elif payment_status != "pagado":
+    elif payment_status != "pagado" and not settled_without_money:
         return "El estado del pago no confirma una liquidación completa"
     if not food_is_delivered(order):
         return "Todavía hay productos sin entregar"
 
-    total = _money(order.get("total"))
-    paid = _money(order.get("amount_paid"))
     if any(payment.get("status") not in ("completed", "voided", "refunded") for payment in payments):
         return "Hay un cobro sin estado final verificable"
     completed = _money(sum(

@@ -566,6 +566,43 @@ def test_confirming_a_prepayment_twice_charges_once():
     assert len(db.orders.docs) == 1
 
 
+def test_a_requested_bill_closes_the_public_order_to_new_items():
+    """Pedir la cuenta cierra el pedido del cliente a cambios.
+
+    La guarda probaba `status == "pendiente_pago"`, un estado que **ningún camino
+    guarda**: pedir la cuenta deja el estado de cocina intacto a propósito —para
+    que un plato listo siga siendo servible, que es lo que fija
+    `test_request_bill_then_pay_ready_order_keeps_ready_food_serviceable`— y lo que
+    marca es `payment_requested`. Con la guarda muerta, un cliente por QR podía
+    seguir añadiendo platos a una cuenta ya impresa.
+    """
+    async def run():
+        db = _world()
+        _bind(db)
+        created = await _create(db, _body())
+        stored = await db.orders.find_one({"id": created["id"]})
+        # Lo que hace el mozo al pulsar «Solicitar cuenta» (orders.py:1503-1519).
+        await db.orders.update_one({"id": stored["id"]}, {"$set": {"payment_requested": True}})
+        after = await db.orders.find_one({"id": stored["id"]})
+        try:
+            await public_routes.public_add_items(
+                stored["tracking_code"],
+                public_routes.PublicItemsAdd(items=[OrderItemInput(product_id="prod-2", quantity=1)]),
+                _Request(),
+            )
+            blocked = None
+        except HTTPException as exc:
+            blocked = exc
+        return after, blocked
+
+    after, blocked = asyncio.run(run())
+    # El estado del pedido NO cambió: por eso la guarda tiene que mirar el flag.
+    assert after["status"] != "pendiente_pago"
+    assert after["payment_requested"] is True
+    assert blocked is not None and blocked.status_code == 400
+    assert "cuenta ya fue solicitada" in blocked.detail
+
+
 def test_a_rejected_prepayment_keeps_the_order_out_of_the_kitchen():
     async def run():
         db = _world(table_prepay_mode="always")

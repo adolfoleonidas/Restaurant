@@ -13,8 +13,52 @@ os.environ.setdefault("DB_NAME", "restaurant_db_unit")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from models import PaymentCreate, PublicOrderCreate, OrderItemInput  # noqa: E402
-from attention import AttentionBlocked, close_table_attention, open_table_attention  # noqa: E402
+from attention import (  # noqa: E402
+    AttentionBlocked,
+    close_block_reason,
+    close_table_attention,
+    open_table_attention,
+)
 from order_flow import VersionError, claim_order  # noqa: E402
+
+
+def test_a_fully_voided_account_can_be_closed_and_frees_the_table():
+    """Anular todos los platos no puede dejar la mesa atrapada.
+
+    `ticket_fields` deja `payment_status = "pendiente"` cuando no entró dinero, y
+    el pedido **no** está «cancelado» —se anularon los platos, no el pedido—, así
+    que el cierre exigía un pago que ya no existe. En el piso eso significaba que
+    «Finalizar mesa» desaparecía sin ninguna otra salida.
+    """
+    everything_voided = {
+        "status": "enviado_cocina", "payment_status": "pendiente",
+        "total": 0.0, "amount_paid": 0.0,
+        "items": [{"status": "cancelado"}],
+    }
+    assert close_block_reason(everything_voided, []) is None
+
+    # Lo que sigue bloqueado, y por qué.
+    still_owes = {**everything_voided, "total": 25.0}
+    assert "liquidación completa" in close_block_reason(still_owes, [])
+    proof_pending = {**everything_voided, "payment_status": "comprobante_subido"}
+    assert "pago por verificar" in close_block_reason(proof_pending, [])
+    not_delivered = {**everything_voided, "items": [{"status": "listo"}]}
+    assert "sin entregar" in close_block_reason(not_delivered, [])
+    # Una cuenta sin cobros completos pero con dinero dentro tampoco cuadra.
+    half_paid = {**everything_voided, "total": 30.0, "amount_paid": 10.0, "payment_status": "parcial"}
+    assert close_block_reason(half_paid, []) is not None
+
+
+def test_a_voided_payment_on_a_settled_account_still_closes():
+    everything_voided = {
+        "status": "enviado_cocina", "payment_status": "pendiente",
+        "total": 0.0, "amount_paid": 0.0,
+        "items": [{"status": "cancelado"}],
+    }
+    # Un cobro anulado es un estado final verificable: no bloquea el cierre.
+    assert close_block_reason(everything_voided, [{"status": "voided", "amount": 25.0}]) is None
+    # Uno que quedó a medias, sí.
+    assert "verificable" in close_block_reason(everything_voided, [{"status": "pending", "amount": 25.0}])
 
 
 def _matches(doc, filt):

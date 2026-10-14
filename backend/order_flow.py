@@ -124,6 +124,23 @@ def is_cancelled(item: dict) -> bool:
     return _item_status(item) == "cancelado"
 
 
+def bill_requested(order: dict) -> bool:
+    """Si el personal ya pidió la cuenta de esta cuenta.
+
+    `pendiente_pago` está declarado en `OrderStatus` pero **ningún camino lo
+    guarda**: pedir la cuenta deja el estado de cocina intacto a propósito —para
+    que los platos listos sigan siendo servibles, que es lo que fija
+    `test_request_bill_then_pay_ready_order_keeps_ready_food_serviceable`— y lo
+    que marca es `payment_requested`.
+
+    Toda comprobación de «ya pidió la cuenta» tiene que leer ese campo. Probar
+    `status == "pendiente_pago"` daba siempre falso: la guarda del pedido público
+    nunca disparaba y el cliente podía seguir añadiendo platos a una cuenta ya
+    impresa. Se tolera el estado antiguo para no romper filas históricas.
+    """
+    return bool(order.get("payment_requested")) or order.get("status") == "pendiente_pago"
+
+
 def sent_items(items: list) -> list:
     """Los productos que cocina ya conoce (todo lo que no es borrador ni anulado)."""
     return [item for item in items if not is_draft(item) and not is_cancelled(item)]
