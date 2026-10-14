@@ -374,6 +374,10 @@ class ProductUpdate(BaseModel):
     price: Optional[float] = Field(default=None, ge=0)
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
+    # Carta fija: se ofrece siempre, sin tener que volver a seleccionarlo cada
+    # mañana (bebidas y clásicos). Un plato «del día» solo se ofrece si está en el
+    # menú publicado de hoy; ver `menu_day.py`.
+    is_fixed: Optional[bool] = None
     preparation_time: Optional[int] = Field(default=None, ge=0, le=1440)
     is_combo: Optional[bool] = None
     combo_items: Optional[List[ComboComponent]] = None
