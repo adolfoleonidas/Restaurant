@@ -15,11 +15,16 @@ export default function MiniOrderBar({ miniOrder, lastOpened, deliver, requestSe
     const draftsAmount = itemsTotal(editableItems(order.items || [], order.status));
     // S14: la acción de borradores dice "Enviar a cocina" (con unidades
     // y monto) y pasa por el paso de confirmación, igual que el ticket.
+    //
+    // La barra solo se muestra cuando hay algo pendiente (ver `isMiniVisible`), así
+    // que el texto dice QUÉ falta: "Enviar a cocina · 3", "Entregar". El caso sin
+    // nada pendiente queda como red de seguridad y dice "Continuar", que es lo que
+    // el mozo tiene que hacer con ese pedido.
     const actionVerb = tally.ready > 0
         ? 'Entregar'
         : tally.drafts > 0
             ? `Enviar a cocina · ${tally.drafts} · ${fmtMoney(draftsAmount)}`
-            : 'Agregar';
+            : 'Continuar';
     const delivering = tally.ready > 0 && pendingActions.has(`deliver:${order.id}`);
     const runAction = () => {
         if (tally.ready > 0) return deliver(order.id);

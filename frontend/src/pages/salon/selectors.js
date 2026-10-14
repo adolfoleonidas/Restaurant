@@ -616,8 +616,14 @@ export function selectMiniOrder(orders, lastOpened) {
 export function isMiniVisible({
     miniOrder, openTable, showNewOrder, transferSource, moveAccountId, selectMode,
 }) {
-    return Boolean(miniOrder) && !openTable && !showNewOrder && !transferSource
-        && !moveAccountId && !selectMode;
+    if (!miniOrder) return false;
+    if (openTable || showNewOrder || transferSource || moveAccountId || selectMode) return false;
+    // Solo cuando hay ALGO QUE HACER con esa cuenta: productos sin enviar (trabajo a
+    // medias que se perdería de vista) o platos listos para entregar. Si ya se envió
+    // todo y nada está listo, la barra solo ocupaba el borde inferior —donde está el
+    // pulgar y la barra de navegación— sin ofrecer nada.
+    const tally = accountTally(miniOrder);
+    return tally.drafts > 0 || tally.ready > 0;
 }
 
 /** The account under send review, from the freshest source that still holds it. */

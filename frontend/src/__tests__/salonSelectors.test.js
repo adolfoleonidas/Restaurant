@@ -495,7 +495,10 @@ describe('mini player selectors', () => {
     });
 
     test('isMiniVisible hides while any overlay is open', () => {
-        const flags = { miniOrder: {}, openTable: null, showNewOrder: false, transferSource: null, moveAccountId: null, selectMode: false };
+        // La barra solo aparece cuando hay algo que hacer con esa cuenta: acá, una
+        // línea sin enviar.
+        const pending = { id: 'o1', status: 'nuevo', items: [{ id: 'i1', product_name: 'Sopa', quantity: 1, status: 'borrador' }] };
+        const flags = { miniOrder: pending, openTable: null, showNewOrder: false, transferSource: null, moveAccountId: null, selectMode: false };
         expect(isMiniVisible(flags)).toBe(true);
         expect(isMiniVisible({ ...flags, miniOrder: null })).toBe(false);
         expect(isMiniVisible({ ...flags, openTable: {} })).toBe(false);
@@ -503,6 +506,20 @@ describe('mini player selectors', () => {
         expect(isMiniVisible({ ...flags, transferSource: {} })).toBe(false);
         expect(isMiniVisible({ ...flags, moveAccountId: 'o1' })).toBe(false);
         expect(isMiniVisible({ ...flags, selectMode: true })).toBe(false);
+    });
+
+    test('isMiniVisible calla cuando no hay nada que hacer con esa cuenta', () => {
+        const settled = {
+            id: 'o1',
+            status: 'en_preparacion',
+            items: [{ id: 'i1', product_name: 'Sopa', quantity: 1, status: 'en_preparacion' }],
+        };
+        const flags = { openTable: null, showNewOrder: false, transferSource: null, moveAccountId: null, selectMode: false };
+        // Todo enviado y nada listo: la barra solo ocupaba el borde inferior.
+        expect(isMiniVisible({ ...flags, miniOrder: settled })).toBe(false);
+        // Con un plato listo sí: hay una entrega que hacer.
+        const ready = { ...settled, items: [{ ...settled.items[0], status: 'listo' }] };
+        expect(isMiniVisible({ ...flags, miniOrder: ready })).toBe(true);
     });
 });
 
