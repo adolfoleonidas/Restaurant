@@ -364,14 +364,18 @@ describe('pedido por personas en el salón', () => {
 
         const enviar = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(enviar).not.toBeNull();
-        // Confirma el envío con el toast del mockup (S11: "Enviado a cocina ·
-        // Mesa N"), no con el "¿Siguiente persona?" anterior.
+        // Confirma el envío con el aviso del mockup (S11: "Enviado a cocina · Mesa
+        // N"), ahora DENTRO de la hoja: como cartel flotante caía encima del "←",
+        // que es el botón con el que el mozo vuelve para elegir otra mesa.
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
         await click(enviar);
         expect(api.post).not.toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
         await click(document.body.querySelector('[data-testid="mesa-sheet-confirmar-envio"]'));
         expect(api.post).toHaveBeenCalledWith('/orders/order-9/send-to-kitchen');
-        expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
+        const aviso = document.body.querySelector('[data-testid="mesa-sheet-enviado"]');
+        expect(aviso).not.toBeNull();
+        expect(aviso.textContent).toContain('Enviado a cocina · Mesa 1');
+        expect(toast.success).not.toHaveBeenCalled();
         expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]').getAttribute('aria-expanded')).toBe('false');
     });
 

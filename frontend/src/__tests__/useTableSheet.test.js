@@ -471,7 +471,10 @@ describe('useTableSheet: sending to the kitchen', () => {
         expect(sent).toBe(true);
         expect(setOrderAlias).toHaveBeenCalledWith('o1', { alias: 'Juan', shared: false });
         expect(sendOrderToKitchen).toHaveBeenCalledWith('o1');
-        expect(toast.success).toHaveBeenCalledWith('Enviado a cocina · Mesa 1');
+        // La confirmación vive en el estado de la hoja y se muestra dentro de ella,
+        // no como cartel flotante: el cartel caía encima del "←" de la cabecera, que
+        // es el botón con el que el mozo vuelve para elegir otra mesa.
+        expect(result.current.openTable.sentNotice).toBe('Enviado a cocina · Mesa 1');
         expect(result.current.composerOpen).toBe(false);
         expect(result.current.openTable.order).toBeNull();
         expect(result.current.openTable.accountId).toBeNull();
@@ -484,7 +487,7 @@ describe('useTableSheet: sending to the kitchen', () => {
         const { result, current } = await openDraft('en_preparacion', [item('a', 'pendiente'), item('b', 'borrador')]);
         sendOrderToKitchen.mockResolvedValue({ data: { ...current, status: 'en_preparacion' } });
         await act(async () => { await result.current.sendCurrentToKitchen(); });
-        expect(toast.success).toHaveBeenCalledWith('Enviados 1 adicionales');
+        expect(result.current.openTable.sentNotice).toBe('Enviados 1 adicionales');
     });
 
     test('a click event passed as the first argument is not taken for an account id', async () => {

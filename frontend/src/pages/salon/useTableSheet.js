@@ -396,6 +396,20 @@ export default function useTableSheet({
         return false;
     };
 
+    // La confirmación del envío vive DENTRO de la hoja, no como cartel flotante: el
+    // cartel caía justo debajo de la cabecera, encima del "←" — que es el botón con
+    // el que el mozo vuelve para elegir otra mesa. Confirmaba el envío tapando el
+    // camino. Acá se ve donde está mirando y no tapa nada.
+    const sentTimerRef = useRef(null);
+    const flashSent = (text) => {
+        setOpenTable((prev) => (prev ? { ...prev, sentNotice: text } : prev));
+        if (sentTimerRef.current) clearTimeout(sentTimerRef.current);
+        sentTimerRef.current = setTimeout(() => {
+            setOpenTable((prev) => (prev ? { ...prev, sentNotice: null } : prev));
+        }, 4500);
+    };
+    useEffect(() => () => { if (sentTimerRef.current) clearTimeout(sentTimerRef.current); }, []);
+
     // The account in view as the server has it right now, taps that were just saved included.
     const freshOrder = () => {
         const fresh = sync.latest();
@@ -567,8 +581,9 @@ export default function useTableSheet({
                 const latestOrder = sync.latest();
                 const pending = draftCount(latestOrder?.id === targetId ? latestOrder.items || [] : sendItemsFor(targetId), data?.status);
                 const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
-                // Un solo aviso (toast), como el mockup: sin cartel fijo en el cuerpo.
-                toast.success(firstSend
+                // Un solo aviso, dentro de la hoja (ver `flashSent`): sin cartel
+                // flotante encima del "←".
+                flashSent(firstSend
                     ? (mesaNumber ? `Enviado a cocina · Mesa ${mesaNumber}` : 'Enviado a cocina')
                     : (pending > 0 ? `Enviados ${pending} adicionales` : 'Enviado a cocina'));
                 await reloadCurrentOrder(targetId);

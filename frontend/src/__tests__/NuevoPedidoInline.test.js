@@ -253,6 +253,8 @@ describe('nuevo pedido sin mesa', () => {
         expect(api.put.mock.invocationCallOrder[0]).toBeLessThan(
             api.post.mock.invocationCallOrder[api.post.mock.calls.findIndex(([url]) => url === '/orders/order-9/send-to-kitchen')]
         );
+        // Esta pantalla (pedido sin mesa) tiene su propio flujo y conserva su aviso;
+        // el de la hoja del salón es el que pasó a mostrarse dentro de la hoja.
         expect(toast.success).toHaveBeenCalledWith('Enviado a cocina');
     });
 });

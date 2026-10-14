@@ -94,6 +94,8 @@ export default function OrderComposer({
     onRemoveProduct,
     onSendToKitchen,
     sendLabel = null,
+    // Confirmación del envío, mostrada dentro de la hoja (ver `flashSent`).
+    sentNotice = null,
     // El tomador del prototipo pone nota y envío en el TICKET, no en la carta.
     showActions = true,
     // La carta del tomador no lleva el rótulo "Agregar a…": lo dice la franja
@@ -173,6 +175,17 @@ export default function OrderComposer({
 
     return (
         <div className={showHeader ? 'rounded-xl border' : ''} data-testid={`${testIdPrefix}-pedido`}>
+            {/* La confirmación del envío se muestra ACÁ, donde el mozo está mirando,
+                y no como cartel flotante: el cartel caía encima del "←" de la
+                cabecera, justo el botón con el que vuelve para elegir otra mesa. */}
+            {sentNotice ? (
+                <div
+                    data-testid={`${testIdPrefix}-enviado`}
+                    className="mx-3 mt-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary"
+                >
+                    {sentNotice}
+                </div>
+            ) : null}
             {showHeader && (
             <div className="flex items-center justify-between gap-2 px-3 pt-3">
                 <span className="text-xs font-medium text-muted-foreground">{label}</span>
