@@ -271,16 +271,20 @@ describe('a line with no order yet', () => {
         expect(queue.get('new:p2').orderId).toBe('o9');
     });
 
-    test('when the caller says there is no order the taps are dropped quietly', async () => {
+    test('cuando no hay cuenta donde ponerlas, los toques se sueltan AVISANDO', async () => {
         const resolveOrder = jest.fn().mockResolvedValue(null);
-        const { queue, run, onError } = make({ resolveOrder });
+        const onDropped = jest.fn();
+        const { queue, run } = make({ resolveOrder, onDropped });
         queue.set('new:p1', { kind: 'new', productId: 'p1', orderId: null, quantity: 1 });
         await settle();
 
         expect(queue.pending()).toBe(false);
-        expect(onError).not.toHaveBeenCalled();
         await advance(ORDER_SYNC_DELAY_MS);
         expect(run).not.toHaveBeenCalled();
+        // Antes se borraban en silencio: el mozo solo veía que "no agarró" y volvía
+        // a tocar sin saber por qué. Un toque que no entra se dice.
+        expect(onDropped).toHaveBeenCalledTimes(1);
+        expect(onDropped.mock.calls[0][0].map((item) => item.key)).toEqual(['new:p1']);
     });
 
     test('when creating the order is refused the taps are dropped and reported once', async () => {

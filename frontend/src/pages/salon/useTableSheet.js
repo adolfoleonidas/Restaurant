@@ -18,7 +18,7 @@ import {
     voidOrderItem,
 } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
-import { STALLED_MESSAGE, UNSAVED_MESSAGE } from '@/lib/syncMessages';
+import { DROPPED_MESSAGE, STALLED_MESSAGE, UNSAVED_MESSAGE } from '@/lib/syncMessages';
 import { draftCount, editableItems, isDraft } from '@/lib/orderDraft';
 import { plainDraftLine } from '@/lib/optimisticOrder';
 import { groupAccountTables, groupMembers } from '@/lib/tableGroups';
@@ -348,6 +348,9 @@ export default function useTableSheet({
         },
         // The connection failed: the taps stay on screen and are sent again by themselves.
         onStalled: () => { toast.error(STALLED_MESSAGE, { id: 'sheet-stalled' }); },
+        // El toque se quedó sin cuenta donde entrar (la pantalla ya cambió): se dice
+        // en vez de borrarlo en silencio, que es lo que se vivía como "no agarró".
+        onDropped: () => { toast.error(DROPPED_MESSAGE, { id: 'sheet-dropped' }); },
         // A batch is confirmed from the write's own response and the realtime
         // stream refreshes the floor; the floor is refreshed here only when the
         // taps opened a new account (its table changes state).

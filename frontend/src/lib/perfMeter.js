@@ -96,17 +96,28 @@ export function runningVersion(doc) {
     return found ? found[1] : 'desconocida';
 }
 
-const PRODUCT_PREFIX = '-producto-nombre-';
-const CARD_SELECTOR = `[data-testid*="${PRODUCT_PREFIX}"]`;
+const PRODUCT_MARKERS = ['-producto-fila-', '-producto-nombre-'];
 
-/** El producto de la tarjeta que se tocó, o null si el toque no fue a una. */
+/**
+ * El producto de la tarjeta que se tocó, o null si el toque no fue a una.
+ *
+ * Se mira primero la FILA, porque la cantidad vive fuera del botón del nombre
+ * (son hermanos dentro de la fila): observando el botón, su texto nunca cambia y
+ * todo toque parecería no haber hecho nada.
+ */
 export function productIdFrom(target) {
-    const card = target && target.closest && target.closest(CARD_SELECTOR);
-    if (!card) return null;
-    const testid = card.getAttribute('data-testid') || '';
-    const index = testid.indexOf(PRODUCT_PREFIX);
-    return index < 0 ? null : testid.slice(index + PRODUCT_PREFIX.length);
+    if (!target || !target.closest) return null;
+    for (const marker of PRODUCT_MARKERS) {
+        const node = target.closest(`[data-testid*="${marker}"]`);
+        if (!node) continue;
+        const testid = node.getAttribute('data-testid') || '';
+        const index = testid.indexOf(marker);
+        if (index >= 0) return testid.slice(index + marker.length);
+    }
+    return null;
 }
+
+const ROW_SELECTOR = `[data-testid*="${PRODUCT_MARKERS[0]}"]`;
 
 /** Las peticiones más lentas desde `since`, para ver dónde se va la red. */
 export function slowestRequests(win, since, limit = SLOW_REQUESTS) {
@@ -289,11 +300,10 @@ export function installPerfMeter({
     // evento del toque, así que ni el conteo de toques ni el de efecto lo detectan;
     // el mozo toca y no pasa nada, y desde afuera parecía que todo iba en 67 ms.
     const onPointerDown = (event) => {
-        const productId = productIdFrom(event.target);
-        if (!productId) return;
-        const card = event.target.closest && event.target.closest(CARD_SELECTOR);
-        if (!card) return;
-        pending.push({ at: clock(), before: card.textContent, card });
+        if (!productIdFrom(event.target)) return;
+        const row = event.target.closest(ROW_SELECTOR);
+        if (!row) return;
+        pending.push({ at: clock(), before: row.textContent, card: row });
     };
     if (doc.addEventListener) doc.addEventListener('pointerdown', onPointerDown, true);
 

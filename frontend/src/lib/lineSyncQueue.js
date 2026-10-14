@@ -73,6 +73,7 @@ export function createLineSyncQueue({
     onChange = () => {},
     onError = () => {},
     onStalled = () => {},
+    onDropped = () => {},
     onDrain = () => {},
 }) {
     const entries = new Map();
@@ -151,11 +152,15 @@ export function createLineSyncQueue({
             // The creation is over (an order, or none wanted): the next one is a new creation.
             creationId = null;
             // Every line that was waiting for the order joins it, the ones tapped meanwhile too.
-            withoutOrder().forEach(({ key, entry }) => {
-                // The caller already told the waiter why there is no order: forget the taps.
+            const waiting = withoutOrder();
+            waiting.forEach(({ key, entry }) => {
                 if (!orderId) entries.delete(key);
                 else Object.assign(entry, { orderId });
             });
+            // Nunca en silencio: si no hay cuenta donde ponerlas, el mozo tiene que
+            // enterarse de que su toque no entró. Antes se borraban sin decir nada y
+            // el resultado era "a veces sí, a veces no" y dar clics hasta que agarre.
+            if (!orderId && waiting.length) quietly(onDropped, waiting);
         } catch (error) {
             const lacking = withoutOrder();
             // A connection that failed decided nothing: the retry is the same creation, same id.
