@@ -20,6 +20,11 @@ jest.mock('@/lib/api/menu', () => ({
     saveMenuDay: jest.fn(),
     setMenuSoldOut: jest.fn(),
     copyMenuFrom: jest.fn(),
+    listMenuTemplates: jest.fn(() => Promise.resolve({ data: [] })),
+    saveMenuTemplate: jest.fn(() => Promise.resolve({ data: { name: 'Almuerzo habitual', count: 3, replaced: false } })),
+    deleteMenuTemplate: jest.fn(() => Promise.resolve({ data: {} })),
+    applyMenuTemplate: jest.fn(() => Promise.resolve({ data: { applied: 3, template: 'Almuerzo habitual' } })),
+    repeatMenuTemplate: jest.fn(() => Promise.resolve({ data: { template: 'Almuerzo habitual', count: 2, days: ['2026-03-09', '2026-03-16'] } })),
 }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock('@/lib/api/products', () => ({
@@ -27,7 +32,9 @@ jest.mock('@/lib/api/products', () => ({
     updateProduct: jest.fn(() => Promise.resolve({ data: {} })),
 }));
 
-import { copyMenuFrom, getMenuDay, saveMenuDay, setMenuSoldOut } from '@/lib/api/menu';
+import {
+    applyMenuTemplate, copyMenuFrom, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuDay, saveMenuTemplate, setMenuSoldOut,
+} from '@/lib/api/menu';
 import { updateProduct } from '@/lib/api/products';
 import { toast } from 'sonner';
 import { waitFor } from '@testing-library/react';
@@ -70,6 +77,12 @@ describe('GestionarMenu', () => {
         saveMenuDay.mockResolvedValue({ data: { ...DIA, status: 'published', published: true } });
         setMenuSoldOut.mockResolvedValue({ data: { ok: true } });
         copyMenuFrom.mockResolvedValue({ data: { ...DIA, copied: 2, copied_from: '2026-03-09' } });
+        // `resetMocks` borra lo que devuelven los mocks entre tests: hay que
+        // volver a decirlo aquí, no basta con la fábrica de `jest.mock`.
+        listMenuTemplates.mockResolvedValue({ data: [] });
+        saveMenuTemplate.mockResolvedValue({ data: { name: 'Almuerzo habitual', count: 3, replaced: false } });
+        applyMenuTemplate.mockResolvedValue({ data: { applied: 3, template: 'Almuerzo habitual' } });
+        repeatMenuTemplate.mockResolvedValue({ data: { template: 'Almuerzo habitual', count: 2, days: ['2026-03-09', '2026-03-16'] } });
     });
 
     afterEach(() => { document.body.innerHTML = ''; });
@@ -221,6 +234,45 @@ describe('GestionarMenu', () => {
         // Y se puede volver a hoy.
         await click(container.querySelector('[data-testid="menu-volver-hoy"]'));
         expect(container.querySelector('[data-testid="menu-dia-abierto"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('las plantillas: guardar, usar, y repetir solo si se eligen días', async () => {
+        listMenuTemplates.mockResolvedValue({ data: [{ id: 't1', name: 'Almuerzo habitual', count: 3 }] });
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-week"]'));
+        await waitFor(() => expect(container.querySelector('[data-testid="menu-plantilla-t1"]')).not.toBeNull());
+
+        // Guardar la plantilla con el nombre que se escribe.
+        const campo = container.querySelector('[data-testid="menu-plantilla-nombre"]');
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(campo, 'Almuerzo habitual');
+            campo.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await click(container.querySelector('[data-testid="menu-plantilla-guardar"]'));
+        await waitFor(() => expect(saveMenuTemplate).toHaveBeenCalledWith({
+            name: 'Almuerzo habitual',
+            from_date: '2026-03-10',
+        }));
+
+        // Usarla trae los platos al día.
+        await click(container.querySelector('[data-testid="menu-plantilla-usar-t1"]'));
+        await waitFor(() => expect(applyMenuTemplate).toHaveBeenCalledWith('t1', { date: undefined }));
+
+        // Repetir SIN días no llama a nadie: no hay repetición por defecto.
+        await click(container.querySelector('[data-testid="menu-plantilla-repetir-t1"]'));
+        expect(repeatMenuTemplate).not.toHaveBeenCalled();
+        expect(toast.error).toHaveBeenCalledWith('Elige qué días repetir');
+
+        // Y con un día elegido, sí —y viaja el día concreto.
+        await click(container.querySelector('[data-testid="menu-repetir-dia-0"]'));
+        await click(container.querySelector('[data-testid="menu-plantilla-repetir-t1"]'));
+        await waitFor(() => expect(repeatMenuTemplate).toHaveBeenCalledWith('t1', {
+            from_date: '2026-03-10',
+            weekdays: [0],
+            weeks: 1,
+        }));
         await act(async () => root.unmount());
     });
 

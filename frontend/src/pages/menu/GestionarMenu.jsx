@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtMoney } from '@/lib/format';
-import { getMenuDay } from '@/lib/api/menu';
+import {
+    applyMenuTemplate, deleteMenuTemplate, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuTemplate,
+} from '@/lib/api/menu';
 import { toast } from 'sonner';
 
 import MenuDayView from './MenuDayView';
@@ -42,6 +44,12 @@ export default function GestionarMenu() {
     // para que la semana no se mueva cuando el dueño abre otro día.
     const [hoyServidor, setHoyServidor] = useState(null);
     const [semana, setSemana] = useState(null);
+    // Plantillas: una selección con nombre para no volver a montar el mismo menú.
+    const [plantillas, setPlantillas] = useState(null);
+    const [nombre, setNombre] = useState('');
+    // Días para repetir. Vacío a propósito: no hay repetición por defecto.
+    const [diasRepetir, setDiasRepetir] = useState([]);
+    const [semanas, setSemanas] = useState(1);
 
     useEffect(() => {
         if (!hoyServidor && data?.date && diaAbierto === undefined) setHoyServidor(data.date);
@@ -83,20 +91,96 @@ export default function GestionarMenu() {
     // La semana: los siete días desde el «hoy» del servidor, con su estado real.
     // Se piden al abrir la pestaña, no al montar, para no castigar la pantalla que
     // el dueño usa a diario con siete peticiones que no va a mirar.
+    const sumaDias = (fecha, dias) => {
+        const d = new Date(`${fecha}T00:00:00Z`);
+        d.setUTCDate(d.getUTCDate() + dias);
+        return d.toISOString().slice(0, 10);
+    };
+
+    /** Los siete días desde el «hoy» del servidor, con su estado real. */
+    const cargarSemana = useCallback(async () => {
+        if (!hoyServidor) return;
+        const fechas = Array.from({ length: 7 }, (_, i) => sumaDias(hoyServidor, i));
+        const filas = await Promise.all(fechas.map((fecha) => (
+            getMenuDay(fecha).then((r) => ({ fecha, dia: r.data })).catch(() => ({ fecha, dia: null }))
+        )));
+        setSemana(filas);
+    }, [hoyServidor]);
+
     useEffect(() => {
         if (tab !== 'week' || !hoyServidor) return;
-        let vivo = true;
         setSemana(null);
-        const sumaDias = (fecha, dias) => {
-            const d = new Date(`${fecha}T00:00:00Z`);
-            d.setUTCDate(d.getUTCDate() + dias);
-            return d.toISOString().slice(0, 10);
-        };
-        const fechas = Array.from({ length: 7 }, (_, i) => sumaDias(hoyServidor, i));
-        Promise.all(fechas.map((fecha) => getMenuDay(fecha).then((r) => ({ fecha, dia: r.data })).catch(() => ({ fecha, dia: null }))))
-            .then((filas) => { if (vivo) setSemana(filas); });
+        cargarSemana();
+    }, [tab, hoyServidor, cargarSemana]);
+
+    // Las plantillas se piden al abrir la semana, igual que los días.
+    useEffect(() => {
+        if (tab !== 'week') return;
+        let vivo = true;
+        listMenuTemplates()
+            .then((r) => { if (vivo) setPlantillas(r.data || []); })
+            .catch(() => { if (vivo) setPlantillas([]); });
         return () => { vivo = false; };
-    }, [tab, hoyServidor]);
+    }, [tab]);
+
+    const recargarPlantillas = async () => {
+        const { data: filas } = await listMenuTemplates();
+        setPlantillas(filas || []);
+    };
+
+    const guardarPlantilla = async () => {
+        try {
+            const { data } = await saveMenuTemplate({ name: nombre, from_date: diaAbierto || hoyServidor });
+            await recargarPlantillas();
+            setNombre('');
+            toast.success(data.replaced
+                ? `Plantilla «${data.name}» actualizada con ${data.count} platos`
+                : `Plantilla «${data.name}» guardada con ${data.count} platos`);
+        } catch (e) {
+            toast.error(apiErrorMessage(e, 'No se pudo guardar la plantilla'));
+        }
+    };
+
+    const usarPlantilla = async (plantilla) => {
+        try {
+            const { data } = await applyMenuTemplate(plantilla.id, { date: diaAbierto });
+            toast.success(`${data.applied} platos traídos de «${data.template}». Guarda o publica para aplicarlo`);
+        } catch (e) {
+            toast.error(apiErrorMessage(e, 'No se pudo usar la plantilla'));
+        }
+    };
+
+    const borrarPlantilla = async (plantilla) => {
+        try {
+            await deleteMenuTemplate(plantilla.id);
+            await recargarPlantillas();
+            toast.success('Plantilla borrada');
+        } catch (e) {
+            toast.error(apiErrorMessage(e, 'No se pudo borrar'));
+        }
+    };
+
+    const alternarDiaRepetir = (dia) => {
+        setDiasRepetir((previos) => (previos.includes(dia) ? previos.filter((d) => d !== dia) : [...previos, dia]));
+    };
+
+    const repetirPlantilla = async (plantilla) => {
+        // Sin días no se manda nada: no hay repetición por defecto, y adivinar
+        // «toda la semana» sería programar algo que nadie pidió.
+        if (diasRepetir.length === 0) { toast.error('Elige qué días repetir'); return; }
+        try {
+            const { data } = await repeatMenuTemplate(plantilla.id, {
+                from_date: hoyServidor,
+                weekdays: diasRepetir,
+                weeks: semanas,
+            });
+            await cargarSemana();
+            if (diaAbierto) await reload();
+            toast.success(`«${data.template}» en ${data.count === 1 ? '1 día' : `${data.count} días`}: ${data.days.join(', ')}`);
+        } catch (e) {
+            toast.error(apiErrorMessage(e, 'No se pudo repetir'));
+        }
+    };
 
     const publicar = async () => {
         try {
@@ -225,6 +309,81 @@ export default function GestionarMenu() {
                             ))}
                         </div>
                     )}
+
+                    <div className="rounded-xl border border-border p-3 space-y-3" data-testid="menu-plantillas">
+                        <div className="flex items-end gap-2 flex-wrap">
+                            <div className="min-w-[12rem] flex-1">
+                                <label className="block text-xs text-muted-foreground mb-1" htmlFor="menu-plantilla-nombre">
+                                    Guardar {diaAbierto ? `el ${diaAbierto}` : 'hoy'} como plantilla
+                                </label>
+                                <Input
+                                    id="menu-plantilla-nombre"
+                                    className="h-11"
+                                    placeholder="Almuerzo habitual"
+                                    value={nombre}
+                                    onChange={(e) => setNombre(e.target.value)}
+                                    data-testid="menu-plantilla-nombre"
+                                />
+                            </div>
+                            <Button type="button" variant="outline" onClick={guardarPlantilla} data-testid="menu-plantilla-guardar">
+                                Guardar plantilla
+                            </Button>
+                        </div>
+
+                        <div>
+                            <p className="text-xs text-muted-foreground mb-1">
+                                Repetir en (elige los días — nada se repite solo):
+                            </p>
+                            <div className="flex items-center gap-1 flex-wrap" data-testid="menu-repetir-dias">
+                                {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((etiqueta, indice) => (
+                                    <Button
+                                        key={etiqueta}
+                                        type="button"
+                                        size="sm"
+                                        variant={diasRepetir.includes(indice) ? 'default' : 'outline'}
+                                        aria-pressed={diasRepetir.includes(indice)}
+                                        onClick={() => alternarDiaRepetir(indice)}
+                                        data-testid={`menu-repetir-dia-${indice}`}
+                                    >
+                                        {etiqueta}
+                                    </Button>
+                                ))}
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    max="8"
+                                    className="h-9 w-16"
+                                    aria-label="Semanas"
+                                    value={semanas}
+                                    onChange={(e) => setSemanas(Number(e.target.value) || 1)}
+                                    data-testid="menu-repetir-semanas"
+                                />
+                                <span className="text-xs text-muted-foreground">semanas</span>
+                            </div>
+                        </div>
+
+                        {plantillas === null && <p className="text-sm text-muted-foreground" data-testid="menu-plantillas-cargando">Leyendo plantillas…</p>}
+                        {plantillas !== null && plantillas.length === 0 && (
+                            <p className="text-sm text-muted-foreground" data-testid="menu-plantillas-vacio">
+                                Todavía no hay plantillas. Guarda un día que te guste y reutilízalo.
+                            </p>
+                        )}
+                        {plantillas !== null && plantillas.map((plantilla) => (
+                            <div key={plantilla.id} className="flex items-center gap-2 flex-wrap border-t pt-2" data-testid={`menu-plantilla-${plantilla.id}`}>
+                                <span className="min-w-0 flex-1 truncate font-medium" title={plantilla.name}>{plantilla.name}</span>
+                                <span className="text-xs text-muted-foreground shrink-0">{plantilla.count} platos</span>
+                                <Button type="button" size="sm" onClick={() => usarPlantilla(plantilla)} data-testid={`menu-plantilla-usar-${plantilla.id}`}>
+                                    Usar {diaAbierto ? `en el ${diaAbierto}` : 'hoy'}
+                                </Button>
+                                <Button type="button" size="sm" variant="outline" onClick={() => repetirPlantilla(plantilla)} data-testid={`menu-plantilla-repetir-${plantilla.id}`}>
+                                    Repetir
+                                </Button>
+                                <Button type="button" size="sm" variant="ghost" onClick={() => borrarPlantilla(plantilla)} data-testid={`menu-plantilla-borrar-${plantilla.id}`}>
+                                    Borrar
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
                 </section>
             )}
 
