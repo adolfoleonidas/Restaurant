@@ -325,6 +325,11 @@ function Funciones() {
         }
     };
 
+    // Sin funciones que ofrecer no se pinta una tarjeta vacía con su botón de
+    // guardar: es peor que no tenerla. El registro está vacío a proposito; si
+    // vuelve a tener entradas, la tarjeta reaparece sola.
+    if (!FEATURE_DEFS.length) return null;
+
     if (!features) return <div className="text-muted-foreground">Cargando…</div>;
 
     return (

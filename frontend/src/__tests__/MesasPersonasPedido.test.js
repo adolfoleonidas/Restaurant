@@ -232,20 +232,16 @@ describe('pedido por personas en el salón', () => {
         expect(card.querySelector('[data-testid="mesa-sheet-item-estado-i1"]')).toBeNull();
     });
 
-    it('anula un producto ya enviado pidiendo el motivo', async () => {
+    it('con la flag `item_void` inyectada el ✕ tampoco aparece: la funcion esta retirada', async () => {
+        // El registro de funciones está vacío a proposito y `mergeFeatures` solo
+        // copia claves declaradas, asi que la bandera que se inyecte aqui se
+        // ignora. Antes este test probaba el ✕ y su dialogo de motivo; ese camino
+        // ya no se ofrece y se recupera de git si algun dia vuelve la funcion.
         const account = order('order-1', 11, 'enviado_cocina', [item('i1', 'Pollo', 1, 20, 'pendiente')], { customer_name: 'María' });
-        api.post.mockResolvedValue({ data: account });
         ({ container, root, sheet } = await openTableWith([account], {}, { select: 11, features: { item_void: true } }));
 
-        // Lo enviado no se borra: se anula.
-        await click(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]'));
-        const reason = sheet.querySelector('[data-testid="mesa-sheet-item-anular-motivo-i1"]');
-        expect(reason).not.toBeNull();
-        await type(reason, 'El cliente canceló');
-        await click(sheet.querySelector('[data-testid="mesa-sheet-item-anular-confirmar-i1"]'));
-
-        expect(api.post).toHaveBeenCalledWith('/orders/order-1/items/i1/void', { reason: 'El cliente canceló' });
-        expect(api.delete).not.toHaveBeenCalled();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-anular-i1"]')).toBeNull();
+        expect(sheet.querySelector('[data-testid="mesa-sheet-item-anular-motivo-i1"]')).toBeNull();
     });
 
     it('el resumen de mesa vive en ⋯ Más, trae el total a la vista y agrupa a todas las personas', async () => {

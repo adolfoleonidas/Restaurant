@@ -279,7 +279,12 @@ describe('PedidoDetalle collection entry', () => {
         }
     });
 
-    it('con la flag `item_void` activa el ✕ aparece y anular sigue funcionando', async () => {
+    it('con la flag `item_void` puesta en la API el ✕ NO aparece: la funcion esta retirada', async () => {
+        // El registro de funciones esta vacio a proposito, y `mergeFeatures` solo
+        // copia claves declaradas: un `true` que venga de la API no enciende nada.
+        // Esto es lo que hace segura la retirada. Si algún día se vuelve a ofrecer
+        // anular por ítem, hay que devolver su entrada al registro y recuperar de
+        // git el test que probaba el ✕ con motivo.
         const originalItems = mockOrder.items;
         mockOrder.items = [{ id: 'item-2', product_name: 'Lomo', quantity: 1, unit_price: 25, subtotal: 25, paid_qty: 0, status: 'pendiente' }];
         api.get.mockImplementation((path) => Promise.resolve({
@@ -290,11 +295,8 @@ describe('PedidoDetalle collection entry', () => {
         }));
         try {
             const view = await renderDetail();
-            const cancel = view.host.querySelector('[data-testid="pedido-item-cancel-item-2"]');
-            expect(cancel).not.toBeNull();
-            await click(cancel);
-            // Ítem enviado: no se borra, se anula con motivo.
-            expect(api.post).toHaveBeenCalledWith('/orders/order-1/items/item-2/void', { reason: 'Anulado desde el detalle del pedido' });
+            expect(view.host.querySelector('[data-testid="pedido-item-cancel-item-2"]')).toBeNull();
+            expect(api.post).not.toHaveBeenCalled();
             await cleanup(view);
         } finally {
             mockOrder.items = originalItems;

@@ -3,37 +3,26 @@
  * (persisted per restaurant); the UI gates on these flags so a disabled module
  * renders nothing and runs no work.
  *
+ * HOY NO SE OFRECE NINGUNA. Las cinco que había —asistente de voz, lectura de
+ * comprobantes con IA, comandos por voz, consultas al asistente y anular
+ * productos sueltos— quedaron fuera de la oferta.
+ *
+ * El registro vacío hace más que esconder la tarjeta de Ajustes: `mergeFeatures`
+ * solo copia las claves que existan aquí, así que un `true` que se hubiera
+ * quedado en la base **no enciende nada**. Retirar la entrada es la forma
+ * segura de retirar la función; dejarla con la bandera en `false` no lo sería,
+ * porque cualquier fila con `true` volvería a encenderla.
+ *
+ * Para volver a ofrecer una: devolverle su entrada aquí (las cinco están en el
+ * historial de este fichero) y su bandera volverá a leerse de la API. El test
+ * `features.test.js` exige que cada entrada traiga `key`, `label`, `description`
+ * y una bandera apagada por defecto.
+ *
  * Kept framework-free: a tiny subscribe/notify pair lets the assistant refresh
  * immediately after Ajustes saves, without polling.
  */
 
-export const FEATURE_DEFS = [
-    {
-        key: 'voice_assistant',
-        label: 'Asistente de voz',
-        description: 'Anuncia en voz los pedidos nuevos, los listos y las cuentas solicitadas.',
-    },
-    {
-        key: 'proof_ocr',
-        label: 'Lectura de comprobantes con IA',
-        description: 'Lee las capturas de Yape/Plin y sugiere el monto. La IA propone, el humano confirma.',
-    },
-    {
-        key: 'voice_commands',
-        label: 'Comandos por voz',
-        description: 'Permite avanzar y finalizar pedidos hablando, siempre con confirmación.',
-    },
-    {
-        key: 'voice_queries',
-        label: 'Consultas al asistente',
-        description: 'Responde preguntas como "¿qué pedidos faltan?" usando datos que ya puedes ver.',
-    },
-    {
-        key: 'item_void',
-        label: 'Cancelar productos individualmente',
-        description: 'Muestra el ✕ para anular productos enviados, ítem por ítem.',
-    },
-];
+export const FEATURE_DEFS = [];
 
 export const DEFAULT_FEATURES = FEATURE_DEFS.reduce(
     (acc, def) => ({ ...acc, [def.key]: false }),
