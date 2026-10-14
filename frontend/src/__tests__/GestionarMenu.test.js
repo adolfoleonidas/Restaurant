@@ -22,9 +22,15 @@ jest.mock('@/lib/api/menu', () => ({
     copyMenuFrom: jest.fn(),
 }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock('@/lib/api/products', () => ({
+    __esModule: true,
+    updateProduct: jest.fn(() => Promise.resolve({ data: {} })),
+}));
 
 import { copyMenuFrom, getMenuDay, saveMenuDay, setMenuSoldOut } from '@/lib/api/menu';
+import { updateProduct } from '@/lib/api/products';
 import { toast } from 'sonner';
+import { waitFor } from '@testing-library/react';
 import GestionarMenu from '@/pages/menu/GestionarMenu';
 
 const DIA = {
@@ -168,12 +174,35 @@ describe('GestionarMenu', () => {
         await act(async () => root.unmount());
     });
 
-    it('las otras pestañas dicen qué falta en vez de quedarse en blanco', async () => {
+    it('la pestaña Catálogo marca la carta fija y recarga', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-catalog"]'));
+        expect(container.querySelector('[data-testid="menu-catalogo"]')).not.toBeNull();
+
+        // p3 es «del día»: al pulsar pasa a carta fija.
+        await click(container.querySelector('[data-testid="menu-fija-p3"]'));
+        await waitFor(() => expect(updateProduct).toHaveBeenCalledWith('p3', { is_fixed: true }));
+        // El estado efectivo lo dice el servidor: se recarga en vez de adivinarlo.
+        await waitFor(() => expect(getMenuDay.mock.calls.length).toBeGreaterThan(1));
+        await act(async () => root.unmount());
+    });
+
+    it('y quitarla de carta fija también', async () => {
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-catalog"]'));
+        await click(container.querySelector('[data-testid="menu-fija-p2"]'));
+        await waitFor(() => expect(updateProduct).toHaveBeenCalledWith('p2', { is_fixed: false }));
+        await act(async () => root.unmount());
+    });
+
+    it('la pestaña Semana dice qué falta en vez de quedarse en blanco', async () => {
         const { container, root } = await render();
         await click(container.querySelector('[data-testid="menu-tab-week"]'));
         expect(container.querySelector('[data-testid="menu-tab-pendiente"]').textContent).toContain('programación semanal');
+        // Catálogo ya no es un cartel: tiene su contenido de verdad.
         await click(container.querySelector('[data-testid="menu-tab-catalog"]'));
-        expect(container.querySelector('[data-testid="menu-tab-pendiente"]').textContent).toContain('carta fija');
+        expect(container.querySelector('[data-testid="menu-tab-pendiente"]')).toBeNull();
+        expect(container.querySelector('[data-testid="menu-catalogo"]')).not.toBeNull();
         await act(async () => root.unmount());
     });
 

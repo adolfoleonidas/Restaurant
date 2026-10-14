@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { fmtMoney } from '@/lib/format';
 import { toast } from 'sonner';
 
 import MenuDayView from './MenuDayView';
 import useMenuDay from './useMenuDay';
+import { updateProduct } from '@/lib/api/products';
 import { apiErrorMessage } from '@/lib/apiError';
 
 /**
@@ -27,7 +29,7 @@ const TABS = [
 ];
 
 export default function GestionarMenu() {
-    const { data, loading, error, saving, save, toggleSoldOut, copyFrom } = useMenuDay();
+    const { data, loading, error, saving, save, toggleSoldOut, copyFrom, reload } = useMenuDay();
     const [tab, setTab] = useState('today');
     const [seleccion, setSeleccion] = useState(null);
     const [desde, setDesde] = useState('');
@@ -120,6 +122,24 @@ export default function GestionarMenu() {
         }
     };
 
+    /**
+     * Carta fija: se ofrece siempre, sin volver a seleccionarla cada mañana.
+     *
+     * Es lo que evita que publicar un menú del día esconda las bebidas: sin esto,
+     * todo lo que no esté en el menú de hoy desaparece de la carta.
+     */
+    const marcarFija = async (productId, fija) => {
+        try {
+            await updateProduct(productId, { is_fixed: fija });
+            await reload();
+            toast.success(fija
+                ? 'Carta fija: se ofrecerá siempre, sin depender del menú del día'
+                : 'Del día: solo se ofrecerá si lo pones en el menú de hoy');
+        } catch (e) {
+            toast.error(apiErrorMessage(e, 'No se pudo cambiar'));
+        }
+    };
+
     return (
         <div className="space-y-4" data-testid="gestionar-menu">
             <div>
@@ -146,12 +166,36 @@ export default function GestionarMenu() {
                 ))}
             </div>
 
-            {tab !== 'today' && (
+            {tab === 'week' && (
                 <p className="text-sm text-muted-foreground" data-testid="menu-tab-pendiente">
-                    {tab === 'week'
-                        ? 'La programación semanal llega después: primero tiene que estar firme el menú del día.'
-                        : 'Aquí irá el catálogo completo, con el interruptor de carta fija.'}
+                    La programación semanal llega después: primero tiene que estar firme el menú del día.
                 </p>
+            )}
+
+            {tab === 'catalog' && (
+                <section className="space-y-3" data-testid="menu-catalogo">
+                    <p className="text-sm text-muted-foreground">
+                        La carta fija se ofrece siempre. Lo demás solo se ofrece los días en que
+                        lo pongas en el menú.
+                    </p>
+                    <div className="rounded-xl border border-border divide-y">
+                        {(data?.catalog || []).map((p) => (
+                            <div key={p.product_id} className="flex items-center gap-3 px-3 py-2" data-testid={`menu-catalogo-${p.product_id}`}>
+                                <span className="min-w-0 flex-1 truncate font-medium" title={p.name}>{p.name}</span>
+                                <span className="tabular-nums text-sm shrink-0">{fmtMoney(p.base_price)}</span>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={p.is_fixed ? 'default' : 'outline'}
+                                    onClick={() => marcarFija(p.product_id, !p.is_fixed)}
+                                    data-testid={`menu-fija-${p.product_id}`}
+                                >
+                                    {p.is_fixed ? 'Carta fija' : 'Del día'}
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
             )}
 
             {tab === 'today' && (
