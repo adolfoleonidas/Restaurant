@@ -94,8 +94,11 @@ export default function OrderComposer({
     onRemoveProduct,
     onSendToKitchen,
     sendLabel = null,
-    // Confirmación del envío, mostrada dentro de la hoja (ver `flashSent`).
+    // Confirmación del envío, mostrada dentro de la hoja (ver `flashSent`). Con
+    // `onSentDone` la confirmación trae el atajo de vuelta al salón: el mozo termina
+    // el pedido y en un toque está eligiendo la mesa siguiente.
     sentNotice = null,
+    onSentDone = null,
     // El tomador del prototipo pone nota y envío en el TICKET, no en la carta.
     showActions = true,
     // La carta del tomador no lleva el rótulo "Agregar a…": lo dice la franja
@@ -181,9 +184,19 @@ export default function OrderComposer({
             {sentNotice ? (
                 <div
                     data-testid={`${testIdPrefix}-enviado`}
-                    className="mx-3 mt-3 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary"
+                    className="mx-3 mt-3 flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm font-semibold text-primary"
                 >
-                    {sentNotice}
+                    <span>{sentNotice}</span>
+                    {onSentDone ? (
+                        <button
+                            type="button"
+                            onClick={() => onSentDone()}
+                            data-testid={`${testIdPrefix}-ver-salon`}
+                            className="shrink-0 rounded-md border border-primary/40 px-2 py-1 text-xs font-bold"
+                        >
+                            Ver salón
+                        </button>
+                    ) : null}
                 </div>
             ) : null}
             {showHeader && (

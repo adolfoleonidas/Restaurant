@@ -95,6 +95,7 @@ export default function TableSheet({
                                 showActions={!composerOpen}
                                 showHeader={!composerOpen}
                                 sentNotice={sentNotice}
+                                onSentDone={closeSheet}
                                 hideUnavailable
                             />
                         </div>

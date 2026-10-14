@@ -376,6 +376,13 @@ describe('pedido por personas en el salón', () => {
         expect(aviso).not.toBeNull();
         expect(aviso.textContent).toContain('Enviado a cocina · Mesa 1');
         expect(toast.success).not.toHaveBeenCalled();
+
+        // Y trae el atajo de vuelta: terminar el pedido y elegir la mesa siguiente
+        // en un toque, sin buscar el "←".
+        const verSalon = document.body.querySelector('[data-testid="mesa-sheet-ver-salon"]');
+        expect(verSalon).not.toBeNull();
+        await click(verSalon);
+        expect(document.body.querySelector('[data-testid="mesa-sheet"]')).toBeNull();
         expect(sheet.querySelector('[data-testid="mesa-sheet-nuevo-pedido"]').getAttribute('aria-expanded')).toBe('false');
     });
 
