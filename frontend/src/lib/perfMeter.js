@@ -19,9 +19,15 @@
  *
  * Se lee de un vistazo o en una captura: texto grande, un dato por línea.
  */
-export const PANEL_ID = 'dmi-perf';
+import { api } from '@/lib/api';
 
+export const PANEL_ID = 'dmi-perf';
 const PANEL_ROWS = ['version', 'viewport', 'tap', 'long', 'fps'];
+
+/** Por defecto, cada muestra viaja al servidor para poder leerla desde afuera. */
+function defaultSend(sample) {
+    return api.post('/diag/sample', sample);
+}
 
 /** ¿La pantalla pidió el medidor? (`?diag=1`) */
 export function perfMeterEnabled(search = '') {
@@ -46,6 +52,41 @@ export function summarize(values) {
     return { n: values.length, p50: percentile(values, 50), max: percentile(values, 100) };
 }
 
+/** La versión de la app que se está ejecutando, leída del bundle cargado. */
+export function runningVersion(doc) {
+    const node = doc && doc.querySelector && doc.querySelector('script[src*="/static/js/main."]');
+    const found = node && /main\.([0-9a-f]+)\.js/.exec(node.getAttribute('src') || '');
+    return found ? found[1] : 'desconocida';
+}
+
+/**
+ * La muestra que se manda al servidor. Pura: se puede probar sin navegador.
+ *
+ * Va también el `userAgent`: es la única forma de saber en qué teléfono y en qué
+ * navegador se está midiendo, que hasta ahora era una pregunta sin responder.
+ */
+export function buildSample({ taps = [], longs = [], fps = null, win = window, doc = win && win.document } = {}) {
+    const portrait = (win.innerHeight || 0) >= (win.innerWidth || 0);
+    const durations = taps.map((entry) => entry.duration);
+    const delays = taps.map((entry) => entry.inputDelay);
+    const code = taps.map((entry) => entry.processing);
+    return {
+        version: runningVersion(doc),
+        screen: `${win.innerWidth || 0}x${win.innerHeight || 0} ${portrait ? 'vertical' : 'horizontal'}`,
+        viewport: {
+            w: win.innerWidth || 0,
+            h: win.innerHeight || 0,
+            orientation: portrait ? 'vertical' : 'horizontal',
+            dpr: win.devicePixelRatio || 1,
+            nodes: doc && doc.querySelectorAll ? doc.querySelectorAll('*').length : 0,
+            ua: (win.navigator && win.navigator.userAgent) || '',
+        },
+        taps: { ...summarize(durations), busy: summarize(delays).p50, code: summarize(code).p50 },
+        longs: { n: longs.length, max: longs.length ? Math.max(...longs) : 0 },
+        fps,
+    };
+}
+
 const row = (doc, label) => {
     const line = doc.createElement('div');
     line.setAttribute('data-row', label);
@@ -62,8 +103,16 @@ const row = (doc, label) => {
 /**
  * Enciende el medidor. Devuelve cómo apagarlo (y quitarlo de la pantalla).
  * No usa animaciones ni transiciones: se actualiza a saltos, como el resto.
+ *
+ * `send` recibe cada muestra y por defecto la manda al servidor, para poder leerla
+ * desde afuera: la pantalla del teléfono no se puede mirar a distancia.
  */
-export function installPerfMeter({ win = window, doc = (win && win.document) } = {}) {
+export function installPerfMeter({
+    win = window,
+    doc = (win && win.document),
+    send = defaultSend,
+    reportEveryMs = 5000,
+} = {}) {
     if (!win || !doc || doc.getElementById(PANEL_ID)) return () => {};
 
     const taps = [];
@@ -74,6 +123,8 @@ export function installPerfMeter({ win = window, doc = (win && win.document) } =
     let timerId = null;
     let observer = null;
     let longObserver = null;
+    let reportedTaps = 0;
+    let lastReportAt = 0;
 
     const panel = doc.createElement('div');
     panel.id = PANEL_ID;
@@ -96,9 +147,7 @@ export function installPerfMeter({ win = window, doc = (win && win.document) } =
     doc.body.appendChild(panel);
 
     const paint = () => {
-        const version = doc.querySelector('script[src*="/static/js/main."]');
-        const found = version && /main\.([0-9a-f]+)\.js/.exec(version.getAttribute('src') || '');
-        rows.version.textContent = found ? found[1] : 'desconocida';
+        rows.version.textContent = runningVersion(doc);
         const portrait = (win.innerHeight || 0) >= (win.innerWidth || 0);
         rows.viewport.textContent = `${win.innerWidth}x${win.innerHeight} ${portrait ? 'vertical' : 'horizontal'} `
             + `dpr ${win.devicePixelRatio || 1} nodos ${doc.querySelectorAll('*').length}`;
@@ -153,7 +202,20 @@ export function installPerfMeter({ win = window, doc = (win && win.document) } =
         rafId = requestFrame(tick);
     };
     rafId = requestFrame(tick);
-    timerId = win.setInterval(paint, 500);
+    // Cada medio segundo: refrescar la pantalla y, de vez en cuando, mandar la
+    // muestra (solo si hubo toques nuevos). Un fallo al mandar no molesta a nadie:
+    // es un diagnóstico, no una acción del mozo.
+    const beat = () => {
+        paint();
+        if (taps.length > reportedTaps && Date.now() - lastReportAt >= reportEveryMs) {
+            reportedTaps = taps.length;
+            lastReportAt = Date.now();
+            try {
+                Promise.resolve(send(buildSample({ taps, longs, fps, win, doc }))).catch(() => {});
+            } catch { /* el medidor nunca rompe la app */ }
+        }
+    };
+    timerId = win.setInterval(beat, 500);
     paint();
 
     return () => {
