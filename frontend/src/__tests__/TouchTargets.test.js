@@ -10,6 +10,8 @@ import fs from 'fs';
 import path from 'path';
 import { PersonOrderSummary } from '@/components/OrderSummary';
 import FloorFilters from '@/pages/salon/FloorFilters';
+import JoinBar from '@/pages/salon/JoinBar';
+import { STATE_FILTERS } from '@/pages/salon/selectors';
 import MesaCard from '@/components/MesaCard';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -51,8 +53,20 @@ describe('filters and floor actions', () => {
                 setStateFilter={() => {}} stateFilter="todas" stateCounts={{ todas: 1, libre: 0, activas: 0, listo: 0, cuenta: 1 }} />,
         );
         const chips = markup.match(/<button[^>]*data-testid="salon-filtro-[^"]+"[^>]*>/g);
-        expect(chips).toHaveLength(5);
+        // El número sale del propio catálogo de filtros: añadir un estado no
+        // puede dejar esta prueba mintiendo.
+        expect(chips).toHaveLength(STATE_FILTERS.length);
         chips.forEach((chip) => expect(chip).toContain('touch-target-coarse'));
+    });
+
+    it('un conteo ausente se pinta 0 y no «undefined»', () => {
+        // Las pantallas y las pruebas pasan mapas parciales de conteos.
+        const markup = renderToStaticMarkup(
+            <FloorFilters areaFilter="todas" areas={['todas']} setAreaFilter={() => {}}
+                setStateFilter={() => {}} stateFilter="todas" stateCounts={{ todas: 2 }} />,
+        );
+        expect(markup).not.toContain('undefined');
+        expect(markup).not.toContain('NaN');
     });
 
     it('the Cobrar action of a table card gets it too', () => {
@@ -70,5 +84,40 @@ describe('filters and floor actions', () => {
     it('index.css defines the class for coarse pointers at 44 px', () => {
         const css = fs.readFileSync(path.resolve(__dirname, '..', 'index.css'), 'utf8');
         expect(css).toMatch(/@media \(pointer: coarse\)\s*\{\s*\.touch-target-coarse\s*\{[^}]*min-height:\s*44px[^}]*min-width:\s*44px/);
+    });
+
+    it('the "unir mesas" bar gives its chips and its principal table the target', () => {
+        const tables = [
+            { id: 't1', number: 1, capacity: 4 },
+            { id: 't2', number: 2, capacity: 4 },
+        ];
+        const markup = renderToStaticMarkup(
+            <JoinBar
+                selected={['t1', 't2']}
+                tables={tables}
+                operation={{ kind: 'create', group: null }}
+                seats={8}
+                guidance="2 mesas para unir en un solo grupo"
+                selectionIssue={null}
+                anchorId="t1"
+                anchorCandidates={tables}
+                chooseAnchor={() => {}}
+                cancelSelection={() => {}}
+                canConfirmJoin
+                joining={false}
+                joinTables={() => {}}
+                unpick={() => {}}
+            />,
+        );
+        // Quitar una ficha equivocada es el toque más frecuente de la barra, y
+        // elegir la mesa principal son botones de un solo dígito: los dos tienen
+        // que llegar a 44 px con el dedo.
+        const chips = markup.match(/<button[^>]*data-testid="salon-seleccion-quitar-[^"]+"[^>]*>/g);
+        expect(chips).toHaveLength(2);
+        chips.forEach((chip) => expect(chip).toContain('touch-target-coarse'));
+
+        const principal = markup.match(/<button[^>]*data-testid="salon-seleccion-principal-[^"]+"[^>]*>/g);
+        expect(principal).toHaveLength(2);
+        principal.forEach((button) => expect(button).toContain('touch-target-coarse'));
     });
 });

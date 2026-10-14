@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import NewOrderSheet from '@/components/NewOrderSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { PendingActionsContext } from '@/contexts/PendingActionsContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { ACTIONS, can, canAccessRoute } from '@/lib/permissions';
+import { groupLabel, groupMembers } from '@/lib/tableGroups';
+import { countOf } from '@/lib/format';
 import FloorFilters from './salon/FloorFilters';
 import FloorGrid from './salon/FloorGrid';
 import JoinBar from './salon/JoinBar';
@@ -24,7 +27,7 @@ import useSalonData from './salon/useSalonData';
 import useTableSelection from './salon/useTableSelection';
 import useTableSheet from './salon/useTableSheet';
 import useVisitTransfer from './salon/useVisitTransfer';
-import { MINI_OPEN_CLASS, isMiniVisible, selectSheetModel } from './salon/selectors';
+import { MINI_OPEN_CLASS, SELECT_OPEN_CLASS, isMiniVisible, selectSheetModel } from './salon/selectors';
 
 /** Dónde se recuerda si el mozo dejó abiertos el buscador y los filtros del piso. */
 const SALON_FILTERS_KEY = 'salon_filtros';
@@ -37,9 +40,10 @@ const SALON_FILTERS_KEY = 'salon_filtros';
  * touch-first operating surface for the mozo/cajero/admin.
  *
  * Two floor operations live here on top of that surface:
- *   * "Unir mesas" — a visual group of tables serving the same party. Each
- *     member keeps its own account; the group blocks the free member tables and
- *     is dissolved explicitly.
+ *   * "Unir mesas" — a visual group of tables serving the same party, and the
+ *     same gesture grows a group that is already joined. Each member keeps its
+ *     own account; the group blocks the free member tables and is dissolved
+ *     explicitly.
  *   * "Mover pedido" — relocates the open visit (order + visit) of a table to
  *     another free table of the same branch.
  *
@@ -100,7 +104,11 @@ export default function Salon() {
         tables, activeOrders, closeSheet, refreshAll,
     });
     const floorActions = useFloorActions({
-        canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
+        canTake,
+        // Cobrar manda a la caja: `salon.charge` exige la función de cobro, y esa
+        // función es la que abre `/caja` (ver `permissions.test.js`).
+        canUseCaja: canAccessRoute(user, '/caja'),
+        closeSheet, refreshAll, refetchTables, navigate, patchOrder,
     });
 
     const closeAreas = () => setShowNewOrder(false);
@@ -137,14 +145,14 @@ export default function Salon() {
 
     const sheetModel = openTable
         ? selectSheetModel({
-            openTable, sheetOrder: sheet.sheetOrder, tables, activeOrders, canTake, canClose,
+            openTable, sheetOrder: sheet.sheetOrder, tables, activeOrders, orders, canTake, canClose,
         })
         : null;
 
     return (
         <PendingActionsContext.Provider value={floorActions.pending}>
         <div
-            className={`space-y-5 ${selection.selectMode ? 'pb-28' : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
+            className={`space-y-5 ${selection.selectMode ? SELECT_OPEN_CLASS : ''} ${miniVisible ? MINI_OPEN_CLASS : ''}`}
             data-testid="salon-root"
         >
             {/* La grilla vive debajo del detalle: se oculta (no se desmonta) para
@@ -173,12 +181,20 @@ export default function Salon() {
                 {selection.selectMode && (
                     <JoinBar
                         selected={selection.selected}
+                        pickedGroup={selection.pickedGroup}
                         tables={tables}
+                        operation={selection.operation}
+                        seats={selection.seats}
+                        guidance={selection.guidance}
                         selectionIssue={selection.selectionIssue}
+                        anchorId={selection.anchorId}
+                        anchorCandidates={selection.anchorCandidates}
+                        chooseAnchor={selection.chooseAnchor}
                         cancelSelection={selection.cancelSelection}
                         canConfirmJoin={selection.canConfirmJoin}
                         joining={selection.joining}
                         joinTables={selection.joinTables}
+                        unpick={selection.unpick}
                     />
                 )}
 
@@ -220,12 +236,17 @@ export default function Salon() {
                     canTake={canTake}
                     selectMode={selection.selectMode}
                     selected={selection.selected}
+                    pickedGroupIds={selection.pickedGroupIds}
                     toggleSelected={selection.toggleSelected}
+                    pickIssues={selection.pickIssues}
+                    onSeparate={selection.askSeparateGroup}
+                    separatePending={selection.separating}
                     openSheet={sheet.openSheet}
                     takeOrderInline={sheet.takeOrderInline}
                     deliver={floorActions.deliver}
                     openCharge={floorActions.openCharge}
                     closeAttention={floorActions.closeAttention}
+                    requestBill={floorActions.requestBill}
                     closing={floorActions.closing}
                     branchNames={branchNames}
                 />
@@ -296,6 +317,22 @@ export default function Salon() {
                 tables={tables}
                 openTable={openTable}
                 moveAccount={sheet.moveAccount}
+            />
+
+            {/* Separar desde el piso: disolver toca a todas las mesas del grupo
+                (vuelven a quedar libres u ocupadas por su cuenta), así que se
+                confirma nombrando lo que se va a separar. */}
+            <ConfirmDialog
+                open={Boolean(selection.separateGroup)}
+                title={selection.separateGroup
+                    ? `¿Separar ${groupLabel(selection.separateGroup, tables)}?`
+                    : ''}
+                description={selection.separateGroup
+                    ? `Sus ${countOf(groupMembers(selection.separateGroup, tables).length, 'mesa', 'mesas')} vuelven al piso por separado. Cada una conserva su propia cuenta y su pedido.`
+                    : undefined}
+                confirmLabel="Separar mesas"
+                onConfirm={selection.confirmSeparateGroup}
+                onCancel={selection.cancelSeparateGroup}
             />
 
             <SendReviewDialog

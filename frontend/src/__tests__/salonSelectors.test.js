@@ -296,7 +296,12 @@ describe('floor units', () => {
     test('countByState and filterUnits follow the visible cards', () => {
         const { units } = build();
         const counts = countByState(units);
-        expect(counts).toEqual({ todas: 3, libre: 1, activas: 1, listo: 1, cuenta: 0 });
+        // Un chip por estado del piso más «Todas»: los que no aparecen en este
+        // piso cuentan 0, no desaparecen del mapa.
+        expect(counts).toEqual({
+            todas: 3, libre: 1, activas: 1, listo: 1, cuenta: 0,
+            pagada: 0, reservada: 0, anulada: 0, inactiva: 0,
+        });
         expect(Object.keys(counts)).toEqual(STATE_FILTERS.map((f) => f.key));
         expect(filter(units)).toEqual([1, 2, 3]);
         expect(filter(units, { areaFilter: 'Terraza' })).toEqual([1]);
@@ -400,6 +405,32 @@ describe('selectSheetModel', () => {
         const model = selectSheetModel({ ...base, tables: [live] });
         expect(model.floor).toEqual({ key: 'cuenta' });
         expect(model.table.status).toBe('esperando_pago');
+    });
+
+    test('no ofrece cerrar la visita mientras otra cuenta no esté liquidada', () => {
+        // La hoja puede estar mirando una cuenta cobrada mientras la hermana de
+        // la misma visita sigue sin pagar. El servidor exige que **todas** estén
+        // listas (`attention.py:444-451`), así que ofrecer el botón era prometer
+        // un cierre que iba a fallar con «La cuenta #N no está lista».
+        const paid = { ...o1, status: 'pagado', payment_status: 'pagado', amount_paid: 40, items: [item('a', 'entregado', 2)] };
+        const unpaid = { ...o2, status: 'entregado', payment_status: 'pendiente', amount_paid: 0, items: [item('c', 'entregado', 1)] };
+        const withUnpaid = selectSheetModel({
+            ...base,
+            openTable: { ...base.openTable, order: paid, accounts: [paid, unpaid], accountId: 'o1' },
+            sheetOrder: paid,
+            orders: [paid, unpaid],
+        });
+        expect(withUnpaid.closeable).toBe(false);
+
+        // Cobrada la hermana, el cierre vuelve.
+        const settledSibling = { ...unpaid, status: 'pagado', payment_status: 'pagado', amount_paid: 10 };
+        const allSettled = selectSheetModel({
+            ...base,
+            openTable: { ...base.openTable, order: paid, accounts: [paid, settledSibling], accountId: 'o1' },
+            sheetOrder: paid,
+            orders: [paid, settledSibling],
+        });
+        expect(allSettled.closeable).toBe(true);
     });
 
     test('derives persons, summary rows and totals', () => {

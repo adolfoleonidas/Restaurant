@@ -157,7 +157,7 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         expect(sheet.querySelector('[data-testid="mesa-sheet-cuentas"]')).toBeNull();
     });
 
-    it('S2-2 ofrece Cobrar con el pendiente de la cuenta activa y navega al pedido', async () => {
+    it('S2-2 ofrece Cobrar con el pendiente de la cuenta activa y lo manda a la caja', async () => {
         const juan = order('order-1', 11, 'en_preparacion', [item('i1', 'Sopa', 2, 12, 'pendiente')], { customer_name: 'Juan' });
         const maria = order('order-2', 12, 'en_preparacion', [item('i2', 'Sopa', 1, 12, 'pendiente')], { customer_name: 'María', amount_paid: 12 });
         ({ container, root, sheet } = await openTableWith([juan, maria]));
@@ -168,7 +168,9 @@ describe('hoja de mesa · paridad del prototipo (Slice 2)', () => {
         // La cuenta activa es la de Juan: S/ 24.00.
         expect(cobrar.textContent).toContain('24.00');
         await click(cobrar);
-        expect(mockNavigate).toHaveBeenCalledWith('/pedidos/order-1');
+        // Cobrar lleva a cobrar: la caja abre el cobro de esa cuenta por
+        // `?order=`. El detalle del pedido es el tomador de pedidos.
+        expect(mockNavigate).toHaveBeenCalledWith('/caja?order=order-1');
     });
 
     it('S2-2 no ofrece Cobrar cuando no queda saldo pendiente', async () => {

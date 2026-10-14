@@ -4,6 +4,7 @@
  * and its tests share exactly the same rules.
  */
 import { fmtMoney, fmtElapsed, elapsedMinutes, countOf } from '@/lib/format';
+import { FLOOR_STYLE } from '@/lib/floorStyle';
 import { activeAttentionOrder, canCloseAttention } from '@/lib/attentionClose';
 import { partitionPriorPickupOrders } from '@/lib/serviceDay';
 import {
@@ -15,22 +16,49 @@ import {
     groupMembers,
 } from '@/lib/tableGroups';
 
-export const LEGEND = ['libre', 'sentados', 'preparando', 'listo', 'cuenta', 'pagada', 'atencion', 'reservada'];
+/**
+ * La leyenda y los filtros salen de `FLOOR_STYLE`: esa es la única lista de
+ * estados del piso.
+ *
+ * Antes eran tres arrays escritos a mano y ya habían divergido: la leyenda no
+ * mostraba «Entregado» ni «Inactiva», y tres estados (cuenta pagada, reservada,
+ * inactiva) no se podían aislar con ningún filtro — al elegir cualquier filtro
+ * desaparecían de la pantalla, sin atenuarse. `FloorStateCoverage.test.js` fija
+ * que toda clave de `FLOOR_STYLE` esté en la leyenda y se pueda aislar.
+ */
+export const LEGEND = Object.keys(FLOOR_STYLE);
 
 export const STATE_FILTERS = [
     { key: 'todas', label: 'Todas' },
     { key: 'libre', label: 'Libres' },
-    { key: 'activas', label: 'Ocupadas' },
+    { key: 'activas', label: 'En curso' },
     { key: 'listo', label: 'Por entregar' },
     { key: 'cuenta', label: 'Por cobrar' },
+    { key: 'pagada', label: 'Por cerrar' },
+    { key: 'reservada', label: 'Reservadas' },
+    { key: 'anulada', label: 'Anuladas' },
+    { key: 'inactiva', label: 'Inactivas' },
 ];
 
-// Estados del piso que cuenta cada filtro (para los conteos de los filtros).
+/**
+ * Qué estados del piso entran en cada chip. Es el **único** sitio donde se
+ * decide: `countByState` cuenta con este mapa y `filterUnits` filtra con él, así
+ * que el número del chip no puede contradecir lo que aparece al pulsarlo.
+ *
+ * «En curso» agrupa las mesas que están en servicio y todavía no pidieron la
+ * cuenta. Antes se llamaba «Ocupadas» y se tragaba también las anuladas, así que
+ * una mesa con el pedido cancelado se contaba como ocupada; ahora cada estado
+ * tiene su chip y ninguno queda fuera.
+ */
 export const STATE_FILTER_FLOORS = {
     libre: ['libre'],
-    activas: ['sentados', 'preparando', 'entregado', 'atencion'],
+    activas: ['sentados', 'preparando', 'entregado'],
     listo: ['listo'],
     cuenta: ['cuenta'],
+    pagada: ['pagada'],
+    reservada: ['reservada'],
+    anulada: ['atencion'],
+    inactiva: ['inactiva'],
 };
 
 /**
@@ -43,6 +71,18 @@ export const STATE_FILTER_FLOORS = {
  * el hueco al shell en escritorio, donde el mini va pegado al borde inferior.
  */
 export const MINI_OPEN_CLASS = 'pb-44 md:!pb-0';
+
+/**
+ * Padding inferior del contenido mientras se eligen mesas para unir.
+ *
+ * La barra de "unir mesas" crece con lo que se elige (fichas, la línea de "para
+ * qué es", la mesa principal y las dos acciones) y sus filas se envuelven en
+ * pantallas estrechas, así que el hueco es el de la barra **más alta** y no el
+ * de la más común: si se queda corto, la última fila de mesas vive debajo de la
+ * barra y el mozo no puede tocar lo que no ve. `!` por el mismo motivo que en
+ * `MINI_OPEN_CLASS`.
+ */
+export const SELECT_OPEN_CLASS = 'pb-56 md:!pb-44';
 
 // ── Floor order ──────────────────────────────────────────────────────────
 
@@ -331,6 +371,10 @@ export function decorateTables({
         return {
             table: t, floor, displayOrder, serviceOrder, ready, pendingPrep, due, billRequested,
             showVisitaActiva, group, groupBadge, groupNumbers,
+            // Las cuentas vivas de la misma visita. El cierre las exige liquidadas
+            // (`attention.py:444-451`), así que la tarjeta tiene que verlas para no
+            // ofrecer «Finalizar mesa» cuando el servidor lo va a rechazar.
+            visitOrders,
         };
     });
 }
@@ -401,11 +445,10 @@ export function filterUnits(units, {
     const list = units.filter((unit) => {
         const entries = unit.type === 'group' ? unit.members : [unit.entry];
         if (areaFilter !== 'todas' && !entries.some((e) => e.table.area === areaFilter)) return false;
-        const key = unit.floor.key;
-        if (stateFilter === 'libre' && key !== 'libre') return false;
-        if (stateFilter === 'activas' && !['sentados', 'preparando', 'entregado', 'atencion'].includes(key)) return false;
-        if (stateFilter === 'listo' && key !== 'listo') return false;
-        if (stateFilter === 'cuenta' && key !== 'cuenta') return false;
+        // El mismo mapa que cuenta los chips decide qué entra en cada uno: la
+        // lista estaba escrita otra vez aquí y ya habían divergido.
+        const floors = STATE_FILTER_FLOORS[stateFilter];
+        if (floors && !floors.includes(unit.floor.key)) return false;
         if (search && !entries.some((e) => `${e.table.number} ${e.table.name}`.toLowerCase().includes(search.toLowerCase()))) return false;
         return true;
     });
@@ -472,7 +515,7 @@ export function selectFreshOrder(openOrder, liveOrder) {
  * account id below fall back to the account itself (kept as is).
  */
 export function selectSheetModel({
-    openTable, sheetOrder, tables, activeOrders, canTake, canClose,
+    openTable, sheetOrder, tables, activeOrders, orders, canTake, canClose,
 }) {
     const { table: openedTable, history, loading, accountsLoading, accountTable, accounts, accountId } = openTable;
     // El estado sale de la mesa viva del piso, no de la copia que se guardó al abrir la hoja.
@@ -555,7 +598,17 @@ export function selectSheetModel({
     const actionDue = accountDue(actionOrder);
     // Con la pantalla limpia para la siguiente persona, las acciones
     // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
-    const closeable = canClose && canCloseAttention(t, actionOrder);
+    // Con la pantalla limpia para la siguiente persona, las acciones
+    // de la mesa (entregar, cobrar, finalizar) siguen funcionando.
+    const visitSiblings = t.active_attention_id
+        ? (orders || []).filter((o) => (
+            o.id !== actionOrder?.id
+            && o.table_id === t.id
+            && o.attention_id === t.active_attention_id
+            && ['open', 'closing'].includes(o.attention_state)
+        ))
+        : [];
+    const closeable = canClose && canCloseAttention(t, actionOrder, visitSiblings);
     const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
     return {
         table: t,

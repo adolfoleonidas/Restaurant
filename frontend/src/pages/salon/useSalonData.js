@@ -86,11 +86,16 @@ export default function useSalonData({
      * y lo que se ve vuelve a ser lo del servidor.
      *
      * `change` es un objeto para reemplazar campos o una función `(order) => patch`.
+     * La función devuelve el **parche**, no el pedido completo: se fusiona sobre el
+     * pedido vivo. Antes se usaba tal cual como objeto nuevo, así que tras un
+     * «Entregar» la tarjeta perdía `id`, `status` y `total` —el monto parpadeaba y
+     * el estado caía a «Ocupada»— hasta que llegaba el refresco.
      */
     const patchOrder = (orderId, change) => {
         const apply = (order) => {
             if (!order || order.id !== orderId) return order;
-            return typeof change === 'function' ? change(order) : { ...order, ...change };
+            const fields = typeof change === 'function' ? change(order) : change;
+            return fields ? { ...order, ...fields } : order;
         };
         patchOrders?.((list) => (Array.isArray(list) ? list.map(apply) : list));
         patchTables?.((list) => (Array.isArray(list)

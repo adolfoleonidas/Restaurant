@@ -1,9 +1,9 @@
 import React from 'react';
-import { Bell, Check, CheckCheck, Clock, Link2, Plus, Receipt, UtensilsCrossed } from 'lucide-react';
+import { Ban, Bell, Check, CheckCheck, Clock, Link2, Plus, Receipt, ReceiptText, UtensilsCrossed } from 'lucide-react';
 import AttentionReference from '@/components/AttentionReference';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
 import { elapsedMinutes, fmtElapsed, fmtMoney, countOf } from '@/lib/format';
-import { canCloseAttention } from '@/lib/attentionClose';
+import { canCloseAttention, canRequestBill } from '@/lib/attentionClose';
 import { usePendingActions } from '@/contexts/PendingActionsContext';
 
 /**
@@ -21,6 +21,11 @@ import { usePendingActions } from '@/contexts/PendingActionsContext';
  * It also carries the two floor operations of "unir mesas": the group badge (with
  * the number of bills the group holds) and the selection state used while the
  * waiter picks tables to join.
+ *
+ * While picking, the card is the only place the mozo is looking, so it says its
+ * own state **here**: whether this table can be picked, and the reason when it
+ * cannot. The bar at the bottom of the screen is a long scroll away from the
+ * table that caused the problem.
  *
  * Kept `data-testid` contracts: `mesa-card-*`, `mesa-card-deliver-*`,
  * `mesa-card-cobrar-*`, `mesa-card-pedir-*`, `servicio-cerrar-*`,
@@ -70,11 +75,13 @@ export default function MesaCard({
     closing = null,
     selectMode = false,
     picked = false,
+    pickIssue = null,
     onSelect,
     onOpen,
     onDeliver,
     onCharge,
     onCloseAttention,
+    onRequestBill,
     onTake,
 }) {
     const pendingActions = usePendingActions();
@@ -91,13 +98,22 @@ export default function MesaCard({
     const isLate = floor.key === 'cuenta' && urgency === 'bad';
     // Miembros del grupo además de la mesa que muestra esta tarjeta.
     const groupOthers = (groupNumbers || []).filter((n) => Number(n) !== Number(t.number));
-    const closeable = canClose && canCloseAttention(t, serviceOrder);
+    const closeable = canClose && canCloseAttention(t, serviceOrder, item.visitOrders);
     const showDeliver = canServe && (floor.key === 'listo' || ready > 0) && Boolean(serviceOrder);
     const showCobrar = canCharge && floor.key === 'cuenta' && Boolean(serviceOrder);
     const takeable = canTake && (floor.key === 'libre' || floor.key === 'sentados');
     // The state label is already "Cuenta" in the cuenta state: the badge would
     // only repeat it.
     const showBillBadge = billRequested && floor.key !== 'cuenta';
+    // Elegir durante "unir mesas": una mesa que no se puede elegir lo dice en su
+    // propia tarjeta y no se deja tocar, en vez de fallar en la barra de abajo.
+    const blocked = selectMode && Boolean(pickIssue);
+    // Cuatro lados escritos uno por uno: mezclar el atajo `borderWidth` con
+    // `borderLeftWidth` (el acento de una mesa unida) hace que React avise en
+    // cada repintado y deja el borde a merced del orden de las reglas.
+    const accent = Boolean(group);
+    const borderW = needsAttention ? 3 : 2;
+    const borderC = needsAttention ? s.dot : (picked ? 'hsl(var(--primary))' : s.border);
 
     // The order that owns the balance is the one the card prices: the active
     // service order, falling back to the displayed order (a paid visit still on
@@ -140,6 +156,16 @@ export default function MesaCard({
             key: 'cerrar', label: busy ? 'Cerrando…' : 'Finalizar mesa', icon: CheckCheck, variant: 'outline',
             disabled: busy, testId: `servicio-cerrar-${t.number}`, onClick: () => onCloseAttention(serviceOrder),
         });
+    } else if (!showCobrar && canTake && canRequestBill(serviceOrder, { billRequested })) {
+        // Pedir la cuenta es el paso siguiente a servir, y en el piso no existía:
+        // en «Entregado» la tarjeta se quedaba sin ningún botón y había que abrir
+        // la hoja de cada mesa. La regla la comparte con la hoja (`canRequestBill`),
+        // así que las dos superficies no pueden divergir.
+        const busy = pendingActions.has(`bill:${serviceOrder.id}`);
+        actions.push({
+            key: 'cuenta', label: busy ? 'Solicitando…' : 'Solicitar cuenta', icon: ReceiptText, variant: 'soft',
+            disabled: busy, testId: `mesa-card-cuenta-${t.number}`, onClick: () => onRequestBill(serviceOrder),
+        });
     }
 
     return (
@@ -148,8 +174,14 @@ export default function MesaCard({
             data-floor-state={floor.key}
             data-selected={picked ? 'true' : undefined}
             data-grouped={group ? 'true' : undefined}
-            onClick={() => (selectMode ? onSelect(t) : onOpen(t))}
-            className={`relative rounded-xl border-2 flex flex-col text-left cursor-pointer ${isLate ? 'floor-late' : ''}`}
+            data-pick={selectMode ? (blocked ? 'blocked' : picked ? 'picked' : 'open') : undefined}
+            aria-disabled={blocked ? 'true' : undefined}
+            onClick={() => {
+                if (blocked) return;
+                if (selectMode) onSelect(t);
+                else onOpen(t);
+            }}
+            className={`relative rounded-xl border-2 flex flex-col text-left ${blocked ? 'cursor-not-allowed' : 'cursor-pointer'} ${isLate ? 'floor-late' : ''}`}
             style={{
                 background: s.bg,
                 // Inherited by every child: no child repeats `color: s.fg`.
@@ -159,10 +191,16 @@ export default function MesaCard({
                 // separada del borde (y con el `ring-offset` dejaba un hueco): en
                 // pantalla se veían dos bordes. El énfasis ahora es el mismo
                 // borde, más grueso y del color del estado.
-                borderWidth: needsAttention ? 3 : 2,
-                borderColor: needsAttention ? s.dot : (picked ? 'hsl(var(--primary))' : s.border),
+                borderStyle: blocked ? 'dashed' : 'solid',
+                borderTopWidth: borderW,
+                borderRightWidth: borderW,
+                borderBottomWidth: borderW,
                 // Una mesa unida conserva un acento compartido para leerse como grupo.
-                ...(group ? { borderLeftWidth: 6, borderLeftColor: '#7C6BC4' } : {}),
+                borderLeftWidth: accent ? 6 : borderW,
+                borderTopColor: borderC,
+                borderRightColor: borderC,
+                borderBottomColor: borderC,
+                borderLeftColor: accent ? '#7C6BC4' : borderC,
             }}
         >
             <div className="p-3 sm:p-4 flex flex-col gap-1.5 flex-1 rounded-[inherit] active:bg-black/5">
@@ -179,12 +217,19 @@ export default function MesaCard({
                     ) : (
                         <div className="font-display text-3xl sm:text-4xl font-bold leading-none">{t.number}</div>
                     )}
+                    {/* Al elegir, la tarjeta dice si entra o no, con palabras: un
+                        check suelto no distingue "todavía no la toqué" de "no se
+                        puede". */}
                     {selectMode && (
                         <span
-                            aria-label={picked ? 'Mesa elegida' : 'Elegir mesa'}
-                            className={`absolute top-3 right-3 h-6 w-6 rounded-md border-2 grid place-items-center ${picked ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border'}`}
+                            data-testid={`mesa-card-elegir-${t.number}`}
+                            className={`shrink-0 inline-flex items-center gap-1 rounded-md border-2 px-1.5 py-0.5 text-xs font-semibold ${picked ? 'bg-primary border-primary text-primary-foreground' : blocked ? 'border-dashed bg-card text-muted-foreground' : 'bg-card border-border'}`}
                         >
-                            {picked && <Check className="h-4 w-4" />}
+                            {blocked
+                                ? <><Ban className="h-3.5 w-3.5" aria-hidden="true" />No</>
+                                : picked
+                                    ? <><Check className="h-3.5 w-3.5" aria-hidden="true" />Elegida</>
+                                    : <><Plus className="h-3.5 w-3.5" aria-hidden="true" />Elegir</>}
                         </span>
                     )}
                     {!selectMode && needsAttention && (
@@ -193,6 +238,13 @@ export default function MesaCard({
                         </span>
                     )}
                 </div>
+                {/* El motivo vive en la tarjeta que el mozo acaba de tocar, no
+                    solo en la barra del fondo de la pantalla. */}
+                {blocked && (
+                    <div className="text-xs font-medium text-destructive" data-testid={`mesa-card-motivo-${t.number}`}>
+                        {pickIssue}
+                    </div>
+                )}
                 {seats > 0 && (
                     <div className="text-xs text-muted-foreground" data-testid={`mesa-card-asientos-${t.number}`}>
                         {seats} asientos

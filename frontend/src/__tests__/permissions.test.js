@@ -98,6 +98,34 @@ describe('route access', () => {
     });
 });
 
+describe('charging from the floor', () => {
+    /**
+     * El botón "Cobrar" del salón manda a `/caja?order=<id>`. Eso es seguro solo
+     * mientras quien puede cobrar pueda abrir la caja: si las dos reglas se
+     * separaran, el mozo tocaría Cobrar y aterrizaría en "Sin autorización".
+     */
+    test('whoever may charge may open the cash screen', () => {
+        const profiles = [
+            { id: 'admin', role: 'admin' },
+            { id: 'mozo', role: 'mozo' },
+            { id: 'cajero', role: 'cajero' },
+            { id: 'cocina', role: 'cocina' },
+            { id: 'mozo-cobro', role: 'mozo', functions: ['atencion', 'cobro'] },
+            { id: 'cocina-admin', role: 'cocina', functions: ['preparacion', 'administracion'] },
+            { id: 'mozo-solo-atencion', role: 'mozo', functions: ['atencion'] },
+            { id: 'cajero-sin-cobro', role: 'cajero', functions: ['atencion'] },
+        ];
+        profiles.forEach((user) => {
+            if (can(user, ACTIONS.SALON_CHARGE)) {
+                expect([user.id, canAccessRoute(user, '/caja')]).toEqual([user.id, true]);
+            }
+        });
+        // La comprobación no es vacía: hay perfiles que sí pueden cobrar.
+        expect(profiles.filter((u) => can(u, ACTIONS.SALON_CHARGE)).map((u) => u.id))
+            .toEqual(['admin', 'cajero', 'mozo-cobro', 'cocina-admin']);
+    });
+});
+
 describe('navigation', () => {
     test('NAV_ITEMS is the same menu as before', () => {
         expect(NAV_ITEMS.map(({ to, label, roles, group }) => ({ to, label, roles, group }))).toEqual(LEGACY_NAV);

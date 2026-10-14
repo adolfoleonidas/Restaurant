@@ -150,7 +150,7 @@ describe('salón table groups', () => {
         expect(container.querySelector('[data-testid="salon-seleccion"]')).toBeNull();
     });
 
-    it('explains why a selection cannot be joined and blocks the confirm', async () => {
+    it('refuses a table with a visit in progress on the card itself, not only in the bar', async () => {
         mockRows.tables = [
             freeTable('table-1', 1),
             // A visit that never produced an order: there is nothing to group yet.
@@ -160,14 +160,111 @@ describe('salón table groups', () => {
 
         await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
         await click(container.querySelector('[data-testid="mesa-card-1"]'));
-        await click(container.querySelector('[data-testid="mesa-card-3"]'));
 
-        expect(container.querySelector('[data-testid="salon-seleccion-aviso"]').textContent).toMatch(/visita en curso/);
+        // El motivo vive en la tarjeta que el mozo acaba de tocar: la barra del
+        // fondo de la pantalla está lejos de la mesa que lo causó.
+        const blocked = container.querySelector('[data-testid="mesa-card-3"]');
+        expect(blocked.getAttribute('data-pick')).toBe('blocked');
+        expect(blocked.getAttribute('aria-disabled')).toBe('true');
+        expect(container.querySelector('[data-testid="mesa-card-motivo-3"]').textContent).toMatch(/visita en curso/);
+
+        // Y no se deja elegir.
+        await click(blocked);
+        expect(container.querySelector('[data-testid="salon-seleccion-resumen"]').textContent).not.toContain('3');
         expect(container.querySelector('[data-testid="salon-unir-confirmar"]').disabled).toBe(true);
 
         await click(container.querySelector('[data-testid="salon-seleccion-cancelar"]'));
         expect(container.querySelector('[data-testid="salon-seleccion"]')).toBeNull();
         expect(api.post).not.toHaveBeenCalled();
+    });
+
+    it('adds a free table to a joined group instead of dissolving it first', async () => {
+        mockRows.tables = [
+            freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
+            freeTable('table-2', 2, { status: 'ocupada', group: joinedGroup, group_id: 'group-1' }),
+            freeTable('table-3', 3),
+        ];
+        mockRows.orders = [order('table-1', 'order-1')];
+        ({ container, root } = await renderPage());
+
+        await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
+        // Elegir un grupo es elegir la fiesta entera, no una silla.
+        await click(container.querySelector('[data-testid="mesa-grupo-1"]'));
+        expect(container.querySelector('[data-testid="mesa-grupo-1"]').getAttribute('data-selected')).toBe('true');
+
+        await click(container.querySelector('[data-testid="mesa-card-3"]'));
+        const confirm = container.querySelector('[data-testid="salon-unir-confirmar"]');
+        expect(confirm.disabled).toBe(false);
+        expect(confirm.textContent).toContain('Sumar 1 mesa');
+
+        await click(confirm);
+        // Un grupo ya unido se amplía por su propio endpoint, sin disolverlo.
+        expect(api.post).toHaveBeenCalledWith('/table-groups/group-1/tables', { table_id: 'table-3' });
+        expect(api.post).not.toHaveBeenCalledWith('/table-groups', expect.anything());
+        expect(api.delete).not.toHaveBeenCalled();
+        expect(mockRefreshTables).toHaveBeenCalled();
+        expect(container.querySelector('[data-testid="salon-seleccion"]')).toBeNull();
+    });
+
+    it('separates a joined group from the floor itself, after confirming', async () => {
+        mockRows.tables = [
+            freeTable('table-1', 1, { status: 'ocupada', active_attention_id: 'visit-table-1', group: joinedGroup, group_id: 'group-1', active_order: { id: 'order-1', status: 'en_preparacion', items: [] } }),
+            freeTable('table-2', 2, { status: 'ocupada', group: joinedGroup, group_id: 'group-1' }),
+        ];
+        mockRows.orders = [order('table-1', 'order-1')];
+        ({ container, root } = await renderPage());
+
+        // Disolver toca a todas las mesas del grupo: se confirma antes.
+        await click(container.querySelector('[data-testid="mesa-grupo-separar-1"]'));
+        expect(api.delete).not.toHaveBeenCalled();
+        const dialog = document.body.querySelector('[data-testid="confirm-dialog"]');
+        expect(dialog).not.toBeNull();
+        expect(dialog.textContent).toContain('Mesas 1 + 2');
+
+        await click(dialog.querySelector('[data-testid="confirm-dialog-confirm"]'));
+        expect(api.delete).toHaveBeenCalledWith('/table-groups/group-1');
+        expect(toast.success).toHaveBeenCalledWith('Mesas separadas');
+    });
+
+    it('shows the picked tables as removable chips and keeps the instruction until the pick is enough', async () => {
+        mockRows.tables = [freeTable('table-1', 1), freeTable('table-2', 2, { capacity: 2 })];
+        ({ container, root } = await renderPage());
+
+        await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
+        const step = () => container.querySelector('[data-testid="salon-seleccion-paso"]').textContent;
+        expect(step()).toMatch(/dos o más mesas/);
+        expect(container.querySelector('[data-testid="salon-seleccion-asientos"]')).toBeNull();
+
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        // La instrucción no desaparece al elegir la primera mesa: es justo
+        // cuando falta una más.
+        expect(step()).toMatch(/una mesa más/);
+
+        await click(container.querySelector('[data-testid="mesa-card-2"]'));
+        expect(container.querySelector('[data-testid="salon-seleccion-resumen"]').textContent).toContain('1 + 2');
+        expect(container.querySelector('[data-testid="salon-seleccion-asientos"]').textContent).toBe('6 asientos');
+
+        // Quitar una ficha deshace ese toque sin cancelar toda la selección.
+        await click(container.querySelector('[data-testid="salon-seleccion-quitar-2"]'));
+        expect(container.querySelector('[data-testid="salon-seleccion-resumen"]').textContent).not.toContain('2');
+        expect(container.querySelector('[data-testid="salon-unir-confirmar"]').disabled).toBe(true);
+    });
+
+    it('lets the mozo name the principal table of a new group', async () => {
+        mockRows.tables = [freeTable('table-1', 1), freeTable('table-2', 2)];
+        ({ container, root } = await renderPage());
+
+        await click(container.querySelector('[data-testid="salon-unir-mesas"]'));
+        await click(container.querySelector('[data-testid="mesa-card-1"]'));
+        await click(container.querySelector('[data-testid="mesa-card-2"]'));
+
+        expect(container.querySelector('[data-testid="salon-seleccion-principal"]')).not.toBeNull();
+        await click(container.querySelector('[data-testid="salon-seleccion-principal-2"]'));
+        await click(container.querySelector('[data-testid="salon-unir-confirmar"]'));
+
+        expect(api.post).toHaveBeenCalledWith('/table-groups', {
+            table_ids: ['table-1', 'table-2'], anchor_table_id: 'table-2',
+        });
     });
 
     it('lets a joined table without its own order start one, on its own account', async () => {

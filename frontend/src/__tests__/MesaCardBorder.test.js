@@ -77,8 +77,11 @@ describe('contorno de la tarjeta de mesa', () => {
             const card = container.querySelector(`[data-testid="${id}"]`);
             expect(card).not.toBeNull();
             expect(card.className).not.toMatch(/\bring-/);
-            // El énfasis vive en el propio borde.
-            expect(card.style.borderWidth).toBe('3px');
+            // El énfasis vive en el propio borde. Se lee el lado, no el atajo
+            // `borderWidth`: los cuatro lados van escritos uno por uno (el
+            // izquierdo lleva el acento de una mesa unida), así que el atajo se
+            // queda vacío a propósito.
+            expect(card.style.borderTopWidth).toBe('3px');
         }
     });
 
@@ -92,6 +95,7 @@ describe('contorno de la tarjeta de mesa', () => {
         expect(card).not.toBeNull();
         expect(card.className).not.toMatch(/\bring-/);
         // Un solo contorno, y fino: el normal de la tarjeta.
-        expect(card.style.borderWidth).toBe('2px');
+        expect(card.style.borderTopWidth).toBe('2px');
+        expect(card.style.borderLeftWidth).toBe('2px');
     });
 });

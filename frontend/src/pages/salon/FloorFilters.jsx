@@ -13,18 +13,24 @@ export default function FloorFilters({ setStateFilter, stateFilter, stateCounts,
                 porque es la otra forma de mirar el mismo piso. */}
             <div className="flex items-start gap-2">
                 <div className="scroll-x flex min-w-0 flex-1 gap-2 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0" data-testid="salon-filtros">
-                    {STATE_FILTERS.map((f) => (
-                        <button
-                            key={f.key}
-                            type="button"
-                            onClick={() => setStateFilter(f.key)}
-                            data-testid={`salon-filtro-${f.key}`}
-                            title={countOf(stateCounts[f.key], 'mesa', 'mesas')}
-                            className={`touch-target-coarse shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
-                        >
-                            {f.label} <span className="ml-1.5 text-xs tabular-nums">{stateCounts[f.key]}</span>
-                        </button>
-                    ))}
+                    {STATE_FILTERS.map((f) => {
+                        // Un conteo ausente se pinta 0, no «undefined»: las
+                        // pruebas y las pantallas que pasan un mapa parcial no
+                        // deben inventar texto en la píldora.
+                        const count = stateCounts?.[f.key] ?? 0;
+                        return (
+                            <button
+                                key={f.key}
+                                type="button"
+                                onClick={() => setStateFilter(f.key)}
+                                data-testid={`salon-filtro-${f.key}`}
+                                title={countOf(count, 'mesa', 'mesas')}
+                                className={`touch-target-coarse shrink-0 px-3 py-1.5 rounded-full text-sm font-medium border ${stateFilter === f.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-card hover:bg-secondary border-border'}`}
+                            >
+                                {f.label} <span className="ml-1.5 text-xs tabular-nums">{count}</span>
+                            </button>
+                        );
+                    })}
                 </div>
                 <button
                     type="button"

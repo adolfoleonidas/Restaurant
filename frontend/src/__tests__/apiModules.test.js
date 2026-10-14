@@ -62,6 +62,7 @@ const CASES = [
     ['revokeTableQr', () => tables.revokeTableQr('t1'), 'post', ['/tables/t1/qr/revoke']],
     ['createTableGroup', () => tables.createTableGroup({ table_ids: ['a'] }), 'post', ['/table-groups', { table_ids: ['a'] }]],
     ['deleteTableGroup', () => tables.deleteTableGroup('g1'), 'delete', ['/table-groups/g1']],
+    ['addTableGroupMember', () => tables.addTableGroupMember('g1', 't1'), 'post', ['/table-groups/g1/tables', { table_id: 't1' }]],
     ['removeTableGroupMember', () => tables.removeTableGroupMember('g1', 't1'), 'delete', ['/table-groups/g1/tables/t1']],
     // zones and branches
     ['listZones', () => zones.listZones(), 'get', ['/zones']],

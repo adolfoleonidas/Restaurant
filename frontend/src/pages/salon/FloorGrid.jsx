@@ -3,7 +3,12 @@ import GroupCard from '@/components/GroupCard';
 import MesaCard from '@/components/MesaCard';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export default function FloorGrid({ tables, tablesLoading, scopePending, filteredUnits, zoneSections, canServe, canCharge, selectMode, openSheet, deliver, openCharge, branchNames, canClose, canTake, closing, selected, toggleSelected, closeAttention, takeOrderInline }) {
+export default function FloorGrid({
+    tables, tablesLoading, scopePending, filteredUnits, zoneSections, canServe, canCharge,
+    canClose, canTake, closing, selectMode, selected, pickedGroupIds, toggleSelected,
+    pickIssues, onSeparate, separatePending, openSheet, deliver, openCharge, closeAttention,
+    requestBill, takeOrderInline, branchNames,
+}) {
     return (
         <>
             {/* Floor grid */}
@@ -42,7 +47,13 @@ export default function FloorGrid({ tables, tablesLoading, scopePending, filtere
                                             unit={unit}
                                             canServe={canServe}
                                             canCharge={canCharge}
+                                            canSeparate={canTake}
                                             selectMode={selectMode}
+                                            picked={pickedGroupIds.includes(unit.group.id)}
+                                            pickIssue={pickIssues[unit.anchor.table.id] || null}
+                                            separating={separatePending === unit.group.id}
+                                            onSelect={toggleSelected}
+                                            onSeparate={() => onSeparate(unit.group)}
                                             onOpen={() => openSheet(unit.anchor.table)}
                                             onOpenMember={(table) => openSheet(table)}
                                             onDeliver={deliver}
@@ -60,11 +71,13 @@ export default function FloorGrid({ tables, tablesLoading, scopePending, filtere
                                             closing={closing}
                                             selectMode={selectMode}
                                             picked={selected.includes(unit.entry.table.id)}
+                                            pickIssue={pickIssues[unit.entry.table.id] || null}
                                             onSelect={toggleSelected}
                                             onOpen={openSheet}
                                             onDeliver={deliver}
                                             onCharge={openCharge}
                                             onCloseAttention={closeAttention}
+                                            onRequestBill={requestBill}
                                             onTake={takeOrderInline}
                                         />
                                     )

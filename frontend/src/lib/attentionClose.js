@@ -1,6 +1,9 @@
 const ACTIVE_ATTENTION_STATES = new Set(['opening', 'open', 'mutating', 'closing']);
 const COMPLETED_FOOD_STATES = new Set(['entregado', 'cancelado']);
 const CLOSED_ORDER_STATES = new Set(['pagado', 'cancelado']);
+const PROOF_STATES = ['comprobante_subido', 'confirmado'];
+// La cuenta se cobró entera: nada pendiente de verificar y el dinero cubre el total.
+const UNSETTLED_CANCELLED = ['pendiente', 'cancelado', undefined, null];
 
 export function activeAttentionOrder(table, orders = []) {
     if (!table?.active_attention_id) return null;
@@ -21,17 +24,60 @@ export function activeAttentionOrder(table, orders = []) {
         || candidates[0];
 }
 
-export function canCloseAttention(table, order) {
-    if (!order || activeAttentionOrder(table, [order]) !== order) return false;
-    if (!['open', 'closing'].includes(order.attention_state)) return false;
+/** Todo lo que la visita tiene que haber terminado de servir. */
+function foodIsDone(order) {
     const items = order.items || [];
     if (items.some((item) => !COMPLETED_FOOD_STATES.has(item.status || 'pendiente'))) return false;
-    if (order.status !== 'cancelado' && items.length === 0) return false;
-    if (['comprobante_subido', 'confirmado'].includes(order.payment_status)) return false;
+    // Una cuenta sin platos no se cierra, salvo que esté anulada.
+    return order.status === 'cancelado' || items.length > 0;
+}
 
+/**
+ * Si la cuenta está liquidada, espejo de `close_block_reason` del servidor
+ * (`attention.py`). Las dos reglas tienen que decir lo mismo o el botón aparece
+ * y la acción falla.
+ */
+export function isSettled(order) {
+    if (!order) return false;
+    if (PROOF_STATES.includes(order.payment_status)) return false;
     const paid = Number(order.amount_paid || 0);
     if (order.status === 'cancelado') {
-        return ['pendiente', 'cancelado', undefined, null].includes(order.payment_status) && paid <= 0.009;
+        return UNSETTLED_CANCELLED.includes(order.payment_status) && paid <= 0.009;
     }
-    return order.payment_status === 'pagado' && paid + 0.009 >= Number(order.total || 0);
+    const total = Number(order.total || 0);
+    // Sin nada que cobrar ya está liquidada: se anularon todos los platos y no
+    // entró dinero. Sin esto la mesa quedaba atrapada —el pedido no está
+    // «cancelado», así que se exigía un pago que ya no existe— y el mozo no tenía
+    // ninguna salida desde el piso.
+    if (total <= 0.009 && paid <= 0.009) return true;
+    return order.payment_status === 'pagado' && paid + 0.009 >= total;
+}
+
+/**
+ * Si la mesa se puede finalizar.
+ *
+ * `visitOrders` son las **demás** cuentas de la visita: el servidor exige que
+ * todas estén listas antes de cerrar (`attention.py:444-451`) y sin mirarlas el
+ * botón se ofrecía y el cierre respondía «La cuenta #N no está lista».
+ */
+export function canCloseAttention(table, order, visitOrders = null) {
+    if (!order || activeAttentionOrder(table, [order]) !== order) return false;
+    if (!['open', 'closing'].includes(order.attention_state)) return false;
+    if (!foodIsDone(order) || !isSettled(order)) return false;
+    if (visitOrders && visitOrders.length) {
+        return visitOrders.every((sibling) => (
+            sibling.id === order.id || (foodIsDone(sibling) && isSettled(sibling))
+        ));
+    }
+    return true;
+}
+
+/**
+ * Si se puede pedir la cuenta. Lo comparten la tarjeta del piso y la hoja: la
+ * tarjeta no lo ofrecía en «Entregado» —el estado donde es *el* paso siguiente—
+ * así que el mozo tenía que abrir mesa por mesa para pedir la cuenta.
+ */
+export function canRequestBill(order, { billRequested = false } = {}) {
+    if (!order || billRequested) return false;
+    return ['listo', 'entregado'].includes(order.status);
 }

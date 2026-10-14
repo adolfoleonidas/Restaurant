@@ -1,4 +1,5 @@
 import { Link2, MoveRight } from 'lucide-react';
+import { canRequestBill } from '@/lib/attentionClose';
 
 /**
  * "Más opciones" of the table sheet: every occasional action in the ⋯ menu of
@@ -47,8 +48,7 @@ export function buildMoreActions({
                 disabled: closing === actionOrder?.id,
                 onSelect: () => closeAttention(actionOrder),
             }] : []),
-            ...(!closeable && !billRequested
-                && ['listo', 'entregado'].includes(actionOrder?.status) && canTake ? [{
+            ...(!closeable && canTake && canRequestBill(actionOrder, { billRequested }) ? [{
                 key: 'solicitar-cuenta',
                 label: pending.has(`bill:${actionOrder?.id}`) ? 'Solicitando…' : 'Solicitar cuenta',
                 disabled: pending.has(`bill:${actionOrder?.id}`),

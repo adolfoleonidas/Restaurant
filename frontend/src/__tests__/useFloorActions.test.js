@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { toast } from 'sonner';
-import useFloorActions from '@/pages/salon/useFloorActions';
+import useFloorActions, { servedOrderPatch } from '@/pages/salon/useFloorActions';
 import { closeOrderAttention, serveOrder, setOrderStatus } from '@/lib/api/orders';
 import { releaseTable } from '@/lib/api/tables';
 import { renderHook } from '@/test-utils/renderHook';
@@ -18,9 +18,9 @@ const navigate = jest.fn();
 const patchOrder = jest.fn();
 let mounted;
 
-const mount = async (canTake = true) => {
+const mount = async (canTake = true, overrides = {}) => {
     mounted = await renderHook((p) => useFloorActions(p), {
-        canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
+        canTake, closeSheet, refreshAll, refetchTables, navigate, patchOrder, ...overrides,
     });
     return mounted.result;
 };
@@ -62,6 +62,32 @@ describe('useFloorActions', () => {
         expect(change(order).items.map((i) => i.status)).toEqual(['entregado', 'en_preparacion']);
 
         await act(async () => { resolveServe({ data: {} }); await running; });
+    });
+
+    test('el parche de entregar refleja el estado, no solo los platos', () => {
+        // El servidor deja el pedido en «entregado» (`ticket_fields`). Si el
+        // parche solo moviera los platos, la tarjeta seguiría diciendo «Listo»
+        // hasta el siguiente sondeo: «no cambia hasta que abro el pedido».
+        const order = {
+            id: 'o1', status: 'listo', total: 45, amount_paid: 0, payment_status: 'pendiente',
+            items: [{ id: 'i1', status: 'listo' }, { id: 'i2', status: 'en_preparacion' }],
+        };
+        expect(servedOrderPatch(order)).toEqual({
+            items: [{ id: 'i1', status: 'entregado' }, { id: 'i2', status: 'en_preparacion' }],
+            fulfillment_status: 'entregado',
+            status: 'entregado',
+        });
+    });
+
+    test('una cuenta ya cobrada pasa a «pagada» al servir, como en el servidor', () => {
+        const order = {
+            id: 'o1', status: 'listo', total: 45, amount_paid: 45, payment_status: 'pagado',
+            items: [{ id: 'i1', status: 'listo' }],
+        };
+        expect(servedOrderPatch(order).status).toBe('pagado');
+        // Un pago parcial no cierra la cuenta, y un pedido sin platos tampoco rompe.
+        expect(servedOrderPatch({ ...order, amount_paid: 20, payment_status: 'parcial' }).status).toBe('entregado');
+        expect(servedOrderPatch({}).items).toEqual([]);
     });
 
     test('si el servidor falla, lo pintado se descarta y vuelve la verdad', async () => {
@@ -124,10 +150,18 @@ describe('useFloorActions', () => {
         expect(releaseTable).not.toHaveBeenCalled();
     });
 
-    test('charging leaves the floor for the order screen', async () => {
-        const result = await mount();
+    test('charging hands the account to the cash screen, not to the order taker', async () => {
+        const result = await mount(true, { canUseCaja: true });
         act(() => result.current.openCharge({ id: 'o9' }));
         expect(closeSheet).toHaveBeenCalled();
+        // La caja acepta la cuenta por `?order=`: es el único destino que cobra.
+        expect(navigate).toHaveBeenCalledWith('/caja?order=o9');
+        expect(navigate).not.toHaveBeenCalledWith('/pedidos/o9');
+    });
+
+    test('without access to the cash screen the order detail still knows how to charge', async () => {
+        const result = await mount(true, { canUseCaja: false });
+        act(() => result.current.openCharge({ id: 'o9' }));
         expect(navigate).toHaveBeenCalledWith('/pedidos/o9');
     });
     test.each([

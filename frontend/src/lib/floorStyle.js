@@ -13,7 +13,11 @@ export const FLOOR_STYLE = {
     cuenta: { label: 'Cuenta', bg: '#FFE0CC', fg: '#8C3A12', border: '#F5B488', dot: '#E07A5F' },
     entregado: { label: 'Entregado', bg: '#EAF6F5', fg: '#0F4F49', border: '#BFE5E0', dot: '#14B8A6' },
     pagada: { label: 'Cuenta pagada', bg: '#F2F2F2', fg: '#3F3F46', border: '#D4D4D8', dot: '#71717A' },
-    atencion: { label: 'Atención abierta', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
+    // `atencion` es la cuenta **anulada** con la visita todavía abierta: el
+    // pedido se canceló pero nadie cerró la mesa. Se llamaba «Atención abierta»,
+    // que no dice qué pasa ni qué hacer; la campana de la tarjeta ya avisa de que
+    // reclama acción.
+    atencion: { label: 'Cuenta anulada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
     reservada: { label: 'Reservada', bg: '#F3F0FF', fg: '#3B2A66', border: '#D9D2F0', dot: '#7C6BC4' },
     inactiva: { label: 'Inactiva', bg: '#EFEFEF', fg: '#71717A', border: '#D4D4D8', dot: '#A1A1AA' },
 };

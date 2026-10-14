@@ -13,4 +13,7 @@ export const revokeTableQr = (id) => post(`/tables/${id}/qr/revoke`);
 
 export const createTableGroup = (body) => post('/table-groups', body);
 export const deleteTableGroup = (id) => del(`/table-groups/${id}`);
+// Un grupo ya unido admite mesas nuevas sin separarlo: el servidor revalida la
+// unión completa y vuelve a elegir la mesa principal.
+export const addTableGroupMember = (groupId, tableId) => post(`/table-groups/${groupId}/tables`, { table_id: tableId });
 export const removeTableGroupMember = (groupId, tableId) => del(`/table-groups/${groupId}/tables/${tableId}`);

@@ -103,6 +103,66 @@ describe('useSalonData', () => {
     });
 });
 
+describe('useSalonData: el parche optimista del piso', () => {
+    // Un pedido vivo, con lo que la tarjeta necesita para pintarse: id, estado,
+    // total y sus platos.
+    const liveOrder = {
+        id: 'o1', table_id: 't1', attention_id: 'att-1', attention_state: 'open',
+        status: 'listo', total: 45, amount_paid: 0,
+        items: [{ id: 'i1', status: 'listo', subtotal: 45 }],
+    };
+    const liveTable = { id: 't1', number: 1, active_order: liveOrder };
+
+    beforeEach(() => {
+        listTables.mockImplementation((params) => Promise.resolve({ data: params?.legacy_only ? [] : [liveTable] }));
+        listOrders.mockResolvedValue({ data: [liveOrder] });
+    });
+
+    test('una función devuelve el parche, no el pedido entero', async () => {
+        // El síntoma que lo destapó: al pulsar «Entregar» el monto de la mesa
+        // cambiaba y volvía, y el estado no se movía hasta abrir el pedido. La
+        // causa era esta: el pedido quedaba reducido a `{ items }`, así que la
+        // tarjeta perdía `status` y `total` —caía a «Ocupada» y sin importe—
+        // hasta que llegaba el refresco.
+        const { result } = await mount(base);
+        act(() => {
+            result.current.patchOrder('o1', (order) => ({
+                items: order.items.map((it) => ({ ...it, status: 'entregado' })),
+            }));
+        });
+
+        const patched = result.current.orders[0];
+        expect(patched).toMatchObject({ id: 'o1', table_id: 't1', status: 'listo', total: 45, amount_paid: 0 });
+        expect(patched.items[0].status).toBe('entregado');
+        // La mesa lleva el mismo pedido embebido, y también conserva lo suyo.
+        expect(result.current.tables[0].active_order).toMatchObject({ id: 'o1', status: 'listo', total: 45 });
+        expect(result.current.tables[0].active_order.items[0].status).toBe('entregado');
+        expect(result.current.tables[0].number).toBe(1);
+    });
+
+    test('un objeto también se fusiona sobre el pedido vivo', async () => {
+        const { result } = await mount(base);
+        act(() => { result.current.patchOrder('o1', { status: 'pagado' }); });
+
+        expect(result.current.orders[0]).toMatchObject({ id: 'o1', status: 'pagado', total: 45 });
+        expect(result.current.orders[0].items[0].status).toBe('listo');
+        expect(result.current.tables[0].active_order).toMatchObject({ id: 'o1', status: 'pagado' });
+    });
+
+    test('solo toca el pedido que se le nombra', async () => {
+        const other = { ...liveOrder, id: 'o2', table_id: 't2' };
+        listOrders.mockResolvedValue({ data: [liveOrder, other] });
+        listTables.mockImplementation((params) => Promise.resolve({
+            data: params?.legacy_only ? [] : [liveTable, { id: 't2', number: 2, active_order: other }],
+        }));
+        const { result } = await mount(base);
+        act(() => { result.current.patchOrder('o1', { status: 'pagado' }); });
+
+        expect(result.current.orders.map((o) => o.status)).toEqual(['pagado', 'listo']);
+        expect(result.current.tables[1].active_order.status).toBe('listo');
+    });
+});
+
 describe('useSalonData: the waiter does not re-read the floor for his own taps (TB-03)', () => {
     const floorFilter = () => {
         const entry = mockSubscriptions.find(({ topics }) => topics.includes('tables'));
