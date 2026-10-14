@@ -209,13 +209,16 @@ export default function Cocina() {
             if (c.length) listos.push({ order: o, items: c, added: false, t: waveTime(o, c) });
             if (o.status === 'entregado') retirados.push({ order: o, items, added: false, t: o.updated_at || o.created_at });
         }
-        const byAge = (x, y) => String(x.t || '').localeCompare(String(y.t || ''));
-        const byAgeDesc = (x, y) => String(y.t || '').localeCompare(String(x.t || ''));
-        retirados.sort(byAgeDesc);
+        // Lo más reciente arriba en todas las columnas: la cocina trabaja mirando
+        // lo que acaba de entrar, y un ticket nuevo al final de la columna queda
+        // fuera de la vista. Antes las columnas activas iban al revés (lo más
+        // antiguo primero) mientras «Retirados» ya iba al derecho.
+        const byRecency = (x, y) => String(y.t || '').localeCompare(String(x.t || ''));
+        retirados.sort(byRecency);
         return [
-            { key: 'llegan', label: 'Llegan', cards: llegan.sort(byAge) },
-            { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byAge) },
-            { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byAge) },
+            { key: 'llegan', label: 'Llegan', cards: llegan.sort(byRecency) },
+            { key: 'fuego', label: 'Al fuego', cards: fuego.sort(byRecency) },
+            { key: 'listo', label: 'Esperando retiro', cards: listos.sort(byRecency) },
             { key: 'retirado', label: 'Retirado', cards: retirados },
         ];
     }, [liveOrders]);
@@ -302,7 +305,7 @@ export default function Cocina() {
                                 <div className="min-w-0">
                                     <h2 className="font-display text-lg font-semibold truncate">{col.label}</h2>
                                     <p className="mt-0.5 text-xs text-muted-foreground">
-                                        {col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más antiguas primero'}
+                                        {col.key === 'listo' ? 'Listos para retiro' : col.key === 'retirado' ? 'Salieron de cocina' : 'Más recientes primero'}
                                     </p>
                                 </div>
                             </div>

@@ -66,7 +66,7 @@ describe('Cocina priority board', () => {
         }
     });
 
-    it('orders multiple incoming tickets oldest first while preserving mixed item stages and accessible priorities', () => {
+    it('orders multiple incoming tickets newest first while preserving mixed item stages and accessible priorities', () => {
         const markup = renderToStaticMarkup(<Cocina />);
         expect(markup).toContain('data-testid="cocina-kanban"');
         expect(markup).toContain('overflow-x-auto');
@@ -90,17 +90,20 @@ describe('Cocina priority board', () => {
         expect(markup).toContain('Papas doradas');
         expect(markup).toContain('Ensalada');
         expect(markup).toContain('Causa');
+        // Lo más reciente arriba: el ticket que acaba de entrar tiene que verse
+        // sin desplazarse. Antes iba al revés y el nuevo quedaba al final.
         const oldestIncoming = markup.indexOf('data-testid="cocina-ticket-23-llegan"');
         const newerIncoming = markup.indexOf('data-testid="cocina-ticket-22-llegan"');
         expect(oldestIncoming).toBeGreaterThan(-1);
         expect(newerIncoming).toBeGreaterThan(-1);
-        expect(oldestIncoming).toBeLessThan(newerIncoming);
+        expect(newerIncoming).toBeLessThan(oldestIncoming);
         expect(markup).toContain('data-testid="cocina-ticket-23-fuego"');
         expect(markup).toContain('Arroz con pollo');
         const olderFire = markup.indexOf('data-testid="cocina-ticket-23-fuego"');
         const newerFire = markup.indexOf('data-testid="cocina-ticket-22-fuego"');
-        expect(olderFire).toBeLessThan(newerFire);
-        expect(markup).toContain('Más antiguas primero');
+        expect(newerFire).toBeLessThan(olderFire);
+        expect(markup).toContain('Más recientes primero');
+        expect(markup).not.toContain('Más antiguas primero');
         expect(markup).toContain('data-testid="cocina-ticket-22-fuego"');
         expect(markup).toContain('data-testid="cocina-ticket-22-listo"');
         expect(markup).toContain('data-testid="cocina-ticket-21-retirado"');

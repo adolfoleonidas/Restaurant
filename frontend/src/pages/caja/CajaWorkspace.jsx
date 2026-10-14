@@ -27,7 +27,7 @@ import CajaKpis from '@/pages/caja/CajaKpis';
 import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CajaWorkspace({ ownerContext = false, contextKey = 'staff', scopeParams = {}, selectedBranchId = null, branches = [], canOpen = true, runMutation, onCollectionChange }) {
-    const [params] = useSearchParams();
+    const [params, setParams] = useSearchParams();
     const [pendingOrder, setPendingOrder] = useState(null);
     const [closeDialog, setCloseDialog] = useState(false);
     const [tab, setTab] = useState('cobrar');
@@ -74,12 +74,26 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         onCollectionChange?.(false);
     }, [onCollectionChange]);
 
+    /**
+     * `?order=<id>` abre el cobro de esa cuenta: es el enlace que usa el detalle
+     * del pedido cuando no hay turno abierto, y el que usa el salón en "Cobrar".
+     *
+     * Se consume **una sola vez**. Antes se releía en cada pasada, así que
+     * cualquier sondeo que cambiara la lista de cuentas —el piso se mueve solo
+     * cada pocos segundos— volvía a abrir el diálogo que el mozo acababa de
+     * cerrar. Quitar el parámetro de la URL, además, deja la barra de dirección
+     * diciendo lo que hay en pantalla.
+     */
     useEffect(() => {
         const id = params.get('order');
         if (!id || !pending) return;
         const hit = pending.find((o) => o.id === id);
-        if (hit) selectOrder(hit);
-    }, [params, pending, selectOrder]);
+        if (!hit) return;
+        selectOrder(hit);
+        const rest = new URLSearchParams(params);
+        rest.delete('order');
+        setParams?.(rest, { replace: true });
+    }, [params, pending, selectOrder, setParams]);
 
     const cobrables = useMemo(() => {
         // Un pedido web con comprobante ya subido se resuelve en su propio bloque
