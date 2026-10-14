@@ -7,6 +7,8 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
 import { getKitchenOrders } from '@/lib/api/orders';
+import { forgetOwnKitchenSends, rememberOwnKitchenSend } from '@/lib/ownKitchenSends';
+import { toast } from 'sonner';
 
 global.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +37,8 @@ const mount = async (user) => {
 beforeEach(() => {
     getKitchenOrders.mockReset().mockResolvedValue({ data: [] });
     sessionStorage.clear();
+    forgetOwnKitchenSends();
+    toast.mockClear();
 });
 afterEach(async () => {
     await act(async () => root.unmount());
@@ -56,5 +60,32 @@ describe('KitchenAlerts role gating', () => {
     test.each(['admin', 'cocina', 'mozo'])('role %s polls the kitchen list', async (role) => {
         await mount({ id: 'u1', role });
         expect(getKitchenOrders).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('el aviso de cocina no te avisa de tu propio envío', () => {
+    const ORDER = (id, number) => ({
+        id, order_number: number, status: 'enviado_cocina', items: [{ quantity: 1, product_name: 'Caldo' }],
+    });
+
+    it('un pase de otro mozo sí avisa', async () => {
+        getKitchenOrders.mockResolvedValue({ data: [ORDER('o-otro', 21)] });
+        sessionStorage.setItem('kitchen-seen-ids:u1', JSON.stringify(['o-viejo']));
+
+        await mount({ id: 'u1', role: 'mozo' });
+
+        expect(toast).toHaveBeenCalledWith('Pedido #21 en cocina', expect.anything());
+    });
+
+    it('el pase que mandaste tú NO te tapa la pantalla', async () => {
+        // El mozo manda el pedido y su propio teléfono le avisaba de eso mismo,
+        // tapándole la pantalla justo cuando iba a otra mesa.
+        rememberOwnKitchenSend('o-mio');
+        getKitchenOrders.mockResolvedValue({ data: [ORDER('o-mio', 22)] });
+        sessionStorage.setItem('kitchen-seen-ids:u1', JSON.stringify(['o-viejo']));
+
+        await mount({ id: 'u1', role: 'mozo' });
+
+        expect(toast).not.toHaveBeenCalled();
     });
 });

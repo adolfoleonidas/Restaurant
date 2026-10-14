@@ -19,6 +19,7 @@ import {
 } from '@/lib/api/orders';
 import { apiErrorMessage } from '@/lib/apiError';
 import { DROPPED_MESSAGE, STALLED_MESSAGE, UNSAVED_MESSAGE } from '@/lib/syncMessages';
+import { rememberOwnKitchenSend } from '@/lib/ownKitchenSends';
 import { draftCount, editableItems, isDraft } from '@/lib/orderDraft';
 import { plainDraftLine } from '@/lib/optimisticOrder';
 import { groupAccountTables, groupMembers } from '@/lib/tableGroups';
@@ -561,6 +562,8 @@ export default function useTableSheet({
                 // El alias viaja con la comanda: se guarda acá, sin botón aparte.
                 if (targetId === openId) await persistAlias(targetId);
                 const { data } = await sendOrderToKitchen(targetId);
+                // Su propio envío no se avisa a sí mismo (ver `ownKitchenSends`).
+                rememberOwnKitchenSend(targetId);
                 const latestOrder = sync.latest();
                 const pending = draftCount(latestOrder?.id === targetId ? latestOrder.items || [] : sendItemsFor(targetId), data?.status);
                 const mesaNumber = openTable?.table?.number || lastOpened?.table?.number || data?.table_number || null;
