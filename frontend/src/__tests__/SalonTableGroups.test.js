@@ -58,6 +58,9 @@ describe('salón table groups', () => {
     let root;
 
     beforeEach(() => {
+        // Estos tests usan "Unir mesas", que vive con los filtros: en la app arrancan
+        // plegados y el mozo los abre con un botón (ver `SalonCompactTop.test.js`).
+        window.localStorage.setItem('salon_filtros', '1');
         mockRows.tables = [];
         mockRows.orders = [];
         for (const key of Object.keys(mockOrderDetails)) delete mockOrderDetails[key];

@@ -57,6 +57,9 @@ jest.mock('@/hooks/usePolling', () => ({
 describe('Mesas floor priority and actions (T04)', () => {
   let host, root;
   beforeEach(() => {
+    // El orden del piso vive en la fila de filtros: en la app arrancan plegados y el
+    // mozo los abre con un botón (ver `SalonCompactTop.test.js`).
+    window.localStorage.setItem('salon_filtros', '1');
     api.get.mockImplementation((path) => {
       if (path === '/branches') return Promise.resolve({ data: [] });
       if (path.startsWith('/orders/')) return Promise.resolve({ data: null });
@@ -119,6 +122,7 @@ describe('Mesas floor priority and actions (T04)', () => {
 
   it('toggles to priority order on demand and remembers the choice', async () => {
     window.localStorage.clear();
+    window.localStorage.setItem('salon_filtros', '1');
     await act(async () => root.render(<Salon />));
     const button = host.querySelector('[data-testid="salon-orden"]');
     expect(button).not.toBeNull();
@@ -134,10 +138,12 @@ describe('Mesas floor priority and actions (T04)', () => {
     expect(host.querySelector('[data-testid="salon-orden"]').textContent).toContain('Prioridad');
     expect(window.localStorage.getItem('salon-orden:staff-1')).toBe('prioridad');
     window.localStorage.clear();
+    window.localStorage.setItem('salon_filtros', '1');
   });
 
   it('keeps the saved priority order on the next visit', async () => {
     window.localStorage.clear();
+    window.localStorage.setItem('salon_filtros', '1');
     window.localStorage.setItem('salon-orden:staff-1', 'prioridad');
     await act(async () => root.render(<Salon />));
 
@@ -146,5 +152,6 @@ describe('Mesas floor priority and actions (T04)', () => {
       'mesa-card-3', 'mesa-card-5', 'mesa-card-7', 'mesa-card-1',
     ]);
     window.localStorage.clear();
+    window.localStorage.setItem('salon_filtros', '1');
   });
 });

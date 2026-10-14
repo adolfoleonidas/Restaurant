@@ -83,6 +83,10 @@ describe('Salón · piso por zonas (S1-1)', () => {
 
     beforeEach(() => {
         window.localStorage.clear();
+        // Estos tests usan el buscador y los filtros: en la app arrancan plegados y
+        // el mozo los abre con un botón (ver `SalonCompactTop.test.js`), así que acá
+        // se entra con ellos abiertos para probar lo que les toca.
+        window.localStorage.setItem('salon_filtros', '1');
         mockTables = [];
         mockOrders = [];
         api.get.mockReset().mockImplementation(() => Promise.resolve({ data: [] }));
@@ -165,6 +169,10 @@ describe('Salón · capacidad en las tarjetas (S1-2)', () => {
 
     beforeEach(() => {
         window.localStorage.clear();
+        // Estos tests usan el buscador y los filtros: en la app arrancan plegados y
+        // el mozo los abre con un botón (ver `SalonCompactTop.test.js`), así que acá
+        // se entra con ellos abiertos para probar lo que les toca.
+        window.localStorage.setItem('salon_filtros', '1');
         mockTables = [];
         mockOrders = [];
         api.get.mockReset().mockImplementation(() => Promise.resolve({ data: [] }));
@@ -228,6 +236,10 @@ describe('Salón · consumo del piso (S1-3)', () => {
 
     beforeEach(() => {
         window.localStorage.clear();
+        // Estos tests usan el buscador y los filtros: en la app arrancan plegados y
+        // el mozo los abre con un botón (ver `SalonCompactTop.test.js`), así que acá
+        // se entra con ellos abiertos para probar lo que les toca.
+        window.localStorage.setItem('salon_filtros', '1');
         mockTables = [];
         mockOrders = [];
         api.get.mockReset().mockImplementation(() => Promise.resolve({ data: [] }));
@@ -266,6 +278,10 @@ describe('Salón · orden por prioridad (S1-4)', () => {
 
     beforeEach(() => {
         window.localStorage.clear();
+        // Estos tests usan el buscador y los filtros: en la app arrancan plegados y
+        // el mozo los abre con un botón (ver `SalonCompactTop.test.js`), así que acá
+        // se entra con ellos abiertos para probar lo que les toca.
+        window.localStorage.setItem('salon_filtros', '1');
         mockTables = [];
         mockOrders = [];
         api.get.mockReset().mockImplementation(() => Promise.resolve({ data: [] }));
