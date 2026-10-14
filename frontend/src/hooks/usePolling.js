@@ -78,5 +78,20 @@ export default function usePolling(fetcher, interval = 3000, deps = []) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [refetch, interval]);
 
-    return { data, error, loading, refetch };
+    /**
+     * Aplica un cambio local a lo último leído, sin esperar al próximo sondeo ni
+     * volver a pedirlo.
+     *
+     * Existe para que una acción del mozo se vea al toque: entregar un pedido son dos
+     * viajes (el POST y el refresco de las listas), y hasta que llegaba el segundo la
+     * tarjeta seguía igual — el mozo volvía a tocar y no pasaba nada porque el botón
+     * ya estaba deshabilitado. Con esto la tarjeta cambia al instante y el sondeo
+     * confirma por detrás; si la acción falla, quien la llamó vuelve a pedir la
+     * verdad (`refetch`) y no queda nada inventado en pantalla.
+     */
+    const patch = useCallback((updater) => {
+        setData((current) => (current == null ? current : updater(current)));
+    }, []);
+
+    return { data, error, loading, refetch, patch };
 }
