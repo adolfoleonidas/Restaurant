@@ -11,11 +11,22 @@ jest.mock('@/lib/api/request', () => ({
     get: jest.fn(() => Promise.resolve({ data: {} })),
     post: jest.fn(() => Promise.resolve({ data: {} })),
     put: jest.fn(() => Promise.resolve({ data: {} })),
+    del: jest.fn(() => Promise.resolve({ data: {} })),
     withParams: (params) => (params ? { params } : undefined),
 }));
 
-import { get, post, put } from '@/lib/api/request';
-import { copyMenuFrom, getMenuDay, saveMenuDay, setMenuSoldOut } from '@/lib/api/menu';
+import { del, get, post, put } from '@/lib/api/request';
+import {
+    applyMenuTemplate,
+    copyMenuFrom,
+    deleteMenuTemplate,
+    getMenuDay,
+    listMenuTemplates,
+    repeatMenuTemplate,
+    saveMenuDay,
+    saveMenuTemplate,
+    setMenuSoldOut,
+} from '@/lib/api/menu';
 
 describe('cliente del menú del día', () => {
     beforeEach(() => {
@@ -50,5 +61,32 @@ describe('cliente del menú del día', () => {
             date: '2026-03-10',
             from_date: '2026-03-09',
         });
+    });
+
+    it('las plantillas van por su ruta, con la acción en el camino', async () => {
+        // Las cinco rutas del backend de plantillas, fijadas: un renombrado en el
+        // servidor no debe aparecer como «no carga la plantilla».
+        await listMenuTemplates();
+        expect(get).toHaveBeenLastCalledWith('/menu/templates');
+
+        await saveMenuTemplate({ name: 'Almuerzo habitual', from_date: '2026-03-10' });
+        expect(post).toHaveBeenLastCalledWith('/menu/templates', {
+            name: 'Almuerzo habitual',
+            from_date: '2026-03-10',
+        });
+
+        await applyMenuTemplate('t1', { date: '2026-03-11' });
+        expect(post).toHaveBeenLastCalledWith('/menu/templates/t1/apply', { date: '2026-03-11' });
+
+        // La repetición es explícita: los días viajan en el cuerpo, no por defecto.
+        await repeatMenuTemplate('t1', { from_date: '2026-03-09', weekdays: [0, 2], weeks: 2 });
+        expect(post).toHaveBeenLastCalledWith('/menu/templates/t1/repeat', {
+            from_date: '2026-03-09',
+            weekdays: [0, 2],
+            weeks: 2,
+        });
+
+        await deleteMenuTemplate('t1');
+        expect(del).toHaveBeenLastCalledWith('/menu/templates/t1');
     });
 });
