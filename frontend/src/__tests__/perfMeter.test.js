@@ -201,6 +201,21 @@ describe('perfMeter: el panel en pantalla', () => {
     const panelValue = (name) => document
         .querySelector(`#${PANEL_ID} [data-row="${name}"] span:last-child`).textContent;
 
+    /**
+     * La tarjeta como es de verdad: la cantidad vive FUERA del botón del nombre
+     * (son hermanos dentro de la fila), así que mirar el botón no ve el cambio.
+     */
+    const productCard = () => {
+        document.body.innerHTML = '<div data-testid="mesa-sheet-producto-fila-p-7">'
+            + '<button data-testid="mesa-sheet-producto-nombre-p-7">Caldo S/ 10.00</button>'
+            + '<div><span data-testid="mesa-sheet-producto-cantidad-p-7">0</span>'
+            + '<button data-testid="mesa-sheet-producto-p-7">+</button></div></div>';
+        return {
+            card: document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]'),
+            qty: document.querySelector('[data-testid="mesa-sheet-producto-cantidad-p-7"]'),
+        };
+    };
+
     it('muestra la versión, la pantalla y un aviso mientras no hay toques', () => {
         const stop = installPerfMeter({ win: fakeWindow(), doc: document });
 
@@ -216,13 +231,10 @@ describe('perfMeter: el panel en pantalla', () => {
     it('mide del toque a ver el cambio en pantalla', () => {
         // La tarjeta primero: encender el medidor agrega el panel al body y
         // reemplazar el body después se lo llevaría por delante.
-        document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
-            + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+        const { card, qty } = productCard();
         const win = fakeWindow();
         const stop = installPerfMeter({ win, doc: document });
 
-        const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
-        const qty = document.querySelector('[data-testid="mesa-sheet-producto-cantidad-p-7"]');
         card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
         // El fotograma revisa si la cantidad cambió; el latido repinta el panel.
         win._frame();
@@ -240,12 +252,10 @@ describe('perfMeter: el panel en pantalla', () => {
     it('cuenta el toque que no cambió nada', () => {
         jest.useFakeTimers();
         try {
-            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
-                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const { card } = productCard();
             const win = fakeWindow();
             const stop = installPerfMeter({ win, doc: document });
 
-            const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
             card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
             jest.advanceTimersByTime(2100);
             win._frame();
@@ -287,14 +297,11 @@ describe('perfMeter: el panel en pantalla', () => {
         // pierde en el promedio de cinco segundos. Este se manda solo.
         jest.useFakeTimers();
         try {
-            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
-                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const { card, qty } = productCard();
             const win = fakeWindow();
             // Latido larguísimo: si igual llega la muestra, es por el toque lento.
             const stop = installPerfMeter({ win, doc: document, reportEveryMs: 600000 });
 
-            const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
-            const qty = document.querySelector('[data-testid="mesa-sheet-producto-cantidad-p-7"]');
             card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
             win._pushEvent({ name: 'click', duration: 10, startTime: 0, processingStart: 5, processingEnd: 6 });
 

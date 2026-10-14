@@ -56,7 +56,7 @@ const slimProduct = (product) => (product ? { id: product.id, name: product.name
  * - `userId`: whose outbox it is on the device; without it nothing is kept there.
  */
 export default function useOrderLineSync({
-    order, placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onSynced,
+    order, placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onDropped, onSynced,
     userId = null, storage = outboxStorage, delayMs = ORDER_SYNC_DELAY_MS,
 }) {
     // What the outbox has not confirmed yet; a new object on every change, so the
@@ -67,7 +67,7 @@ export default function useOrderLineSync({
     const latest = useRef(order);
     const handlers = useRef({});
     handlers.current = {
-        placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onSynced, userId, storage,
+        placeholder, ensureOrderId, loadOrder, acceptOrder, onError, onStalled, onDropped, onSynced, userId, storage,
     };
     const queueRef = useRef(null);
 
@@ -156,6 +156,7 @@ export default function useOrderLineSync({
             },
             onError: (error, entry) => handlers.current.onError?.(error, entry),
             onStalled: (error) => handlers.current.onStalled?.(error),
+            onDropped: (entries) => handlers.current.onDropped?.(entries),
             onDrain: () => handlers.current.onSynced?.(),
         });
     }
