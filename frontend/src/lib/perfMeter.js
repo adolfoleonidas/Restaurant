@@ -30,6 +30,15 @@ const PANEL_ROWS = ['version', 'viewport', 'tap', 'effect', 'net', 'long', 'fps'
 
 /** Un toque que no cambió nada en este plazo cuenta como "no hizo nada". */
 const SILENT_MS = 2000;
+/**
+ * Un toque que tarda más que esto se reporta AL INSTANTE, sin esperar al latido.
+ *
+ * El problema real es intermitente ("a veces demora"), y un promedio de cinco
+ * segundos lo diluye: un toque de 800 ms entre cuarenta de 60 ms desaparece. Con
+ * esto, cada toque lento llega solo, con las peticiones que había en el aire en ese
+ * momento, que es lo que permite ver la causa en vez de suponerla.
+ */
+const SLOW_TAP_MS = 200;
 /** Cuántas peticiones lentas se reportan por muestra. */
 const SLOW_REQUESTS = 3;
 
@@ -126,7 +135,7 @@ export function slowestRequests(win, since, limit = SLOW_REQUESTS) {
  * navegador se está midiendo.
  */
 export function buildSample({
-    taps = [], visible = [], silent = 0, requests = [], longs = [], fps = null,
+    taps = [], visible = [], silent = 0, blocked = 0, requests = [], longs = [], fps = null,
     win = window, doc = win && win.document,
 } = {}) {
     const portrait = (win.innerHeight || 0) >= (win.innerWidth || 0);
@@ -145,9 +154,11 @@ export function buildSample({
             ua: (win.navigator && win.navigator.userAgent) || '',
         },
         taps: { ...summarize(durations), busy: summarize(delays).p50, code: summarize(code).p50 },
-        // Lo que el mozo percibe: el toque hasta que la cantidad cambia, y los
-        // toques que no cambiaron nada.
-        visible: { ...summarize(visible), silent },
+        // Lo que el mozo percibe: el toque hasta que la tarjeta cambia, cuántos
+        // toques no cambiaron nada, y cuánto tiempo las tarjetas ni siquiera
+        // aceptaban un toque (un botón deshabilitado no dispara el evento, así que
+        // esto no aparece en ninguna otra medida).
+        visible: { ...summarize(visible), silent, blocked: Math.round(blocked) },
         requests: requests.slice(0, SLOW_REQUESTS),
         longs: { n: longs.length, max: longs.length ? Math.max(...longs) : 0 },
         fps,
@@ -196,6 +207,7 @@ export function installPerfMeter({
     let longObserver = null;
     let reportedTaps = 0;
     let lastReportAt = 0;
+    let slowTapPending = false;
 
     const clock = () => (win.performance && win.performance.now ? win.performance.now() : Date.now());
 
@@ -232,11 +244,12 @@ export function installPerfMeter({
                 + `código ${summarize(taps.map((t) => t.processing)).p50} ms`;
         const effect = summarize(visible);
         rows.effect.textContent = effect.n === 0 && silent === 0
-            ? 'sin toques a productos'
+            ? `sin toques a productos${blockedMs >= 1 ? ` · ${Math.round(blockedMs)} ms sin aceptar toques` : ''}`
             : `${effect.p50 === null ? '—' : `${effect.p50} ms p50`}`
                 + `${effect.max === null ? '' : ` · ${effect.max} ms peor`}`
                 + ` · ${effect.n} con efecto`
-                + `${silent ? ` · ${silent} SIN EFECTO` : ''}`;
+                + `${silent ? ` · ${silent} SIN EFECTO` : ''}`
+                + `${blockedMs >= 1 ? ` · ${Math.round(blockedMs)} ms sin aceptar toques` : ''}`;
         rows.net.textContent = requests.length
             ? requests.map((r) => `${r.ms} ms ${r.kb} KB ${r.url.split('/api/')[1] || r.url}`).join(' | ')
             : 'sin peticiones medidas';
@@ -267,14 +280,20 @@ export function installPerfMeter({
         } catch { longObserver = null; }
     }
 
-    // El efecto del toque: se anota la cantidad que se ve al tocar y se espera a
-    // que cambie. Se mira en el mismo latido de fotogramas, sin coste extra.
+    // El efecto del toque: se anota cómo se ve la tarjeta al tocar y se espera a
+    // que cambie CUALQUIER cosa visible en ella, no solo la cantidad. Un toque que
+    // no cambia nada es justo lo que el mozo percibe como "no agarró".
+    //
+    // Y aparte se mide lo que el medidor no veía: cuánto tiempo las tarjetas de
+    // producto estuvieron DESHABILITADAS. Un botón deshabilitado no dispara el
+    // evento del toque, así que ni el conteo de toques ni el de efecto lo detectan;
+    // el mozo toca y no pasa nada, y desde afuera parecía que todo iba en 67 ms.
     const onPointerDown = (event) => {
         const productId = productIdFrom(event.target);
         if (!productId) return;
-        const qty = doc.querySelector(`[data-testid$="-producto-cantidad-${productId}"]`);
-        if (!qty) return;
-        pending.push({ at: clock(), before: qty.textContent.trim(), qty });
+        const card = event.target.closest && event.target.closest(CARD_SELECTOR);
+        if (!card) return;
+        pending.push({ at: clock(), before: card.textContent, card });
     };
     if (doc.addEventListener) doc.addEventListener('pointerdown', onPointerDown, true);
 
@@ -282,24 +301,41 @@ export function installPerfMeter({
         const now = clock();
         for (let i = pending.length - 1; i >= 0; i -= 1) {
             const tap = pending[i];
-            if (tap.qty.textContent.trim() !== tap.before) {
-                visible.push(Math.round(now - tap.at));
+            if (tap.card.textContent !== tap.before) {
+                const ms = Math.round(now - tap.at);
+                visible.push(ms);
+                if (ms >= SLOW_TAP_MS) slowTapPending = true;
                 pending.splice(i, 1);
             } else if (now - tap.at > SILENT_MS) {
                 silent += 1;
+                slowTapPending = true;
                 pending.splice(i, 1);
             }
         }
     };
 
-    // FPS: se cuentan fotogramas por segundo, sin medir nada más.
+    /** ¿Hay alguna tarjeta de producto que en este momento no acepte un toque? */
+    const cardsRefuseTaps = () => Boolean(
+        doc.querySelector('button[disabled][data-testid*="-producto-"]')
+    );
+
+    // FPS: se cuentan fotogramas por segundo, sin medir nada más. En el mismo
+    // latido se acumula el tiempo con las tarjetas rechazando toques.
     const requestFrame = win.requestAnimationFrame
         ? (fn) => win.requestAnimationFrame(fn)
         : (fn) => win.setTimeout(fn, 16);
     let windowStart = Date.now();
+    let blockedMs = 0;
+    let lastFrameAt = clock();
     const tick = () => {
         frames += 1;
         checkPending();
+        const now = clock();
+        // El tope evita contar como "bloqueado" el rato en que la pantalla estuvo
+        // apagada o la app en segundo plano: ahí no hay fotogramas y el salto sería
+        // enorme.
+        if (cardsRefuseTaps()) blockedMs += Math.min(200, now - lastFrameAt);
+        lastFrameAt = now;
         const elapsed = Date.now() - windowStart;
         if (elapsed >= 1000) {
             fps = Math.round((frames * 1000) / elapsed);
@@ -315,16 +351,19 @@ export function installPerfMeter({
     // es un diagnóstico, no una acción del mozo.
     const beat = () => {
         paint();
-        if (taps.length > reportedTaps && clock() - lastReportAt >= reportEveryMs) {
+        const due = clock() - lastReportAt >= reportEveryMs;
+        // Un toque lento no espera al latido: se manda en cuanto se detecta.
+        if (taps.length > reportedTaps && (due || slowTapPending)) {
             reportedTaps = taps.length;
             requests = slowestRequests(win, lastReportAt);
             lastReportAt = clock();
             try {
                 Promise.resolve(send(buildSample({
-                    taps, visible, silent, requests, longs, fps, win, doc,
+                    taps, visible, silent, blocked: blockedMs, requests, longs, fps, win, doc,
                 }))).catch(() => {});
                 if (win.performance && win.performance.clearResourceTimings) win.performance.clearResourceTimings();
             } catch { /* el medidor nunca rompe la app */ }
+            slowTapPending = false;
         }
     };
     timerId = win.setInterval(beat, 500);
