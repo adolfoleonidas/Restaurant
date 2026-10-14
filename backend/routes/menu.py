@@ -6,7 +6,7 @@ dueño o del encargado, no de cualquiera que tenga el móvil en la mano.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -208,3 +208,143 @@ async def copy_from(data: CopyFrom, user: dict = Depends(require_roles(["admin"]
     payload["copied_from"] = origen
     payload["copied"] = len(copiados)
     return payload
+
+
+# ── Plantillas ───────────────────────────────────────────────────────────────
+# Una plantilla es una selección con nombre («almuerzo habitual») para no volver a
+# montar el mismo menú cada vez. Guarda **los platos, no los precios**: arrastrar un
+# precio viejo es cobrar mal sin que nadie lo note.
+
+TEMPLATES = "menu_templates"
+
+
+class TemplateSave(BaseModel):
+    name: str
+    from_date: str
+
+
+class TemplateTarget(BaseModel):
+    date: Optional[str] = None
+
+
+class TemplateRepeat(BaseModel):
+    from_date: Optional[str] = None
+    # 0 = lunes … 6 = domingo, como `datetime.weekday()`.
+    weekdays: List[int] = Field(default_factory=list)
+    weeks: int = 1
+
+
+def _template_items(day: Optional[dict]) -> list:
+    return [{"product_id": item["product_id"]} for item in (day or {}).get("items") or []]
+
+
+async def _write_day(restaurant_id: str, fecha: str, product_ids: List[str]) -> int:
+    """Deja el día en **borrador** con esos platos.
+
+    Nunca publica: preparar no es publicar. Y descarta los platos que ya no existan,
+    porque una plantilla vieja no puede resucitar una carta borrada.
+    """
+    vigentes = {
+        p["id"] for p in await db.products.find(
+            {"restaurant_id": restaurant_id}, {"_id": 0, "id": 1}
+        ).to_list(1000)
+    }
+    items = [{"product_id": pid, "price": None, "sold_out": False} for pid in product_ids if pid in vigentes]
+    now = _now()
+    await db[COLLECTION].update_one(
+        {"restaurant_id": restaurant_id, "date": fecha},
+        {
+            "$set": {"items": items, "status": STATUS_DRAFT, "updated_at": now},
+            "$setOnInsert": {"id": str(uuid.uuid4()), "restaurant_id": restaurant_id, "date": fecha, "created_at": now},
+        },
+        upsert=True,
+    )
+    return len(items)
+
+
+async def _load_template(restaurant_id: str, template_id: str) -> dict:
+    tpl = await db[TEMPLATES].find_one({"id": template_id, "restaurant_id": restaurant_id}, {"_id": 0})
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    return tpl
+
+
+@router.get("/templates")
+async def list_templates(user: dict = Depends(require_roles(["admin"]))):
+    docs = await db[TEMPLATES].find(
+        {"restaurant_id": user["restaurant_id"]}, {"_id": 0}
+    ).sort("name", 1).to_list(200)
+    return [
+        {"id": d["id"], "name": d.get("name"), "count": len(d.get("items") or []), "updated_at": d.get("updated_at")}
+        for d in docs
+    ]
+
+
+@router.post("/templates")
+async def save_template(data: TemplateSave, user: dict = Depends(require_roles(["admin"]))):
+    """Guarda como plantilla los platos de un día. Con el mismo nombre, la reemplaza."""
+    restaurant_id = user["restaurant_id"]
+    nombre = (data.name or "").strip()
+    if len(nombre) < 3:
+        raise HTTPException(status_code=400, detail="Ponle un nombre a la plantilla")
+    origen = _valid_date(data.from_date)
+    items = _template_items(await _load_day(restaurant_id, origen))
+    if not items:
+        raise HTTPException(status_code=404, detail=f"El {origen} no tiene platos que guardar")
+
+    now = _now()
+    existente = await db[TEMPLATES].find_one(
+        {"restaurant_id": restaurant_id, "name": nombre}, {"_id": 0, "id": 1}
+    )
+    if existente:
+        await db[TEMPLATES].update_one({"id": existente["id"]}, {"$set": {"items": items, "updated_at": now}})
+        return {"id": existente["id"], "name": nombre, "count": len(items), "replaced": True}
+
+    doc = {
+        "id": str(uuid.uuid4()), "restaurant_id": restaurant_id, "name": nombre,
+        "items": items, "created_at": now, "updated_at": now,
+    }
+    await db[TEMPLATES].insert_one(doc)
+    return {"id": doc["id"], "name": nombre, "count": len(items), "replaced": False}
+
+
+@router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, user: dict = Depends(require_roles(["admin"]))):
+    res = await db[TEMPLATES].delete_one({"id": template_id, "restaurant_id": user["restaurant_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    return {"ok": True}
+
+
+@router.post("/templates/{template_id}/apply")
+async def apply_template(template_id: str, data: TemplateTarget, user: dict = Depends(require_roles(["admin"]))):
+    tpl = await _load_template(user["restaurant_id"], template_id)
+    fecha = _valid_date(data.date)
+    aplicados = await _write_day(user["restaurant_id"], fecha, [i["product_id"] for i in tpl.get("items") or []])
+    return {"date": fecha, "applied": aplicados, "template": tpl.get("name"), "status": STATUS_DRAFT}
+
+
+@router.post("/templates/{template_id}/repeat")
+async def repeat_template(template_id: str, data: TemplateRepeat, user: dict = Depends(require_roles(["admin"]))):
+    """Repite la plantilla en días concretos de las próximas semanas.
+
+    Es **explícito**: hay que decir qué días. No existe un «repetir siempre» que se
+    active solo, porque cambiar el menú de un lunes no tiene por qué tocar todos los
+    lunes futuros.
+    """
+    tpl = await _load_template(user["restaurant_id"], template_id)
+    dias = sorted({int(d) for d in (data.weekdays or [])})
+    if not dias or any(d < 0 or d > 6 for d in dias):
+        raise HTTPException(status_code=400, detail="Elige los días de la semana (0 = lunes)")
+    semanas = max(1, min(8, int(data.weeks or 1)))
+    inicio = datetime.strptime(_valid_date(data.from_date), "%Y-%m-%d")
+    ids = [i["product_id"] for i in tpl.get("items") or []]
+
+    escritos = []
+    for offset in range(7 * semanas):
+        dia = inicio + timedelta(days=offset)
+        if dia.weekday() in dias:
+            fecha = dia.strftime("%Y-%m-%d")
+            await _write_day(user["restaurant_id"], fecha, ids)
+            escritos.append(fecha)
+    return {"template": tpl.get("name"), "days": escritos, "count": len(escritos)}
