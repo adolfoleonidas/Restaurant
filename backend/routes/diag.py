@@ -11,7 +11,7 @@ está depurando.
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -36,6 +36,11 @@ class DiagSample(BaseModel):
     version: str = Field(default="", max_length=64)
     viewport: Dict[str, Any] = Field(default_factory=dict)
     taps: Dict[str, Any] = Field(default_factory=dict)
+    # Lo que el mozo percibe: el toque hasta ver el cambio, y los que no cambiaron
+    # nada (`silent`). Es la medida que responde "se demora en aparecer que se tocó".
+    visible: Dict[str, Any] = Field(default_factory=dict)
+    # Las peticiones más lentas del período: dice si el costo está en la red.
+    requests: List[Dict[str, Any]] = Field(default_factory=list)
     longs: Dict[str, Any] = Field(default_factory=dict)
     fps: Optional[int] = None
     screen: str = Field(default="", max_length=64)

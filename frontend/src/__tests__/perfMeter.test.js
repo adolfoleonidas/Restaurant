@@ -1,13 +1,14 @@
 /**
  * El medidor que dice dónde se va el tiempo en el dispositivo real.
  *
- * Existe porque el mismo toque es instantáneo en una laptop y lento en el
- * teléfono del local, y desde afuera no hay forma de medirlo. Se enciende con
- * `?diag=1` y, apagado, no debe existir ni costar nada. Cada muestra viaja al
- * servidor, porque la pantalla del teléfono no se puede mirar a distancia.
+ * Existe porque el problema es intermitente y depende del uso ("pido un pedido,
+ * lo envío, y el segundo demora más"), y eso no se puede diagnosticar desde
+ * afuera. Se enciende con `?diag=1`, se recuerda en el dispositivo (para medir
+ * también el enlace normal) y cada muestra viaja al servidor.
  */
 import {
-    buildSample, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile, runningVersion, summarize,
+    buildSample, DIAG_KEY, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile,
+    productIdFrom, runningVersion, slowestRequests, summarize,
 } from '@/lib/perfMeter';
 import { api } from '@/lib/api';
 
@@ -18,13 +19,36 @@ jest.mock('@/lib/api', () => ({
     api: { post: jest.fn(() => Promise.resolve({ data: { ok: true } })) },
 }));
 
-describe('perfMeter: se enciende solo si se pide', () => {
+describe('perfMeter: se enciende y se recuerda', () => {
+    const memoryStorage = () => {
+        const items = new Map();
+        return {
+            getItem: (key) => (items.has(key) ? items.get(key) : null),
+            setItem: (key, value) => items.set(key, String(value)),
+            removeItem: (key) => items.delete(key),
+        };
+    };
+
     it('reconoce ?diag=1 en cualquier posición', () => {
         expect(perfMeterEnabled('?diag=1')).toBe(true);
         expect(perfMeterEnabled('?a=2&diag=1&b=3')).toBe(true);
         expect(perfMeterEnabled('?diag=0')).toBe(false);
         expect(perfMeterEnabled('')).toBe(false);
         expect(perfMeterEnabled('?diag')).toBe(false);
+    });
+
+    it('?diag=1 lo deja encendido para el enlace normal; ?diag=0 lo apaga', () => {
+        const storage = memoryStorage();
+
+        expect(perfMeterEnabled('?diag=1', storage)).toBe(true);
+        expect(storage.getItem(DIAG_KEY)).toBe('1');
+        // El enlace normal: el dispositivo recuerda que está encendido.
+        expect(perfMeterEnabled('', storage)).toBe(true);
+        expect(perfMeterEnabled('?otra=cosa', storage)).toBe(true);
+
+        expect(perfMeterEnabled('?diag=0', storage)).toBe(false);
+        expect(storage.getItem(DIAG_KEY)).toBeNull();
+        expect(perfMeterEnabled('', storage)).toBe(false);
     });
 
     it('no se rompe con una cadena rara', () => {
@@ -41,6 +65,43 @@ describe('perfMeter: las cuentas', () => {
         expect(summarize([2, 4, 6])).toEqual({ n: 3, p50: 4, max: 6 });
         expect(summarize([])).toEqual({ n: 0, p50: null, max: null });
     });
+
+    it('reconoce la tarjeta de un producto', () => {
+        const host = document.createElement('div');
+        host.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7"><span data-testid="mesa-sheet-producto-cantidad-p-7">1</span></div>';
+        const card = host.firstChild;
+        const inner = card.firstChild;
+        expect(productIdFrom(inner)).toBe('p-7');
+        expect(productIdFrom(card)).toBe('p-7');
+        expect(productIdFrom(host)).toBeNull();
+        expect(productIdFrom(null)).toBeNull();
+    });
+
+    it('resume las peticiones más lentas del período', () => {
+        const win = {
+            performance: {
+                getEntriesByType: () => [
+                    { name: 'http://x/api/tables', startTime: 10, duration: 90, initiatorType: 'xmlhttprequest', transferSize: 16 * 1024 },
+                    { name: 'http://x/api/orders?active_only=true', startTime: 20, duration: 600, initiatorType: 'fetch', transferSize: 42 * 1024 },
+                    { name: 'http://x/static/js/main.js', startTime: 30, duration: 900, initiatorType: 'script' },
+                    { name: 'http://x/api/products', startTime: 5, duration: 999, initiatorType: 'fetch' },
+                ],
+            },
+        };
+
+        const slowest = slowestRequests(win, 8);
+
+        // Solo las peticiones de datos, solo las del período, la más lenta primero.
+        expect(slowest).toEqual([
+            { url: '/api/orders?active_only=true', ms: 600, kb: 42 },
+            { url: '/api/tables', ms: 90, kb: 16 },
+        ]);
+    });
+
+    it('sin Performance API no se rompe', () => {
+        expect(slowestRequests({}, 0)).toEqual([]);
+        expect(slowestRequests({ performance: {} }, 0)).toEqual([]);
+    });
 });
 
 describe('perfMeter: la muestra que se manda', () => {
@@ -51,39 +112,40 @@ describe('perfMeter: la muestra que se manda', () => {
         return node;
     };
 
-    it('lleva la versión, la pantalla, los toques y el teléfono', () => {
+    it('lleva la versión, la pantalla, el toque, el efecto y la red', () => {
         const node = script();
         const fakeWin = {
-            innerWidth: 412,
-            innerHeight: 915,
-            devicePixelRatio: 2.625,
-            navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7)' },
+            innerWidth: 375,
+            innerHeight: 689,
+            devicePixelRatio: 3.25,
+            navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 10; K)' },
         };
         try {
             const sample = buildSample({
                 win: fakeWin,
                 doc: document,
-                fps: 52,
+                fps: 60,
                 taps: [
                     { duration: 120, inputDelay: 90, processing: 3 },
                     { duration: 200, inputDelay: 150, processing: 5 },
                     { duration: 160, inputDelay: 110, processing: 4 },
                 ],
+                visible: [40, 60, 50],
+                silent: 2,
+                requests: [{ url: '/api/orders?active_only=true', ms: 600, kb: 42 }],
                 longs: [320, 180],
             });
 
             expect(sample.version).toBe('de8353ed');
-            expect(sample.screen).toBe('412x915 vertical');
-            expect(sample.viewport).toMatchObject({
-                w: 412, h: 915, orientation: 'vertical', dpr: 2.625,
-            });
-            expect(sample.viewport.nodes).toBeGreaterThan(0);
-            expect(sample.viewport.ua).toContain('Pixel 7');
-            // El toque se parte en dos: lo que el hilo estaba ocupado y lo que tardó
-            // el manejador. Si el problema fuera el código, `code` sería el grande.
+            expect(sample.screen).toBe('375x689 vertical');
+            expect(sample.viewport.ua).toContain('Android 10');
             expect(sample.taps).toEqual({ n: 3, p50: 160, max: 200, busy: 110, code: 4 });
+            // Lo que el mozo percibe: el toque hasta ver el cambio, y los que no
+            // cambiaron nada.
+            expect(sample.visible).toEqual({ n: 3, p50: 50, max: 60, silent: 2 });
+            expect(sample.requests).toHaveLength(1);
             expect(sample.longs).toEqual({ n: 2, max: 320 });
-            expect(sample.fps).toBe(52);
+            expect(sample.fps).toBe(60);
         } finally {
             node.remove();
         }
@@ -91,14 +153,14 @@ describe('perfMeter: la muestra que se manda', () => {
 
     it('sin guion cargado la versión es honesta', () => {
         expect(runningVersion(document)).toBe('desconocida');
-        expect(buildSample({ win: { innerWidth: 0, innerHeight: 0 }, doc: document }).version).toBe('desconocida');
     });
 });
 
-/** Una ventana falsa que deja disparar a mano los observadores y el latido. */
+/** Una ventana falsa que deja disparar a mano los observadores, el latido y los fotogramas. */
 function fakeWindow() {
     const observers = [];
     let beat = null;
+    let frame = null;
     class FakeObserver {
         constructor(callback) { this.callback = callback; observers.push(this); }
 
@@ -108,17 +170,18 @@ function fakeWindow() {
     }
     return {
         document,
-        innerWidth: 412,
-        innerHeight: 915,
-        devicePixelRatio: 2.625,
-        navigator: { userAgent: 'Pixel 7' },
+        innerWidth: 375,
+        innerHeight: 689,
+        devicePixelRatio: 3.25,
+        navigator: { userAgent: 'Pixel' },
         PerformanceObserver: FakeObserver,
-        requestAnimationFrame: (fn) => setTimeout(fn, 16),
-        cancelAnimationFrame: (id) => clearTimeout(id),
+        requestAnimationFrame: (fn) => { frame = fn; return 1; },
+        cancelAnimationFrame: () => {},
         setInterval: (fn) => { beat = fn; return 1; },
         clearInterval: () => {},
         _observers: observers,
         _beat: () => beat && beat(),
+        _frame: () => { const next = frame; frame = null; if (next) next(); },
         _pushEvent: (entry) => observers[0].callback({ getEntries: () => [entry] }),
     };
 }
@@ -135,20 +198,64 @@ describe('perfMeter: el panel en pantalla', () => {
 
     afterEach(() => { script.remove(); document.body.innerHTML = ''; });
 
+    const panelValue = (name) => document
+        .querySelector(`#${PANEL_ID} [data-row="${name}"] span:last-child`).textContent;
+
     it('muestra la versión, la pantalla y un aviso mientras no hay toques', () => {
         const stop = installPerfMeter({ win: fakeWindow(), doc: document });
 
-        const panel = document.getElementById(PANEL_ID);
-        expect(panel).not.toBeNull();
-        expect(panel.getAttribute('data-testid')).toBe('perf-meter');
-        const value = (name) => panel.querySelector(`[data-row="${name}"] span:last-child`).textContent;
-        expect(value('version')).toBe('3cf3fd66');
-        expect(value('viewport')).toContain('412x915 vertical');
-        expect(value('viewport')).toContain('dpr 2.625');
-        expect(value('viewport')).toContain('nodos');
-        expect(value('tap')).toContain('sin toques');
+        expect(document.getElementById(PANEL_ID)).not.toBeNull();
+        expect(panelValue('version')).toBe('3cf3fd66');
+        expect(panelValue('viewport')).toContain('375x689 vertical');
+        expect(panelValue('tap')).toContain('sin toques');
+        expect(panelValue('effect')).toContain('sin toques a productos');
 
         stop();
+    });
+
+    it('mide del toque a ver el cambio en pantalla', () => {
+        // La tarjeta primero: encender el medidor agrega el panel al body y
+        // reemplazar el body después se lo llevaría por delante.
+        document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
+            + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+        const win = fakeWindow();
+        const stop = installPerfMeter({ win, doc: document });
+
+        const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
+        const qty = document.querySelector('[data-testid="mesa-sheet-producto-cantidad-p-7"]');
+        card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+        // El fotograma revisa si la cantidad cambió; el latido repinta el panel.
+        win._frame();
+        win._beat();
+        expect(panelValue('effect')).toContain('sin toques a productos');
+        // Ahora sí: la cantidad cambia y el efecto queda medido.
+        qty.textContent = '1';
+        win._frame();
+        win._beat();
+        expect(panelValue('effect')).toContain('1 con efecto');
+
+        stop();
+    });
+
+    it('cuenta el toque que no cambió nada', () => {
+        jest.useFakeTimers();
+        try {
+            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
+                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const win = fakeWindow();
+            const stop = installPerfMeter({ win, doc: document });
+
+            const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            jest.advanceTimersByTime(2100);
+            win._frame();
+            win._beat();
+
+            expect(panelValue('effect')).toContain('1 SIN EFECTO');
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('manda la muestra al servidor cuando hubo toques', () => {
@@ -163,7 +270,7 @@ describe('perfMeter: el panel en pantalla', () => {
         expect(url).toBe('/diag/sample');
         expect(body.taps).toMatchObject({ n: 1, p50: 120, busy: 90, code: 3 });
         expect(body.viewport.orientation).toBe('vertical');
-        expect(body.screen).toBe('412x915 vertical');
+        expect(body.screen).toBe('375x689 vertical');
 
         // No repite la misma muestra: solo manda cuando hay toques nuevos.
         win._beat();

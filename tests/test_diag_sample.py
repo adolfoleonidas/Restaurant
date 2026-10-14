@@ -32,6 +32,8 @@ SAMPLE = {
     "screen": "412x915 vertical",
     "viewport": {"w": 412, "h": 915, "orientation": "vertical", "dpr": 2.625, "nodes": 530, "ua": "Pixel 7"},
     "taps": {"n": 8, "p50": 160, "max": 320, "busy": 110, "code": 4},
+    "visible": {"n": 7, "p50": 50, "max": 90, "silent": 1},
+    "requests": [{"url": "/api/orders?active_only=true", "ms": 600, "kb": 42}],
     "longs": {"n": 12, "max": 324},
     "fps": 52,
 }
@@ -90,6 +92,10 @@ def test_saves_the_sample_with_who_sent_it(http):
     assert row["version"] == "de8353ed"
     assert row["screen"] == "412x915 vertical"
     assert row["taps"] == {"n": 8, "p50": 160, "max": 320, "busy": 110, "code": 4}
+    # Lo que el mozo percibe y lo que tardó la red: sin esto, el diagnóstico se
+    # queda sin las dos medidas que importan.
+    assert row["visible"] == {"n": 7, "p50": 50, "max": 90, "silent": 1}
+    assert row["requests"] == [{"url": "/api/orders?active_only=true", "ms": 600, "kb": 42}]
     assert row["longs"] == {"n": 12, "max": 324}
     assert row["fps"] == 52
     assert row["viewport"]["ua"] == "Pixel 7"
