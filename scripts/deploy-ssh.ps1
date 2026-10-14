@@ -95,18 +95,51 @@ if (-not $Yes) {
 }
 
 # -- 4. Ejecutar en el servidor ----------------------------------------------
-# El script remoto se manda por stdin con `bash -s` y el SHA como argumento. Hay
-# que quitar TODO retorno de carro: un \r pegado al SHA hace fallar el merge
-# (fatal: '1a26ea2?': not a non-negative integer).
+# El script remoto se manda por stdin con `bash -s` y el SHA como argumento.
+#
+# Quitar TODO retorno de carro es obligatorio: un \r pegado al SHA hace fallar el
+# merge (fatal: '1a26ea2?': not a non-negative integer).
+#
+# Y hay que quitar tambien los saltos de linea finales: al enviar por la tuberia,
+# PowerShell añade su propio CRLF al final, asi que un script que ya terminaba en
+# \n recibe una linea fantasma con solo \r. Bash intenta ejecutarla, falla con 127
+# y `ssh` devuelve 127 - el despliegue remoto habia terminado bien, pero la
+# comprobacion de exito lo daba por fallido.
 $script = ([System.IO.File]::ReadAllText($remoteScript)) -replace "`r", ""
+$script = $script.TrimEnd("`n", " ", "`t")
 Write-Host "`n=== Desplegando (la reconstruccion tarda; puede ser 1-15 min)" -ForegroundColor Cyan
 
-$output = $script | & ssh -o BatchMode=yes -o ConnectTimeout=15 -i $Key "root@$SshHost" "bash -s $Sha" 2>&1
-$code = $LASTEXITCODE
+$output = $null
+$code = 1
+# PowerShell 5.1 convierte la salida normal de `ssh` por stderr (git y docker
+# escriben ahí su progreso) en un error TERMINANTE cuando ErrorActionPreference es
+# Stop. El script moría a mitad del despliegue, mataba la sesión SSH justo después
+# de que docker compose parase el contenedor de frontend -que es el que sirve el
+# puerto- y dejaba el sitio caído. Esta llamada va con la preferencia en Continue.
+$previous = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    $output = $script | & ssh -o BatchMode=yes -o ConnectTimeout=15 -i $Key "root@$SshHost" "bash -s $Sha" 2>&1
+    $code = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $previous
+}
 $output | ForEach-Object { $_ }
 
-if ($code -ne 0 -or (($output | Out-String) -notmatch 'DEPLOY_OK')) {
-    Fail 'el despliegue remoto no termino bien (busca DEPLOY_FAIL en la salida de arriba)'
+# El veredicto sale de los marcadores que imprime el script remoto, no del codigo
+# de salida de `ssh`: git y docker escriben su progreso por stderr y cualquier
+# ruido de la conexion puede cambiarlo. `DEPLOY_FAIL` manda; `DEPLOY_OK` es la
+# unica prueba de que llego al final.
+$text = $output | Out-String
+if ($text -match 'DEPLOY_FAIL') {
+    Fail 'el despliegue remoto fallo (arriba esta el motivo DEPLOY_FAIL)'
+}
+if ($text -notmatch 'DEPLOY_OK') {
+    if ($code -ne 0) { Fail "el despliegue remoto no llego al final (ssh salio con $code)" }
+    Fail 'el despliegue remoto no confirmo DEPLOY_OK'
+}
+if ($code -ne 0) {
+    Write-Host "Aviso: ssh salio con $code, pero el servidor confirmo DEPLOY_OK." -ForegroundColor Yellow
 }
 
 # -- 5. Verificar desde fuera, no solo por la salida del servidor ------------

@@ -71,8 +71,32 @@ fi
 # --- Reconstruir y levantar ---------------------------------------------------
 # Esto es lo lento: reconstruye las imágenes en el VPS. Con las capas cacheadas
 # suele ser ~1 min; en frío, bastante más.
-if ! docker compose up -d --build; then
+#
+# Va desacoplado de esta sesión a propósito. Un corte de conexión a mitad dejaba
+# el sitio caído: `docker compose up -d --build` ya había parado el contenedor de
+# frontend —el que sirve el puerto— y nunca llegaba a levantarlo. Con `nohup` la
+# reconstrucción termina igual, y aquí solo se sigue el log.
+log="/tmp/restaurant-deploy.log"
+rm -f "$log" "$log.exit"
+if ! command -v nohup >/dev/null 2>&1; then
+  echo "DEPLOY_FAIL motivo=sin_nohup"
+  exit 1
+fi
+nohup sh -c "docker compose up -d --build > '$log' 2>&1; echo \$? > '$log.exit'" >/dev/null 2>&1 &
+
+i=0
+while [ ! -f "$log.exit" ] && [ "$i" -lt 240 ]; do
+  i=$((i + 1))
+  sleep 5
+done
+if [ ! -f "$log.exit" ]; then
+  echo "DEPLOY_FAIL motivo=compose_no_termino_en_20min"
+  tail -30 "$log"
+  exit 1
+fi
+if [ "$(cat "$log.exit")" != "0" ]; then
   echo "DEPLOY_FAIL motivo=compose_fallo"
+  tail -40 "$log"
   docker compose ps
   exit 1
 fi

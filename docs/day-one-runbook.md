@@ -225,6 +225,9 @@ Qué hace `scripts\deploy-ssh.ps1`:
    `scripts\deploy-remote.sh`: comprueba que el servidor esté en `main` y con el
    árbol limpio, trae el commit, `git merge --ff-only`, `docker compose up -d
    --build` y espera el `/api/health` hasta 2 minutos.
+   La reconstrucción va **desacoplada de la conexión**: si se corta el SSH a
+   mitad, termina igual y los contenedores vuelven solos. Sin eso, un corte deja
+   el sitio caído — pasó una vez y por eso está así.
 4. **Verifica desde fuera**: imprime el hash del bundle servido y el health,
    desde la misma URL que usa el restaurante. La salida del servidor puede decir
    «listo» mientras el proxy sigue sirviendo el bundle viejo.
