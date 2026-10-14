@@ -12,19 +12,22 @@ export default function useSalonData({
     isOwner, scope, scopeKey, scopeParams, scopePending,
 }) {
     const { user } = useAuth();
-    // Cada tanda de toques que el mozo guarda publica un evento `orders` (ver
-    // `sync_draft_lines`). En ESTE dispositivo ese evento no trae nada: la
-    // escritura ya volvió con el pedido entero (ver `useOrderLineSync`) y los
-    // caminos que sí cambian el piso —abrir una cuenta, enviar a cocina, anular,
-    // mover, cerrar— lo refrescan a propósito. Sin esto, cada pausa del mozo se
-    // bajaba la lista de mesas (~60 KB medidos con 60 mesas y 20 cuentas) y la de
-    // pedidos para no ver nada nuevo.
+    // Los cambios que ESTE usuario ya aplicó en su propia pantalla: la escritura
+    // volvió con el pedido entero (ver `useOrderLineSync`) y el camino que lo hizo
+    // —enviar a cocina, editar o anular líneas— refresca el piso a propósito. Pedir
+    // otra vez las listas por el eco de uno mismo es lo que dejaba el enlace ocupado
+    // justo cuando el mozo empieza el pedido siguiente: medido en su teléfono, unos
+    // 600 ms de peticiones de más después de cada envío.
     //
-    // Se salta sólo eso: el eco de las líneas de borrador de este mismo usuario.
-    // Todo lo demás sigue refrescando, y un evento sin actor es de otro o de una
-    // versión anterior a este cambio: se refresca.
-    const ownDraftEcho = (event) => event?.extra === 'draft_lines' && event.actor_user_id === user?.id;
-    const somebodyElse = (event) => !ownDraftEcho(event);
+    // No se salta todo lo propio: un cambio de mesa, de cuenta, un cobro, mover o
+    // cerrar siguen refrescando, porque ahí el estado local no alcanza para saber
+    // cómo quedó el piso. Y un evento sin actor es de otro o de una versión anterior
+    // a este cambio: se refresca.
+    const SELF_APPLIED = new Set([
+        'draft_lines', 'items_added', 'item_removed', 'item_updated', 'item_voided', 'send_to_kitchen',
+    ]);
+    const ownApplied = (event) => SELF_APPLIED.has(event?.extra) && event.actor_user_id === user?.id;
+    const somebodyElse = (event) => !ownApplied(event);
     // Each query refetches only for the realtime topics it renders. `/tables`
     // embeds every table's open orders (`active_order`), so it follows both.
     const tablesGeneration = useRealtimeGeneration(['tables', 'orders'], somebodyElse);
