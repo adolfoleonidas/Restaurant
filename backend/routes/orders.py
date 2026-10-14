@@ -7,6 +7,7 @@ from database import db
 from auth import get_current_user, require_roles, user_functions
 from models import OrderCreate, OrderItemInput, OrderItemUpdate, OrderStatusUpdate, OrderItemStatusUpdate, KitchenBump, OrderReassign, OrderMerge, OrderMove, OrderSplit, OrderAlias, OrderNotes, OrderItemVoid, OrderItemMove, DraftLinesBatch
 from billing import assert_can_cancel, guarded_totals, line_subtotal, split_group_totals, sum_line_subtotals
+from menu_day import index_items, resolve, today_menu
 from order_flow import (
     DRAFT_STATUS,
     FlowError,
@@ -150,14 +151,24 @@ async def _compute_total(items: list, restaurant_id: str, catalog=None):
     products, components = catalog if catalog is not None else await _load_catalog(
         [it["product_id"] for it in items], restaurant_id
     )
+    # El menú del día se lee UNA vez, no una por línea. Sin menú publicado, su
+    # efecto es nulo y todo sigue como antes de que existiera esta capa.
+    _, day = await today_menu(db, restaurant_id)
+    day_items = index_items(day)
+    day_published = day is not None
     enriched = []
     for it in items:
         prod = products.get(it["product_id"])
         if not prod:
             raise HTTPException(status_code=400, detail=f"Producto {it['product_id']} no existe")
-        if not prod.get("is_available", True):
+        # `strict=False`: al mozo se le deja pedir algo que hoy no está en el menú
+        # (lo verá marcado en pantalla), pero lo agotado le corta igual.
+        decision = resolve(prod, day_items, day_published, strict=False)
+        if not decision.offered:
             raise HTTPException(status_code=400, detail=f"Producto agotado: {prod['name']}")
-        line = line_subtotal(prod["price"], it["quantity"])
+        # El precio sale de la decisión: si el día trae uno, manda ese. Y como se
+        # copia a la línea, cambiar el precio mañana no toca este pedido.
+        line = line_subtotal(decision.price, it["quantity"])
         combo_components = components_from(prod, components)
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
@@ -166,7 +177,7 @@ async def _compute_total(items: list, restaurant_id: str, catalog=None):
             "product_id": prod["id"],
             "product_name": prod["name"],
             "quantity": it["quantity"],
-            "unit_price": prod["price"],
+            "unit_price": decision.price,
             "subtotal": line,
             "notes": it.get("notes"),
             "status": it.get("status", "pendiente"),

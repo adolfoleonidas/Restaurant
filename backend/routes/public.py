@@ -12,6 +12,7 @@ import string
 from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
+from menu_day import NOT_IN_MENU, index_items, resolve, today_menu
 from billing import guarded_totals, line_subtotal, public_order_totals, sum_line_subtotals
 from order_flow import VersionError, bill_requested, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
@@ -58,15 +59,25 @@ def _derive_kitchen_status(items: list, current: str) -> str:
 
 
 async def _enrich_items(items, r):
+    # La carta del cliente es la puerta estricta: ofrece SOLO el menú de hoy. Sin
+    # menú publicado, `day` es None y todo se comporta como antes.
+    _, day = await today_menu(db, r["id"])
+    day_items = index_items(day)
+    day_published = day is not None
     enriched = []
     for it in items:
         prod = await db.products.find_one(
             {"id": it.product_id, "restaurant_id": r["id"]},
             {"_id": 0}
         )
-        if not prod or not prod.get("is_available", True):
+        if not prod:
             raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
-        line = line_subtotal(prod["price"], it.quantity)
+        decision = resolve(prod, day_items, day_published, strict=True)
+        if not decision.offered:
+            if decision.reason == NOT_IN_MENU:
+                raise HTTPException(status_code=400, detail=f"{prod['name']} no está en el menú de hoy")
+            raise HTTPException(status_code=400, detail=f"Producto no disponible: {it.product_id}")
+        line = line_subtotal(decision.price, it.quantity)
         combo_components = await combo_components_for(prod, r["id"])
         if prod.get("is_combo") and (not combo_components or any(not c.get("is_available", True) for c in combo_components)):
             raise HTTPException(status_code=400, detail=f"El combo {prod['name']} no está disponible: un componente está agotado")
@@ -75,7 +86,7 @@ async def _enrich_items(items, r):
             "product_id": prod["id"],
             "product_name": prod["name"],
             "quantity": it.quantity,
-            "unit_price": prod["price"],
+            "unit_price": decision.price,
             "subtotal": line,
             "notes": it.notes,
             "status": "pendiente",
