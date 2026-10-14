@@ -7,6 +7,9 @@ import { itemsTotal, personLabel } from '@/lib/orderDraft';
 import { usePendingActions } from '@/contexts/PendingActionsContext';
 import { accountKitchenState, canComposeAccountAt, isComposingDraft } from './selectors';
 
+/** Cuántas líneas muestra una tarjeta antes de ofrecer el resto. */
+const LINES_PREVIEW = 3;
+
 export default function AccountCard({ activeOrders, account, currentAccountId, order, selectAccount, cardRenameId, cardRenameDraft, setCardRenameDraft, commitCardRename, setCardRenameId, index, canTake, savingItem, sendingToKitchen, loading, canCompose, canVoidItems, voidProduct, composeTableFor, editAccount, canServe, deliver }) {
     const pendingActions = usePendingActions();
     const detail = activeOrders[account.id] || account;
@@ -14,6 +17,13 @@ export default function AccountCard({ activeOrders, account, currentAccountId, o
     const view = isActive && order ? order : detail;
     const draftAccount = isComposingDraft(view);
     const cardItems = (view.items || []).filter((i) => i.status !== 'cancelado');
+    // Lo último que se pidió queda arriba: el mozo revisa de un vistazo lo que acaba
+    // de tocar sin bajar por toda la cuenta.
+    const lines = React.useMemo(() => [...(view.items || [])].reverse(), [view.items]);
+    // Y la tarjeta muestra TRES y ofrece el resto: con treinta pedidos en una mesa se
+    // volvía una pared de texto donde ni el total se veía.
+    const [showAllLines, setShowAllLines] = React.useState(false);
+    const shownLines = showAllLines ? lines : lines.slice(0, LINES_PREVIEW);
     const kitchen = accountKitchenState(view.items || [], view.status);
     const cardTotal = view.total != null ? Number(view.total) : itemsTotal(view.items || []);
     const cardKey = account.order_number ?? account.id;
@@ -82,7 +92,7 @@ export default function AccountCard({ activeOrders, account, currentAccountId, o
                 ticket del compositor. Del ítem enviado queda
                 el ✕ discreto para anularlo. */}
             <PersonOrderSummary
-                items={view.items || []}
+                items={shownLines}
                 orderStatus={view.status}
                 mode="detail"
                 testIdPrefix={cardPrefix}
@@ -91,6 +101,20 @@ export default function AccountCard({ activeOrders, account, currentAccountId, o
                 saving={savingItem}
                 onVoid={voidProduct}
             />
+            {lines.length > LINES_PREVIEW ? (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowAllLines((value) => !value); }}
+                    data-testid={`${cardPrefix}-ver-mas`}
+                    className="justify-self-start text-xs font-semibold text-primary underline"
+                >
+                    {showAllLines
+                        ? 'Ver menos'
+                        : (lines.length - LINES_PREVIEW === 1
+                            ? 'Ver 1 más'
+                            : `Ver los ${lines.length - LINES_PREVIEW} restantes`)}
+                </button>
+            ) : null}
             {cardItems.length === 0 && (
                 <p className="text-xs text-muted-foreground">Todavía no pidió nada.</p>
             )}

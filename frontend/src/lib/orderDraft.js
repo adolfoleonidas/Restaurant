@@ -75,7 +75,10 @@ export function sendAction(items = [], order = null) {
 
 export function personLabel(order, index = 0) {
     const alias = String(order?.customer_name || '').trim();
-    if (alias) return alias;
+    // El número va SIEMPRE y sigue el orden de los pedidos: la primera persona de la
+    // mesa es la 1 aunque le pongan nombre ("1. Alexis"), y sin nombre queda
+    // "Persona 1". Así el mozo puede nombrar a quien quiera sin perder el orden.
+    if (alias) return `${index + 1}. ${alias}`;
     if (order?.shared) return SHARED_ALIAS;
     return `Persona ${index + 1}`;
 }

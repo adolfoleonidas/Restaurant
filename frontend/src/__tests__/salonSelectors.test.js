@@ -407,7 +407,9 @@ describe('selectSheetModel', () => {
         expect(model.floor).toEqual({ key: 'preparando' });
         expect(model.canCompose).toBe(true);
         expect(model.currentAccountId).toBe('o1');
-        expect(model.persons.map((p) => [p.id, p.label, p.alias])).toEqual([['o1', 'Juan', 'Juan'], ['o2', 'Persona 2', '']]);
+        // El rótulo lleva el número del orden de los pedidos; el alias editable queda
+        // solo con el nombre, sin el "1." de relleno.
+        expect(model.persons.map((p) => [p.id, p.label, p.alias])).toEqual([['o1', '1. Juan', 'Juan'], ['o2', 'Persona 2', '']]);
         expect(model.persons[0].draftCount).toBe(1);
         expect(model.personAccounts).toHaveLength(2);
         expect(model.cards.map((c) => c.id)).toEqual(['o1', 'o2']);
