@@ -427,18 +427,31 @@ describe('compositor · paridad posView (S8)', () => {
         await act(async () => {});
     });
 
-    it('anchors the sole ticket send action above mobile navigation without full-width overflow', async () => {
+    it('anchors the ticket actions above mobile navigation without full-width overflow', async () => {
         const draft = order('order-1', 11, 'nuevo', [item('i1', 'Sopa', 2, 12, 'borrador')]);
         ({ container, root, sheet } = await openTableWith([draft]));
 
+        // Las acciones del ticket ("Vaciar" y "Enviar a cocina") comparten una fila
+        // fija: el envío es el primario y se queda con el ancho que sobra, así que no
+        // desborda; "Vaciar" es la secundaria y va a la izquierda.
         const send = sheet.querySelector('[data-testid="mesa-sheet-enviar-cocina"]');
         expect(send).not.toBeNull();
-        expect(send.className.split(/\s+/)).toEqual(expect.arrayContaining([
+        const row = send.parentElement;
+        expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining([
             'fixed', 'left-3', 'right-3',
             'bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)]', 'z-30',
-            'min-h-[54px]', 'w-auto', 'min-w-0', 'whitespace-normal',
+            'flex',
+        ]));
+        expect(send.className.split(/\s+/)).toEqual(expect.arrayContaining([
+            'min-h-[54px]', 'min-w-0', 'flex-1', 'whitespace-normal',
         ]));
         expect(send.classList.contains('w-full')).toBe(false);
+
+        const clear = sheet.querySelector('[data-testid="mesa-sheet-vaciar"]');
+        expect(clear).not.toBeNull();
+        expect(clear.parentElement).toBe(row);
+        expect(clear.className).toContain('shrink-0');
+
         expect(sheet.className.split(/\s+/)).toEqual(expect.arrayContaining([
             'pb-28', 'min-[820px]:pb-0',
         ]));

@@ -83,27 +83,35 @@ export default function OrderTicket({
                 <span className="font-mono text-lg font-extrabold tabular-nums">{fmtMoney(total)}</span>
             </div>
 
-            <div className="grid gap-2">
+            {/* Las dos acciones del pedido, juntas y FIJAS en el teléfono: "Vaciar"
+                es la secundaria (borde, a la izquierda) y "Enviar a cocina" la
+                primaria. Antes solo el envío quedaba fijo y "Vaciar" se iba con el
+                scroll, así que había que subir a buscarlo. En pantalla grande van
+                apiladas en su sitio, sin flotar. */}
+            <div
+                className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30 flex items-stretch gap-2
+                    min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:grid min-[820px]:w-full min-[820px]:gap-2"
+            >
+                {draftUnits > 0 && onClear && (
+                    <button
+                        type="button"
+                        onClick={onClear}
+                        data-testid={`${testIdPrefix}-vaciar`}
+                        className="min-h-[54px] shrink-0 rounded-xl border border-border bg-card/95 px-4 text-sm font-semibold text-destructive
+                            min-[820px]:min-h-[46px] min-[820px]:w-full"
+                    >
+                        Vaciar
+                    </button>
+                )}
                 {showSend && (
                     <Button
-                        className="fixed left-3 right-3 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom)+10px)] z-30
-                            min-h-[54px] w-auto min-w-0 whitespace-normal text-base font-bold
+                        className="min-h-[54px] min-w-0 flex-1 whitespace-normal text-base font-bold
                             min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:w-full"
                         onClick={onSend}
                         data-testid={`${testIdPrefix}-enviar-cocina`}
                     >
                         {sendLabel || 'Enviar a cocina'}
                     </Button>
-                )}
-                {draftUnits > 0 && onClear && (
-                    <button
-                        type="button"
-                        onClick={onClear}
-                        data-testid={`${testIdPrefix}-vaciar`}
-                        className="min-h-[46px] rounded-xl text-sm font-semibold text-destructive hover:bg-destructive/10"
-                    >
-                        Vaciar
-                    </button>
                 )}
             </div>
         </section>
