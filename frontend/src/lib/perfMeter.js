@@ -27,7 +27,13 @@ import { api } from '@/lib/api';
 export const PANEL_ID = 'dmi-perf';
 export const DIAG_KEY = 'restaurant_diag';
 export const DIAG_POS_KEY = 'restaurant_diag_pos';
-const PANEL_ROWS = ['version', 'viewport', 'tap', 'effect', 'net', 'long', 'fps'];
+const PANEL_ROWS = ['version', 'viewport', 'tap', 'effect', 'log', 'net', 'long', 'fps'];
+
+/** Un `data-testid` legible para el registro en pantalla. */
+export const shortTestId = (testid) => String(testid || '')
+    .replace(/^[a-z]+-sheet-/, '')
+    .replace(/^salon-/, '')
+    .slice(0, 30);
 
 /**
  * Un toque que no cambió nada en este plazo cuenta como perdido.
@@ -46,6 +52,10 @@ const GIVE_UP_MS = 10000;
  * momento, que es lo que permite ver la causa en vez de suponerla.
  */
 const SLOW_TAP_MS = 200;
+/** Cuántos toques se guardan para mandar (los más viejos se sueltan). */
+const LOG_MAX = 60;
+/** Un dedo que se movió más que esto no fue un toque: fue un scroll o un arrastre. */
+const MOVE_TOLERANCE_PX = 10;
 /** Cuántas peticiones lentas se reportan por muestra. */
 const SLOW_REQUESTS = 3;
 
@@ -170,7 +180,8 @@ export function slowestRequests(win, since, limit = SLOW_REQUESTS) {
  * navegador se está midiendo.
  */
 export function buildSample({
-    taps = [], visible = [], silent = 0, silentAdd = 0, blocked = 0, requests = [], longs = [], fps = null,
+    taps = [], visible = [], silent = 0, silentAdd = 0, blocked = 0, tapsLog = [],
+    requests = [], longs = [], fps = null,
     win = window, doc = win && win.document,
 } = {}) {
     const portrait = (win.innerHeight || 0) >= (win.innerWidth || 0);
@@ -194,6 +205,8 @@ export function buildSample({
         // aceptaban un toque (un botón deshabilitado no dispara el evento, así que
         // esto no aparece en ninguna otra medida).
         visible: { ...summarize(visible), silent, silent_add: silentAdd, blocked: Math.round(blocked) },
+        // Cada toque, en orden: qué se tocó, cuánto tardó y si no hizo nada.
+        taps_log: tapsLog.slice(-LOG_MAX),
         requests: requests.slice(0, SLOW_REQUESTS),
         longs: { n: longs.length, max: longs.length ? Math.max(...longs) : 0 },
         fps,
@@ -241,6 +254,11 @@ export function installPerfMeter({
     let timerId = null;
     let observer = null;
     let longObserver = null;
+    // El registro de CADA toque, en orden: qué se tocó, cuánto tardó y si no hizo
+    // nada. Es lo que permite reconstruir lo que pasó ("le di en nuevo, después al
+    // producto y no entró") en vez de mirar promedios.
+    let log = [];
+    let lastDown = null;
     let reportedTaps = 0;
     let lastReportAt = 0;
     let slowTapPending = false;
@@ -368,6 +386,12 @@ export function installPerfMeter({
                 + `${silentAdd ? ` · ${silentAdd} SIN EFECTO` : ''}`
                 + `${silent > silentAdd ? ` · ${silent - silentAdd} fuera de la tarjeta` : ''}`
                 + `${blockedMs >= 1 ? ` · ${Math.round(blockedMs)} ms sin aceptar toques` : ''}`;
+        rows.log.textContent = log.length
+            ? log.slice(-3).map((entry) => `${shortTestId(entry.el)}`
+                + `${entry.kind ? ` ${entry.kind}` : ''}`
+                + `${entry.ms ? ` ${entry.ms}ms` : ''}`
+                + `${entry.result && entry.result !== 'ok' ? ` ${entry.result}` : ''}`).join(' | ')
+            : 'sin toques todavía';
         rows.net.textContent = requests.length
             ? requests.map((r) => `${r.ms} ms ${r.kb} KB ${r.url.split('/api/')[1] || r.url}`).join(' | ')
             : 'sin peticiones medidas';
@@ -408,16 +432,64 @@ export function installPerfMeter({
     // producto estuvieron DESHABILITADAS. Un botón deshabilitado no dispara el
     // evento del toque, así que ni el conteo de toques ni el de efecto lo detectan;
     // el mozo toca y no pasa nada, y desde afuera parecía que todo iba en 67 ms.
+    const startedAt = clock();
+
+    /** Anota un toque en el registro: qué se tocó y cuándo (ms desde que se encendió). */
+    const logTap = (event, kind, productId) => {
+        const node = event.target.closest && event.target.closest('[data-testid]');
+        const entry = {
+            t: Math.round(clock() - startedAt),
+            el: node
+                ? String(node.getAttribute('data-testid')).slice(0, 48)
+                : String((event.target && event.target.tagName) || '?').toLowerCase(),
+        };
+        if (kind) {
+            entry.kind = kind;
+            entry.p = String(productId).slice(0, 8);
+        }
+        log.push(entry);
+        if (log.length > LOG_MAX) log.shift();
+        return entry;
+    };
+
     const onPointerDown = (event) => {
         const productId = productIdFrom(event.target);
-        if (!productId) return;
-        const row = event.target.closest(ROW_SELECTOR);
-        if (!row) return;
-        pending.push({
-            at: clock(), before: row.textContent, card: row, kind: tapKind(event.target, productId),
-        });
+        const row = productId ? event.target.closest(ROW_SELECTOR) : null;
+        const kind = row ? tapKind(event.target, productId) : null;
+        const item = {
+            at: clock(),
+            before: row ? row.textContent : null,
+            card: row,
+            kind,
+            entry: logTap(event, kind, productId),
+            x: event.clientX || 0,
+            y: event.clientY || 0,
+            // Un toque se confirma al levantar el dedo: si se movió, fue un scroll.
+            tap: !row,
+        };
+        lastDown = item;
+        if (row) pending.push(item);
     };
-    if (doc.addEventListener) doc.addEventListener('pointerdown', onPointerDown, true);
+
+    const onPointerUp = (event) => {
+        const item = lastDown;
+        lastDown = null;
+        if (!item) return;
+        const moved = Math.abs((event.clientX || 0) - item.x)
+            + Math.abs((event.clientY || 0) - item.y) > MOVE_TOLERANCE_PX;
+        if (!moved) { item.tap = true; return; }
+        // El dedo se movió: fue un scroll. Si empezó sobre una tarjeta, contarlo como
+        // "no hizo nada" sería mentira, y es lo que inflaba el contador.
+        item.tap = false;
+        if (!item.card) return;
+        item.entry.result = 'scroll';
+        const index = pending.indexOf(item);
+        if (index >= 0) pending.splice(index, 1);
+    };
+    if (doc.addEventListener) {
+        doc.addEventListener('pointerdown', onPointerDown, true);
+        doc.addEventListener('pointerup', onPointerUp, true);
+    }
 
     const checkPending = () => {
         const now = clock();
@@ -425,14 +497,22 @@ export function installPerfMeter({
             const tap = pending[i];
             if (tap.card.textContent !== tap.before) {
                 const ms = Math.round(now - tap.at);
-                visible.push(ms);
-                if (ms >= SLOW_TAP_MS) slowTapPending = true;
+                tap.entry.ms = ms;
+                tap.entry.result = 'ok';
+                // Solo se cuenta como toque si el dedo no se movió.
+                if (tap.tap) {
+                    visible.push(ms);
+                    if (ms >= SLOW_TAP_MS) slowTapPending = true;
+                }
                 pending.splice(i, 1);
             } else if (now - tap.at > GIVE_UP_MS) {
-                silent += 1;
-                // Solo los que iban a agregar cuentan como el problema del mozo.
-                if (tap.kind === 'add') silentAdd += 1;
-                slowTapPending = true;
+                tap.entry.result = tap.tap ? 'lost' : 'scroll';
+                if (tap.tap) {
+                    silent += 1;
+                    // Solo los que iban a agregar cuentan como el problema del mozo.
+                    if (tap.kind === 'add') silentAdd += 1;
+                    slowTapPending = true;
+                }
                 pending.splice(i, 1);
             }
         }
@@ -487,9 +567,15 @@ export function installPerfMeter({
             reportedTaps = taps.length;
             requests = slowestRequests(win, lastReportAt);
             lastReportAt = clock();
+            // Se manda lo ya resuelto; un toque que todavía espera su efecto se
+            // queda para la próxima, con su resultado.
+            const done = (entry) => entry.result !== undefined || !entry.kind;
+            const ready = log.filter(done);
+            log = log.filter((entry) => !done(entry));
             try {
                 Promise.resolve(send(buildSample({
-                    taps, visible, silent, silentAdd, blocked: blockedMs, requests, longs, fps, win, doc,
+                    taps, visible, silent, silentAdd, blocked: blockedMs, tapsLog: ready,
+                    requests, longs, fps, win, doc,
                 }))).catch(() => {});
                 if (win.performance && win.performance.clearResourceTimings) win.performance.clearResourceTimings();
             } catch { /* el medidor nunca rompe la app */ }
@@ -507,7 +593,10 @@ export function installPerfMeter({
         }
         if (observer) observer.disconnect();
         if (longObserver) longObserver.disconnect();
-        if (doc.removeEventListener) doc.removeEventListener('pointerdown', onPointerDown, true);
+        if (doc.removeEventListener) {
+            doc.removeEventListener('pointerdown', onPointerDown, true);
+            doc.removeEventListener('pointerup', onPointerUp, true);
+        }
         panel.remove();
     };
 }

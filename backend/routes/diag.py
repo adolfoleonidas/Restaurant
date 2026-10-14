@@ -21,9 +21,9 @@ from database import db
 
 router = APIRouter()
 
-# Una muestra es un puñado de números. Más que esto es un cliente roto o alguien
-# probando: se rechaza en vez de guardarlo.
-MAX_SAMPLE_BYTES = 4000
+# Una muestra es un puñado de números y el registro de los toques del período. Más
+# que esto es un cliente roto o alguien probando: se rechaza en vez de guardarlo.
+MAX_SAMPLE_BYTES = 16000
 
 
 def _now():
@@ -39,6 +39,10 @@ class DiagSample(BaseModel):
     # Lo que el mozo percibe: el toque hasta ver el cambio, y los que no cambiaron
     # nada (`silent`). Es la medida que responde "se demora en aparecer que se tocó".
     visible: Dict[str, Any] = Field(default_factory=dict)
+    # El registro de CADA toque del período, en orden: qué se tocó, cuánto tardó y si
+    # no hizo nada ('ok' / 'lost' / 'scroll'). Es lo que permite reconstruir lo que
+    # el mozo hizo, en vez de mirar promedios.
+    taps_log: List[Dict[str, Any]] = Field(default_factory=list)
     # Las peticiones más lentas del período: dice si el costo está en la red.
     requests: List[Dict[str, Any]] = Field(default_factory=list)
     longs: Dict[str, Any] = Field(default_factory=dict)

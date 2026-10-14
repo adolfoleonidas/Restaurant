@@ -257,6 +257,12 @@ describe('perfMeter: el panel en pantalla', () => {
         stop();
     });
 
+    /** Un toque de verdad: baja el dedo y lo levanta en el mismo sitio. */
+    const press = (node, x = 10, y = 10) => {
+        node.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
+        node.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: x, clientY: y }));
+    };
+
     it('mide del toque a ver el cambio en pantalla', () => {
         // La tarjeta primero: encender el medidor agrega el panel al body y
         // reemplazar el body después se lo llevaría por delante.
@@ -264,7 +270,7 @@ describe('perfMeter: el panel en pantalla', () => {
         const win = fakeWindow();
         const stop = installPerfMeter({ win, doc: document });
 
-        card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+        press(card);
         // El fotograma revisa si la cantidad cambió; el latido repinta el panel.
         win._frame();
         win._beat();
@@ -285,7 +291,7 @@ describe('perfMeter: el panel en pantalla', () => {
             const win = fakeWindow();
             const stop = installPerfMeter({ win, doc: document });
 
-            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            press(card);
             jest.advanceTimersByTime(10100);
             win._frame();
             win._beat();
@@ -306,7 +312,7 @@ describe('perfMeter: el panel en pantalla', () => {
             const win = fakeWindow();
             const stop = installPerfMeter({ win, doc: document });
 
-            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            press(card);
             jest.advanceTimersByTime(3000);
             qty.textContent = '1';
             win._frame();
@@ -358,7 +364,7 @@ describe('perfMeter: el panel en pantalla', () => {
             // Latido larguísimo: si igual llega la muestra, es por el toque lento.
             const stop = installPerfMeter({ win, doc: document, reportEveryMs: 600000 });
 
-            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            press(card);
             win._pushEvent({ name: 'click', duration: 10, startTime: 0, processingStart: 5, processingEnd: 6 });
 
             jest.advanceTimersByTime(300);
@@ -421,6 +427,69 @@ describe('perfMeter: el panel en pantalla', () => {
         expect(document.querySelector('[data-testid="perf-meter-cuerpo"]').style.display).toBe('none');
 
         stop();
+    });
+
+    it('registra cada toque: qué se tocó, cuánto tardó y si no hizo nada', () => {
+        jest.useFakeTimers();
+        try {
+            const { card, qty } = productCard();
+            const win = fakeWindow();
+            const stop = installPerfMeter({ win, doc: document });
+
+            // Un toque que entra.
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 }));
+            card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 10, clientY: 10 }));
+            jest.advanceTimersByTime(70);
+            qty.textContent = '1';
+            win._frame();
+
+            // Y uno que no hace nada.
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 10 }));
+            card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 10, clientY: 10 }));
+            jest.advanceTimersByTime(10100);
+            win._frame();
+
+            win._pushEvent({ name: 'click', duration: 10, startTime: 0, processingStart: 5, processingEnd: 6 });
+            win._beat();
+            const sent = api.post.mock.calls[0][1].taps_log;
+            expect(sent).toHaveLength(2);
+            expect(sent[0]).toMatchObject({ el: 'mesa-sheet-producto-nombre-p-7', kind: 'add', result: 'ok' });
+            expect(sent[0].ms).toBeGreaterThanOrEqual(60);
+            expect(sent[1]).toMatchObject({ kind: 'add', result: 'lost' });
+
+            // Lo mandado no se repite: el registro se vacía al enviarlo.
+            win._beat();
+            expect(api.post).toHaveBeenCalledTimes(1);
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('un scroll que empieza sobre una tarjeta NO cuenta como toque perdido', () => {
+        // El dedo se movió: fue un scroll. Contarlo como "no hizo nada" era lo que
+        // inflaba el contador de toques perdidos.
+        jest.useFakeTimers();
+        try {
+            const { card } = productCard();
+            const win = fakeWindow();
+            const stop = installPerfMeter({ win, doc: document });
+
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 10, clientY: 300 }));
+            card.dispatchEvent(new MouseEvent('pointermove', { bubbles: true, clientX: 12, clientY: 120 }));
+            card.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, clientX: 12, clientY: 120 }));
+            jest.advanceTimersByTime(10100);
+            win._frame();
+            win._pushEvent({ name: 'click', duration: 10, startTime: 0, processingStart: 5, processingEnd: 6 });
+            win._beat();
+
+            const body = api.post.mock.calls[0][1];
+            expect(body.visible.silent_add).toBe(0);
+            expect(body.taps_log[0]).toMatchObject({ result: 'scroll' });
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
     });
 
     it('manda la muestra al servidor cuando hubo toques', () => {
