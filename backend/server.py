@@ -31,6 +31,7 @@ from routes import (
     zones_router,
     branches_router,
     data_router,
+    menu_router,
     system_router,
     diag_router,
 )
@@ -81,6 +82,8 @@ api_router.include_router(approvals_router, prefix="/approvals", tags=["approval
 api_router.include_router(zones_router, prefix="/zones", tags=["zones"])
 api_router.include_router(branches_router, prefix="/branches", tags=["branches"])
 api_router.include_router(data_router, prefix="/data", tags=["data"])
+# Menú del día: qué se vende hoy, separado del catálogo (ver `menu_day.py`).
+api_router.include_router(menu_router, prefix="/menu", tags=["menu"])
 api_router.include_router(system_router, prefix="/system", tags=["system"])
 # Diagnóstico del cliente: el medidor de `?diag=1` manda lo que solo el
 # dispositivo puede medir (ver `routes/diag.py`).

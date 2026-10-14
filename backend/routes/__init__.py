@@ -17,6 +17,7 @@ from .approvals import router as approvals_router
 from .zones import router as zones_router
 from .branches import router as branches_router
 from .data import router as data_router
+from .menu import router as menu_router
 from .system import router as system_router
 from .diag import router as diag_router
 
@@ -40,6 +41,7 @@ __all__ = [
     "zones_router",
     "branches_router",
     "data_router",
+    "menu_router",
     "system_router",
     "diag_router",
 ]
