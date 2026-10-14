@@ -251,7 +251,7 @@ export default function PedidoNuevo() {
 
             {/* El pie sube por encima de la barra inferior de navegación (60 px +
                 área segura) en móvil; en escritorio la barra no existe. */}
-            <div className="sticky bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border mt-4">
+            <div className="sticky bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] md:bottom-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border mt-4">
                 <Button
                     onClick={submit}
                     disabled={loading || cart.length === 0 || (isTableOrder && !tableId)}

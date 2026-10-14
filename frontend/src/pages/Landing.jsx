@@ -229,7 +229,7 @@ export default function Landing() {
                     </div>
                 </section>
             )}
-            <div className="sticky top-16 z-20 bg-background/95 backdrop-blur border-b border-border shadow-sm" role="navigation" aria-label="Categorías del menú">
+            <div className="sticky top-16 z-20 bg-background/95 border-b border-border shadow-sm" role="navigation" aria-label="Categorías del menú">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex items-center gap-2 snap-x scroll-x">                    <div className="relative shrink-0">
                         <Search className="h-4 w-4 absolute left-3 top-3 text-muted-foreground" />
                         <Input type="search" enterKeyHint="search" className="pl-9 h-10 w-44 sm:w-52 rounded-sm bg-card" placeholder="Buscar en la carta" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="landing-search" />

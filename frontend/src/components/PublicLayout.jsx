@@ -49,7 +49,7 @@ export const PublicLayout = () => {
             >
                 Saltar al contenido
             </a>
-            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90 backdrop-blur-md">
+            <header className="sticky top-0 z-30 border-b border-border/80 bg-background/90">
                 <div className="max-w-6xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between gap-3">
                     <Link to="/" className="min-w-0">
                         <BrandMark name={restaurant?.name || 'Restaurante'} logoUrl={restaurant?.logo_url} kicker="Carta" compact />

@@ -510,7 +510,7 @@ export default function Checkout() {
                     </div>
                 )}
 
-                <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
+                <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border">
                     <div className="max-w-2xl mx-auto">
                         <Button
                             onClick={submit}
@@ -747,7 +747,7 @@ export default function Checkout() {
                 </div>
             </div>
 
-            <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t border-border">
+            <div className="fixed bottom-0 inset-x-0 z-40 p-3 pb-[max(12px,env(safe-area-inset-bottom))] bg-background/95 border-t border-border">
                 <div className="max-w-5xl mx-auto">
                     <Button
                         onClick={() => { if (validate()) setReviewing(true); }}
