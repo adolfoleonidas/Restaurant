@@ -617,6 +617,56 @@ ombre-del-restaurante, ruc, direccion, telefono, moneda, zona-horaria, horario, 
 | P2-20 de la auditoría: diálogos de borrado sin consecuencias | Requiere datos que hoy no están en el cliente (combos que incluyen el plato, pedidos activos) |
 | P2-16: la función proof_ocr se puede activar pero no existe en pantalla | Decisión de producto (retirarla o marcarla "próximamente") |
 
+## 🔄 Ronda 16 del objetivo — la tarjeta decía un estado y sus botones actuaban sobre otra cuenta
+
+### Contexto
+
+Reportado desde el piso: «le doy a Entregar, arriba dice *pedido entregado*, pero no
+cambia de estado; a veces sí, a veces no». El aviso confirma que el POST se hizo
+—o sea, el toque funciona—, así que el fallo estaba en **qué estado pinta la
+tarjeta**.
+
+La causa era una inconsistencia de origen entre las dos mitades de la tarjeta:
+
+```js
+const floor = floorState(t);            // lee t.active_order: la cuenta MÁS ANTIGUA
+const serviceOrder = t.active_attention_id
+    ? attentionOrder                    // la cuenta con comida LISTA
+    : (listOrder || t.active_order);
+```
+
+El servidor deja en `active_order` la cuenta más antigua de la visita, mientras
+que `activeAttentionOrder` elige para actuar la que tiene comida lista. Con **una
+sola cuenta coinciden**, y por eso el caso normal funcionaba. Con dos —o cuando la
+más antigua no tiene nada listo— la tarjeta decía «Entregado» **mientras ofrecía
+«Entregar»**, y al pulsarlo el cambio ocurría en la otra cuenta: el aviso salía y
+la tarjeta no se movía. La hoja de la mesa tenía el mismo desajuste: su cabecera
+leía `t.active_order` y sus acciones usaban `actionOrder`.
+
+### Arreglo aplicado
+
+| # | Ítem | Cambio | Archivo |
+|---|---|---|---|
+| R16-1 | **El estado sale de la cuenta que se va a servir** | `floorState(t, order = t.active_order)` acepta la cuenta a leer; `decorateTables` le pasa `serviceOrder` y `selectSheetModel` le pasa `actionOrder`. El valor por defecto mantiene el comportamiento de cualquier otro llamador | `pages/salon/selectors.js` |
+| R16-2 | **La insignia deja de duplicar el estado** | Con el estado leyendo la cuenta correcta, una cuenta `pendiente_pago` (codificación antigua de «pidió la cuenta») ya se cuenta como «Cuenta», así que la insignia «Cuenta solicitada» solo aparece cuando **añade** un dato que el estado no lleva — que es lo que hace con `payment_requested` sobre un pedido aún `listo` | `components/MesaCard.jsx` + `__tests__/ServicioAttention.test.js` |
+
+### Verificación
+
+- **Frontend: 140 suites / 1384 pruebas** en verde (antes 1382) y
+  `CI=true npx craco build` compila.
+- **Los tres tests caen si se revierte el arreglo**, comprobado revirtiendo
+  `floorState` a leer siempre `t.active_order`:
+  `Expected: "listo" / Received: "entregado"` en la tarjeta, fallo en el de la
+  hoja, y `Received: null` en el legacy. La primera vez esta comprobación **no
+  valió**: el reemplazo usaba el ancla `$` y el fichero es CRLF, así que el `\r`
+  impidió que casara y los tests «pasaron» sin que nada se hubiera revertido.
+- Sobre la duda del toque: el botón es un `<button type="button">` real con
+  `touch-target-coarse` + `min-h-11` (44 px) y su contenedor es una columna flex,
+  así que se estira a lo ancho. Un test lo fija, y fija también el límite real:
+  pulsar el botón entrega y no abre la hoja; pulsar el **relleno** de la tarjeta
+  sí la abre — que es lo que hace que un toque al borde parezca «no funcionó».
+- **No verificado en vivo**: pruebas con jsdom, no en el teléfono del mozo.
+
 ## 🔄 Ronda 15 del objetivo — el parche optimista rompía la tarjeta, y la cocina ordena al revés
 
 ### Contexto

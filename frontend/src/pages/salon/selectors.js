@@ -148,8 +148,19 @@ export function unitZone(unit, activeArea) {
 
 // ── Floor states ─────────────────────────────────────────────────────────
 
-export function floorState(t) {
-    const o = t.active_order;
+/**
+ * El estado del piso de una mesa.
+ *
+ * `order` es la cuenta cuyo estado se quiere leer. Por defecto la que el
+ * servidor manda como `active_order` (la más antigua de la visita), pero **la
+ * tarjeta tiene que pasar la misma cuenta sobre la que actúan sus botones**:
+ * cuando una visita tiene varias cuentas, `activeAttentionOrder` elige la que
+ * tiene comida lista y el servidor deja como `active_order` la más antigua. Si
+ * se mezclan, la tarjeta dice «Entregado» mientras ofrece «Entregar» —y al
+ * pulsarlo no cambia nada, porque el cambio ocurre en la otra cuenta—.
+ */
+export function floorState(t, order = t.active_order) {
+    const o = order;
     if (t.status === 'inactiva') return { key: 'inactiva' };
     if (t.status === 'reservada' && !o) return { key: 'reservada' };
     if (o?.status === 'cancelado') return { key: 'atencion' };
@@ -335,11 +346,14 @@ export function decorateTables({
     tables, byTable, orders, activeOrders,
 }) {
     return (tables || []).map((t) => {
-        const floor = floorState(t);
         const listOrder = byTable[t.id] || null;
         const attentionOrder = activeAttentionOrder(t, orders);
         const displayOrder = t.active_order || attentionOrder || listOrder || null;
         const serviceOrder = t.active_attention_id ? attentionOrder : (listOrder || t.active_order || null);
+        // El estado se lee de la MISMA cuenta sobre la que actúan los botones. Se
+        // cae a la de la mesa solo si no hay cuenta de servicio, que es cuando la
+        // tarjeta tampoco ofrece acciones.
+        const floor = floorState(t, serviceOrder || t.active_order);
         const items = serviceOrder?.items || [];
         const ready = itemQty(items, (it) => it.status === 'listo');
         const pendingPrep = itemQty(items, (it) => !['entregado', 'cancelado', 'listo'].includes(it.status || 'pendiente'));
@@ -525,7 +539,6 @@ export function selectSheetModel({
     const groupAccounts = group ? groupAccountTables(group, tables, activeOrders) : [];
     const order = sheetOrder;
     const currentAccountId = order?.id || accountId || t.active_order?.id || null;
-    const floor = floorState(t);
     // Composición inline: se puede pedir mientras la mesa no esté cerrada.
     const composeTable = (tables || []).find((entry) => entry.id === t.id) || t;
     const canCompose = canTake && isComposableTable(composeTable);
@@ -593,6 +606,10 @@ export function selectSheetModel({
     const actionOrder = order
         || (fallbackPerson ? (activeOrders[fallbackPerson.id] || allAccounts.find((o) => o.id === fallbackPerson.id)) : null);
     const actionAccountId = currentAccountId || fallbackPerson?.id || null;
+    // La hoja también pinta el estado de la cuenta sobre la que actúa: si el mozo
+    // está mirando la cuenta nueva, el estado que lee es el de esa cuenta y no el
+    // de la más antigua de la visita.
+    const floor = floorState(t, actionOrder || t.active_order);
     // El botón de cobro cobra la cuenta que la hoja tiene activa:
     // el monto es su saldo, no el agregado de la mesa.
     const actionDue = accountDue(actionOrder);

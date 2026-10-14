@@ -265,6 +265,33 @@ describe('floor units', () => {
         expect(grouped.groupNumbers).toEqual([3, 4]);
     });
 
+    test('la tarjeta se pinta con la MISMA cuenta sobre la que actúan sus botones', () => {
+        // Una visita con dos cuentas: la más antigua (b) ya se entregó y la nueva
+        // (a) tiene un plato listo. El servidor pone como `active_order` la más
+        // antigua, así que la tarjeta decía «Entregado» **mientras ofrecía
+        // Entregar** — y al pulsarlo el estado no cambiaba, porque el suyo salía
+        // de la otra cuenta. Reportado desde el piso: «dice pedido entregado pero
+        // no cambia de estado».
+        const t = table('t1', 1, { status: 'ocupada', active_attention_id: 'att-1', active_order: { id: 'b', status: 'entregado' } });
+        const a = order('a', 't1', {
+            attention_id: 'att-1', attention_state: 'open', status: 'listo',
+            created_at: '2026-01-01T11:00:00Z', items: [item('x', 'listo', 1)],
+        });
+        const b = order('b', 't1', {
+            attention_id: 'att-1', attention_state: 'open', status: 'entregado',
+            created_at: '2026-01-01T10:00:00Z', items: [item('y', 'entregado', 1)],
+        });
+        const [entry] = decorateTables({
+            tables: [t], byTable: indexOrdersByTable([b, a]), orders: [b, a], activeOrders: ordersByTable([b, a]),
+        });
+
+        // El botón actúa sobre `a` (es la que tiene comida lista)...
+        expect(entry.serviceOrder.id).toBe('a');
+        // ...y el estado tiene que ser el de `a`, no el de la cuenta antigua.
+        expect(entry.floor.key).toBe('listo');
+        expect(entry.ready).toBe(1);
+    });
+
     test('decorateTables sums what every open order of the visit owes', () => {
         const visitTable = table('tv', 7, { status: 'ocupada', active_attention_id: 'att-9', active_order: { id: 'v1', status: 'en_preparacion' } });
         const visitOrders = [
@@ -399,6 +426,22 @@ describe('selectSheetModel', () => {
         activeOrders: ordersByTable([o1, o2]),
         ...perms,
     };
+
+    test('el estado de la hoja es el de la cuenta que el mozo está mirando', () => {
+        // La mesa trae dos cuentas: la antigua (o2, ya entregada, que es la que el
+        // servidor manda como `active_order`) y la que el mozo abrió (o1, en
+        // preparación). Antes la cabecera leía siempre la antigua, así que decía
+        // una cosa mientras los botones actuaban sobre la otra.
+        const live = {
+            ...t,
+            active_order: { id: 'o2', status: 'entregado' },
+        };
+        const model = selectSheetModel({
+            ...base, openTable: { ...base.openTable, accountId: 'o1' }, sheetOrder: o1, tables: [live],
+        });
+        expect(model.actionOrder.id).toBe('o1');
+        expect(model.floor).toEqual({ key: 'preparando' });
+    });
 
     test('the sheet follows the live table, not the snapshot taken when it opened', () => {
         const live = { ...t, status: 'esperando_pago', active_order: { id: 'o1', status: 'pendiente_pago' } };

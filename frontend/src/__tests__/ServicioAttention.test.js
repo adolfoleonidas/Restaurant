@@ -109,12 +109,19 @@ describe('Servicio attention closure', () => {
         container.remove();
     });
 
-    it('preserves the legacy pending-payment status badge', async () => {
+    it('surfaces a legacy pending-payment account as the state, not as a badge', async () => {
+        // `status = "pendiente_pago"` es la codificación antigua de «pidió la
+        // cuenta». Antes la tarjeta decía «Ocupada» y añadía la insignia «Cuenta
+        // solicitada», porque el estado salía de la copia de la mesa (que en este
+        // caso no trae cuenta) y no de la cuenta sobre la que actúan los botones.
+        // Ahora el estado sale de esa cuenta y lo dice él mismo: el dato no se
+        // pierde, se pinta donde corresponde y la insignia deja de repetirlo.
         mockRows.orders = [{ ...mockVisit, status: 'pendiente_pago', payment_requested: false }];
         const { container, root } = await renderPage();
-        // The table still reads "Ocupada": the badge adds the fact the state
-        // does not carry, so it must stay.
-        expect(container.textContent).toContain('Cuenta solicitada');
+        expect(container.textContent).toContain('Cuenta');
+        expect(container.querySelector('[data-testid="mesa-card-cobrar-1"]')).not.toBeNull();
+        // Y no se duplica: la insignia solo aparece cuando el estado no lo dice.
+        expect(container.textContent).not.toContain('Cuenta solicitada');
         await act(async () => root.unmount());
         container.remove();
     });

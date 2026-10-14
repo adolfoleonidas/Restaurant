@@ -134,6 +134,38 @@ describe('entregar desde la tarjeta del piso', () => {
         await act(async () => root.unmount());
     });
 
+    it('el botón Entregar es un botón ancho y de verdad, no solo el texto', async () => {
+        // Duda reportada desde el piso: «no todo el botón funciona, sino solo el
+        // texto». Es un <button> real con el contrato de 44 px para el dedo, y su
+        // contenedor es una columna flex, así que se estira a lo ancho de la
+        // tarjeta. Lo que sí tiene un borde es la tarjeta: el relleno de alrededor
+        // abre la hoja, no entrega.
+        const { container, root } = await renderFloor();
+        const deliver = container.querySelector('[data-testid="mesa-card-deliver-4"]');
+
+        expect(deliver.tagName).toBe('BUTTON');
+        expect(deliver.getAttribute('type')).toBe('button');
+        expect(deliver.className).toContain('touch-target-coarse');
+        expect(deliver.className).toContain('min-h-11');
+        // El contenedor estira a sus hijos: el botón ocupa la fila entera.
+        expect(deliver.parentElement.className).toContain('flex');
+        expect(deliver.parentElement.className).toContain('flex-col');
+
+        // Tocar el botón entrega y NO abre la hoja…
+        await act(async () => deliver.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+        expect(api.post).toHaveBeenCalledWith('/orders/order-4/serve');
+        expect(container.querySelector('[data-testid="mesa-sheet"]')).toBeNull();
+
+        // …y tocar el cuerpo de la tarjeta sí la abre: ese es el límite real, y es
+        // lo que hace que un toque al borde parezca «el botón no funcionó».
+        await act(async () => {
+            container.querySelector('[data-testid="mesa-card-4"]').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        });
+        expect(container.querySelector('[data-testid="mesa-sheet"]')).not.toBeNull();
+
+        await act(async () => root.unmount());
+    });
+
     it('una cuenta ya cobrada pasa a «Cuenta pagada» con su botón de finalizar', async () => {
         mockOrders = [{ ...servedOrder(), amount_paid: 45, payment_status: 'pagado' }];
         mockTables = [{
