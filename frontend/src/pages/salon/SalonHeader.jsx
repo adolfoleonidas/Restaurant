@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { countOf, fmtMoney } from '@/lib/format';
 
-export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, canGoKitchen, selectMode, startSelection, openAreas }) {
+export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, canGoKitchen, selectMode, startSelection, openAreas, searchOpen = false, onToggleFilters }) {
     return (
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <div>
@@ -18,6 +18,19 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                 </p>
             </div>
             <div className="flex flex-wrap gap-2 items-center">
+                {/* Buscar y filtrar están plegados por defecto: en el teléfono
+                    empujaban la lista de mesas fuera de la pantalla y el mozo tenía
+                    que desplazarse para ver una sola. Quien los usa siempre los deja
+                    abiertos: la elección se recuerda por dispositivo. */}
+                <Button
+                    variant="outline"
+                    onClick={onToggleFilters}
+                    aria-expanded={searchOpen}
+                    data-testid="salon-toggle-filtros"
+                >
+                    <Search className="h-4 w-4 mr-2" />
+                    {searchOpen ? 'Ocultar filtros' : 'Buscar y filtros'}
+                </Button>
                 {isOwner && branchCatalog.branches.length > 0 && (
                     <select
                         aria-label="Sucursal del salón"
@@ -33,10 +46,12 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                         <option value="legacy">Sin sucursal</option>
                     </select>
                 )}
-                <div className="relative">
-                    <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
-                    <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
-                </div>
+                {searchOpen && (
+                    <div className="relative">
+                        <Search className="h-4 w-4 absolute left-3 top-3.5 sm:top-3 text-muted-foreground" />
+                        <Input ref={searchRef} className="pl-9 w-44" placeholder="Buscar mesa  ( / )" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="salon-search-input" />
+                    </div>
+                )}
                 {canGoKitchen && summary.toPrep > 0 && (
                     <Button variant="outline" onClick={() => navigate('/cocina')} data-testid="salon-ir-cocina">
                         Cocina ({summary.toPrep})
@@ -44,9 +59,13 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                 )}
                 {canTake && !selectMode && (
                     <>
-                        <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
-                            <Link2 className="h-4 w-4 mr-1" /> Unir mesas
-                        </Button>
+                        {/* Unir mesas es ocasional: viaja con los filtros, no con las
+                            dos acciones que el mozo usa todo el tiempo. */}
+                        {searchOpen && (
+                            <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
+                                <Link2 className="h-4 w-4 mr-1" /> Unir mesas
+                            </Button>
+                        )}
                         <Button onClick={() => openAreas()} data-testid="salon-nuevo-pedido">
                             <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
                         </Button>

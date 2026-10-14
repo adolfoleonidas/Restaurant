@@ -26,6 +26,9 @@ import useTableSheet from './salon/useTableSheet';
 import useVisitTransfer from './salon/useVisitTransfer';
 import { MINI_OPEN_CLASS, isMiniVisible, selectSheetModel } from './salon/selectors';
 
+/** Dónde se recuerda si el mozo dejó abiertos el buscador y los filtros del piso. */
+const SALON_FILTERS_KEY = 'salon_filtros';
+
 /**
  * Salón — unified floor + service screen.
  *
@@ -59,6 +62,9 @@ export default function Salon() {
     const canVoidItems = Boolean(features.item_void);
 
     const [showNewOrder, setShowNewOrder] = useState(false);
+    const [filtersOpen, setFiltersOpen] = useState(() => {
+        try { return window.localStorage.getItem(SALON_FILTERS_KEY) === '1'; } catch { return false; }
+    });
 
     const isOwner = can(user, ACTIONS.OWNER);
 
@@ -117,6 +123,18 @@ export default function Salon() {
         selectMode: selection.selectMode,
     });
 
+    // Buscar y filtrar arrancan PLEGADOS: en el teléfono empujaban la lista de mesas
+    // fuera de la pantalla (título, resumen, buscador, tres botones y la fila de
+    // filtros ≈ 350 px en una pantalla de 689) y el mozo tenía que desplazarse para
+    // ver una sola mesa. La elección se recuerda por dispositivo: quien siempre
+    // filtra los deja abiertos y no vuelve a tocar el botón.
+    const toggleFilters = () => {
+        setFiltersOpen((open) => {
+            try { window.localStorage.setItem(SALON_FILTERS_KEY, open ? '0' : '1'); } catch { /* sin storage */ }
+            return !open;
+        });
+    };
+
     const sheetModel = openTable
         ? selectSheetModel({
             openTable, sheetOrder: sheet.sheetOrder, tables, activeOrders, canTake, canClose,
@@ -148,6 +166,8 @@ export default function Salon() {
                     selectMode={selection.selectMode}
                     startSelection={selection.startSelection}
                     openAreas={openAreas}
+                    searchOpen={filtersOpen}
+                    onToggleFilters={toggleFilters}
                 />
 
                 {selection.selectMode && (
@@ -162,16 +182,18 @@ export default function Salon() {
                     />
                 )}
 
-                <FloorFilters
-                    setStateFilter={floorView.setStateFilter}
-                    stateFilter={floorView.stateFilter}
-                    stateCounts={floorView.stateCounts}
-                    toggleSortMode={floorView.toggleSortMode}
-                    sortMode={floorView.sortMode}
-                    areas={floorView.areas}
-                    setAreaFilter={floorView.setAreaFilter}
-                    areaFilter={floorView.areaFilter}
-                />
+                {filtersOpen && (
+                    <FloorFilters
+                        setStateFilter={floorView.setStateFilter}
+                        stateFilter={floorView.stateFilter}
+                        stateCounts={floorView.stateCounts}
+                        toggleSortMode={floorView.toggleSortMode}
+                        sortMode={floorView.sortMode}
+                        areas={floorView.areas}
+                        setAreaFilter={floorView.setAreaFilter}
+                        areaFilter={floorView.areaFilter}
+                    />
+                )}
 
                 <SalonAlerts
                     tablesError={tablesError}

@@ -118,6 +118,9 @@ describe('compositor · paridad posView (S8)', () => {
     beforeEach(() => {
         jest.useFakeTimers();
         localStorage.clear();
+        // El buscador de mesas vive con los filtros, plegados por defecto en la app;
+        // estos tests lo usan, así que entran con ellos abiertos.
+        localStorage.setItem('salon_filtros', '1');
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
@@ -926,6 +929,9 @@ describe('edición explícita de borradores (T04)', () => {
     beforeEach(() => {
         jest.useFakeTimers();
         localStorage.clear();
+        // El buscador de mesas vive con los filtros, plegados por defecto en la app;
+        // estos tests lo usan, así que entran con ellos abiertos.
+        localStorage.setItem('salon_filtros', '1');
         mockRole = 'admin';
         window.confirm = jest.fn().mockReturnValue(false);
         api.get.mockReset();
