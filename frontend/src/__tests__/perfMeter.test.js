@@ -140,9 +140,9 @@ describe('perfMeter: la muestra que se manda', () => {
             expect(sample.screen).toBe('375x689 vertical');
             expect(sample.viewport.ua).toContain('Android 10');
             expect(sample.taps).toEqual({ n: 3, p50: 160, max: 200, busy: 110, code: 4 });
-            // Lo que el mozo percibe: el toque hasta ver el cambio, y los que no
-            // cambiaron nada.
-            expect(sample.visible).toEqual({ n: 3, p50: 50, max: 60, silent: 2 });
+            // Lo que el mozo percibe: el toque hasta ver el cambio, los que no
+            // cambiaron nada, y el rato con las tarjetas sin aceptar toques.
+            expect(sample.visible).toEqual({ n: 3, p50: 50, max: 60, silent: 2, blocked: 0 });
             expect(sample.requests).toHaveLength(1);
             expect(sample.longs).toEqual({ n: 2, max: 320 });
             expect(sample.fps).toBe(60);
@@ -252,6 +252,59 @@ describe('perfMeter: el panel en pantalla', () => {
             win._beat();
 
             expect(panelValue('effect')).toContain('1 SIN EFECTO');
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('cuenta el tiempo con las tarjetas sin aceptar toques', () => {
+        // Un botón deshabilitado no dispara el evento del toque, así que ni el
+        // conteo de toques ni el de efecto lo ven: sin esta medida, la app puede
+        // estar rechazando toques y el medidor decir que todo va en 67 ms.
+        jest.useFakeTimers();
+        try {
+            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
+                + '<button disabled data-testid="mesa-sheet-producto-p-7">+</button>'
+                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const win = fakeWindow();
+            const stop = installPerfMeter({ win, doc: document });
+
+            win._frame();
+            jest.advanceTimersByTime(50);
+            win._frame();
+            win._beat();
+
+            expect(panelValue('effect')).toContain('sin aceptar toques');
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
+    it('un toque lento se reporta al instante, sin esperar al latido', () => {
+        // El problema es intermitente: un toque de 300 ms entre cuarenta de 60 ms se
+        // pierde en el promedio de cinco segundos. Este se manda solo.
+        jest.useFakeTimers();
+        try {
+            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
+                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const win = fakeWindow();
+            // Latido larguísimo: si igual llega la muestra, es por el toque lento.
+            const stop = installPerfMeter({ win, doc: document, reportEveryMs: 600000 });
+
+            const card = document.querySelector('[data-testid="mesa-sheet-producto-nombre-p-7"]');
+            const qty = document.querySelector('[data-testid="mesa-sheet-producto-cantidad-p-7"]');
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            win._pushEvent({ name: 'click', duration: 10, startTime: 0, processingStart: 5, processingEnd: 6 });
+
+            jest.advanceTimersByTime(300);
+            qty.textContent = '1';
+            win._frame();
+            win._beat();
+
+            expect(api.post).toHaveBeenCalledTimes(1);
+            expect(api.post.mock.calls[0][1].visible.p50).toBeGreaterThanOrEqual(200);
             stop();
         } finally {
             jest.useRealTimers();
