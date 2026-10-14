@@ -345,6 +345,15 @@ async def public_products():
         {"restaurant_id": r["id"]},
         {"_id": 0}
     ).sort("name", 1).to_list(500)
+    # La carta del cliente ofrece SOLO el menú de hoy: es la puerta estricta. Si
+    # listara todo y luego rechazara el pedido, el cliente vería platos que no puede
+    # pedir — y eso es peor que no verlos. Sin menú publicado, `day` es None y se
+    # listan todos, como antes de que existiera esta capa.
+    _, day = await today_menu(db, r["id"])
+    if day is not None:
+        day_items = index_items(day)
+        items = [i for i in items if resolve(i, day_items, True, strict=True).offered]
+
     # Every combo of the menu is resolved with one query, not one per component.
     components = await combo_components_map(items, r["id"])
     for item in items:
