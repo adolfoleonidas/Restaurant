@@ -29,8 +29,14 @@ export const DIAG_KEY = 'restaurant_diag';
 export const DIAG_POS_KEY = 'restaurant_diag_pos';
 const PANEL_ROWS = ['version', 'viewport', 'tap', 'effect', 'net', 'long', 'fps'];
 
-/** Un toque que no cambió nada en este plazo cuenta como "no hizo nada". */
-const SILENT_MS = 2000;
+/**
+ * Un toque que no cambió nada en este plazo cuenta como perdido.
+ *
+ * Diez segundos, no dos: en un teléfono lento un toque retenido puede tardar tres o
+ * cuatro en verse, y con un corte corto eso se contaba como "no hizo nada" cuando en
+ * realidad sí entró. Aquí "perdido" tiene que significar perdido.
+ */
+const GIVE_UP_MS = 10000;
 /**
  * Un toque que tarda más que esto se reporta AL INSTANTE, sin esperar al latido.
  *
@@ -118,6 +124,23 @@ export function productIdFrom(target) {
     return null;
 }
 
+/**
+ * Qué parte de la tarjeta se tocó.
+ *
+ * Importa para que "no hizo nada" signifique algo: tocar la cantidad o el borde de
+ * la fila no cambia nada y no debería. Un toque que no hizo nada **sobre la tarjeta
+ * que agrega** es el problema del mozo; cualquier otro es ruido de la medición.
+ */
+export function tapKind(target, productId) {
+    const node = target && target.closest && target.closest('[data-testid]');
+    const testid = (node && node.getAttribute('data-testid')) || '';
+    if (testid === '' || !productId) return 'other';
+    if (testid.endsWith(`-producto-${productId}`)) return 'add';
+    if (testid.includes('-producto-nombre-')) return 'add';
+    if (testid.includes('-producto-menos-')) return 'minus';
+    return 'other';
+}
+
 const ROW_SELECTOR = `[data-testid*="${PRODUCT_MARKERS[0]}"]`;
 
 /** Las peticiones más lentas desde `since`, para ver dónde se va la red. */
@@ -147,7 +170,7 @@ export function slowestRequests(win, since, limit = SLOW_REQUESTS) {
  * navegador se está midiendo.
  */
 export function buildSample({
-    taps = [], visible = [], silent = 0, blocked = 0, requests = [], longs = [], fps = null,
+    taps = [], visible = [], silent = 0, silentAdd = 0, blocked = 0, requests = [], longs = [], fps = null,
     win = window, doc = win && win.document,
 } = {}) {
     const portrait = (win.innerHeight || 0) >= (win.innerWidth || 0);
@@ -170,7 +193,7 @@ export function buildSample({
         // toques no cambiaron nada, y cuánto tiempo las tarjetas ni siquiera
         // aceptaban un toque (un botón deshabilitado no dispara el evento, así que
         // esto no aparece en ninguna otra medida).
-        visible: { ...summarize(visible), silent, blocked: Math.round(blocked) },
+        visible: { ...summarize(visible), silent, silent_add: silentAdd, blocked: Math.round(blocked) },
         requests: requests.slice(0, SLOW_REQUESTS),
         longs: { n: longs.length, max: longs.length ? Math.max(...longs) : 0 },
         fps,
@@ -210,6 +233,7 @@ export function installPerfMeter({
     const pending = [];
     const longs = [];
     let silent = 0;
+    let silentAdd = 0;
     let requests = [];
     let frames = 0;
     let fps = null;
@@ -293,7 +317,7 @@ export function installPerfMeter({
         const event = summarize(taps.map((tap) => tap.duration));
         summary.textContent = collapsed
             ? ` ${effect.p50 === null ? '—' : effect.p50} ms`
-                + `${silent ? ` · ${silent}✗` : ''}`
+                + `${silentAdd ? ` · ${silentAdd}✗` : ''}`
                 + `${blockedMs >= 1 ? ` · ⛔${Math.round(blockedMs)}` : ''}`
                 + ` · ${event.p50 === null ? '—' : event.p50} ms`
             : ' MEDIDOR · toca para minimizar · ?diag=0 para apagar';
@@ -341,7 +365,8 @@ export function installPerfMeter({
             : `${effect.p50 === null ? '—' : `${effect.p50} ms p50`}`
                 + `${effect.max === null ? '' : ` · ${effect.max} ms peor`}`
                 + ` · ${effect.n} con efecto`
-                + `${silent ? ` · ${silent} SIN EFECTO` : ''}`
+                + `${silentAdd ? ` · ${silentAdd} SIN EFECTO` : ''}`
+                + `${silent > silentAdd ? ` · ${silent - silentAdd} fuera de la tarjeta` : ''}`
                 + `${blockedMs >= 1 ? ` · ${Math.round(blockedMs)} ms sin aceptar toques` : ''}`;
         rows.net.textContent = requests.length
             ? requests.map((r) => `${r.ms} ms ${r.kb} KB ${r.url.split('/api/')[1] || r.url}`).join(' | ')
@@ -384,10 +409,13 @@ export function installPerfMeter({
     // evento del toque, así que ni el conteo de toques ni el de efecto lo detectan;
     // el mozo toca y no pasa nada, y desde afuera parecía que todo iba en 67 ms.
     const onPointerDown = (event) => {
-        if (!productIdFrom(event.target)) return;
+        const productId = productIdFrom(event.target);
+        if (!productId) return;
         const row = event.target.closest(ROW_SELECTOR);
         if (!row) return;
-        pending.push({ at: clock(), before: row.textContent, card: row });
+        pending.push({
+            at: clock(), before: row.textContent, card: row, kind: tapKind(event.target, productId),
+        });
     };
     if (doc.addEventListener) doc.addEventListener('pointerdown', onPointerDown, true);
 
@@ -400,17 +428,26 @@ export function installPerfMeter({
                 visible.push(ms);
                 if (ms >= SLOW_TAP_MS) slowTapPending = true;
                 pending.splice(i, 1);
-            } else if (now - tap.at > SILENT_MS) {
+            } else if (now - tap.at > GIVE_UP_MS) {
                 silent += 1;
+                // Solo los que iban a agregar cuentan como el problema del mozo.
+                if (tap.kind === 'add') silentAdd += 1;
                 slowTapPending = true;
                 pending.splice(i, 1);
             }
         }
     };
 
-    /** ¿Hay alguna tarjeta de producto que en este momento no acepte un toque? */
+    /**
+     * ¿Hay alguna tarjeta de producto que en este momento no acepte un toque?
+     *
+     * Se mira el botón del NOMBRE, que es la tarjeta entera y el camino normal para
+     * agregar. No sirve mirar cualquier botón `-producto-`: el "−" está deshabilitado
+     * cuando la cantidad es 0 —que es lo normal en casi toda la carta— y eso hacía
+     * contar como "sin aceptar toques" un estado que no lo es.
+     */
     const cardsRefuseTaps = () => Boolean(
-        doc.querySelector('button[disabled][data-testid*="-producto-"]')
+        doc.querySelector('button[disabled][data-testid*="-producto-nombre-"]')
     );
 
     // FPS: se cuentan fotogramas por segundo, sin medir nada más. En el mismo
@@ -452,7 +489,7 @@ export function installPerfMeter({
             lastReportAt = clock();
             try {
                 Promise.resolve(send(buildSample({
-                    taps, visible, silent, blocked: blockedMs, requests, longs, fps, win, doc,
+                    taps, visible, silent, silentAdd, blocked: blockedMs, requests, longs, fps, win, doc,
                 }))).catch(() => {});
                 if (win.performance && win.performance.clearResourceTimings) win.performance.clearResourceTimings();
             } catch { /* el medidor nunca rompe la app */ }
