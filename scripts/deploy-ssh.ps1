@@ -153,10 +153,23 @@ try {
     else { Write-Host 'bundle servido: no encontrado en el HTML' -ForegroundColor Yellow }
 } catch { Write-Host "raiz: ERROR $($_.Exception.Message)" -ForegroundColor Red }
 
+$dbConnected = $true
 try {
     $health = Invoke-WebRequest -Uri "$AppUrl/api/health" -UseBasicParsing -TimeoutSec 15
     Write-Host "health: $($health.Content)" -ForegroundColor Green
-} catch { Write-Host "health: CAIDO" -ForegroundColor Red }
+    # El cuerpo, no solo el 200: la API responde 200 con la base caida
+    # (backend/server.py:52-61), asi que mirar el codigo HTTP daria por bueno un
+    # despliegue sin base de datos.
+    if ($health.Content -notmatch '"database":"connected"') {
+        Write-Host 'La API responde pero la BASE NO esta conectada.' -ForegroundColor Red
+        $dbConnected = $false
+    }
+} catch { Write-Host "health: CAIDO" -ForegroundColor Red; $dbConnected = $false }
+
+if (-not $dbConnected) {
+    Write-Host "`nDESPLEGADO $short, pero la base no responde: revisa los logs del backend." -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "`nDESPLEGADO $short" -ForegroundColor Green
 Write-Host "Ojo: tu otro worktree (cobro-restaurante) tiene main en el commit viejo; ahi toca 'git pull'." -ForegroundColor Yellow

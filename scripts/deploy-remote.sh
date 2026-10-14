@@ -74,7 +74,7 @@ fi
 #
 # Va desacoplado de esta sesión a propósito. Un corte de conexión a mitad dejaba
 # el sitio caído: `docker compose up -d --build` ya había parado el contenedor de
-# frontend —el que sirve el puerto— y nunca llegaba a levantarlo. Con `nohup` la
+# frontend -el que sirve el puerto- y nunca llegaba a levantarlo. Con `nohup` la
 # reconstrucción termina igual, y aquí solo se sigue el log.
 log="/tmp/restaurant-deploy.log"
 rm -f "$log" "$log.exit"
@@ -102,15 +102,23 @@ if [ "$(cat "$log.exit")" != "0" ]; then
 fi
 
 # --- Salud: hasta 2 minutos --------------------------------------------------
+# Se mira el CUERPO, no solo el codigo HTTP. `/api/health` responde 200 aunque la
+# base este caida (`backend/server.py:52-61` devuelve `{"status":"degraded"}` sin
+# cambiar el codigo), asi que un `curl -sf` a secas daba por bueno un despliegue
+# con Mongo sin arrancar: el local abria sin API y aqui salia DEPLOY_OK.
 ok=0
 i=0
 while [ "$i" -lt 24 ]; do
   i=$((i + 1))
-  if curl -sf --max-time 10 http://127.0.0.1:8081/api/health >/dev/null; then ok=1; break; fi
+  if curl -sf --max-time 10 http://127.0.0.1:8081/api/health 2>/dev/null | grep -q '"database":"connected"'; then
+    ok=1
+    break
+  fi
   sleep 5
 done
 if [ "$ok" != 1 ]; then
-  echo "DEPLOY_FAIL motivo=health_no_responde"
+  echo "DEPLOY_FAIL motivo=health_sin_base_conectada"
+  echo "ultimo cuerpo: $(curl -s --max-time 10 http://127.0.0.1:8081/api/health || echo '(sin respuesta)')"
   docker compose ps
   docker compose logs --tail 40 backend
   exit 1
