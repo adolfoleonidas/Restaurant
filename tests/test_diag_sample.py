@@ -32,7 +32,12 @@ SAMPLE = {
     "screen": "412x915 vertical",
     "viewport": {"w": 412, "h": 915, "orientation": "vertical", "dpr": 2.625, "nodes": 530, "ua": "Pixel 7"},
     "taps": {"n": 8, "p50": 160, "max": 320, "busy": 110, "code": 4},
-    "visible": {"n": 7, "p50": 50, "max": 90, "silent": 1},
+    "visible": {"n": 7, "p50": 50, "max": 90, "silent": 1, "silent_add": 1, "blocked": 0},
+    "taps_log": [
+        {"t": 1200, "el": "salon-nuevo-pedido"},
+        {"t": 1850, "el": "producto-nombre-p-1", "kind": "add", "p": "p-1", "ms": 72, "result": "ok"},
+        {"t": 2400, "el": "producto-nombre-p-2", "kind": "add", "p": "p-2", "result": "lost"},
+    ],
     "requests": [{"url": "/api/orders?active_only=true", "ms": 600, "kb": 42}],
     "longs": {"n": 12, "max": 324},
     "fps": 52,
@@ -94,7 +99,13 @@ def test_saves_the_sample_with_who_sent_it(http):
     assert row["taps"] == {"n": 8, "p50": 160, "max": 320, "busy": 110, "code": 4}
     # Lo que el mozo percibe y lo que tardó la red: sin esto, el diagnóstico se
     # queda sin las dos medidas que importan.
-    assert row["visible"] == {"n": 7, "p50": 50, "max": 90, "silent": 1}
+    assert row["visible"] == {"n": 7, "p50": 50, "max": 90, "silent": 1, "silent_add": 1, "blocked": 0}
+    # Cada toque, tal como lo hizo el mozo: primero "nuevo pedido", después dos
+    # productos, uno que entró y otro que no.
+    assert [entry["el"] for entry in row["taps_log"]] == [
+        "salon-nuevo-pedido", "producto-nombre-p-1", "producto-nombre-p-2",
+    ]
+    assert row["taps_log"][2]["result"] == "lost"
     assert row["requests"] == [{"url": "/api/orders?active_only=true", "ms": 600, "kb": 42}]
     assert row["longs"] == {"n": 12, "max": 324}
     assert row["fps"] == 52
@@ -122,7 +133,7 @@ def test_without_a_session_it_is_refused(http):
 
 
 def test_a_sample_too_big_is_refused(http):
-    giant = {**SAMPLE, "viewport": {**SAMPLE["viewport"], "ua": "x" * 8000}}
+    giant = {**SAMPLE, "viewport": {**SAMPLE["viewport"], "ua": "x" * 20000}}
 
     status, body = _request("POST", URL, giant)
 
