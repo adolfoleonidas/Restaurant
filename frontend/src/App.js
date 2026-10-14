@@ -40,6 +40,7 @@ const Reportes = React.lazy(() => import('@/pages/Reportes'));
 const Configuracion = React.lazy(() => import('@/pages/Configuracion'));
 const Pagos = React.lazy(() => import('@/pages/Pagos'));
 const Disponibilidad = React.lazy(() => import('@/pages/Disponibilidad'));
+const GestionarMenu = React.lazy(() => import('@/pages/menu/GestionarMenu'));
 
 // The role guard of every route comes from lib/permissions, the same module the
 // navigation reads.
@@ -154,6 +155,7 @@ function App() {
                                     <Route path="/reportes" element={guard('/reportes', <Reportes />)} />
                                     <Route path="/disponibilidad" element={guard('/disponibilidad', <Disponibilidad />)} />
                                     <Route path="/productos" element={guard('/productos', <Productos />)} />
+                                    <Route path="/menu" element={guard('/menu', <GestionarMenu />)} />
                                     <Route path="/combos" element={guard('/combos', <Combos />)} />
                                     <Route path="/categorias" element={guard('/categorias', <Categorias />)} />
                                     <Route path="/usuarios" element={guard('/usuarios', <Usuarios />)} />
