@@ -103,7 +103,11 @@ export default function TableSheet({
                             prototipo: persona + ✎, #id · hora, píldora de
                             estado, líneas y footer con total. La cuenta
                             activa conserva su lista editable. */}
-                        {!composerOpen && (hasAccount ? cards.map((account, index) => (
+                        {/* Las tarjetas van de la persona MÁS RECIENTE a la más
+                            antigua (lo último que se pidió queda arriba), pero el
+                            número de cada una es su lugar en el orden de los pedidos:
+                            la primera persona de la mesa sigue siendo la 1. */}
+                        {!composerOpen && (hasAccount ? [...cards].reverse().map((account) => (
                             <AccountCard
                                 key={account.id}
                                 activeOrders={activeOrders}
@@ -116,7 +120,7 @@ export default function TableSheet({
                                 setCardRenameDraft={setCardRenameDraft}
                                 commitCardRename={commitCardRename}
                                 setCardRenameId={setCardRenameId}
-                                index={index}
+                                index={Math.max(0, cards.indexOf(account))}
                                 canTake={canTake}
                                 savingItem={savingItem}
                                 sendingToKitchen={sendingToKitchen}

@@ -79,7 +79,10 @@ describe('personas', () => {
     it('sin alias cae a Persona N y el compartido se llama Compartido', () => {
         expect(personLabel({}, 0)).toBe('Persona 1');
         expect(personLabel({}, 2)).toBe('Persona 3');
-        expect(personLabel({ customer_name: 'Juan' }, 1)).toBe('Juan');
+        // El número va SIEMPRE y sigue el orden de los pedidos: nombrar a alguien no
+        // le cambia el lugar en la mesa —la primera persona es la 1, con o sin nombre.
+        expect(personLabel({ customer_name: 'Juan' }, 1)).toBe('2. Juan');
+        expect(personLabel({ customer_name: 'Alexis' }, 0)).toBe('1. Alexis');
         expect(personLabel({ shared: true }, 0)).toBe('Compartido');
     });
 });
