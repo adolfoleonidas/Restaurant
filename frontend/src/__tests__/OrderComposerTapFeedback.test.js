@@ -82,6 +82,26 @@ describe('OrderComposer tap feedback (CP-03)', () => {
         expect(commits.count).toBe(1);
     });
 
+    it('la tarjeta ENTERA agrega: el relleno y el hueco del escalón también', () => {
+        // Medido en el teléfono del mozo: toques sobre la tarjeta que no hacían nada
+        // hasta que tocaba el nombre — 2,5 a 4,5 segundos después, según su registro.
+        // La mitad del área de la tarjeta estaba muerta: el relleno y el hueco del
+        // escalón (invisible sin unidades). Ahora el botón cubre la tarjeta entera y
+        // el escalón flota encima, fuera del botón.
+        const button = q('producto-nombre-pa');
+        expect(button.className).toContain('p-3');
+        // Reserva el alto del escalón para que el nombre y el precio no se le encimen.
+        expect(button.className).toContain('pb-11');
+
+        const stepper = q('producto-menos-pa').parentElement;
+        expect(stepper.className).toContain('absolute');
+        // Invisible sin unidades: no recibe toques, así que ese hueco agrega.
+        expect(stepper.className).toContain('invisible');
+
+        // Y la tarjeta ya no lleva relleno propio: el área es del botón.
+        expect(q('producto-fila-pa').className).not.toContain('p-3');
+    });
+
     it('the card carries the CSS press effect and the controls skip the double-tap delay', () => {
         const card = q('producto-fila-pa');
         expect(card.className).toContain('composer-card');

@@ -23,25 +23,29 @@ function ComposerProductCard({
     return (
         <div
             data-testid={`${testIdPrefix}-producto-fila-${p.id}`}
-            className={`composer-card relative flex min-h-[84px] touch-manipulation flex-col rounded-xl border bg-card p-3 ${out ? 'opacity-50' : 'hover:border-primary/60'}`}
+            className={`composer-card relative flex min-h-[84px] touch-manipulation flex-col rounded-xl border bg-card ${out ? 'opacity-50' : 'hover:border-primary/60'}`}
         >
-            {/* La tarjeta entera agrega, como el `.p` del mockup:
-                nombre a dos líneas y precio debajo. */}
+            {/* El botón ES la tarjeta: el relleno, el hueco del escalón (que queda
+                invisible sin unidades) y el espacio entre nombre y precio también
+                agregan. Antes solo el texto era botón, y en el teléfono del mozo eso
+                se medía así: toques en la tarjeta que tardaban 2,5-4,5 s en "hacer
+                algo" —hasta que tocaba el nombre— y se vivían como "no agarró".
+                El escalón va encima y FUERA del botón: sus toques no lo disparan. */}
             <button
                 type="button"
                 disabled={busy}
                 onClick={() => onAdd(p)}
                 data-testid={`${testIdPrefix}-producto-nombre-${p.id}`}
-                className="flex w-full flex-1 min-w-0 touch-manipulation flex-col justify-between gap-1.5 text-left"
+                className="flex w-full flex-1 min-w-0 touch-manipulation flex-col justify-between gap-1.5 p-3 pb-11 text-left"
             >
                 <span className="line-clamp-2 text-sm font-semibold leading-snug">{p.name}</span>
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">{fmtMoney(p.price)}</span>
             </button>
-            {/* Stepper en línea: aparece cuando el producto ya está en la
-                cuenta. La fila siempre ocupa su alto (invisible sin unidades)
-                para que la tarjeta no salte al agregar el primero. "−" sólo
-                toca el borrador; lo ya enviado se anula desde el resumen. */}
-            <div className={`mt-2 flex items-center justify-between ${qty > 0 ? '' : 'invisible'}`}>
+            {/* Stepper en línea: aparece cuando el producto ya está en la cuenta.
+                Va absoluto y fuera del botón: encima de la tarjeta cuando hay
+                unidades, y sin recibir toques cuando está invisible —así ese hueco
+                sigue agregando, que es lo que el mozo espera de una tarjeta grande. */}
+            <div className={`absolute inset-x-3 bottom-2 flex items-center justify-between ${qty > 0 ? '' : 'invisible'}`}>
                 <button
                     type="button"
                     disabled={busy || qty === 0 || !canRemove}
