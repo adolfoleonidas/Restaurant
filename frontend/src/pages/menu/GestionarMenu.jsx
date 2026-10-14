@@ -102,6 +102,15 @@ export default function GestionarMenu() {
         setSeleccion(siguiente);
     };
 
+    /** Trabajo en bloque: el mismo cambio para varios platos de una vez. */
+    const alternarVarios = (productIds, ofrecer) => {
+        const siguiente = new Set(ids);
+        for (const productId of productIds) {
+            if (ofrecer) siguiente.add(productId); else siguiente.delete(productId);
+        }
+        setSeleccion(siguiente);
+    };
+
     const alternarAgotado = async (productId, agotado) => {
         try {
             await toggleSoldOut(productId, agotado);
@@ -183,6 +192,7 @@ export default function GestionarMenu() {
                             onToggleOffered={alternarOfrecido}
                             onToggleSoldOut={alternarAgotado}
                             onPriceChange={(productId, valor) => setPrecios((previos) => ({ ...previos, [productId]: valor }))}
+                            onBulkOffer={alternarVarios}
                         />
                     )}
                 </>

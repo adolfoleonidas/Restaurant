@@ -98,6 +98,40 @@ describe('MenuDayView', () => {
         await act(async () => root.unmount());
     });
 
+    it('marca varios y los aplica de una vez', async () => {
+        // Montar el menú de un día es «estos diez sí, estos no»: sin esto habría que
+        // pulsar plato por plato, que es justo lo que se quería evitar.
+        const onBulkOffer = jest.fn();
+        const { container, root } = await render({ onBulkOffer });
+
+        expect(container.querySelector('[data-testid="menu-bloque"]')).toBeNull();
+        await click(container.querySelector('[data-testid="menu-marcar-p1"]'));
+        await click(container.querySelector('[data-testid="menu-marcar-p3"]'));
+        expect(container.querySelector('[data-testid="menu-bloque"]').textContent).toContain('2 seleccionados');
+
+        await click(container.querySelector('[data-testid="menu-bloque-ofrecer"]'));
+        expect(onBulkOffer).toHaveBeenCalledWith(['p1', 'p3'], true);
+        // Tras aplicar, la selección se limpia: si no, el siguiente clic repetiría
+        // el cambio sobre platos que ya no se están mirando.
+        expect(container.querySelector('[data-testid="menu-bloque"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('también se puede quitar en bloque, y desmarcar sin tocar nada', async () => {
+        const onBulkOffer = jest.fn();
+        const { container, root } = await render({ onBulkOffer });
+        await click(container.querySelector('[data-testid="menu-marcar-p1"]'));
+
+        await click(container.querySelector('[data-testid="menu-bloque-quitar"]'));
+        expect(onBulkOffer).toHaveBeenCalledWith(['p1'], false);
+
+        await click(container.querySelector('[data-testid="menu-marcar-p1"]'));
+        await click(container.querySelector('[data-testid="menu-bloque-limpiar"]'));
+        expect(container.querySelector('[data-testid="menu-bloque"]')).toBeNull();
+        expect(onBulkOffer).toHaveBeenCalledTimes(1);
+        await act(async () => root.unmount());
+    });
+
     it('con la carta vacía lo dice en vez de quedarse en blanco', async () => {
         const { container, root } = await render({ catalog: [] });
         expect(container.querySelector('[data-testid="menu-day-vacio"]')).not.toBeNull();
