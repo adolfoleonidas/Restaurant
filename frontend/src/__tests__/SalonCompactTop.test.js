@@ -63,13 +63,14 @@ describe('arriba de la lista de mesas', () => {
 
         expect(q('salon-search-input')).toBeNull();
         expect(q('salon-filtros')).toBeNull();
-        expect(q('salon-unir-mesas')).toBeNull();
-        // Lo que sí se usa todo el tiempo queda a la vista.
+        // Lo que se usa durante el servicio queda a la vista: unir mesas, nuevo
+        // pedido y cocina. Lo que se pliega es buscar y filtrar.
+        expect(q('salon-unir-mesas')).not.toBeNull();
         expect(q('salon-nuevo-pedido')).not.toBeNull();
         expect(container.querySelector('[data-testid="mesa-card-1"]')).not.toBeNull();
     });
 
-    it('el botón los abre y los vuelve a cerrar', async () => {
+    it('el botón abre y cierra solo lo que se pliega', async () => {
         ({ container, root } = await renderPage());
         const toggle = q('salon-toggle-filtros');
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -77,11 +78,12 @@ describe('arriba de la lista de mesas', () => {
         await click(toggle);
         expect(q('salon-search-input')).not.toBeNull();
         expect(q('salon-filtros')).not.toBeNull();
-        expect(q('salon-unir-mesas')).not.toBeNull();
         expect(q('salon-toggle-filtros').getAttribute('aria-expanded')).toBe('true');
 
         await click(q('salon-toggle-filtros'));
         expect(q('salon-search-input')).toBeNull();
+        // Unir mesas no se va con ellos.
+        expect(q('salon-unir-mesas')).not.toBeNull();
     });
 
     it('recuerda la elección del dispositivo', async () => {

@@ -59,13 +59,12 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                 )}
                 {canTake && !selectMode && (
                     <>
-                        {/* Unir mesas es ocasional: viaja con los filtros, no con las
-                            dos acciones que el mozo usa todo el tiempo. */}
-                        {searchOpen && (
-                            <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
-                                <Link2 className="h-4 w-4 mr-1" /> Unir mesas
-                            </Button>
-                        )}
+                        {/* Unir mesas se queda a la vista: juntar dos mesas es una
+                            operación del servicio, no un ajuste de la vista. Lo que
+                            se pliega es buscar y filtrar. */}
+                        <Button variant="outline" onClick={startSelection} data-testid="salon-unir-mesas">
+                            <Link2 className="h-4 w-4 mr-1" /> Unir mesas
+                        </Button>
                         <Button onClick={() => openAreas()} data-testid="salon-nuevo-pedido">
                             <ShoppingCart className="h-4 w-4 mr-1" /> Nuevo pedido
                         </Button>
