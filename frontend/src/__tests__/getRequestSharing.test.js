@@ -1,13 +1,18 @@
 /**
- * Las lecturas idénticas que ya viajan se comparten.
+ * Las lecturas de sondeo se comparten entre pantallas.
  *
- * Medido en el teléfono del mozo: al abrir el Salón la app pedía dos y tres veces
- * la misma lista (`/api/orders?active_only=true`, 12 KB) en paralelo, y las
- * peticiones se encolaban entre ellas — una respuesta de 0 KB
- * (`/api/categories`) tardaba 300-536 ms porque había cinco en vuelo.
+ * Medido en el teléfono del mozo: al abrir el Salón la app pedía la misma lista
+ * (`/api/orders?active_only=true`, 12-16 KB) desde varios sitios a la vez, y las
+ * peticiones se encolaban entre ellas: una respuesta de 0 KB (`/api/categories`)
+ * tardaba 300-536 ms porque había cinco en vuelo.
  *
  * Esto es la clase de problema, no un caso: una regla en la capa de red que quita
- * las peticiones repetidas sin tocar una sola pantalla.
+ * las lecturas repetidas sin tocar una sola pantalla.
+ *
+ * NO es una caché: cuando la respuesta llega, la próxima lectura vuelve a pedir.
+ * Una ventana de frescura se probó y se descartó: hacía que un refresco disparado
+ * por un evento de tiempo real pudiera leer datos de hasta 5 s antes, que es justo
+ * lo que el tiempo real existe para evitar.
  */
 import { get, post } from '@/lib/api/request';
 import { api } from '@/lib/api';
@@ -23,7 +28,9 @@ jest.mock('@/lib/api', () => ({
     },
 }));
 
-describe('lecturas que ya están en vuelo', () => {
+const ORDER = { params: { active_only: true } };
+
+describe('lecturas de sondeo compartidas', () => {
     beforeEach(() => {
         api.get.mockReset();
         api.post.mockReset();
@@ -35,7 +42,7 @@ describe('lecturas que ya están en vuelo', () => {
             release = () => resolve({ data: [1, 2, 3] });
         }));
 
-        const calls = [get('/orders', { params: { active_only: true } }), get('/orders', { params: { active_only: true } }), get('/orders', { params: { active_only: true } })];
+        const calls = [get('/orders', ORDER), get('/orders', ORDER), get('/orders', ORDER)];
         expect(api.get).toHaveBeenCalledTimes(1);
 
         release();
@@ -47,18 +54,19 @@ describe('lecturas que ya están en vuelo', () => {
     it('no es una caché: cuando termina, la próxima vuelve a pedir', async () => {
         api.get.mockResolvedValue({ data: [] });
 
-        await get('/tables');
-        await get('/tables');
+        await get('/orders', ORDER);
+        await get('/orders', ORDER);
 
-        // Una pantalla que se abre después no lee datos viejos.
+        // Un refresco a pedido —el que sigue a un evento, o al guardar— siempre
+        // trae datos de ahora.
         expect(api.get).toHaveBeenCalledTimes(2);
     });
 
-    it('parámetros distintos son peticiones distintas', async () => {
+    it('parámetros distintos son lecturas distintas', async () => {
         api.get.mockResolvedValue({ data: [] });
 
         await Promise.all([
-            get('/orders', { params: { active_only: true } }),
+            get('/orders', ORDER),
             get('/orders', { params: { active_only: true, limit: 80 } }),
             get('/orders'),
         ]);
@@ -89,7 +97,7 @@ describe('lecturas que ya están en vuelo', () => {
         // El catálogo de sucursales y los reportes piden lo mismo dos veces para
         // poder descartar la respuesta vieja. Compartir ahí le daría a la segunda
         // justo el resultado que quiere ignorar.
-        let releases = [];
+        const releases = [];
         api.get.mockImplementation(() => new Promise((resolve) => {
             releases.push(resolve);
         }));

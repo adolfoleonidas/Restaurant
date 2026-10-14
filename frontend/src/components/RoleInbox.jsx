@@ -39,9 +39,14 @@ export function RoleInbox() {
     // act on, so it skips the draft-line edits that never reach them.
     const generation = useRealtimeGeneration(['kitchen', 'payments', 'prepay']);
 
+    // Misma llamada y mismo reloj que `useReadyDishes`: los dos montan juntos en el
+    // shell, así que salen en fase y la capa de red comparte UNA descarga de la
+    // lista en vez de bajar dos copias del mismo JSON de 16 KB cada ciclo. El
+    // `limit: 80` que tenía antes la hacía una lectura distinta (el servidor ya
+    // devuelve 200 por defecto, lo mismo que el piso).
     const { data: orders } = usePolling(
-        () => listOrders({ active_only: true, limit: 80 }).then((r) => r.data),
-        20000,
+        () => listOrders({ active_only: true }).then((r) => r.data),
+        25000,
         [user?.id, generation]
     );
 
