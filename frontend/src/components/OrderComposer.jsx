@@ -262,7 +262,7 @@ export default function OrderComposer({
                 buscarlo después de agregar. */}
             {order && showActions && (
                 <div
-                    className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-3 py-2 backdrop-blur"
+                    className="sticky bottom-0 flex items-center justify-between gap-3 rounded-b-xl border-t bg-card/95 px-3 py-2"
                     data-testid={`${testIdPrefix}-pedido-resumen`}
                 >
                     <div className="leading-tight">

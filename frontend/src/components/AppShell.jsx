@@ -152,7 +152,10 @@ const SidebarContent = ({ user, onNav, restaurant, readyCount = 0 }) => {
  */
 const BottomNav = ({ items, showMore, onMore, readyCount = 0 }) => (
     <nav
-        className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-border bg-background/95 backdrop-blur md:hidden"
+        // Sin desenfoque a propósito: esta barra es fija y casi opaca, así que el
+        // efecto no se veía, pero en un celular obligaba a recomponer la capa en
+        // cada repintado. Ver `NoBackdropBlur.test.js`.
+        className="app-bottom-nav fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-border bg-background/95 md:hidden"
         aria-label="Navegación principal"
     >
         {items.map((it) => (
@@ -276,7 +279,7 @@ export const AppShell = () => {
             </aside>
 
             <div className="flex-1 flex flex-col min-w-0">
-                <header className="app-header sticky top-0 z-30 flex shrink-0 items-center gap-1 border-b border-border bg-background/90 px-3 backdrop-blur sm:gap-3 sm:px-4 md:px-6">
+                <header className="app-header sticky top-0 z-30 flex shrink-0 items-center gap-1 border-b border-border bg-background/90 px-3 sm:gap-3 sm:px-4 md:px-6">
                     <Sheet open={open} onOpenChange={setOpen}>
                         <SheetTrigger asChild>
                             <Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="Abrir menú de navegación" data-testid="open-sidebar-button">

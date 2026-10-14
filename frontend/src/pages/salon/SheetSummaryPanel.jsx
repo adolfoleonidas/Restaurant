@@ -48,7 +48,7 @@ export default function SheetSummaryPanel({ cards, personAccounts, tableConsumid
             {showBar && (
             <div
                 data-testid="mesa-sheet-acciones"
-                className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 backdrop-blur min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3 min-[820px]:backdrop-blur-none"
+                className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 space-y-2 border-t bg-card/95 p-3 min-[820px]:static min-[820px]:inset-auto min-[820px]:z-auto min-[820px]:rounded-xl min-[820px]:border min-[820px]:p-3"
             >
         {/* S13: exactamente dos botones. Entregar,
             finalizar/solicitar cuenta y liberar viven
