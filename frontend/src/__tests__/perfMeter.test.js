@@ -8,7 +8,7 @@
  */
 import {
     buildSample, DIAG_KEY, DIAG_POS_KEY, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile,
-    productIdFrom, runningVersion, slowestRequests, summarize,
+    productIdFrom, runningVersion, slowestRequests, summarize, tapKind,
 } from '@/lib/perfMeter';
 import { api } from '@/lib/api';
 
@@ -68,13 +68,37 @@ describe('perfMeter: las cuentas', () => {
 
     it('reconoce la tarjeta de un producto', () => {
         const host = document.createElement('div');
-        host.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7"><span data-testid="mesa-sheet-producto-cantidad-p-7">1</span></div>';
-        const card = host.firstChild;
-        const inner = card.firstChild;
-        expect(productIdFrom(inner)).toBe('p-7');
-        expect(productIdFrom(card)).toBe('p-7');
+        host.innerHTML = '<div data-testid="mesa-sheet-producto-fila-p-7">'
+            + '<button data-testid="mesa-sheet-producto-nombre-p-7">Caldo</button>'
+            + '<span data-testid="mesa-sheet-producto-cantidad-p-7">1</span>'
+            + '<button data-testid="mesa-sheet-producto-menos-p-7">−</button>'
+            + '<button data-testid="mesa-sheet-producto-p-7">+</button></div>';
+        const [row] = host.children;
+        const [nombre, cantidad, menos, mas] = row.children;
+        expect(productIdFrom(nombre)).toBe('p-7');
+        expect(productIdFrom(cantidad)).toBe('p-7');
+        expect(productIdFrom(row)).toBe('p-7');
         expect(productIdFrom(host)).toBeNull();
         expect(productIdFrom(null)).toBeNull();
+    });
+
+    it('distingue qué parte de la tarjeta se tocó', () => {
+        // Para que "no hizo nada" signifique algo: tocar la cantidad o el borde de la
+        // fila no cambia nada y no debería; solo el toque que agrega es el problema.
+        const host = document.createElement('div');
+        host.innerHTML = '<div data-testid="mesa-sheet-producto-fila-p-7">'
+            + '<button data-testid="mesa-sheet-producto-nombre-p-7">Caldo</button>'
+            + '<span data-testid="mesa-sheet-producto-cantidad-p-7">1</span>'
+            + '<button data-testid="mesa-sheet-producto-menos-p-7">−</button>'
+            + '<button data-testid="mesa-sheet-producto-p-7">+</button></div>';
+        const [row] = host.children;
+        const [nombre, cantidad, menos, mas] = row.children;
+        expect(tapKind(nombre, 'p-7')).toBe('add');
+        expect(tapKind(mas, 'p-7')).toBe('add');
+        expect(tapKind(menos, 'p-7')).toBe('minus');
+        expect(tapKind(cantidad, 'p-7')).toBe('other');
+        expect(tapKind(row, 'p-7')).toBe('other');
+        expect(tapKind(null, 'p-7')).toBe('other');
     });
 
     it('resume las peticiones más lentas del período', () => {
@@ -132,6 +156,7 @@ describe('perfMeter: la muestra que se manda', () => {
                 ],
                 visible: [40, 60, 50],
                 silent: 2,
+                silentAdd: 1,
                 requests: [{ url: '/api/orders?active_only=true', ms: 600, kb: 42 }],
                 longs: [320, 180],
             });
@@ -141,8 +166,11 @@ describe('perfMeter: la muestra que se manda', () => {
             expect(sample.viewport.ua).toContain('Android 10');
             expect(sample.taps).toEqual({ n: 3, p50: 160, max: 200, busy: 110, code: 4 });
             // Lo que el mozo percibe: el toque hasta ver el cambio, los que no
-            // cambiaron nada, y el rato con las tarjetas sin aceptar toques.
-            expect(sample.visible).toEqual({ n: 3, p50: 50, max: 60, silent: 2, blocked: 0 });
+            // cambiaron nada (y cuáles de esos iban a agregar), y el rato con las
+            // tarjetas sin aceptar toques.
+            expect(sample.visible).toEqual({
+                n: 3, p50: 50, max: 60, silent: 2, silent_add: 1, blocked: 0,
+            });
             expect(sample.requests).toHaveLength(1);
             expect(sample.longs).toEqual({ n: 2, max: 320 });
             expect(sample.fps).toBe(60);
@@ -258,7 +286,7 @@ describe('perfMeter: el panel en pantalla', () => {
             const stop = installPerfMeter({ win, doc: document });
 
             card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
-            jest.advanceTimersByTime(2100);
+            jest.advanceTimersByTime(10100);
             win._frame();
             win._beat();
 
@@ -269,15 +297,42 @@ describe('perfMeter: el panel en pantalla', () => {
         }
     });
 
+    it('un toque que tarda pero ENTRA no cuenta como perdido', () => {
+        // Tres segundos en un teléfono lento es lento, no perdido. Con el corte
+        // corto de antes esto se contaba como "no hizo nada" y no lo era.
+        jest.useFakeTimers();
+        try {
+            const { card, qty } = productCard();
+            const win = fakeWindow();
+            const stop = installPerfMeter({ win, doc: document });
+
+            card.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+            jest.advanceTimersByTime(3000);
+            qty.textContent = '1';
+            win._frame();
+            win._beat();
+
+            const text = panelValue('effect');
+            expect(text).toContain('1 con efecto');
+            expect(text).not.toContain('SIN EFECTO');
+            stop();
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     it('cuenta el tiempo con las tarjetas sin aceptar toques', () => {
         // Un botón deshabilitado no dispara el evento del toque, así que ni el
         // conteo de toques ni el de efecto lo ven: sin esta medida, la app puede
         // estar rechazando toques y el medidor decir que todo va en 67 ms.
+        //
+        // Se deshabilita el botón del NOMBRE (la tarjeta entera, el camino normal de
+        // agregar). El "−" está deshabilitado con cantidad 0 en casi toda la carta y
+        // contarlo hacía que esto midiera un estado normal como si fuera un bloqueo.
         jest.useFakeTimers();
         try {
-            document.body.innerHTML = '<div data-testid="mesa-sheet-producto-nombre-p-7">'
-                + '<button disabled data-testid="mesa-sheet-producto-p-7">+</button>'
-                + '<span data-testid="mesa-sheet-producto-cantidad-p-7">0</span></div>';
+            const { card } = productCard();
+            card.disabled = true;
             const win = fakeWindow();
             const stop = installPerfMeter({ win, doc: document });
 
