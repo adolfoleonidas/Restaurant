@@ -3,9 +3,20 @@
  *
  * Existe porque el mismo toque es instantáneo en una laptop y lento en el
  * teléfono del local, y desde afuera no hay forma de medirlo. Se enciende con
- * `?diag=1` y, apagado, no debe existir ni costar nada.
+ * `?diag=1` y, apagado, no debe existir ni costar nada. Cada muestra viaja al
+ * servidor, porque la pantalla del teléfono no se puede mirar a distancia.
  */
-import { installPerfMeter, PANEL_ID, perfMeterEnabled, percentile, summarize } from '@/lib/perfMeter';
+import {
+    buildSample, installPerfMeter, PANEL_ID, perfMeterEnabled, percentile, runningVersion, summarize,
+} from '@/lib/perfMeter';
+import { api } from '@/lib/api';
+
+// El medidor manda la muestra al servidor; aquí se sustituye para mirar qué manda
+// sin salir a la red. Se miran las llamadas del propio mock, no un array propio:
+// la fábrica de `jest.mock` se iza por encima de este archivo.
+jest.mock('@/lib/api', () => ({
+    api: { post: jest.fn(() => Promise.resolve({ data: { ok: true } })) },
+}));
 
 describe('perfMeter: se enciende solo si se pide', () => {
     it('reconoce ?diag=1 en cualquier posición', () => {
@@ -32,10 +43,91 @@ describe('perfMeter: las cuentas', () => {
     });
 });
 
+describe('perfMeter: la muestra que se manda', () => {
+    const script = () => {
+        const node = document.createElement('script');
+        node.setAttribute('src', '/static/js/main.de8353ed.js');
+        document.head.appendChild(node);
+        return node;
+    };
+
+    it('lleva la versión, la pantalla, los toques y el teléfono', () => {
+        const node = script();
+        const fakeWin = {
+            innerWidth: 412,
+            innerHeight: 915,
+            devicePixelRatio: 2.625,
+            navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7)' },
+        };
+        try {
+            const sample = buildSample({
+                win: fakeWin,
+                doc: document,
+                fps: 52,
+                taps: [
+                    { duration: 120, inputDelay: 90, processing: 3 },
+                    { duration: 200, inputDelay: 150, processing: 5 },
+                    { duration: 160, inputDelay: 110, processing: 4 },
+                ],
+                longs: [320, 180],
+            });
+
+            expect(sample.version).toBe('de8353ed');
+            expect(sample.screen).toBe('412x915 vertical');
+            expect(sample.viewport).toMatchObject({
+                w: 412, h: 915, orientation: 'vertical', dpr: 2.625,
+            });
+            expect(sample.viewport.nodes).toBeGreaterThan(0);
+            expect(sample.viewport.ua).toContain('Pixel 7');
+            // El toque se parte en dos: lo que el hilo estaba ocupado y lo que tardó
+            // el manejador. Si el problema fuera el código, `code` sería el grande.
+            expect(sample.taps).toEqual({ n: 3, p50: 160, max: 200, busy: 110, code: 4 });
+            expect(sample.longs).toEqual({ n: 2, max: 320 });
+            expect(sample.fps).toBe(52);
+        } finally {
+            node.remove();
+        }
+    });
+
+    it('sin guion cargado la versión es honesta', () => {
+        expect(runningVersion(document)).toBe('desconocida');
+        expect(buildSample({ win: { innerWidth: 0, innerHeight: 0 }, doc: document }).version).toBe('desconocida');
+    });
+});
+
+/** Una ventana falsa que deja disparar a mano los observadores y el latido. */
+function fakeWindow() {
+    const observers = [];
+    let beat = null;
+    class FakeObserver {
+        constructor(callback) { this.callback = callback; observers.push(this); }
+
+        observe() {}
+
+        disconnect() {}
+    }
+    return {
+        document,
+        innerWidth: 412,
+        innerHeight: 915,
+        devicePixelRatio: 2.625,
+        navigator: { userAgent: 'Pixel 7' },
+        PerformanceObserver: FakeObserver,
+        requestAnimationFrame: (fn) => setTimeout(fn, 16),
+        cancelAnimationFrame: (id) => clearTimeout(id),
+        setInterval: (fn) => { beat = fn; return 1; },
+        clearInterval: () => {},
+        _observers: observers,
+        _beat: () => beat && beat(),
+        _pushEvent: (entry) => observers[0].callback({ getEntries: () => [entry] }),
+    };
+}
+
 describe('perfMeter: el panel en pantalla', () => {
     let script;
 
     beforeEach(() => {
+        api.post.mockClear();
         script = document.createElement('script');
         script.setAttribute('src', '/static/js/main.3cf3fd66.js');
         document.head.appendChild(script);
@@ -44,19 +136,7 @@ describe('perfMeter: el panel en pantalla', () => {
     afterEach(() => { script.remove(); document.body.innerHTML = ''; });
 
     it('muestra la versión, la pantalla y un aviso mientras no hay toques', () => {
-        // Ventana simulada: jsdom mide 1024x768, y aquí lo que se prueba es que la
-        // orientación y el tamaño salgan de la ventana real.
-        const fakeWin = {
-            document,
-            innerWidth: 412,
-            innerHeight: 915,
-            devicePixelRatio: 2.625,
-            setInterval: window.setInterval.bind(window),
-            clearInterval: window.clearInterval.bind(window),
-            requestAnimationFrame: window.requestAnimationFrame.bind(window),
-            cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-        };
-        const stop = installPerfMeter({ win: fakeWin, doc: document });
+        const stop = installPerfMeter({ win: fakeWindow(), doc: document });
 
         const panel = document.getElementById(PANEL_ID);
         expect(panel).not.toBeNull();
@@ -71,34 +151,51 @@ describe('perfMeter: el panel en pantalla', () => {
         stop();
     });
 
+    it('manda la muestra al servidor cuando hubo toques', () => {
+        const win = fakeWindow();
+        const stop = installPerfMeter({ win, doc: document });
+
+        win._pushEvent({ name: 'pointerdown', duration: 120, startTime: 0, processingStart: 90, processingEnd: 93 });
+        win._beat();
+
+        expect(api.post).toHaveBeenCalledTimes(1);
+        const [url, body] = api.post.mock.calls[0];
+        expect(url).toBe('/diag/sample');
+        expect(body.taps).toMatchObject({ n: 1, p50: 120, busy: 90, code: 3 });
+        expect(body.viewport.orientation).toBe('vertical');
+        expect(body.screen).toBe('412x915 vertical');
+
+        // No repite la misma muestra: solo manda cuando hay toques nuevos.
+        win._beat();
+        expect(api.post).toHaveBeenCalledTimes(1);
+
+        stop();
+    });
+
     it('se apaga y se va de la pantalla', () => {
-        const stop = installPerfMeter();
+        const stop = installPerfMeter({ win: fakeWindow(), doc: document });
         expect(document.getElementById(PANEL_ID)).not.toBeNull();
         stop();
         expect(document.getElementById(PANEL_ID)).toBeNull();
     });
 
     it('encenderlo dos veces no duplica el panel', () => {
-        const stop = installPerfMeter();
-        const second = installPerfMeter();
+        const stop = installPerfMeter({ win: fakeWindow(), doc: document });
+        const second = installPerfMeter({ win: fakeWindow(), doc: document });
         expect(document.querySelectorAll(`#${PANEL_ID}`)).toHaveLength(1);
         second();
-        // El segundo no pudo instalarse, así que no debe haberse llevado el panel del primero.
         expect(document.getElementById(PANEL_ID)).not.toBeNull();
         stop();
         expect(document.getElementById(PANEL_ID)).toBeNull();
     });
 
     it('sin PerformanceObserver en el navegador no se rompe', () => {
-        const original = window.PerformanceObserver;
-        // eslint-disable-next-line no-param-reassign
-        delete window.PerformanceObserver;
-        try {
-            const stop = installPerfMeter();
-            expect(document.getElementById(PANEL_ID)).not.toBeNull();
-            stop();
-        } finally {
-            window.PerformanceObserver = original;
-        }
+        const win = fakeWindow();
+        delete win.PerformanceObserver;
+        const stop = installPerfMeter({ win, doc: document });
+        expect(document.getElementById(PANEL_ID)).not.toBeNull();
+        win._beat();
+        expect(api.post).not.toHaveBeenCalled();
+        stop();
     });
 });
