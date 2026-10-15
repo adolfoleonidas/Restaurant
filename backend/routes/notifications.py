@@ -30,7 +30,13 @@ async def notification_stream(user: dict = Depends(get_current_user)):
                     # response so the client reconnects and refetches.
                     return
                 rid = event.get("restaurant_id")
-                if rid and rid != user.get("restaurant_id"):
+                if rid != user.get("restaurant_id"):
+                    # Antes era `if rid and rid != ...`: un evento SIN
+                    # `restaurant_id` pasaba el filtro, así que un emisor futuro que
+                    # lo omitiera mandaría el evento a todos los restaurantes
+                    # conectados. Hoy todos los emisores lo ponen, así que esto es
+                    # defensa en profundidad: se exige el tenant en vez de darlo por
+                    # supuesto, y un evento sin dueño se descarta.
                     continue
                 current = await db.users.find_one(
                     {"id": user["id"], "restaurant_id": user["restaurant_id"], "status": "active"},

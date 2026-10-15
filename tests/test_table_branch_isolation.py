@@ -219,6 +219,37 @@ def test_notification_stream_uses_fresh_branch_after_staff_reassignment(monkeypa
 
 
 
+def test_notification_stream_drops_events_without_a_tenant(monkeypatch):
+    """El filtro exigía el tenant solo si venía: un evento sin dueño pasaba.
+
+    `if rid and rid != user[...]` dejaba pasar cualquier evento sin
+    `restaurant_id`, así que un emisor que lo omitiera mandaría el evento a todos
+    los restaurantes conectados. Hoy los 79 emisores lo ponen, así que esto es
+    defensa en profundidad: se exige el tenant y lo que no lo trae se descarta.
+    """
+    async def run():
+        queue = asyncio.Queue()
+        await queue.put({"type": "order", "order_id": "sin-tenant", "branch_id": "branch-a"})
+        await queue.put({"type": "order", "restaurant_id": "tenant-1", "order_id": "con-tenant", "branch_id": "branch-a"})
+        db = _DB()
+        db.users.rows.append({**_user(), "status": "active"})
+        monkeypatch.setattr(notification_routes, "db", db)
+        monkeypatch.setattr(notification_routes, "subscribe", lambda: queue)
+        monkeypatch.setattr(notification_routes, "unsubscribe", lambda current: None)
+        response = await notification_routes.notification_stream(_user())
+        iterator = response.body_iterator
+        await iterator.__anext__()          # hello
+        first_payload = await iterator.__anext__()
+        await iterator.aclose()
+        return first_payload
+
+    payload = asyncio.run(run())
+    assert "sin-tenant" not in payload, (
+        "an event with no restaurant_id must be dropped, not broadcast to every tenant"
+    )
+    assert "con-tenant" in payload
+
+
 def test_zone_branch_rollback_preserves_unrelated_target_branch_table(monkeypatch):
     async def run():
         zone = {"id": "zone-1", "restaurant_id": "tenant-1", "name": "Patio", "branch_id": "branch-a"}
