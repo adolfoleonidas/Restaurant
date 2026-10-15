@@ -76,6 +76,7 @@ const ROUTE_TITLES = [
     ['/reportes', 'Reportes'],
     ['/disponibilidad', 'Disponibilidad'],
     ['/productos', 'Carta'],
+    ['/gestion/menu', 'Menú de hoy'],
     ['/combos', 'Combos'],
     ['/categorias', 'Categorías'],
     ['/usuarios', 'Equipo'],
@@ -155,7 +156,7 @@ function App() {
                                     <Route path="/reportes" element={guard('/reportes', <Reportes />)} />
                                     <Route path="/disponibilidad" element={guard('/disponibilidad', <Disponibilidad />)} />
                                     <Route path="/productos" element={guard('/productos', <Productos />)} />
-                                    <Route path="/menu" element={guard('/menu', <GestionarMenu />)} />
+                                    <Route path="/gestion/menu" element={guard('/gestion/menu', <GestionarMenu />)} />
                                     <Route path="/combos" element={guard('/combos', <Combos />)} />
                                     <Route path="/categorias" element={guard('/categorias', <Categorias />)} />
                                     <Route path="/usuarios" element={guard('/usuarios', <Usuarios />)} />

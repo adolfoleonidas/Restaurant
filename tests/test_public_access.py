@@ -17,7 +17,13 @@ from models import PublicOrderCreate, OrderItemInput, PublicProofUpload
 from attention import AttentionBlocked
 from routes.orders import kitchen_orders
 from routes.public import public_create_order, public_tables, upload_proof
-from guest_access import read_table_token, sign_table, public_order_limiter
+from guest_access import (
+    read_table_token,
+    sign_table,
+    public_miss_limiter,
+    public_order_limiter,
+    public_read_limiter,
+)
 from test_money_integrity import _DB, _cashier
 import routes.orders as order_routes
 import routes.public as public_routes
@@ -499,3 +505,138 @@ def test_public_order_rejects_card_when_default_payment_config_disables_it():
     blocked = asyncio.run(run())
     assert blocked is not None and blocked.status_code == 400
     assert blocked.detail == "El método de pago seleccionado no está disponible"
+
+
+def _tracked_order(**extra):
+    """Pedido con código de seguimiento, tal como lo deja una creación real."""
+    order = {
+        "id": "order-track-1",
+        "restaurant_id": "rest-1",
+        "branch_id": "branch-1",
+        "table_id": "mesa-1",
+        "order_number": 7,
+        "tracking_code": "ABCD1234",
+        "status": "entregado",
+        "order_type": "local",
+        "customer_name": "Ana",
+        "customer_phone": "999888777",
+        "customer_address": "Av. Siempre Viva 742",
+        "items": [],
+        "subtotal": 20.0,
+        "total": 20.0,
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+    order.update(extra)
+    return order
+
+
+def test_a_successful_tracking_read_spends_the_read_budget():
+    """El limitador de fallos no gastaba nada cuando el código existía.
+
+    Un código que se filtró —un enlace compartido, la foto de un comprobante— se
+    podía leer sin tope: la respuesta trae nombre, teléfono y dirección.
+    """
+    async def run():
+        db = _world()
+        _bind(db)
+        db.orders.docs.append(_tracked_order())
+        request = _Request("10.2.2.2")
+        public_read_limiter.reset()
+        public_read_limiter.limit = 2
+        try:
+            await public_routes.public_get_order("ABCD1234", request)
+            await public_routes.public_get_order("ABCD1234", request)
+            try:
+                await public_routes.public_get_order("ABCD1234", request)
+                blocked = None
+            except HTTPException as exc:
+                blocked = exc
+            return blocked
+        finally:
+            public_read_limiter.limit = 120
+            public_read_limiter.reset()
+
+    blocked = asyncio.run(run())
+    assert blocked is not None and blocked.status_code == 429, (
+        "a leaked tracking code must not be readable without limit"
+    )
+
+
+def test_the_tracking_read_still_carries_the_customer_details():
+    """El limitador no puede haber cambiado lo que devuelve la lectura."""
+    async def run():
+        db = _world()
+        _bind(db)
+        db.orders.docs.append(_tracked_order())
+        public_read_limiter.reset()
+        return await public_routes.public_get_order("ABCD1234", _Request("10.2.2.3"))
+
+    view = asyncio.run(run())
+    assert view["customer_name"] == "Ana"
+    assert view["customer_phone"] == "999888777"
+
+
+def test_the_table_session_is_rate_limited():
+    """Era el único endpoint de lectura del cliente sin ningún limitador."""
+    async def run():
+        db = _world()
+        _bind(db)
+        db.orders.docs.append(_tracked_order())
+        request = _Request("10.2.2.4")
+        public_read_limiter.reset()
+        public_read_limiter.limit = 2
+        try:
+            await public_routes.public_order_table_session("ABCD1234", request)
+            await public_routes.public_order_table_session("ABCD1234", request)
+            try:
+                await public_routes.public_order_table_session("ABCD1234", request)
+                blocked = None
+            except HTTPException as exc:
+                blocked = exc
+            return blocked
+        finally:
+            public_read_limiter.limit = 120
+            public_read_limiter.reset()
+
+    blocked = asyncio.run(run())
+    assert blocked is not None and blocked.status_code == 429
+
+
+def test_a_missing_code_is_still_charged_to_the_miss_limiter():
+    """Las dos cuentas son independientes: un fallo no gasta el presupuesto de lectura."""
+    async def run():
+        db = _world()
+        _bind(db)
+        public_read_limiter.reset()
+        public_miss_limiter.reset()
+        try:
+            await public_routes.public_get_order("NOEXISTE", _Request("10.2.2.5"))
+        except HTTPException as exc:
+            return exc, dict(public_read_limiter._hits), dict(public_miss_limiter._hits)
+        return None, {}, {}
+
+    error, read_hits, miss_hits = asyncio.run(run())
+    assert error is not None and error.status_code == 404
+    assert read_hits, "a read attempt must still spend the read budget"
+    assert miss_hits, "a miss must still be counted as a miss"
+
+
+def test_the_tracking_screen_polling_fits_inside_the_budget():
+    """Calibración: el sondeo real no puede quedar fuera del presupuesto.
+
+    `PedidoTracking` sondea cada 30 s con la pestaña visible y cada 5 min oculta,
+    y pide el resumen de mesa una vez por pedido. El presupuesto por defecto tiene
+    que aguantar de sobra ese uso; si no, el cliente vería un 429 en su propio
+    pedido.
+    """
+    from guest_access import public_read_limiter as limiter
+
+    visible_hits = (10 * 60) // 30           # 20 sondeos en 10 minutos
+    hidden_hits = (10 * 60) // 300           # 2 más con la pestaña oculta
+    table_summary = 1                        # una lectura por pedido
+    worst_case = visible_hits + hidden_hits + table_summary
+
+    assert limiter.limit >= worst_case * 3, (
+        "the read budget is too close to the real client: %d vs %d"
+        % (limiter.limit, worst_case)
+    )

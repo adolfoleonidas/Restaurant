@@ -1,16 +1,30 @@
 import { useState, useMemo, useEffect } from 'react';
 import { listCashHistory } from '@/lib/api/cash';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fmtMoney, fmtTime, fmtDateTime, fmtDayLabel } from '@/lib/format';
+import { apiErrorMessage } from '@/lib/apiError';
 
 export default function CashHistory({ refreshKey, scopeParams = {} }) {
     const [period, setPeriod] = useState('day');
     const [data, setData] = useState(null);
+    const [loadError, setLoadError] = useState(null);
+    const [reload, setReload] = useState(0);
 
     useEffect(() => {
-        listCashHistory({ period, ...scopeParams }).then((r) => setData(r.data)).catch(() => setData({ registers: [] }));
-    }, [period, refreshKey, scopeParams]);
+        setLoadError(null);
+        // Antes un fallo dejaba `{ registers: [] }`: además de la lista, los KPI
+        // (turnos, ventas, diferencia) salían en cero y la pantalla afirmaba «No
+        // hay turnos en este período». En un arqueo de caja eso es peor que un
+        // error visible.
+        listCashHistory({ period, ...scopeParams })
+            .then((r) => setData(r.data))
+            .catch((e) => {
+                setData(null);
+                setLoadError(apiErrorMessage(e, 'No se pudo cargar el historial de turnos'));
+            });
+    }, [period, refreshKey, scopeParams, reload]);
 
     const grouped = useMemo(() => {
         const map = {};
@@ -52,8 +66,18 @@ export default function CashHistory({ refreshKey, scopeParams = {} }) {
                         </div>
                     </div>
                 )}
+                {loadError && (
+                    <div className="rounded-xl border border-destructive/50 p-3 text-sm text-destructive" data-testid="caja-historial-error">
+                        {loadError}
+                        <Button size="sm" variant="outline" className="ml-3 h-9" onClick={() => setReload((n) => n + 1)} data-testid="caja-historial-reintentar">
+                            Reintentar
+                        </Button>
+                    </div>
+                )}
                 {!data ? (
-                    <div className="text-sm text-muted-foreground">Cargando historial…</div>
+                    <div className="text-sm text-muted-foreground">
+                        {loadError ? 'No se pudo cargar el historial.' : 'Cargando historial…'}
+                    </div>
                 ) : grouped.length === 0 ? (
                     <div className="py-8 text-center text-sm text-muted-foreground">No hay turnos en este período.</div>
                 ) : (

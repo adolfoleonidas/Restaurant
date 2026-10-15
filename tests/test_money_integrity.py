@@ -541,6 +541,52 @@ def test_retry_recovers_keyless_payment_after_crash_without_requiring_new_api_fi
     assert "payment_operation" not in order
 
 
+def test_void_audit_uses_a_deterministic_event_id_so_a_retry_cannot_duplicate_it():
+    """El asiento de la devolución tiene que ser idempotente.
+
+    El camino de la visita usa `payment-void:<id>` como `event_id`, y
+    `audit_logs.event_id` es único justo para que un reintento no deje dos asientos
+    sobre la misma devolución de dinero. El camino sin visita insertaba un
+    `uuid4()` suelto, así que un reintento tras un fallo dejaba el rastro
+    duplicado. Ahora los dos caminos producen el mismo asiento.
+    """
+    async def run():
+        db = _DB()
+        db.orders.docs.append(_order(amount_paid=20.0, status="pagado"))
+        db.orders.docs[0]["items"][0]["paid_qty"] = 1
+        db.cash_registers.docs.append(_open_register())
+        db.payments.docs.append({
+            "id": "pay-1", "restaurant_id": RID, "order_id": "order-1",
+            "cash_register_id": "reg-open", "status": "completed",
+            "method": "efectivo", "amount": 20.0,
+        })
+        _bind(db)
+        await apply_void_payment("pay-1", _cashier(), "cliente devolvió el plato", "refund")
+
+        audits = [d for d in db.audit_logs.docs if d.get("entity_id") == "pay-1"]
+        assert len(audits) == 1, "the refund must leave exactly one audit entry"
+        event_id = audits[0].get("event_id")
+
+        # La propiedad que hacía falta: reintentar el mismo asiento no puede
+        # escribirlo dos veces. Con un `uuid4()` suelto, este segundo insert
+        # entraba sin quejarse y dejaba el rastro duplicado.
+        try:
+            await db.audit_logs.insert_one({**audits[0]})
+            duplicated = False
+        except DuplicateKeyError:
+            duplicated = True
+        after = [d for d in db.audit_logs.docs if d.get("entity_id") == "pay-1"]
+        return event_id, duplicated, after
+
+    event_id, duplicated, after = asyncio.run(run())
+    assert event_id == "payment-void:pay-1", (
+        "the void audit must use the deterministic event id shared with the "
+        "visit path; a random one cannot be deduplicated: %s" % event_id
+    )
+    assert duplicated, "a retry of the same audit entry went through twice"
+    assert len(after) == 1
+
+
 def test_two_cashiers_cannot_charge_the_same_balance():
     async def run():
         db = _DB()

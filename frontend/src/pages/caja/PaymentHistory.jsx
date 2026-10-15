@@ -27,15 +27,23 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
     const [period, setPeriod] = useState('day');
     const [q, setQ] = useState('');
     const [items, setItems] = useState(null);
+    const [loadError, setLoadError] = useState(null);
     const [detail, setDetail] = useState(null);
     const [voidKind, setVoidKind] = useState(null);
     const [voidReason, setVoidReason] = useState('');
+    const [submitting, setSubmitting] = useState(false);
     const [reload, setReload] = useState(0);
 
     useEffect(() => {
         const params = { period, limit: 200, ...scopeParams };
         if (q.trim()) params.q = q.trim();
-        listPayments(params).then((r) => setItems(r.data)).catch(() => setItems([]));
+        setLoadError(null);
+        // Antes el fallo dejaba `items` en []: la pantalla decía «No hay pagos en
+        // este período» y el cajero no podía distinguir una lista vacía de una
+        // carga que no llegó.
+        listPayments(params)
+            .then((r) => setItems(r.data))
+            .catch((e) => { setItems([]); setLoadError(apiErrorMessage(e, 'No se pudo cargar el historial de pagos')); });
     }, [period, q, refreshKey, reload, scopeParams]);
 
     const reprint = async (p) => {
@@ -58,10 +66,14 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
 
     const submitVoid = async () => {
         if (!detail || !voidKind) return;
+        // Anular o devolver mueve dinero: un segundo toque con el primero en vuelo
+        // no puede mandar la misma operación otra vez.
+        if (submitting) return;
         if ((voidReason || '').trim().length < 5) {
             toast.error('El motivo es obligatorio.');
             return;
         }
+        setSubmitting(true);
         try {
             await runMutation(async () => {
                 if (canVoid) {
@@ -79,6 +91,8 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
             setReload((n) => n + 1);
         } catch (e) {
             toast.error(apiErrorMessage(e, 'No se pudo registrar'));
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -126,10 +140,20 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                 )}
 
                 <Input className="h-11" placeholder="Buscar #pedido, método o cajero" value={q} onChange={(e) => setQ(e.target.value)} data-testid="caja-hist-pagos-buscar" />
+                {loadError && (
+                    <div className="rounded-xl border border-destructive/50 p-3 text-sm text-destructive" data-testid="caja-hist-pagos-error">
+                        {loadError}
+                        <Button size="sm" variant="outline" className="ml-3 h-9" onClick={() => setReload((n) => n + 1)} data-testid="caja-hist-pagos-reintentar">
+                            Reintentar
+                        </Button>
+                    </div>
+                )}
                 {!items ? (
                     <div className="text-sm text-muted-foreground">Cargando pagos…</div>
                 ) : items.length === 0 ? (
-                    <div className="py-8 text-center text-sm text-muted-foreground">No hay pagos en este período.</div>
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                        {loadError ? 'No se pudo cargar el historial.' : 'No hay pagos en este período.'}
+                    </div>
                 ) : (
                     <div className="divide-y border border-border rounded-sm">
                         {items.map((p) => {
@@ -192,8 +216,10 @@ export default function PaymentHistory({ refreshKey, scopeParams = {}, runMutati
                                         <Label htmlFor="caja-anular-motivo">Motivo</Label>
                                         <Textarea id="caja-anular-motivo" value={voidReason} onChange={(e) => setVoidReason(e.target.value)} data-testid="caja-anular-motivo" />
                                         <div className="flex gap-2">
-                                            <Button variant="outline" onClick={() => { setVoidKind(null); setVoidReason(''); }}>Cancelar</Button>
-                                            <Button onClick={submitVoid} data-testid="caja-anular-confirmar">Registrar</Button>
+                                            <Button variant="outline" onClick={() => { setVoidKind(null); setVoidReason(''); }} disabled={submitting}>Cancelar</Button>
+                                            <Button onClick={submitVoid} disabled={submitting} data-testid="caja-anular-confirmar">
+                                                {submitting ? 'Registrando…' : 'Registrar'}
+                                            </Button>
                                         </div>
                                     </div>
                                 )}

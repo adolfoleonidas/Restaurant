@@ -13,12 +13,20 @@ from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
 from menu_day import NOT_IN_MENU, index_items, resolve, today_menu
+from business_time import BUSINESS_TIMEZONE
 from billing import guarded_totals, line_subtotal, public_order_totals, sum_line_subtotals
 from order_flow import VersionError, bill_requested, claim_order, ticket_fields, version_conflict
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
-from guest_access import client_host, public_miss_limiter, public_order_limiter, read_table_token, sign_table
+from guest_access import (
+    client_host,
+    public_miss_limiter,
+    public_order_limiter,
+    public_read_limiter,
+    read_table_token,
+    sign_table,
+)
 from payment_policy import collection_policy, needs_counter_verification, order_acceptance
 from routes.products import combo_components_for, combo_components_map, components_from
 from notify import CLOSED, emit_order, emit_notice, subscribe, unsubscribe, public_allowed
@@ -231,6 +239,19 @@ def _public_order_missing(request: Request):
     raise HTTPException(status_code=404, detail="Pedido no encontrado")
 
 
+def _public_read_guard(request: Request):
+    """Cuenta también las lecturas con éxito, no solo los fallos.
+
+    `public_miss_limiter` solo gasta presupuesto cuando el código no existe, así
+    que un código que se filtró —un enlace compartido, la foto de un comprobante—
+    se podía leer sin tope, y `/orders/{code}/table` no tenía limitador ninguno
+    mientras exponía el consumo completo de la mesa. El presupuesto es holgado a
+    propósito: el sondeo real del cliente son ~22 peticiones cada 10 minutos.
+    """
+    if not public_read_limiter.allow(client_host(request)):
+        raise HTTPException(status_code=429, detail="Demasiadas consultas. Espera unos minutos.")
+
+
 def _public_mutate_guard(o: dict, request: Request):
     if not o:
         _public_order_missing(request)
@@ -271,7 +292,12 @@ async def _get_restaurant():
 
 
 async def _next_order_number(restaurant_id: str) -> int:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # El día es el del negocio, no el de UTC. Salón numera por el día de Lima
+    # (`routes/orders.py`) sobre la MISMA colección `counters`: con UTC, entre las
+    # 19:00 y las 24:00 de Lima el público incrementaba el contador de mañana
+    # mientras el salón usaba el de hoy, así que dos pedidos del mismo día podían
+    # llevar el mismo número.
+    today = datetime.now(BUSINESS_TIMEZONE).strftime("%Y-%m-%d")
     res = await db.counters.find_one_and_update(
         {"restaurant_id": restaurant_id, "key": f"order_{today}"},
         {"$inc": {"value": 1}},
@@ -497,7 +523,11 @@ async def public_order_table_session(tracking_code: str, request: Request):
     que el grupo se resuelve por la mesa del propio pedido y no por el contexto
     guardado en el teléfono. Se exige el código de seguimiento, que funciona como
     capacidad: sin él no se expone el consumo de una mesa.
+
+    Este endpoint era el único de lectura del cliente sin ningún limitador, y es
+    el que más expone: devuelve el consumo completo de la mesa, no solo el pedido.
     """
+    _public_read_guard(request)
     order = await db.orders.find_one(
         {"tracking_code": tracking_code.upper()},
         {"_id": 0, "id": 1, "table_id": 1, "restaurant_id": 1},
@@ -884,6 +914,7 @@ async def public_create_order(data: PublicOrderCreate, request: Request):
 
 @router.get("/orders/{tracking_code}")
 async def public_get_order(tracking_code: str, request: Request):
+    _public_read_guard(request)
     o = await db.orders.find_one(
         {"tracking_code": tracking_code.upper()},
         {"_id": 0, "created_by": 0}

@@ -33,3 +33,30 @@ export const flush = () => act(async () => {
     await Promise.resolve();
     await Promise.resolve();
 });
+
+/**
+ * Waits until `assert` stops throwing, flushing React between attempts.
+ *
+ * Only needed when the number of promise ticks is not knowable up front — a save
+ * that reloads, a click that chains two requests. For a single settle, `flush()`
+ * is enough and reads better. Replaces @testing-library's `waitFor` so the suite
+ * keeps zero test dependencies (see the harness note above).
+ */
+export async function waitFor(assert, { timeout = 1000, interval = 5 } = {}) {
+    const deadline = Date.now() + timeout;
+    let lastError;
+    for (;;) {
+        try {
+            return await act(async () => {
+                await Promise.resolve();
+                return assert();
+            });
+        } catch (error) {
+            lastError = error;
+        }
+        if (Date.now() > deadline) throw lastError;
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, interval));
+        });
+    }
+}

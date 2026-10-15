@@ -25,6 +25,7 @@ const PREPAY_STATE_LABELS = {
 export default function PrepayQueue({ runMutation, onChanged }) {
     const [rows, setRows] = useState([]);
     const [loaded, setLoaded] = useState(false);
+    const [error, setError] = useState(null);
     const [busy, setBusy] = useState('');
     const [rejecting, setRejecting] = useState(null);
     const { proof, openProof, closeProof } = useOrderProof();
@@ -32,9 +33,15 @@ export default function PrepayQueue({ runMutation, onChanged }) {
 
     useEffect(() => {
         let active = true;
+        setError(null);
         listPendingPrepay()
             .then((r) => { if (active) setRows(Array.isArray(r.data) ? r.data : []); })
-            .catch(() => { if (active) setRows([]); })
+            .catch((e) => {
+                // Antes esto dejaba `rows` vacío y la pantalla no decía nada: un
+                // fallo de red se veía igual que «no hay prepagos por verificar»,
+                // y esta cola es dinero esperando verificación. Ahora se avisa.
+                if (active) { setRows([]); setError(apiErrorMessage(e, 'No se pudo cargar la cola de prepagos')); }
+            })
             .finally(() => { if (active) setLoaded(true); });
         return () => { active = false; };
     }, [load]);
@@ -42,6 +49,9 @@ export default function PrepayQueue({ runMutation, onChanged }) {
     const reload = () => setLoad((n) => n + 1);
 
     const decide = async (row, action) => {
+        // Confirmar y rechazar registran dinero: dos toques seguidos no pueden
+        // mandar dos veces la misma acción.
+        if (!row || busy) return;
         setBusy(`${action}-${row.id}`);
         try {
             await runMutation(() => runPrepayAction(row.id, action));
@@ -57,7 +67,23 @@ export default function PrepayQueue({ runMutation, onChanged }) {
         }
     };
 
-    if (!loaded || rows.length === 0) return null;
+    if (!loaded) return null;
+
+    if (error) {
+        return (
+            <Card className="border-destructive/50" data-testid="caja-prepagos-error">
+                <CardContent className="p-4">
+                    <h2 className="font-display text-lg font-semibold mb-1">Prepagos por verificar</h2>
+                    <p className="text-sm text-destructive mb-3">{error}</p>
+                    <Button size="sm" variant="outline" className="h-11" onClick={reload} data-testid="caja-prepagos-reintentar">
+                        Reintentar
+                    </Button>
+                </CardContent>
+            </Card>
+        );
+    }
+
+    if (rows.length === 0) return null;
 
     return (
         <Card className="border-amber-500/50" data-testid="caja-prepagos">
@@ -109,6 +135,7 @@ export default function PrepayQueue({ runMutation, onChanged }) {
                 title={`¿Rechazar el pago del pedido #${rejecting?.order_number}?`}
                 description="El pedido no va a cocina."
                 confirmLabel="Rechazar"
+                pending={Boolean(busy)}
                 onCancel={() => setRejecting(null)}
                 onConfirm={() => { const row = rejecting; setRejecting(null); decide(row, 'reject'); }}
             />

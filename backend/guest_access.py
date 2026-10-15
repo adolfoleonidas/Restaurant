@@ -67,6 +67,14 @@ public_order_limiter = RateLimiter()
 # someone enumerating codes hits it fast.
 public_miss_limiter = RateLimiter(limit=30, window_seconds=600)
 
+# Successful reads of a tracking code were not counted anywhere, so one code that
+# leaked (a shared link, a screenshot of a receipt) could be read without limit,
+# and `/orders/{code}/table` had no limiter at all while exposing the whole
+# table's consumption. The budget is sized well above the real client: the
+# tracking screen polls every 30 s while visible and every 5 min while hidden
+# (~22 requests per 10 min), and the table summary is fetched once per order.
+public_read_limiter = RateLimiter(limit=120, window_seconds=600)
+
 
 def client_host(request) -> str:
     forwarded = ""
