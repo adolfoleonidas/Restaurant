@@ -47,7 +47,7 @@ dump.rdb
 *.pem
 
 # Python
-__pycache__/
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
 *pyc*
 venv/
 .venv/
@@ -74,24 +74,24 @@ agenthub/agents/youtube/db
 *.deb
 *.dylib
 
-# Build caches
-.cache/
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
 
 memory/test_credentials.md
 
 # Mobile development
-android-sdk/frontend/node_modules/.cache/default-development/5.pack
-frontend/node_modules/.cache/default-development/0.pack
-frontend/node_modules/.cache/default-development/5.pack
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
 .env
 .env.*
 *.env
 credentials.json
 *.key
 .credentials
-frontend/node_modules/.cache/default-development/2.pack
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
 
-# Agent tooling cache
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
 .atl/
 
 # TLS certificates (a private key must never be committed)
@@ -99,3 +99,9 @@ certs/
 
 # Local MongoDB backup archives (docker compose `backup` service)
 /backups/
+
+# Cache y borradores de trabajo: se regeneran solos y no son contenido del repo.
+# El entregable del arnes de auditoria vive en frontend/e2e/audit/.
+.tmp/
+frontend/.tmp/
+.audit_tmp/
