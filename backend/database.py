@@ -223,10 +223,31 @@ async def ensure_indexes():
         pass
     await db.payments.create_index("order_id")
     await db.payments.create_index([("cash_register_id", 1), ("created_at", -1)])
+    # La clave de idempotencia la elige el cliente, así que dos restaurantes pueden
+    # mandar la misma ("retry-1", o "prepay-confirm:<id>" de una integración
+    # propia). El índice tiene que ser por tenant: con la clave sola, la colisión
+    # entre restaurantes da E11000 y el reintento con la MISMA clave nunca
+    # encuentra "su" pago, así que la caja no puede cobrar ese pedido.
+    # Va después de retirar la definición anterior (global, nombre ya ocupado):
+    # Mongo rechaza un nombre existente con otra definición y el arranque moriría.
+    payment_indexes = await db.payments.list_indexes().to_list(length=100)
+    legacy_global_idempotency = next(
+        (
+            index for index in payment_indexes
+            if index.get("name") == "uniq_payment_idempotency"
+            and list(dict(index.get("key", {})).items()) == [("idempotency_key", 1)]
+        ),
+        None,
+    )
+    if legacy_global_idempotency is not None:
+        await db.payments.drop_index("uniq_payment_idempotency")
+    # Parcial, no sparse: `null` sí se indexa en un sparse, así que dos pagos sin
+    # clave chocarían entre sí. El filtro por tipo deja fuera el campo ausente y el
+    # nulo, y mantiene la unicidad solo para claves reales.
     await db.payments.create_index(
-        "idempotency_key",
+        [("restaurant_id", 1), ("idempotency_key", 1)],
         unique=True,
-        sparse=True,
+        partialFilterExpression={"idempotency_key": {"$type": "string"}},
         name="uniq_payment_idempotency",
     )
     await db.cash_registers.create_index([("restaurant_id", 1), ("status", 1), ("opened_at", -1)])
