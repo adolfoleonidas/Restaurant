@@ -37,7 +37,7 @@ import {
 } from '@/lib/api/menu';
 import { updateProduct } from '@/lib/api/products';
 import { toast } from 'sonner';
-import { waitFor } from '@testing-library/react';
+import { waitFor } from '@/test-utils/renderHook';
 import GestionarMenu from '@/pages/menu/GestionarMenu';
 
 const DIA = {
