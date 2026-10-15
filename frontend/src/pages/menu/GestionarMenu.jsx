@@ -12,6 +12,7 @@ import MenuDayView from './MenuDayView';
 import useMenuDay from './useMenuDay';
 import { updateProduct } from '@/lib/api/products';
 import { apiErrorMessage } from '@/lib/apiError';
+import ConfirmDialog from '@/components/ConfirmDialog';
 
 /**
  * «Gestionar menú»: qué se vende hoy.
@@ -50,6 +51,11 @@ export default function GestionarMenu() {
     // Días para repetir. Vacío a propósito: no hay repetición por defecto.
     const [diasRepetir, setDiasRepetir] = useState([]);
     const [semanas, setSemanas] = useState(1);
+    // Plantilla esperando confirmación de borrado, y la que está en vuelo: borrar
+    // es destructivo y el botón no tenía ni diálogo ni guarda de doble envío.
+    const [porBorrar, setPorBorrar] = useState(null);
+    const [borrando, setBorrando] = useState(false);
+    const [plantillasError, setPlantillasError] = useState(null);
 
     useEffect(() => {
         if (!hoyServidor && data?.date && diaAbierto === undefined) setHoyServidor(data.date);
@@ -61,7 +67,6 @@ export default function GestionarMenu() {
     // Tarjetas o lista: en computadora la tabla del salón es más cómoda para el
     // trabajo en bloque; en el celular, la lista compacta.
     const [modo, setModo] = useState('cards');
-
     const ids = useMemo(() => {
         if (seleccion) return seleccion;
         return new Set((data?.selection || []).map((item) => item.product_id));
@@ -117,9 +122,18 @@ export default function GestionarMenu() {
     useEffect(() => {
         if (tab !== 'week') return;
         let vivo = true;
+        setPlantillasError(null);
         listMenuTemplates()
             .then((r) => { if (vivo) setPlantillas(r.data || []); })
-            .catch(() => { if (vivo) setPlantillas([]); });
+            // Antes el fallo dejaba `[]`, y la pantalla decía «Todavía no hay
+            // plantillas»: el dueño no podía distinguir que no tiene ninguna de
+            // que la lista no llegó.
+            .catch((e) => {
+                if (vivo) {
+                    setPlantillas([]);
+                    setPlantillasError(apiErrorMessage(e, 'No se pudieron leer las plantillas'));
+                }
+            });
         return () => { vivo = false; };
     }, [tab]);
 
@@ -151,12 +165,16 @@ export default function GestionarMenu() {
     };
 
     const borrarPlantilla = async (plantilla) => {
+        if (!plantilla || borrando) return;
+        setBorrando(true);
         try {
             await deleteMenuTemplate(plantilla.id);
             await recargarPlantillas();
             toast.success('Plantilla borrada');
         } catch (e) {
             toast.error(apiErrorMessage(e, 'No se pudo borrar'));
+        } finally {
+            setBorrando(false);
         }
     };
 
@@ -363,7 +381,10 @@ export default function GestionarMenu() {
                         </div>
 
                         {plantillas === null && <p className="text-sm text-muted-foreground" data-testid="menu-plantillas-cargando">Leyendo plantillas…</p>}
-                        {plantillas !== null && plantillas.length === 0 && (
+                        {plantillasError && (
+                            <p className="text-sm text-destructive" data-testid="menu-plantillas-error">{plantillasError}</p>
+                        )}
+                        {plantillas !== null && plantillas.length === 0 && !plantillasError && (
                             <p className="text-sm text-muted-foreground" data-testid="menu-plantillas-vacio">
                                 Todavía no hay plantillas. Guarda un día que te guste y reutilízalo.
                             </p>
@@ -378,7 +399,7 @@ export default function GestionarMenu() {
                                 <Button type="button" size="sm" variant="outline" onClick={() => repetirPlantilla(plantilla)} data-testid={`menu-plantilla-repetir-${plantilla.id}`}>
                                     Repetir
                                 </Button>
-                                <Button type="button" size="sm" variant="ghost" onClick={() => borrarPlantilla(plantilla)} data-testid={`menu-plantilla-borrar-${plantilla.id}`}>
+                                <Button type="button" size="sm" variant="ghost" onClick={() => setPorBorrar(plantilla)} disabled={borrando} data-testid={`menu-plantilla-borrar-${plantilla.id}`}>
                                     Borrar
                                 </Button>
                             </div>
@@ -472,6 +493,16 @@ export default function GestionarMenu() {
                     )}
                 </>
             )}
+
+            <ConfirmDialog
+                open={Boolean(porBorrar)}
+                title={`¿Borrar la plantilla «${porBorrar?.name}»?`}
+                description="La plantilla se elimina; los menús ya publicados con ella no cambian."
+                confirmLabel="Borrar"
+                pending={borrando}
+                onCancel={() => setPorBorrar(null)}
+                onConfirm={() => { const plantilla = porBorrar; setPorBorrar(null); borrarPlantilla(plantilla); }}
+            />
         </div>
     );
 }

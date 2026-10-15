@@ -33,7 +33,7 @@ jest.mock('@/lib/api/products', () => ({
 }));
 
 import {
-    applyMenuTemplate, copyMenuFrom, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuDay, saveMenuTemplate, setMenuSoldOut,
+    applyMenuTemplate, copyMenuFrom, deleteMenuTemplate, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuDay, saveMenuTemplate, setMenuSoldOut,
 } from '@/lib/api/menu';
 import { updateProduct } from '@/lib/api/products';
 import { toast } from 'sonner';
@@ -288,6 +288,37 @@ describe('GestionarMenu', () => {
         const { container, root } = await render();
         expect(container.querySelector('[data-testid="menu-error"]').textContent).toBe('Sin conexión');
         expect(container.querySelector('[data-testid="menu-cargando"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('borrar una plantilla pide confirmación antes de eliminarla', async () => {
+        // Era la única acción destructiva de la app sin diálogo: un toque la
+        // borraba de inmediato. El diálogo vive en un portal, así que se busca en
+        // el body, no dentro del contenedor de la pantalla.
+        listMenuTemplates.mockResolvedValue({ data: [{ id: 't1', name: 'Almuerzo habitual', count: 3 }] });
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-week"]'));
+        await waitFor(() => expect(container.querySelector('[data-testid="menu-plantilla-t1"]')).not.toBeNull());
+
+        await click(container.querySelector('[data-testid="menu-plantilla-borrar-t1"]'));
+        expect(deleteMenuTemplate).not.toHaveBeenCalled();
+        const confirmar = document.body.querySelector('[data-testid="confirm-dialog-confirm"]');
+        expect(confirmar).not.toBeNull();
+
+        await click(confirmar);
+        await waitFor(() => expect(deleteMenuTemplate).toHaveBeenCalledWith('t1'));
+        await act(async () => root.unmount());
+    });
+
+    it('cancelar la confirmación no borra la plantilla', async () => {
+        listMenuTemplates.mockResolvedValue({ data: [{ id: 't1', name: 'Almuerzo habitual', count: 3 }] });
+        const { container, root } = await render();
+        await click(container.querySelector('[data-testid="menu-tab-week"]'));
+        await waitFor(() => expect(container.querySelector('[data-testid="menu-plantilla-t1"]')).not.toBeNull());
+
+        await click(container.querySelector('[data-testid="menu-plantilla-borrar-t1"]'));
+        await click(document.body.querySelector('[data-testid="confirm-dialog-cancel"]'));
+        expect(deleteMenuTemplate).not.toHaveBeenCalled();
         await act(async () => root.unmount());
     });
 });
