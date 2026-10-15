@@ -28,7 +28,10 @@ export const ROUTE_ROLES = {
     '/productos': ['admin'],
     // Menú del día: qué se vende hoy, separado del catálogo. Es del dueño (o del
     // encargado con `administracion`, que pasa por el mismo camino).
-    '/menu': ['admin'],
+    // Vive bajo /gestion/ y no en /menu porque /menu es la carta pública del
+    // cliente: con el mismo path, React Router resolvía la pública (se declara
+    // primero) y esta pantalla quedaba inalcanzable para todos.
+    '/gestion/menu': ['admin'],
     '/combos': ['admin'],
     '/categorias': ['admin'],
     '/usuarios': ['admin'],
@@ -47,7 +50,7 @@ export const NAV_ITEMS = [
     { to: '/dashboard', label: 'Hoy', icon: 'dashboard', roles: ['admin'], group: 'main' },
     { to: '/salon', label: 'Salón', icon: 'salon', roles: ['admin', 'mozo', 'cajero'], group: 'main' },
     { to: '/productos', label: 'Carta', icon: 'catalog', roles: ['admin'], group: 'main' },
-    { to: '/menu', label: 'Menú de hoy', icon: 'catalog', roles: ['admin'], group: 'main' },
+    { to: '/gestion/menu', label: 'Menú de hoy', icon: 'catalog', roles: ['admin'], group: 'main' },
     { to: '/caja', label: 'Caja', icon: 'cash', roles: ['admin', 'cajero'], group: 'main' },
     { to: '/comprobantes', label: 'Comprobantes', icon: 'receipt', roles: ['admin', 'cajero'], group: 'main' },
     { to: '/reportes', label: 'Reportes', icon: 'reports', roles: ['admin'], group: 'main' },
