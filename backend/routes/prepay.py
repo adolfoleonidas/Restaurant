@@ -14,6 +14,7 @@ from pymongo.errors import DuplicateKeyError
 from attention import AttentionBlocked, open_table_attention
 from attention_acceptance import AttentionAcceptanceError, number_accepted_order
 from auth import require_roles
+from branch_access import has_tenantwide_branch_access, validate_user_branch
 from database import db
 from models import PaymentCreate
 from notify import emit_notice, emit_order
@@ -23,6 +24,21 @@ from routes.payments import create_payment
 router = APIRouter()
 
 _PAYABLE_STATES = ("pendiente", "reportado")
+
+
+async def _branch_scope(user: dict) -> dict:
+    """Filtro de sucursal para quien está atado a una, y fallo cerrado si no tiene.
+
+    Antes esto era `if user.get("branch_id")`: un cajero sin sucursal asignada —o
+    con una que ya no existe— no entraba por ninguna rama del `if`, así que veía y
+    confirmaba pedidos de todas las sucursales del restaurante. Los helpers de
+    `branch_access` fallan cerrado a propósito; usarlos mantiene este endpoint
+    alineado con el resto del backend.
+    """
+    if has_tenantwide_branch_access(user):
+        return {}
+    branch_id = await validate_user_branch(user, db.branches)
+    return {"branch_id": branch_id} if branch_id else {}
 
 
 def _now():
@@ -134,8 +150,7 @@ async def list_pending_prepayments(user: dict = Depends(require_roles(["admin", 
         # Un pedido cancelado ya no espera nada: sin esto seguía en la cola.
         "status": {"$nin": ["pagado", "cancelado"]},
     }
-    if user.get("branch_id"):
-        query["branch_id"] = user["branch_id"]
+    query.update(await _branch_scope(user))
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", 1).to_list(200)
     table_ids = [o["table_id"] for o in orders if o.get("table_id")]
     numbers = {}
@@ -176,7 +191,8 @@ async def confirm_public_prepayment(order_id: str, user: dict = Depends(require_
     )
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    if user.get("branch_id") and order.get("branch_id") != user["branch_id"]:
+    scope = await _branch_scope(user)
+    if scope and order.get("branch_id") != scope["branch_id"]:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if order.get("status") in ("pagado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
