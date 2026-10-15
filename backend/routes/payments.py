@@ -604,9 +604,17 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "paid_by_name": user["full_name"],
         "notes": data.notes,
         "discount_reason": (data.discount_reason or "").strip() or None,
-        "idempotency_key": data.idempotency_key,
         "created_at": now,
     }
+    # La clave solo se escribe en el pago cuando existe. Guardarla como `null` la
+    # volvía un valor indexado, y el índice único dejaba fuera de juego a cualquier
+    # segundo pago sin clave (el cajero no podía volver a cobrar).
+    # El `idempotency_key` de la OPERACIÓN sí se conserva: no se guarda en
+    # `payments`, así que no llega al índice, y `_same_payment_operation` lo usa
+    # como marcador para reconocer que un reintento es la misma operación. Sin él,
+    # la recuperación tras un crash se rechazaba como "la cuenta cambió".
+    if data.idempotency_key:
+        payment["idempotency_key"] = data.idempotency_key
     payment_status = "pagado" if fully_paid else "parcial"
     operation = {
         "id": payment_id,
@@ -1063,7 +1071,14 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
             emit_notice(user["restaurant_id"], "table", table_id=table["id"], status="ocupada", branch_id=order.get("branch_id"))
 
     await db.audit_logs.insert_one({
-        "id": str(uuid.uuid4()), "restaurant_id": user["restaurant_id"], "user_id": user["id"],
+        # Mismo `event_id` determinista que el camino de la visita
+        # (`_attention_void_intent`): los dos registran la misma devolución con el
+        # mismo detalle, así que deben producir el mismo asiento. Con un `uuid4()`
+        # suelto, un reintento tras un fallo dejaba asientos duplicados sobre una
+        # devolución de dinero, y `audit_logs.event_id` es único precisamente para
+        # que eso no pase.
+        "id": f"payment-void:{payment_id}", "event_id": f"payment-void:{payment_id}",
+        "restaurant_id": user["restaurant_id"], "user_id": user["id"],
         "action": "payment_void" if kind == "void" else "payment_refund",
         "entity": "payment", "entity_id": payment_id,
         "details": {"order_id": pay["order_id"], "kind": kind, "reason": reason, "amount": pay.get("amount")},
