@@ -90,6 +90,10 @@ def _events(run):
     return asyncio.run(go())
 
 
+async def _always_valid(*args):
+    return True
+
+
 def _bind(monkeypatch, db):
     for module in (product_routes, category_routes, table_routes, zone_routes, data_routes):
         monkeypatch.setattr(module, "db", db)
@@ -316,7 +320,7 @@ def test_a_zone_in_use_cannot_be_deleted_and_publishes_nothing(monkeypatch):
 
 def test_the_catalog_reset_publishes_catalog_events(monkeypatch):
     _bind(monkeypatch, _DB(products=[_product()], users=[{"id": "admin-1", "restaurant_id": RID, "password_hash": "x"}]))
-    monkeypatch.setattr(data_routes, "verify_password", lambda *args: True)
+    monkeypatch.setattr(data_routes, "verify_password_async", _always_valid)
 
     async def run():
         await data_routes.reset_catalog(data_routes.DataResetRequest(confirm="ELIMINAR", password="pw"), _admin())
@@ -328,7 +332,7 @@ def test_the_catalog_reset_publishes_catalog_events(monkeypatch):
 
 def test_the_operational_reset_makes_every_client_refresh_everything(monkeypatch):
     _bind(monkeypatch, _DB(users=[{"id": "admin-1", "restaurant_id": RID, "password_hash": "x"}]))
-    monkeypatch.setattr(data_routes, "verify_password", lambda *args: True)
+    monkeypatch.setattr(data_routes, "verify_password_async", _always_valid)
     for name in data_routes.OPERATIONAL_COLLECTIONS:
         setattr(data_routes.db, name, getattr(data_routes.db, name, _Coll()))
 

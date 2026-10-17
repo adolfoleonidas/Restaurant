@@ -61,6 +61,17 @@ class _DB:
         self.branches = _Branches(branches)
 
 
+async def _fake_hash(password):
+    return "hashed:" + password
+
+
+def _recording_hash(calls):
+    async def _hash(password):
+        calls.append(password)
+        return "hashed"
+    return _hash
+
+
 def _admin(tenant="tenant-a"):
     return {"id": "admin-1", "restaurant_id": tenant, "role": "admin"}
 
@@ -96,7 +107,7 @@ def _create(**changes):
 def test_create_without_branch_preserves_legacy_unassigned_behavior(monkeypatch):
     db = _DB()
     monkeypatch.setattr(user_routes, "db", db)
-    monkeypatch.setattr(user_routes, "hash_password", lambda password: "hashed:" + password)
+    monkeypatch.setattr(user_routes, "hash_password_async", _fake_hash)
     result = asyncio.run(user_routes.create_user(_create(), _admin()))
     assert "branch_id" not in result
     assert result["restaurant_id"] == "tenant-a"
@@ -109,7 +120,7 @@ def test_create_without_branch_preserves_legacy_unassigned_behavior(monkeypatch)
 def test_create_with_owned_branch_stores_only_server_checked_branch_metadata(monkeypatch):
     db = _DB(branches=[_branch()])
     monkeypatch.setattr(user_routes, "db", db)
-    monkeypatch.setattr(user_routes, "hash_password", lambda password: "hashed:" + password)
+    monkeypatch.setattr(user_routes, "hash_password_async", _fake_hash)
     result = asyncio.run(user_routes.create_user(_create(branch_id="branch-a", restaurant_id="tenant-b"), _admin("tenant-a")))
     assert result["branch_id"] == "branch-a"
     assert result["restaurant_id"] == "tenant-a"
@@ -124,7 +135,7 @@ def test_create_rejects_missing_or_foreign_branch_without_user_write(monkeypatch
     db = _DB(branches=[foreign])
     monkeypatch.setattr(user_routes, "db", db)
     hashes = []
-    monkeypatch.setattr(user_routes, "hash_password", lambda password: hashes.append(password) or "hashed")
+    monkeypatch.setattr(user_routes, "hash_password_async", _recording_hash(hashes))
     with pytest.raises(HTTPException) as error:
         asyncio.run(user_routes.create_user(_create(branch_id=branch_id), _admin()))
     assert error.value.status_code == 404
@@ -150,7 +161,7 @@ def test_omitted_branch_update_preserves_assignment_and_existing_user_fields(mon
     assigned = _user(branch_id="branch-a")
     db = _DB(users=[assigned])
     monkeypatch.setattr(user_routes, "db", db)
-    monkeypatch.setattr(user_routes, "hash_password", lambda password: "hashed:" + password)
+    monkeypatch.setattr(user_routes, "hash_password_async", _fake_hash)
     result = asyncio.run(user_routes.update_user("user-1", UserUpdate(full_name="Updated Name", password="new-secret"), _admin()))
     assert result["full_name"] == "Updated Name"
     assert result["branch_id"] == "branch-a"

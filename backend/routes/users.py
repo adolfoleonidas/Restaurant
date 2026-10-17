@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime, timezone
 import uuid
 from database import db
-from auth import require_role_exact, hash_password, get_current_user, apply_permissions
+from auth import require_role_exact, hash_password_async, get_current_user, apply_permissions
 from models import UserCreate, UserUpdate
 from branch_access import assert_owned_branch
 
@@ -33,7 +33,7 @@ async def create_user(data: UserCreate, user: dict = Depends(require_role_exact(
         "id": str(uuid.uuid4()),
         "restaurant_id": user["restaurant_id"],
         "email": data.email.lower(),
-        "password_hash": hash_password(data.password),
+        "password_hash": await hash_password_async(data.password),
         "full_name": data.full_name,
         "role": data.role,
         "phone": data.phone,
@@ -60,7 +60,7 @@ async def update_user(user_id: str, data: UserUpdate, user: dict = Depends(requi
     if "branch_id" in update:
         await assert_owned_branch(db.branches, user["restaurant_id"], update["branch_id"], require_valid=True)
     if "password" in update:
-        update["password_hash"] = hash_password(update.pop("password"))
+        update["password_hash"] = await hash_password_async(update.pop("password"))
     update["updated_at"] = _now()
     result = await db.users.update_one(user_filter, {"$set": update})
     if not result.matched_count:

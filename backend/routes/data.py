@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import db
-from auth import require_roles, verify_password
+from auth import require_roles, verify_password_async
 from notify import emit_notice
 
 router = APIRouter()
@@ -62,7 +62,7 @@ async def reset_operational_data(data: DataResetRequest, user: dict = Depends(re
         {"id": user["id"], "restaurant_id": user["restaurant_id"]},
         {"password_hash": 1},
     )
-    if not current or not current.get("password_hash") or not verify_password(data.password, current["password_hash"]):
+    if not current or not current.get("password_hash") or not await verify_password_async(data.password, current["password_hash"]):
         raise HTTPException(status_code=400, detail="Contraseña de administrador incorrecta")
 
     rid = user["restaurant_id"]
@@ -115,7 +115,7 @@ async def reset_catalog(data: DataResetRequest, user: dict = Depends(require_rol
         {"id": user["id"], "restaurant_id": user["restaurant_id"]},
         {"password_hash": 1},
     )
-    if not current or not current.get("password_hash") or not verify_password(data.password, current["password_hash"]):
+    if not current or not current.get("password_hash") or not await verify_password_async(data.password, current["password_hash"]):
         raise HTTPException(status_code=400, detail="Contraseña de administrador incorrecta")
 
     rid = user["restaurant_id"]

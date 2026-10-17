@@ -5,7 +5,7 @@ import platform
 from fastapi import APIRouter, Depends
 
 from database import db
-from auth import require_roles, verify_password
+from auth import require_roles, verify_password_async
 from security_config import known_demo_passwords
 
 router = APIRouter()
@@ -30,11 +30,38 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"true", "1", "yes"}
 
 
+# digest -> does it open with a published demo password? A bcrypt hash never
+# changes for the same password, so a verdict stays valid for as long as the
+# digest does: changing a password changes the digest and misses the cache. The
+# bcrypt sweep therefore runs once per distinct hash, not once per request.
+_DEMO_VERDICTS: dict = {}
+_DEMO_VERDICTS_MAX = 512
+
+
+def _reset_demo_password_cache() -> None:
+    _DEMO_VERDICTS.clear()
+
+
+async def _opens_with_demo_password(digest: str) -> bool:
+    cached = _DEMO_VERDICTS.get(digest)
+    if cached is not None:
+        return cached
+    verdict = False
+    for demo in known_demo_passwords():
+        if await verify_password_async(demo, digest):
+            verdict = True
+            break
+    if len(_DEMO_VERDICTS) >= _DEMO_VERDICTS_MAX:
+        _DEMO_VERDICTS.clear()
+    _DEMO_VERDICTS[digest] = verdict
+    return verdict
+
+
 async def _accounts_with_demo_passwords(restaurant_id: str) -> list:
     """Staff accounts that still open with a published demo password.
 
     bcrypt is one-way, so the only honest check is verifying the known values
-    against each hash. Bounded, and only the admin screen calls it.
+    against each hash. Bounded, run off the event loop and memoized per digest.
     """
     flagged = []
     accounts = await db.users.find(
@@ -45,10 +72,8 @@ async def _accounts_with_demo_passwords(restaurant_id: str) -> list:
         digest = account.get("password_hash") or ""
         if not digest:
             continue
-        for demo in known_demo_passwords():
-            if verify_password(demo, digest):
-                flagged.append(account.get("email"))
-                break
+        if await _opens_with_demo_password(digest):
+            flagged.append(account.get("email"))
     return flagged
 
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
-from auth import verify_password, create_token, get_current_user, apply_permissions
+from auth import verify_password_async, create_token, get_current_user, apply_permissions
 from models import LoginInput, TokenOut
 import time
 from collections import defaultdict
@@ -29,7 +29,7 @@ async def login(request: Request, data: LoginInput):
     if _is_rate_limited(key):
         raise HTTPException(status_code=429, detail="Demasiados intentos. Espera unos minutos.")
     user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
-    if not user or not verify_password(data.password, user["password_hash"]):
+    if not user or not await verify_password_async(data.password, user["password_hash"]):
         _record_failure(key)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     if user.get("status") != "active":
