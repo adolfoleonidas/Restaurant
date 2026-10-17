@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { API } from '@/lib/api';
+import { expireSession } from '@/lib/authSession';
+import { STREAM_IDLE_MS, withIdleTimeout } from '@/lib/streamResilience';
 import { useAuth } from '@/contexts/AuthContext';
 
 const WAKE_DEBOUNCE_MS = 300;
@@ -109,17 +111,29 @@ export function NotifyProvider({ children }) {
 
         const connect = async () => {
             while (!stopped) {
+                // One controller per connection: the idle watchdog drops a dead
+                // socket without ending the whole subscription (`ctrl`).
+                const conn = new AbortController();
+                const stop = () => conn.abort();
+                ctrl.signal.addEventListener('abort', stop);
+                let reader = null;
                 try {
-                    const res = await fetch(`${API}/notifications/stream`, {
+                    const res = await withIdleTimeout(fetch(`${API}/notifications/stream`, {
                         headers: {
                             Authorization: `Bearer ${token}`,
                             Accept: 'text/event-stream',
                         },
-                        signal: ctrl.signal,
-                    });
+                        signal: conn.signal,
+                    }), STREAM_IDLE_MS, stop);
                     // Sin permiso (p. ej. usuario sin sucursal) reintentar no cambia nada:
                     // se deja de insistir hasta que el usuario inicie sesión de nuevo.
                     if (res.status === 403) return;
+                    // Token vencido: reintentar con el mismo token falla igual para siempre.
+                    // fetch no pasa por el interceptor de axios, así que se cierra la sesión aquí.
+                    if (res.status === 401) {
+                        expireSession();
+                        return;
+                    }
                     if (!res.ok || !res.body) throw new Error('stream');
                     // Back after a drop: whatever was published meanwhile never reached us.
                     if (connectedBefore) {
@@ -127,11 +141,12 @@ export function NotifyProvider({ children }) {
                         hub.all();
                     }
                     connectedBefore = true;
-                    const reader = res.body.getReader();
+                    reader = res.body.getReader();
                     const decoder = new TextDecoder();
                     let buf = '';
                     while (!stopped) {
-                        const { done, value } = await reader.read();
+                        // The server pings every 15 s: silence past the idle limit is a dead link.
+                        const { done, value } = await withIdleTimeout(reader.read(), STREAM_IDLE_MS, stop);
                         if (done) break;
                         buf += decoder.decode(value, { stream: true });
                         const chunks = buf.split('\n\n');
@@ -152,6 +167,10 @@ export function NotifyProvider({ children }) {
                 } catch (e) {
                     if (stopped || ctrl.signal.aborted) return;
                     await new Promise((r) => setTimeout(r, 1200));
+                } finally {
+                    ctrl.signal.removeEventListener('abort', stop);
+                    stop();
+                    if (reader && reader.cancel) Promise.resolve(reader.cancel()).catch(() => {});
                 }
             }
         };

@@ -17,7 +17,7 @@
 - [x] **T1 — bcrypt off the event loop** (route: delegated writer — writer trigger: 5 backend files)
   `backend/auth.py` verify/hash via `asyncio.to_thread`; callers in `routes/auth.py`, `routes/users.py`, `routes/data.py` await them. `routes/system.py`: stop verifying up to 25 accounts × 4 demo passwords per call — compute the demo-password flag at login/seed time or cache it.
   Checks: new test proving the event loop is not blocked during verify (or handlers awaited), full hermetic suite green.
-- [ ] **T2 — frontend network resilience** (route: delegated writer)
+- [x] **T2 — frontend network resilience** (route: delegated writer — writer trigger: 4 frontend files + 2 new libs)
   Default axios timeout (~20 s) in `frontend/src/lib/api.js`; SSE idle watchdog (~45 s) + reconnect with backoff/jitter in `NotifyContext.jsx` and `usePublicStream.js`; stop retrying on 401 (trigger logout path).
   Checks: jest tests for timeout config, watchdog, 401 stop; full frontend suite green.
 - [ ] **T3 — rate limiting at the edge + trusted proxy** (route: delegated writer)
@@ -35,4 +35,5 @@
 ## Progress log
 
 - 2026-10-17: Branch created from `main@2f81b9a`. Engram mirror PENDING (server connection timed out this session); re-sync when available.
+- 2026-10-17 T2 done (commit of T1: 1d221a5). TDD observed: RED on 5 new suites (missing modules + real failures on the old hook; Notify RED re-proven against HEAD version: 4 failed) → GREEN focused `36 passed` → full suite `151 suites / 1464 tests passed`. Parent spot check: NotifyStreamResilience + usePublicStream → `14 passed`. New libs: `lib/authSession.js` (shared 401 expiry, used by interceptor and NotifyContext), `lib/streamResilience.js` (45s idle watchdog = 3x server ping, backoff 1.5s→30s with jitter). Notes: NotifyContext keeps flat 1.2s retry by design; on public routes a 401 stops retrying without redirect; writer ran `taskkill /F /IM node.exe` to kill a hung Jest, which also killed other node processes on the machine.
 - 2026-10-17 T1 done. TDD observed: RED `15 failed, 21 passed` on the three affected files → GREEN `36 passed`; full hermetic suite `792 passed, 49 deselected`. Parent spot check: `tests/test_bcrypt_off_loop.py` → `9 passed`. `auth.py` gains `*_async` wrappers via `asyncio.to_thread`; `system.py` replaces the per-request bcrypt sweep with a hash-keyed cache (cap 512, test hook `_reset_demo_password_cache`). Known caveat: the two loop-responsiveness tests are timing-based (10-tick floor over ~300 ms) and could be flaky on a very loaded CI machine. RDD: clone-local OFF (user decision) → ordinary checks only. Commit hash recorded at next log entry.
