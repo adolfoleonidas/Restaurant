@@ -8,6 +8,9 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
+    # Do NOT add `ports:` here. The image trusts X-Forwarded-For from any peer
+    # (backend/Dockerfile) because only the frontend (nginx) can reach this
+    # service; publishing it would let anyone spoof their client address.
     depends_on:
       - mongo
     environment:

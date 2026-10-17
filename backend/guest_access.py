@@ -77,11 +77,19 @@ public_read_limiter = RateLimiter(limit=120, window_seconds=600)
 
 
 def client_host(request) -> str:
+    """Rate-limit key for the caller.
+
+    Behind nginx the address that matters is the LAST X-Forwarded-For entry: the
+    hop our own proxy added. Everything before it is whatever the client chose to
+    send, so keying on the first entry let anyone rotate their own limiter key.
+    Without the header (direct dev access) the socket peer is used.
+    """
     forwarded = ""
     headers = getattr(request, "headers", None) or {}
     if hasattr(headers, "get"):
         forwarded = headers.get("x-forwarded-for") or ""
-    if forwarded:
-        return forwarded.split(",")[0].strip() or "unknown"
+    hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+    if hops:
+        return hops[-1]
     client = getattr(request, "client", None)
     return getattr(client, "host", None) or "unknown"
