@@ -18,6 +18,8 @@ import {
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { apiErrorMessage } from '@/lib/apiError';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 /**
  * Local — structural master data of the venue (sede → zona → mesa).
@@ -27,16 +29,12 @@ import { apiErrorMessage } from '@/lib/apiError';
 
 export function SucursalesPanel() {
     const [branches, setBranches] = useState([]);
-    const [loading, setLoading] = useState(true);
     const [draft, setDraft] = useState({ name: '', timezone: '', business_day_cutoff: '', pickup_enabled: false });
     const [saving, setSaving] = useState(false);
-    const load = async () => {
-        setLoading(true);
-        try { const { data } = await listBranches(); setBranches(Array.isArray(data) ? data : []); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudieron cargar las sucursales')); }
-        finally { setLoading(false); }
-    };
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => {
+        const { data } = await listBranches();
+        setBranches(Array.isArray(data) ? data : []);
+    });
     const update = (id, key, value) => setBranches((rows) => rows.map((branch) => branch.id === id ? { ...branch, [key]: value } : branch));
     const create = async () => {
         setSaving(true);
@@ -75,14 +73,25 @@ export function SucursalesPanel() {
                 <label className="flex min-h-touch items-center gap-2 text-sm"><input type="checkbox" className="h-6 w-6 shrink-0" checked={draft.pickup_enabled} onChange={(e) => setDraft((current) => ({ ...current, pickup_enabled: e.target.checked }))} data-testid="branch-pickup-enabled-new" />Habilitar recojo público</label>
                 <Button onClick={create} disabled={saving || !draft.name.trim() || !draft.timezone.trim() || !draft.business_day_cutoff} data-testid="branch-create">Crear sucursal</Button>
             </div>
-            {loading ? <p className="text-sm text-muted-foreground">Cargando sucursales…</p> : branches.map((branch) => (
-                <div key={branch.id} className="rounded-xl border p-4 space-y-3" data-testid={`branch-row-${branch.id}`}>
-                    {fields(branch, (key, value) => update(branch.id, key, value), `branch-${branch.id}`)}
-                    <label className="flex min-h-touch items-center gap-2 text-sm"><input type="checkbox" className="h-6 w-6 shrink-0" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
-                    <Button onClick={() => save(branch)} disabled={saving || !branch.name?.trim() || !branch.timezone?.trim() || !branch.business_day_cutoff} data-testid={`branch-save-${branch.id}`}>Guardar sucursal</Button>
-                </div>
-            ))}
-            {!loading && branches.length === 0 && <p className="text-sm text-muted-foreground">No hay sucursales configuradas.</p>}
+            <LoadState
+                loading={loading}
+                error={error}
+                hasData={hasData}
+                onRetry={retry}
+                empty={branches.length === 0}
+                emptyText="No hay sucursales configuradas."
+                loadingText="Cargando sucursales…"
+                errorText="No se pudieron cargar las sucursales. Revisa tu conexión y reintenta."
+                testId="sucursales"
+            >
+                {branches.map((branch) => (
+                    <div key={branch.id} className="rounded-xl border p-4 space-y-3" data-testid={`branch-row-${branch.id}`}>
+                        {fields(branch, (key, value) => update(branch.id, key, value), `branch-${branch.id}`)}
+                        <label className="flex min-h-touch items-center gap-2 text-sm"><input type="checkbox" className="h-6 w-6 shrink-0" checked={Boolean(branch.pickup_enabled)} onChange={(e) => update(branch.id, 'pickup_enabled', e.target.checked)} data-testid={`branch-pickup-enabled-${branch.id}`} />Habilitar recojo público</label>
+                        <Button onClick={() => save(branch)} disabled={saving || !branch.name?.trim() || !branch.timezone?.trim() || !branch.business_day_cutoff} data-testid={`branch-save-${branch.id}`}>Guardar sucursal</Button>
+                    </div>
+                ))}
+            </LoadState>
         </CardContent></Card>
     );
 }
@@ -97,22 +106,16 @@ export function ZonasPanel() {
     const [branchId, setBranchId] = useState('');
     const [confirmDel, setConfirmDel] = useState(null);
 
-    const load = async () => {
-        try {
-            const [z, b, t] = await Promise.all([
-                listZones(),
-                listBranches(),
-                listTables()
-            ]);
-            setZones(z.data);
-            setBranches(Array.isArray(b.data) ? b.data : []);
-            setTables(t.data);
-        } catch {
-            // Keep the section usable with whatever data is already loaded.
-        }
-    };
-
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => {
+        const [z, b, t] = await Promise.all([
+            listZones(),
+            listBranches(),
+            listTables()
+        ]);
+        setZones(z.data);
+        setBranches(Array.isArray(b.data) ? b.data : []);
+        setTables(t.data);
+    });
 
     const openNew = () => {
         setEditing(null);
@@ -141,7 +144,7 @@ export function ZonasPanel() {
 
     const doDelete = async (z) => {
         try { await deleteZone(z.id); toast.success('Zona eliminada'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo eliminar la zona. Revisa tu conexión y reintenta.')); }
     };
 
     const getBranchName = (id) => {
@@ -161,6 +164,15 @@ export function ZonasPanel() {
             </div>
             <p className="text-xs text-muted-foreground mb-4">Asigna una sucursal a cada zona. Las mesas heredarán automáticamente la sucursal de su zona.</p>
 
+            <LoadState
+                loading={loading}
+                error={error}
+                hasData={hasData}
+                onRetry={retry}
+                testId="zonas"
+                loadingText="Cargando zonas…"
+                errorText="No se pudieron cargar las zonas. Revisa tu conexión y reintenta."
+            >
             {zones.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-2">Sin zonas. Crea una para agrupar las mesas (ej: Salón, Terraza).</p>
             ) : (
@@ -201,6 +213,7 @@ export function ZonasPanel() {
                     })}
                 </div>
             )}
+            </LoadState>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>
@@ -272,15 +285,10 @@ export function TablesManager() {
     const [assignBranch, setAssignBranch] = useState('');
     const [assigning, setAssigning] = useState(false);
     const [form, setForm] = useState({ number: '', name: '', capacity: 4, area: 'Salón', status: 'disponible', branch_id: '' });
-    const load = async () => {
-        try {
-            const [t, z] = await Promise.all([listTables(), listZones()]);
-            setTables(t.data); setZones(z.data);
-        } catch {
-            // Keep the section usable with whatever data is already loaded.
-        }
-    };
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => {
+        const [t, z] = await Promise.all([listTables(), listZones()]);
+        setTables(t.data); setZones(z.data);
+    });
     const loadBranches = async () => {
         setBranchesLoading(true);
         setBranchesError(false);
@@ -311,7 +319,7 @@ export function TablesManager() {
     };
     const doDelete = async (t) => {
         try { await deleteTable(t.id); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error('Error'); }
+        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo eliminar la mesa. Revisa tu conexión y reintenta.')); }
     };
 
     const getZoneBranch = (area) => {
@@ -416,6 +424,15 @@ export function TablesManager() {
                     )}
                 </div>
             )}
+            <LoadState
+                loading={loading}
+                error={error}
+                hasData={hasData}
+                onRetry={retry}
+                testId="mesas"
+                loadingText="Cargando mesas…"
+                errorText="No se pudieron cargar las mesas. Revisa tu conexión y reintenta."
+            >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {tables.map((t) => {
                     const branchInfo = getTableBranchInfo(t);
@@ -462,6 +479,7 @@ export function TablesManager() {
                     );
                 })}
             </div>
+            </LoadState>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>

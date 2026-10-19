@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import AttentionReference from '@/components/AttentionReference';
 import TableSessionPanel from '@/components/TableSessionPanel';
 import { apiErrorMessage } from '@/lib/apiError';
+import LoadState from '@/components/LoadState';
 
 const STEP_ICONS = {
     check: CheckCircle2,
@@ -77,11 +78,28 @@ export default function PedidoTracking() {
             </div>
         );
     }
+    // Solo un 404 dice que el código no existe. Cualquier otro fallo (red caída,
+    // servidor, límite de peticiones) no sabe nada del pedido: se avisa y se deja
+    // reintentar, en vez de afirmar que el pedido no existe.
+    if (!order && error && error.response?.status !== 404) {
+        return (
+            <div className="max-w-xl mx-auto px-4 py-16 text-center space-y-4">
+                <h1 className="font-display text-2xl font-semibold text-foreground">Seguimiento de pedido</h1>
+                <LoadState
+                    error={error}
+                    onRetry={refetch}
+                    testId="tracking"
+                    errorText="No se pudo cargar el pedido. Revisa tu conexión y reintenta."
+                />
+                <Button asChild variant="outline"><Link to="/">Ir al inicio</Link></Button>
+            </div>
+        );
+    }
     if (!order) {
         return (
             <div className="max-w-xl mx-auto px-4 py-16 text-center">
                 <h1 className="font-display text-2xl font-semibold mb-2">Pedido no encontrado</h1>
-                <p className="text-muted-foreground mb-6">{error ? 'No se pudo cargar el pedido.' : 'Verifica tu código de seguimiento.'}</p>
+                <p className="text-muted-foreground mb-6">Verifica tu código de seguimiento.</p>
                 <Button asChild><Link to="/">Ir al inicio</Link></Button>
             </div>
         );

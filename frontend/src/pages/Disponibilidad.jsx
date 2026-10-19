@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { apiErrorMessage } from '@/lib/apiError';
+import LoadState from '@/components/LoadState';
 
 export default function Disponibilidad() {
     const generation = useRealtimeGeneration(['catalog']);
     const [q, setQ] = useState('');
     const [pending, setPending] = useState(null);
-    const { data: products, refetch } = usePolling(() => listProducts().then((r) => r.data), 20000, [generation]);
+    const { data: products, error, loading, refetch } = usePolling(() => listProducts().then((r) => r.data), 20000, [generation]);
 
     const list = useMemo(() => {
         const needle = q.trim().toLowerCase();
@@ -60,6 +61,7 @@ export default function Disponibilidad() {
                     </CardContent>
                 </Card>
             )}
+            <LoadState loading={loading} error={error} hasData={products != null} onRetry={refetch} testId="disponibilidad" errorText="No se pudo cargar la carta. Revisa tu conexión y reintenta.">
             <Card>
                 <CardContent className="p-0 divide-y">
                     {list.map((p) => (
@@ -76,6 +78,7 @@ export default function Disponibilidad() {
                     ))}
                 </CardContent>
             </Card>
+            </LoadState>
         </div>
     );
 }

@@ -21,6 +21,8 @@ import {
 import { apiErrorMessage } from '@/lib/apiError';
 import PendingButton from '@/components/ui/pending-button';
 import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -233,12 +235,11 @@ export default function Productos({ section = 'platos' }) {
     const [confirmDel, setConfirmDel] = useState(null);
     const [run, busy] = usePendingAction();
 
-    const load = async () => {
+    const { load, retry, loading, error, hasData } = useLoader(async () => {
         const [p, c] = await Promise.all([listProducts(), listCategories()]);
         setProducts(p.data); setCategories(c.data);
-    };
+    });
     const generation = useRealtimeGeneration(['catalog']);
-    useEffect(() => { load(); }, []);
     useEffect(() => { if (generation) load(); }, [generation]);
     useEffect(() => { setTab(section); }, [section]);
 
@@ -305,7 +306,7 @@ export default function Productos({ section = 'platos' }) {
     const doDelete = (p) => run('delete', async () => {
         try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
         finally { setConfirmDel(null); }
-    }, { errorMessage: 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.' });
+    }, { errorMessage: 'No se pudo eliminar. Revisa tu conexión y reintenta.' });
 
     const toggleAvail = async (p) => {
         try {
@@ -365,7 +366,7 @@ export default function Productos({ section = 'platos' }) {
                     onClick={() => setTab('platos')}
                     className={`px-4 py-2 rounded-sm text-sm font-medium border ${tab === 'platos' ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-secondary'}`}
                 >
-                    Platos ({simples.length})
+                    Platos{hasData ? ` (${simples.length})` : ''}
                 </button>
                 <button
                     type="button"
@@ -373,7 +374,7 @@ export default function Productos({ section = 'platos' }) {
                     className={`px-4 py-2 rounded-sm text-sm font-medium border ${tab === 'combos' ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-secondary'}`}
                     data-testid="tab-combos"
                 >
-                    Combos ({combos.length})
+                    Combos{hasData ? ` (${combos.length})` : ''}
                 </button>
             </div>
 
@@ -394,6 +395,7 @@ export default function Productos({ section = 'platos' }) {
                 </Card>
             )}
 
+            <LoadState loading={loading} error={error} hasData={hasData} onRetry={retry} testId="productos" errorText="No se pudo cargar la carta. Revisa tu conexión y reintenta.">
             {visible.length === 0 ? (
                 <Card><CardContent className="py-14 text-center text-muted-foreground">
                     {tab === 'combos' ? 'Todavía no hay combos. Crea uno con nombre y los platos que incluye.' : 'No hay platos en la carta.'}
@@ -432,6 +434,7 @@ export default function Productos({ section = 'platos' }) {
                     })}
                 </div>
             )}
+            </LoadState>
 
             <Dialog open={openDlg} onOpenChange={setOpenDlg}>
                 <DialogContent className="max-w-xl overflow-y-auto">

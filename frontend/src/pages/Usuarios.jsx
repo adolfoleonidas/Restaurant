@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { apiErrorMessage } from '@/lib/apiError';
 import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 const ROLE_AVATAR_BG = {
     admin: 'bg-purple-100 text-purple-700',
@@ -40,8 +42,7 @@ export default function Usuarios() {
     const { user: me } = useAuth();
     const [run, busy] = usePendingAction();
 
-    const load = async () => { const { data } = await listUsers(); setUsers(data); };
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => { const { data } = await listUsers(); setUsers(data); });
     const loadBranches = async () => {
         setBranchesLoading(true);
         setBranchesError(false);
@@ -81,7 +82,7 @@ export default function Usuarios() {
     const doDelete = (u) => run('delete', async () => {
         try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
         finally { setConfirmDel(null); }
-    }, { errorMessage: 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.' });
+    }, { errorMessage: 'No se pudo eliminar el usuario. Revisa tu conexión y reintenta.' });
     const toggleActive = (u) => run(`status:${u.id}`, async () => {
         await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' });
         await load();
@@ -98,6 +99,7 @@ export default function Usuarios() {
                 </div>
                 <Button onClick={openNew} data-testid="usuario-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nuevo usuario</Button>
             </div>
+            <LoadState loading={loading} error={error} hasData={hasData} onRetry={retry} testId="usuarios" errorText="No se pudo cargar el equipo. Revisa tu conexión y reintenta.">
             <Card><CardContent className="p-0">
                 <div className="divide-y">
                     {users.map((u) => (
@@ -121,6 +123,7 @@ export default function Usuarios() {
                     ))}
                 </div>
             </CardContent></Card>
+            </LoadState>
 
             <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
                 <AlertDialogContent>

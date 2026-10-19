@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { getPaymentConfig, updatePaymentConfig } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { CreditCard, Smartphone, Banknote, Building2, Upload, Trash2, Save } fro
 import { toast } from 'sonner';
 import PendingButton from '@/components/ui/pending-button';
 import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
     <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40">
@@ -28,8 +30,7 @@ export default function Pagos() {
     const [tab, setTab] = useState('yape');
     const [run, busy] = usePendingAction();
 
-    const load = async () => { const { data } = await getPaymentConfig(); setCfg(data); };
-    useEffect(() => { load(); }, []);
+    const { retry, loading, error } = useLoader(async () => { const { data } = await getPaymentConfig(); setCfg(data); });
 
     const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
 
@@ -53,7 +54,14 @@ export default function Pagos() {
                 <p className="page-kicker mb-1">Administración</p>
                 <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
             </div>
-            <p className="text-sm text-muted-foreground">Cargando métodos de pago…</p>
+            <LoadState
+                loading={loading}
+                error={error}
+                onRetry={retry}
+                testId="pagos"
+                loadingText="Cargando métodos de pago…"
+                errorText="No se pudieron cargar los métodos de pago. Revisa tu conexión y reintenta."
+            />
         </div>
     );
 

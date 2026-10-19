@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { createCategory, deleteCategory, listCategories, updateCategory } from '@/lib/api/categories';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import PendingButton from '@/components/ui/pending-button';
 import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 export default function Categorias() {
     const [cats, setCats] = useState([]);
@@ -23,8 +25,7 @@ export default function Categorias() {
     const [confirmDel, setConfirmDel] = useState(null);
     const [run, busy] = usePendingAction();
 
-    const load = async () => { const { data } = await listCategories(); setCats(data); };
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => { const { data } = await listCategories(); setCats(data); });
 
     const openNew = () => { setEditing(null); setForm({ name: '', description: '', sort_order: cats.length + 1 }); setDlg(true); };
     const openEdit = (c) => { setEditing(c); setForm({ name: c.name, description: c.description || '', sort_order: c.sort_order }); setDlg(true); };
@@ -37,7 +38,7 @@ export default function Categorias() {
     const doDelete = (c) => run('delete', async () => {
         try { await deleteCategory(c.id); toast.success('Eliminada'); await load(); }
         finally { setConfirmDel(null); }
-    }, { errorMessage: 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.' });
+    }, { errorMessage: 'No se pudo eliminar la categoría. Revisa tu conexión y reintenta.' });
 
     return (
         <div className="space-y-5" data-testid="categorias-root">
@@ -49,6 +50,7 @@ export default function Categorias() {
                 </div>
                 <Button onClick={openNew} data-testid="categoria-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nueva</Button>
             </div>
+            <LoadState loading={loading} error={error} hasData={hasData} onRetry={retry} testId="categorias" errorText="No se pudieron cargar las categorías. Revisa tu conexión y reintenta.">
             <Card><CardContent className="p-0">
                 <div className="divide-y">
                     {cats.map((c) => (
@@ -65,6 +67,7 @@ export default function Categorias() {
                     ))}
                 </div>
             </CardContent></Card>
+            </LoadState>
 
             <Dialog open={dlg} onOpenChange={setDlg}>
                 <DialogContent>
