@@ -12,7 +12,8 @@ import {
     AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { apiErrorMessage } from '@/lib/apiError';
+import PendingButton from '@/components/ui/pending-button';
+import usePendingAction from '@/hooks/usePendingAction';
 
 export default function Categorias() {
     const [cats, setCats] = useState([]);
@@ -20,24 +21,23 @@ export default function Categorias() {
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState({ name: '', description: '', sort_order: 0 });
     const [confirmDel, setConfirmDel] = useState(null);
+    const [run, busy] = usePendingAction();
 
     const load = async () => { const { data } = await listCategories(); setCats(data); };
     useEffect(() => { load(); }, []);
 
     const openNew = () => { setEditing(null); setForm({ name: '', description: '', sort_order: cats.length + 1 }); setDlg(true); };
     const openEdit = (c) => { setEditing(c); setForm({ name: c.name, description: c.description || '', sort_order: c.sort_order }); setDlg(true); };
-    const save = async () => {
-        try {
-            const payload = { ...form, sort_order: Number(form.sort_order) };
-            if (editing) { await updateCategory(editing.id, payload); toast.success('Actualizado'); }
-            else { await createCategory(payload); toast.success('Creado'); }
-            setDlg(false); await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.')); }
-    };
-    const doDelete = async (c) => {
+    const save = () => run('save', async () => {
+        const payload = { ...form, sort_order: Number(form.sort_order) };
+        if (editing) { await updateCategory(editing.id, payload); toast.success('Actualizado'); }
+        else { await createCategory(payload); toast.success('Creado'); }
+        setDlg(false); await load();
+    }, { errorMessage: 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.' });
+    const doDelete = (c) => run('delete', async () => {
         try { await deleteCategory(c.id); toast.success('Eliminada'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.')); }
-    };
+        finally { setConfirmDel(null); }
+    }, { errorMessage: 'No se pudo guardar la categoría. Revisa tu conexión y reintenta.' });
 
     return (
         <div className="space-y-5" data-testid="categorias-root">
@@ -76,7 +76,7 @@ export default function Categorias() {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setDlg(false)}>Cancelar</Button>
-                        <Button onClick={save} data-testid="categoria-form-save">Guardar</Button>
+                        <PendingButton onClick={save} pending={busy.has('save')} pendingLabel="Guardando…" data-testid="categoria-form-save">Guardar</PendingButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -88,7 +88,14 @@ export default function Categorias() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={busy.has('delete')}
+                            aria-busy={busy.has('delete') ? 'true' : undefined}
+                            onClick={(e) => { e.preventDefault(); doDelete(confirmDel); }}
+                        >
+                            {busy.has('delete') ? 'Eliminando…' : 'Eliminar'}
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

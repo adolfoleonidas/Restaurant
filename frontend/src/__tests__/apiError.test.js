@@ -51,6 +51,34 @@ describe('apiErrorMessage', () => {
         expect(apiErrorMessage({ response: { status: 500, data: {} } }, 'No se pudo guardar')).toBe('No se pudo guardar');
     });
 
+    describe('429 from the proxy', () => {
+        const TOO_MANY = 'Demasiados intentos. Espera un momento y vuelve a intentar.';
+
+        it('says so instead of the page generic fallback when nginx answers a bare 429', () => {
+            expect(apiErrorMessage({ response: { status: 429, data: '<html>429</html>' } }, 'No se pudo guardar')).toBe(TOO_MANY);
+            expect(apiErrorMessage({ response: { status: 429, data: {} } }, 'No se pudo guardar')).toBe(TOO_MANY);
+            expect(apiErrorMessage({ response: { status: 429 } }, 'No se pudo guardar')).toBe(TOO_MANY);
+        });
+
+        it('keeps the backend own sentence when the 429 carries a detail', () => {
+            expect(apiErrorMessage(withDetail('Demasiados intentos. Espera unos minutos.', 429), 'x'))
+                .toBe('Demasiados intentos. Espera unos minutos.');
+        });
+
+        it('honours Retry-After in seconds and minutes', () => {
+            const bare = (retryAfter) => ({ response: { status: 429, data: {}, headers: { 'retry-after': retryAfter } } });
+            expect(apiErrorMessage(bare('30'), 'x')).toBe('Demasiados intentos. Espera 30 segundos y vuelve a intentar.');
+            expect(apiErrorMessage(bare('1'), 'x')).toBe('Demasiados intentos. Espera 1 segundo y vuelve a intentar.');
+            expect(apiErrorMessage(bare('120'), 'x')).toBe('Demasiados intentos. Espera 2 minutos y vuelve a intentar.');
+        });
+
+        it('ignores a Retry-After it cannot read', () => {
+            const bare = (retryAfter) => ({ response: { status: 429, data: {}, headers: { 'retry-after': retryAfter } } });
+            expect(apiErrorMessage(bare('Wed, 21 Oct 2026 07:28:00 GMT'), 'x')).toBe(TOO_MANY);
+            expect(apiErrorMessage(bare('0'), 'x')).toBe(TOO_MANY);
+        });
+    });
+
     it('survives null and undefined', () => {
         expect(apiErrorMessage(undefined, 'fb')).toBe('fb');
         expect(apiErrorMessage(null, 'fb')).toBe('fb');

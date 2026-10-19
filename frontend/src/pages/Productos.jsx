@@ -19,6 +19,8 @@ import {
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { apiErrorMessage } from '@/lib/apiError';
+import PendingButton from '@/components/ui/pending-button';
+import usePendingAction from '@/hooks/usePendingAction';
 
 const emptyProduct = {
     name: '', description: '', price: '', category_id: '', preparation_time: 15,
@@ -229,6 +231,7 @@ export default function Productos({ section = 'platos' }) {
     const [importOpen, setImportOpen] = useState(false);
     const [pendingAvail, setPendingAvail] = useState(null);
     const [confirmDel, setConfirmDel] = useState(null);
+    const [run, busy] = usePendingAction();
 
     const load = async () => {
         const [p, c] = await Promise.all([listProducts(), listCategories()]);
@@ -279,7 +282,7 @@ export default function Productos({ section = 'platos' }) {
             toast.error('Agrega al menos un plato al combo');
             return;
         }
-        try {
+        await run('save', async () => {
             const payload = {
                 ...form,
                 price: Number(form.price),
@@ -296,13 +299,13 @@ export default function Productos({ section = 'platos' }) {
             }
             setOpenDlg(false);
             await load();
-        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
+        }, { errorMessage: 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.' });
     };
 
-    const doDelete = async (p) => {
+    const doDelete = (p) => run('delete', async () => {
         try { await deleteProduct(p.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.')); }
-    };
+        finally { setConfirmDel(null); }
+    }, { errorMessage: 'No se pudo guardar el cambio. Revisa tu conexión y reintenta.' });
 
     const toggleAvail = async (p) => {
         try {
@@ -526,7 +529,7 @@ export default function Productos({ section = 'platos' }) {
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setOpenDlg(false)}>Cancelar</Button>
-                        <Button onClick={save} data-testid="producto-form-save">{editing ? 'Guardar' : (form.is_combo ? 'Crear combo' : 'Crear')}</Button>
+                        <PendingButton onClick={save} pending={busy.has('save')} pendingLabel="Guardando…" data-testid="producto-form-save">{editing ? 'Guardar' : (form.is_combo ? 'Crear combo' : 'Crear')}</PendingButton>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -540,7 +543,14 @@ export default function Productos({ section = 'platos' }) {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={busy.has('delete')}
+                            aria-busy={busy.has('delete') ? 'true' : undefined}
+                            onClick={(e) => { e.preventDefault(); doDelete(confirmDel); }}
+                        >
+                            {busy.has('delete') ? 'Eliminando…' : 'Eliminar'}
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
