@@ -31,7 +31,14 @@
   Checks: new tests for crash-retry idempotency (operation resumes, single cash movement, single audit row), hermetic suite green.
 - [ ] **T6 — error telemetry** — DEFERRED by user decision (2026-10-17): postponed for now; revisit before onboarding a second restaurant. Field failures stay invisible until then (only console.error in ErrorBoundary).
 
+## Fase 1.1 — audit 2026-10-19 HIGHs + money MEDIUMs (same PR: two are this PR's own regressions)
+
+- [ ] **T7 — backend fixes** (route: delegated writer): SSE public stream connection caps (per client_host ~5, global ~200, 429 above; validate restaurant_id exists; close streams after ~10 min) · `prepay.reject` branch scope + state filter (`prepay.py:217`) · freeze public cart once `payment_state == "reportado"` (409 on add/update/remove; `public.py:255`) · `GET /auth/me` endpoint (current user, fresh functions) · Dockerfile: drop `--forwarded-allow-ips=*`, read `FORWARDED_ALLOW_IPS` env (compose sets it; default empty = trust nothing).
+- [ ] **T8 — frontend + nginx fixes** (route: delegated writer): CSP `img-src` + `https:` (both configs) · proof/import upload timeouts (120s override) · `isPublicPath` exact-segment match + tests for `/pedidos`, `/gestion/menu` · Checkout config-fetch error state with retry · AuthContext refreshes user via `/auth/me` on boot (permission changes apply without re-login — fixes the waiter-cannot-charge report, 2026-10-19).
+
 ## Progress log
+
+- 2026-10-19: User-reported bug confirmed: waiter granted `cobro` sees no "Cobrar" button because AuthContext never refreshes the stored user (AuthContext.jsx:12). Workaround: re-login. Root fix in T8.
 
 - 2026-10-17: Branch created from `main@2f81b9a`. Engram mirror PENDING (server connection timed out this session); re-sync when available.
 - 2026-10-17 T5 done (commit of T4: 225dbdf). TDD observed: RED `8 failed, 3 passed` on tests/test_void_saga.py → GREEN `11 passed`; full suite `816 passed, 49 deselected`. Parent spot check: void_saga + money_integrity → `84 passed`. Non-visit void now claims the order with a `payment_operation` intent (`type:"void"`, id `payment-void:{pid}`, movement `payment-refund:{pid}`) and `_resume_void_operation` finishes idempotently; ~100 lines of dead non-crash-safe tail removed. Documented client-visible changes: deterministic refund movement id, `voided_at` = intent time, retry after a fully-completed void answers 400 "no vigente" (tested), non-visit orders also carry `voided_payment_ids`. A pending void blocks cash close and is resumed by a void retry or create_payment, not by GET.
