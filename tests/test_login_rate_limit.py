@@ -125,6 +125,33 @@ def test_failures_age_out_of_the_window():
     assert key not in auth_routes._login_failures
 
 
+def test_the_lockout_key_comes_from_the_proxy_hop_not_the_socket_peer():
+    """Outside the nginx topology (a PaaS, or a proxy that appends instead of
+    replacing) the socket peer and the first X-Forwarded-For entries are the
+    attacker's to rotate. The lockout must key on client_host(): the LAST hop,
+    the one our own proxy appended."""
+    async def run():
+        auth_routes.db = _DB(["mozo@x.com"])
+        auth_routes._login_failures.clear()
+        for n in range(auth_routes._LOGIN_MAX):
+            request = _Request(host=f"172.18.0.{n + 2}")
+            request.headers = {"x-forwarded-for": f"198.51.100.{n + 1}, 203.0.113.9"}
+            try:
+                await auth_routes.login(request, LoginInput(email="mozo@x.com", password="mala"))
+            except HTTPException:
+                pass
+        final = _Request(host="172.18.0.99")
+        final.headers = {"x-forwarded-for": "198.51.100.200, 203.0.113.9"}
+        try:
+            await auth_routes.login(final, LoginInput(email="mozo@x.com", password=PASSWORD))
+        except HTTPException as exc:
+            return exc
+        return None
+
+    locked = asyncio.run(run())
+    assert locked is not None and locked.status_code == 429
+
+
 def test_a_locked_account_does_not_block_the_rest_of_the_staff():
     async def run():
         auth_routes.db = _DB(["mozo@x.com", "cajero@x.com"])

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from database import db
 from auth import verify_password_async, create_token, get_current_user, apply_permissions
+from guest_access import client_host
 from models import LoginInput, TokenOut
 import time
 
@@ -50,7 +51,9 @@ def _record_failure(key: str) -> None:
 
 @router.post("/login", response_model=TokenOut)
 async def login(request: Request, data: LoginInput):
-    key = f"{request.client.host}|{data.email.lower()}"
+    # client_host() takes the LAST X-Forwarded-For hop (the one our proxy appended),
+    # so the lockout key cannot be rotated by spoofing the header or the socket peer.
+    key = f"{client_host(request)}|{data.email.lower()}"
     if _is_rate_limited(key):
         raise HTTPException(status_code=429, detail="Demasiados intentos. Espera unos minutos.")
     user = await db.users.find_one({"email": data.email.lower()}, {"_id": 0})
