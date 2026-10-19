@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import { toast } from 'sonner';
+import LoadState from '@/components/LoadState';
 
 /**
  * Comprobantes — review of the Yape/Plin captures uploaded against an account.
@@ -34,7 +35,7 @@ export default function Comprobantes() {
     const [search, setSearch] = useState('');
     const [detail, setDetail] = useState(null);
 
-    const { data, refetch } = usePolling(
+    const { data, error, loading, refetch } = usePolling(
         () => listPaymentProofs(filter === 'pending' ? { pending: true } : {}).then((r) => r.data),
         10000,
         [filter, generation]
@@ -83,7 +84,7 @@ export default function Comprobantes() {
                         <Receipt className="h-6 w-6 text-primary" /> Comprobantes
                     </h1>
                     <p className="text-sm text-muted-foreground" data-testid="comprobantes-resumen">
-                        {pendingCount} pendiente{pendingCount === 1 ? '' : 's'} de revisión · capturas de Yape/Plin
+                        {data != null ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'} de revisión · ` : ''}capturas de Yape/Plin
                     </p>
                 </div>
                 <div className="relative">
@@ -107,6 +108,7 @@ export default function Comprobantes() {
                 <Button variant="outline" className="h-11 sm:h-10" onClick={() => refetch?.()} data-testid="comprobantes-refresh">Actualizar</Button>
             </div>
 
+            <LoadState loading={loading} error={error} hasData={data != null} onRetry={refetch} testId="comprobantes" errorText="No se pudieron cargar los comprobantes. Revisa tu conexión y reintenta.">
             {visible.length === 0 ? (
                 <div className="py-16 text-center text-muted-foreground border rounded-xl">
                     {filter === 'pending' ? 'No hay comprobantes pendientes de revisión.' : 'Todavía no hay comprobantes subidos.'}
@@ -160,6 +162,7 @@ export default function Comprobantes() {
                     })}
                 </div>
             )}
+            </LoadState>
 
             <Dialog open={Boolean(detail)} onOpenChange={(open) => { if (!open) setDetail(null); }}>
                 <DialogContent className="max-w-2xl" data-testid="comprobantes-dialog">

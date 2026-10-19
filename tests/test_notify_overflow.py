@@ -77,10 +77,18 @@ def test_stream_keeps_delivering_while_the_queue_does_not_overflow(monkeypatch):
 
 def test_public_stream_ends_on_overflow_instead_of_crashing_on_the_marker():
     import routes.public as public_routes
+    from test_money_integrity import _DB as _RestaurantDB
+
+    class _Request:
+        client = type("Client", (), {"host": "10.0.0.5"})()
+        headers = {}
 
     async def run():
+        db = _RestaurantDB()
+        db.restaurants.docs.append({"id": "tenant-1"})
+        public_routes.db = db
         before = set(notify._subs)
-        response = await public_routes.public_stream(restaurant_id="tenant-1")
+        response = await public_routes.public_stream(_Request(), restaurant_id="tenant-1")
         for n in range(200):
             notify.publish({"type": "product", "restaurant_id": "tenant-1"})
         iterator = response.body_iterator

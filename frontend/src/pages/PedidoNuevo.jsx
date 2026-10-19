@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import { useRealtimeGeneration } from '@/contexts/NotifyContext';
 import { apiErrorMessage } from '@/lib/apiError';
+import LoadState from '@/components/LoadState';
 
 export default function PedidoNuevo() {
     const navigate = useNavigate();
@@ -42,9 +43,13 @@ export default function PedidoNuevo() {
     const tablesGeneration = useRealtimeGeneration(['tables', 'orders']);
     const catalogGeneration = useRealtimeGeneration(['catalog']);
 
-    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 8000, [tablesGeneration]);
-    const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
-    const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: tables, error: tablesError, refetch: refetchTables } = usePolling(() => listTables().then((r) => r.data), 8000, [tablesGeneration]);
+    const { data: categories, error: categoriesError, refetch: refetchCategories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
+    const { data: products, error: productsError, loading: productsLoading, refetch: refetchProducts } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
+    // A list that failed to load is not an empty list: without the dishes (or the
+    // categories, or the tables) the waiter would conclude there is nothing to sell.
+    const loadError = productsError || categoriesError || (isTableOrder ? tablesError : null);
+    const retryLoad = () => { refetchTables?.(); refetchCategories?.(); refetchProducts?.(); };
 
     useEffect(() => {
         if (lockedTableId) setTableId(lockedTableId);
@@ -209,6 +214,7 @@ export default function PedidoNuevo() {
                 </Card>
             )}
 
+            <LoadState loading={productsLoading} error={loadError} hasData={products != null} onRetry={retryLoad} testId="pedido-nuevo" errorText="No se pudo cargar la carta. Revisa tu conexión y reintenta.">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {filteredProducts.map((p) => {
                     const q = qtyOf(p.id);
@@ -246,6 +252,7 @@ export default function PedidoNuevo() {
                     );
                 })}
             </div>
+            </LoadState>
 
             <Textarea placeholder="Observaciones (sin cebolla, término…)" value={orderNotes} onChange={(e) => setOrderNotes(e.target.value)} className="text-base" data-testid="pedido-notas" />
 

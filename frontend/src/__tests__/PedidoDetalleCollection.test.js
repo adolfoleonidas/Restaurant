@@ -153,7 +153,7 @@ describe('PedidoDetalle collection entry', () => {
         await click(document.body.querySelector('[data-testid="caja-enviar-comprobante"]'));
         expect(api.post).toHaveBeenCalledWith('/payments/order-1/proof', {
             method: 'yape', payment_proof: 'data:image/png;base64,iVBORw0KGgo=',
-        });
+        }, { timeout: 120000 });
         expect(api.post.mock.calls.some(([path]) => path === '/payments')).toBe(false);
         expect(api.get).toHaveBeenCalledWith('/orders/order-1');
         expect(document.body.textContent).toContain('PagadoS/ 0.00');

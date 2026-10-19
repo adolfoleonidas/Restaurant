@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { getPaymentConfig, updatePaymentConfig } from '@/lib/api/payments';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,10 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CreditCard, Smartphone, Banknote, Building2, Upload, Trash2, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiErrorMessage } from '@/lib/apiError';
+import PendingButton from '@/components/ui/pending-button';
+import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
     <label className="flex items-center gap-3 border rounded-xl p-3 cursor-pointer hover:bg-secondary/40">
@@ -25,9 +28,9 @@ const MethodToggle = ({ label, checked, onChange, icon: Icon, testId }) => (
 export default function Pagos() {
     const [cfg, setCfg] = useState(null);
     const [tab, setTab] = useState('yape');
+    const [run, busy] = usePendingAction();
 
-    const load = async () => { const { data } = await getPaymentConfig(); setCfg(data); };
-    useEffect(() => { load(); }, []);
+    const { retry, loading, error } = useLoader(async () => { const { data } = await getPaymentConfig(); setCfg(data); });
 
     const set = (patch) => setCfg((c) => ({ ...c, ...patch }));
 
@@ -39,10 +42,11 @@ export default function Pagos() {
         reader.readAsDataURL(f);
     };
 
-    const save = async () => {
-        try { const { data } = await updatePaymentConfig(cfg); setCfg(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(apiErrorMessage(e, 'Error')); }
-    };
+    const save = () => run('save', async () => {
+        const { data } = await updatePaymentConfig(cfg);
+        setCfg(data);
+        toast.success('Configuración guardada');
+    }, { errorMessage: 'No se pudo guardar la configuración. Revisa tu conexión y reintenta.' });
 
     if (!cfg) return (
         <div className="space-y-5" data-testid="pagos-root">
@@ -50,7 +54,14 @@ export default function Pagos() {
                 <p className="page-kicker mb-1">Administración</p>
                 <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
             </div>
-            <p className="text-sm text-muted-foreground">Cargando métodos de pago…</p>
+            <LoadState
+                loading={loading}
+                error={error}
+                onRetry={retry}
+                testId="pagos"
+                loadingText="Cargando métodos de pago…"
+                errorText="No se pudieron cargar los métodos de pago. Revisa tu conexión y reintenta."
+            />
         </div>
     );
 
@@ -62,7 +73,7 @@ export default function Pagos() {
                     <h1 className="font-display text-3xl font-semibold flex items-center gap-2"><CreditCard className="h-6 w-6 text-primary" /> Métodos de pago</h1>
                     <p className="text-muted-foreground text-sm">Activa los medios que aceptas y completa los datos que ve tu cliente al pagar.</p>
                 </div>
-                <Button onClick={save} data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</Button>
+                <PendingButton onClick={save} pending={busy.has('save')} pendingLabel="Guardando…" data-testid="pagos-save"><Save className="h-4 w-4 mr-2" />Guardar cambios</PendingButton>
             </div>
 
             <Card><CardContent className="p-5 grid grid-cols-1 md:grid-cols-2 gap-3">

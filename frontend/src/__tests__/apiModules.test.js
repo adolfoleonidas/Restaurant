@@ -74,7 +74,7 @@ const CASES = [
     ['updateBranch', () => branches.updateBranch('b1', { n: 1 }), 'patch', ['/branches/b1', { n: 1 }]],
     // payments, approvals, prepay
     ['createPayment', () => payments.createPayment({ amount: 1 }), 'post', ['/payments', { amount: 1 }]],
-    ['uploadPaymentProof', () => payments.uploadPaymentProof('o1', { payment_proof: 'x' }), 'post', ['/payments/o1/proof', { payment_proof: 'x' }]],
+    ['uploadPaymentProof', () => payments.uploadPaymentProof('o1', { payment_proof: 'x' }), 'post', ['/payments/o1/proof', { payment_proof: 'x' }, { timeout: 120000 }]],
     ['voidPayment', () => payments.voidPayment('p1', { kind: 'void' }), 'post', ['/payments/p1/void', { kind: 'void' }]],
     ['listPayments', () => payments.listPayments({ period: 'day' }), 'get', ['/payments', { params: { period: 'day' } }]],
     ['listPaymentsByOrder', () => payments.listPaymentsByOrder('o 1', P), 'get', ['/payments/by-order/o 1', P]],
@@ -95,7 +95,7 @@ const CASES = [
     ['listCashHistory', () => cash.listCashHistory({ period: 'day' }), 'get', ['/cash/history', { params: { period: 'day' } }]],
     // catalog
     ['listProducts', () => products.listProducts(), 'get', ['/products']],
-    ['importProducts', () => products.importProducts({ items: [] }), 'post', ['/products/import', { items: [] }]],
+    ['importProducts', () => products.importProducts({ items: [] }), 'post', ['/products/import', { items: [] }, { timeout: 120000 }]],
     ['createProduct', () => products.createProduct({ n: 1 }), 'post', ['/products', { n: 1 }]],
     ['updateProduct', () => products.updateProduct('p1', { n: 1 }), 'patch', ['/products/p1', { n: 1 }]],
     ['deleteProduct', () => products.deleteProduct('p1'), 'delete', ['/products/p1']],
@@ -119,6 +119,7 @@ const CASES = [
     ['getTodayReport', () => reports.getTodayReport(), 'get', ['/reports/today']],
     ['getTodayReport scoped', () => reports.getTodayReport({ branch_id: 'b' }), 'get', ['/reports/today', { params: { branch_id: 'b' } }]],
     ['login', () => auth.login('a@b.c', 'pw'), 'post', ['/auth/login', { email: 'a@b.c', password: 'pw' }]],
+    ['getMe', () => auth.getMe(), 'get', ['/auth/me']],
     // public
     ['getPublicRestaurant', () => publicApi.getPublicRestaurant(), 'get', ['/public/restaurant']],
     ['getPublicCategories', () => publicApi.getPublicCategories(), 'get', ['/public/categories']],
@@ -132,8 +133,8 @@ const CASES = [
     ['getPublicOrder', () => publicApi.getPublicOrder('c1'), 'get', ['/public/orders/c1']],
     ['getPublicOrderTable', () => publicApi.getPublicOrderTable('c1'), 'get', ['/public/orders/c1/table']],
     ['createPublicOrder', () => publicApi.createPublicOrder({ a: 1 }), 'post', ['/public/orders', { a: 1 }]],
-    ['uploadPublicOrderProof', () => publicApi.uploadPublicOrderProof('c1', { payment_proof: 'x' }), 'post', ['/public/orders/c1/proof', { payment_proof: 'x' }]],
-    ['uploadPublicOrderProof with config', () => publicApi.uploadPublicOrderProof('c1', { payment_proof: 'x' }, CFG), 'post', ['/public/orders/c1/proof', { payment_proof: 'x' }, CFG]],
+    ['uploadPublicOrderProof', () => publicApi.uploadPublicOrderProof('c1', { payment_proof: 'x' }), 'post', ['/public/orders/c1/proof', { payment_proof: 'x' }, { timeout: 120000 }]],
+    ['uploadPublicOrderProof with config', () => publicApi.uploadPublicOrderProof('c1', { payment_proof: 'x' }, CFG), 'post', ['/public/orders/c1/proof', { payment_proof: 'x' }, { timeout: 120000, ...CFG }]],
     ['addPublicOrderItem', () => publicApi.addPublicOrderItem('c1', { a: 1 }), 'post', ['/public/orders/c1/items', { a: 1 }]],
     ['updatePublicOrderItem', () => publicApi.updatePublicOrderItem('c1', 'l1', { quantity: 1 }), 'patch', ['/public/orders/c1/items/l1', { quantity: 1 }]],
     ['removePublicOrderItem', () => publicApi.removePublicOrderItem('c1', 'l1'), 'delete', ['/public/orders/c1/items/l1']],

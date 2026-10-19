@@ -1,3 +1,5 @@
+import asyncio
+
 import jwt
 import bcrypt
 from datetime import datetime, timedelta, timezone
@@ -24,6 +26,18 @@ def verify_password(plain: str, hashed: str) -> bool:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except Exception:
         return False
+
+
+# bcrypt is deliberately slow (hundreds of ms). The server is a single process
+# with in-process SSE, so running it on the event loop would freeze every
+# request and stream. Async handlers use these wrappers; the sync versions stay
+# for seeding and scripts. Both resolve the sync function at call time.
+async def hash_password_async(plain: str) -> str:
+    return await asyncio.to_thread(hash_password, plain)
+
+
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    return await asyncio.to_thread(verify_password, plain, hashed)
 
 
 def create_token(user_id: str, role: str, restaurant_id: str) -> str:

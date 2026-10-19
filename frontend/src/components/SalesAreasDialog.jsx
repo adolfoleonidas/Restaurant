@@ -18,9 +18,10 @@ export function newOrderPath(type, table) {
  * waiter straight into the composer or seats a table before the area is known.
  *
  * `pendingTable` is the table the dialog was opened for (a card or the table
- * sheet); without it "Mesa" asks which table to use.
+ * sheet); without it "Mesa" asks which table to use. `tablesError` is true when
+ * the floor failed to load, so the grid says so instead of "no tables available".
  */
-export default function SalesAreasDialog({ open, onOpenChange, pendingTable = null, tables = [], onSelect }) {
+export default function SalesAreasDialog({ open, onOpenChange, pendingTable = null, tables = [], tablesError = false, onSelect }) {
     const [pickedType, setPickedType] = useState(null);
 
     const availableTables = useMemo(
@@ -80,7 +81,11 @@ export default function SalesAreasDialog({ open, onOpenChange, pendingTable = nu
                         ))}
                     </div>
                     {pickedType === 'mesa' && !pendingTable && (
-                        availableTables.length === 0 ? (
+                        tablesError ? (
+                            <p role="alert" className="text-sm text-destructive text-center py-4" data-testid="areas-venta-error">
+                                No se pudieron cargar las mesas. Revisa tu conexión y vuelve a intentar.
+                            </p>
+                        ) : availableTables.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No hay mesas disponibles en este momento.</p>
                         ) : (
                             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 max-h-[50dvh] overflow-y-auto" data-testid="areas-venta-mesas">

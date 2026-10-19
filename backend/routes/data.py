@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from database import db
-from auth import require_roles, verify_password
+from auth import require_roles, verify_password_async
 from notify import emit_notice
 
 router = APIRouter()
@@ -28,6 +28,11 @@ OPERATIONAL_COLLECTIONS = (
     "counters",
     "attention_number_assignments",
 )
+
+# Operational collections that `attention_numbering` keys by `tenant_id` (the
+# order-number counters of `routes/orders.py` use `restaurant_id` in the same
+# `counters` collection), so the reset has to match both.
+TENANT_ID_COLLECTIONS = frozenset({"counters", "attention_number_assignments"})
 
 # Catalogue collections wiped by the catalogue reset. The seed ships a demo menu
 # that a real restaurant has to replace; combos are products flagged `is_combo`,
@@ -62,13 +67,17 @@ async def reset_operational_data(data: DataResetRequest, user: dict = Depends(re
         {"id": user["id"], "restaurant_id": user["restaurant_id"]},
         {"password_hash": 1},
     )
-    if not current or not current.get("password_hash") or not verify_password(data.password, current["password_hash"]):
+    if not current or not current.get("password_hash") or not await verify_password_async(data.password, current["password_hash"]):
         raise HTTPException(status_code=400, detail="Contraseña de administrador incorrecta")
 
     rid = user["restaurant_id"]
     cleared: dict = {}
     for name in OPERATIONAL_COLLECTIONS:
-        result = await db[name].delete_many({"restaurant_id": rid})
+        scope = {"restaurant_id": rid}
+        if name in TENANT_ID_COLLECTIONS:
+            # Attention numbering writes these with `tenant_id`, not `restaurant_id`.
+            scope = {"$or": [{"restaurant_id": rid}, {"tenant_id": rid}]}
+        result = await db[name].delete_many(scope)
         cleared[name] = result.deleted_count
 
     now = _now()
@@ -115,7 +124,7 @@ async def reset_catalog(data: DataResetRequest, user: dict = Depends(require_rol
         {"id": user["id"], "restaurant_id": user["restaurant_id"]},
         {"password_hash": 1},
     )
-    if not current or not current.get("password_hash") or not verify_password(data.password, current["password_hash"]):
+    if not current or not current.get("password_hash") or not await verify_password_async(data.password, current["password_hash"]):
         raise HTTPException(status_code=400, detail="Contraseña de administrador incorrecta")
 
     rid = user["restaurant_id"]

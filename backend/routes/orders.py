@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from typing import Annotated, Optional, List
 import uuid
 from pymongo.errors import DuplicateKeyError
 from database import db
@@ -62,6 +62,44 @@ def _order_projection(user: dict) -> dict:
     return proj
 
 
+def _sees_proofs(user: dict) -> bool:
+    return bool({"cobro", "administracion"}.intersection(user_functions(user)))
+
+
+def _order_list_projection(user: dict) -> dict:
+    """Projection of the order *lists*: the proof image never travels in one.
+
+    `payment_proof_url` is a base64 data URL (up to ~2.4 MB per order) and the
+    floor and the cashier poll these lists every few seconds. The image is read
+    on demand from `GET /orders/{id}`; the list only says whether one exists
+    (`has_proof`, see `_flag_proofs`).
+    """
+    return {**_order_projection(user), "payment_proof_url": 0}
+
+
+async def _flag_proofs(items: list[dict], user: dict) -> None:
+    """Set `has_proof` on listed orders, for the roles that may see proofs.
+
+    The image was left out of the list projection, so existence is asked in a
+    second, id-bounded query that returns ids only. Staff without `cobro` get
+    neither the image nor the flag, as before.
+    """
+    if not items or not _sees_proofs(user):
+        return
+    ids = [item["id"] for item in items if item.get("id")]
+    rows = await db.orders.find(
+        {
+            "restaurant_id": user["restaurant_id"],
+            "id": {"$in": ids},
+            "payment_proof_url": {"$type": "string", "$ne": ""},
+        },
+        {"_id": 0, "id": 1},
+    ).to_list(len(ids))
+    proven = {row["id"] for row in rows}
+    for item in items:
+        item["has_proof"] = item.get("id") in proven
+
+
 def _order_for_user(order: dict | None, user: dict) -> dict | None:
     if not order:
         return order
@@ -71,7 +109,7 @@ def _order_for_user(order: dict | None, user: dict) -> dict | None:
     safe.pop("account_operation_ref", None)
     safe.pop("account_operation_id", None)
     safe.pop("last_account_operation", None)
-    if {"cobro", "administracion"}.intersection(user_functions(user)):
+    if _sees_proofs(user):
         return safe
     for field in (
         "payment_proof_url", "payment_proof_method", "payment_proof_sha256",
@@ -113,12 +151,22 @@ def _order_counter_key(now: datetime) -> str:
 
 async def _next_order_number(restaurant_id: str) -> int:
     key = _order_counter_key(datetime.now(BUSINESS_TIMEZONE))
-    res = await db.counters.find_one_and_update(
-        {"restaurant_id": restaurant_id, "key": key},
-        {"$inc": {"value": 1}},
-        upsert=True,
-        return_document=True,
-    )
+    res = None
+    for attempt in range(2):
+        try:
+            res = await db.counters.find_one_and_update(
+                {"restaurant_id": restaurant_id, "key": key},
+                {"$inc": {"value": 1}},
+                upsert=True,
+                return_document=True,
+            )
+            break
+        except DuplicateKeyError:
+            # Two first-of-the-day orders upserted the counter at once and the
+            # unique `(restaurant_id, key)` index refused the loser. The winner's
+            # counter exists now, so one retry increments it instead of failing.
+            if attempt:
+                raise
     # Some Motor versions need different return_document handling; fetch as fallback
     if not res or "value" not in (res or {}):
         res = await db.counters.find_one({"restaurant_id": restaurant_id, "key": key})
@@ -232,7 +280,7 @@ async def list_orders(
     status: Optional[str] = None,
     table_id: Optional[str] = None,
     active_only: bool = False,
-    limit: int = 200,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
     branch_id: Optional[str] = None,
     legacy_only: bool = False,
 ):
@@ -255,7 +303,8 @@ async def list_orders(
                 q["table_id"] = table_id
         else:
             q.update(active_filter)
-    items = await db.orders.find(q, _order_projection(user)).sort("created_at", -1).limit(limit).to_list(limit)
+    items = await db.orders.find(q, _order_list_projection(user)).sort("created_at", -1).limit(limit).to_list(limit)
+    await _flag_proofs(items, user)
     return items
 
 

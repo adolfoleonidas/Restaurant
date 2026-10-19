@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import useSubDialog from '@/hooks/useSubDialog';
 
 /**
  * Help dialog with the steps to register a wallet payment.
@@ -7,9 +8,10 @@ import { X } from 'lucide-react';
 export default function HelpDialog({
     setShowHelp,
 }) {
+    const sub = useSubDialog(() => setShowHelp(false));
     return (
         <div className="cobro-sub-overlay cobro-sheet" onClick={(e) => { if (e.target === e.currentTarget) setShowHelp(false); }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="help-title" className="cobro-subdialog">
+            <div {...sub.props} role="dialog" aria-modal="true" aria-labelledby="help-title" className="cobro-subdialog">
                 <header className="dialog-header">
                     <h2 id="help-title">Cómo registrar este cobro</h2>
                     <button className="icon-button" onClick={() => setShowHelp(false)} aria-label="Cerrar ayuda">

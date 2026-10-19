@@ -222,13 +222,21 @@ async def reject_public_prepayment(order_id: str, user: dict = Depends(require_r
     )
     if not order:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
+    scope = await _branch_scope(user)
+    if scope and order.get("branch_id") != scope["branch_id"]:
+        raise HTTPException(status_code=404, detail="Pedido no encontrado")
     if not is_awaiting_prepayment(order):
         raise HTTPException(status_code=400, detail="Este pedido no está esperando confirmación de pago")
     now = _now()
-    await db.orders.update_one(
-        {"id": order_id, "restaurant_id": user["restaurant_id"], "acceptance_status": "pendiente"},
+    # El filtro de estado evita pisar un `confirm` que aterrice entre la lectura y
+    # esta escritura: si el pedido ya no espera pago, no se toca.
+    result = await db.orders.update_one(
+        {"id": order_id, "restaurant_id": user["restaurant_id"], "acceptance_status": "pendiente",
+         "payment_state": {"$in": list(_PAYABLE_STATES)}},
         {"$set": {"payment_state": "rechazado", "payment_rejected_at": now, "updated_at": now}},
     )
+    if not result.matched_count:
+        raise HTTPException(status_code=409, detail="El pago de este pedido ya fue resuelto. Actualiza la lista.")
     changed = await db.orders.find_one({"id": order_id, "restaurant_id": user["restaurant_id"]}, {"_id": 0})
     await db.audit_logs.insert_one({
         "id": str(uuid.uuid4()),

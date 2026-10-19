@@ -11,6 +11,7 @@ describe('registro del service worker', () => {
     const originalPublicUrl = process.env.PUBLIC_URL;
     let reload;
     let sw;
+    let pathname;
 
     /** navigator.serviceWorker falso; devuelve los handlers registrados. */
     function setupNavigator(controller = null) {
@@ -28,14 +29,17 @@ describe('registro del service worker', () => {
         process.env.NODE_ENV = 'production';
         process.env.PUBLIC_URL = '';
         reload = jest.fn();
+        // Por defecto la pestaña está en una pantalla de personal (no pública).
+        pathname = '/caja';
         // jsdom no implementa la navegación: se reemplaza `location` por un doble.
         Object.defineProperty(window, 'location', {
             configurable: true,
-            value: { ...window.location, reload },
+            value: { ...window.location, reload, get pathname() { return pathname; } },
         });
     });
 
     afterEach(() => {
+        document.querySelectorAll('[data-testid="sw-update-banner"]').forEach((el) => el.remove());
         process.env.NODE_ENV = originalEnv;
         process.env.PUBLIC_URL = originalPublicUrl;
         delete navigator.serviceWorker;
@@ -76,6 +80,71 @@ describe('registro del service worker', () => {
         registerServiceWorker();
         listeners.controllerchange();
         expect(reload).not.toHaveBeenCalled();
+    });
+
+    describe('en rutas públicas la actualización no le recarga la página al cliente', () => {
+        // Un cliente puede estar armando su pedido o subiendo un comprobante: recargar
+        // de golpe le tira lo que hace. Se le avisa y recarga cuando él quiera.
+        const banner = () => document.querySelector('[data-testid="sw-update-banner"]');
+
+        it.each(['/', '/menu', '/checkout', '/pedido/ABC123'])('%s: no recarga, muestra un aviso', (path) => {
+            pathname = path;
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            expect(reload).not.toHaveBeenCalled();
+            expect(banner()).not.toBeNull();
+            expect(banner().textContent).toContain('Nueva versión disponible');
+        });
+
+        it('el aviso no bloquea la página (no es un modal)', () => {
+            pathname = '/menu';
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            expect(banner().getAttribute('role')).toBe('status');
+            expect(banner().getAttribute('aria-modal')).toBeNull();
+        });
+
+        it('"Actualizar" recarga una única vez', async () => {
+            pathname = '/menu';
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            const button = banner().querySelector('button');
+            expect(button.textContent).toBe('Actualizar');
+            button.click();
+            button.click();
+            await Promise.resolve();
+            expect(reload).toHaveBeenCalledTimes(1);
+        });
+
+        it('varios cambios de controlador dejan un solo aviso', () => {
+            pathname = '/menu';
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            listeners.controllerchange();
+            expect(document.querySelectorAll('[data-testid="sw-update-banner"]')).toHaveLength(1);
+        });
+
+        it('la primera visita tampoco muestra aviso', () => {
+            pathname = '/menu';
+            const listeners = setupNavigator(null);
+            registerServiceWorker();
+            listeners.controllerchange();
+            expect(banner()).toBeNull();
+            expect(reload).not.toHaveBeenCalled();
+        });
+
+        it('las pantallas de personal siguen recargando de inmediato, sin aviso', () => {
+            pathname = '/gestion/menu'; // parece /menu pero es del personal
+            const listeners = setupNavigator({});
+            registerServiceWorker();
+            listeners.controllerchange();
+            expect(reload).toHaveBeenCalledTimes(1);
+            expect(banner()).toBeNull();
+        });
     });
 
     describe('unsaved taps when an update reloads the page (BS-03)', () => {

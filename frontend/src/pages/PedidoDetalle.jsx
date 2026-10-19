@@ -35,6 +35,7 @@ import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
 import { isDraft } from '@/lib/orderDraft';
 import { apiErrorMessage } from '@/lib/apiError';
+import LoadState from '@/components/LoadState';
 
 function itemOpen(it) {
     return !['listo', 'entregado'].includes(it.status);
@@ -56,7 +57,7 @@ export default function PedidoDetalle() {
     // El ✕ de cancelar ítem por ítem es una flag apagada por defecto (Ajustes).
     const features = useRestaurantFeatures();
 
-    const { data: order, refetch } = usePolling(() => getOrder(id).then((r) => r.data), 12000, [id, orderGeneration]);
+    const { data: order, error: orderError, loading: orderLoading, refetch } = usePolling(() => getOrder(id).then((r) => r.data), 12000, [id, orderGeneration]);
     const { data: categories } = usePolling(() => listCategories().then((r) => r.data), 60000, [catalogGeneration]);
     const { data: products } = usePolling(() => listProducts().then((r) => r.data), 60000, [catalogGeneration]);
     const { data: tables } = usePolling(() => listTables().then((r) => r.data), 20000, [tablesGeneration]);
@@ -142,7 +143,18 @@ export default function PedidoDetalle() {
         }).sort((a, b) => (a.is_available === b.is_available ? 0 : (a.is_available ? -1 : 1)));
     }, [products, search, categoryId]);
 
-    if (!order) return <div className="text-muted-foreground">Cargando pedido…</div>;
+    if (!order) {
+        return (
+            <LoadState
+                loading={orderLoading || !orderError}
+                error={orderError}
+                onRetry={refetch}
+                testId="pedido-detalle"
+                loadingText="Cargando pedido…"
+                errorText="No se pudo cargar el pedido. Revisa tu conexión y reintenta."
+            />
+        );
+    }
 
     const canEdit = !locked && can(user, ACTIONS.ORDER_EDIT);
     const canServe = !locked && can(user, ACTIONS.ORDER_SERVE);

@@ -18,6 +18,9 @@ import {
     AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { apiErrorMessage } from '@/lib/apiError';
+import usePendingAction from '@/hooks/usePendingAction';
+import useLoader from '@/hooks/useLoader';
+import LoadState from '@/components/LoadState';
 
 const ROLE_AVATAR_BG = {
     admin: 'bg-purple-100 text-purple-700',
@@ -37,9 +40,9 @@ export default function Usuarios() {
     const [saving, setSaving] = useState(false);
     const [confirmDel, setConfirmDel] = useState(null);
     const { user: me } = useAuth();
+    const [run, busy] = usePendingAction();
 
-    const load = async () => { const { data } = await listUsers(); setUsers(data); };
-    useEffect(() => { load(); }, []);
+    const { load, retry, loading, error, hasData } = useLoader(async () => { const { data } = await listUsers(); setUsers(data); });
     const loadBranches = async () => {
         setBranchesLoading(true);
         setBranchesError(false);
@@ -76,14 +79,14 @@ export default function Usuarios() {
         } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
         finally { setSaving(false); }
     };
-    const doDelete = async (u) => {
+    const doDelete = (u) => run('delete', async () => {
         try { await deleteUser(u.id); toast.success('Eliminado'); await load(); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar el usuario. Revisa tu conexión y reintenta.')); }
-    };
-    const toggleActive = async (u) => {
-        try { await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' }); await load(); }
-        catch (e) { toast.error('Error'); }
-    };
+        finally { setConfirmDel(null); }
+    }, { errorMessage: 'No se pudo eliminar el usuario. Revisa tu conexión y reintenta.' });
+    const toggleActive = (u) => run(`status:${u.id}`, async () => {
+        await updateUser(u.id, { status: u.status === 'active' ? 'inactive' : 'active' });
+        await load();
+    }, { errorMessage: 'No se pudo cambiar el estado del usuario. Reintenta.' });
 
     return (
         <div className="space-y-5" data-testid="usuarios-root">
@@ -96,6 +99,7 @@ export default function Usuarios() {
                 </div>
                 <Button onClick={openNew} data-testid="usuario-nuevo-button"><Plus className="h-4 w-4 mr-2" />Nuevo usuario</Button>
             </div>
+            <LoadState loading={loading} error={error} hasData={hasData} onRetry={retry} testId="usuarios" errorText="No se pudo cargar el equipo. Revisa tu conexión y reintenta.">
             <Card><CardContent className="p-0">
                 <div className="divide-y">
                     {users.map((u) => (
@@ -111,7 +115,7 @@ export default function Usuarios() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {/* min-h-11: el Switch mide 24 px de alto; la fila da el área táctil, sin encoger en escritorio */}
-                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} onCheckedChange={() => toggleActive(u)} aria-label={`Activo: ${u.full_name}`} /> {u.status === 'active' ? 'Activo' : 'Inactivo'}</label>
+                                <label className="flex items-center gap-1 text-xs min-h-11 sm:min-h-0"><Switch checked={u.status === 'active'} disabled={busy.has(`status:${u.id}`)} aria-busy={busy.has(`status:${u.id}`) ? 'true' : undefined} onCheckedChange={() => toggleActive(u)} aria-label={`Activo: ${u.full_name}`} /> {busy.has(`status:${u.id}`) ? 'Guardando…' : (u.status === 'active' ? 'Activo' : 'Inactivo')}</label>
                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)} aria-label={`Editar ${u.full_name}`}><Pencil className="h-4 w-4" /></Button>
                                 {u.id !== me.id && (<Button size="icon" variant="ghost" aria-label={`Eliminar ${u.full_name}`} onClick={() => setConfirmDel(u)}><Trash2 className="h-4 w-4 text-destructive" /></Button>)}
                             </div>
@@ -119,6 +123,7 @@ export default function Usuarios() {
                     ))}
                 </div>
             </CardContent></Card>
+            </LoadState>
 
             <AlertDialog open={!!confirmDel} onOpenChange={(o) => { if (!o) setConfirmDel(null); }}>
                 <AlertDialogContent>
@@ -127,7 +132,14 @@ export default function Usuarios() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction variant="destructive" onClick={async () => { await doDelete(confirmDel); setConfirmDel(null); }}>Eliminar</AlertDialogAction>
+                        <AlertDialogAction
+                            variant="destructive"
+                            disabled={busy.has('delete')}
+                            aria-busy={busy.has('delete') ? 'true' : undefined}
+                            onClick={(e) => { e.preventDefault(); doDelete(confirmDel); }}
+                        >
+                            {busy.has('delete') ? 'Eliminando…' : 'Eliminar'}
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

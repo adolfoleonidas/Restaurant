@@ -34,8 +34,11 @@ export const LiveOrderProvider = ({ children }) => {
 
     const fetcher = useCallback(() => {
         if (!meta?.tracking_code) return Promise.resolve(null);
+        // Only a 404 means the order is gone. Any other failure (timeout, 429, 500,
+        // network) is rethrown so usePolling keeps the last order it read.
         return getPublicOrder(meta.tracking_code).then((r) => r.data).catch((e) => {
-            if (e.response?.status === 404) clearMeta();
+            if (e.response?.status !== 404) throw e;
+            clearMeta();
             return null;
         });
     // eslint-disable-next-line react-hooks/exhaustive-deps

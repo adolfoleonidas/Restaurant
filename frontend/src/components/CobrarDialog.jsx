@@ -141,8 +141,11 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
             // atiende antes del filtro de campos para que Tab no escape al fondo
             // (que queda detrás del overlay).
             if (e.key === 'Tab') {
-                const dialog = dialogRef.current;
-                if (!dialog) return;
+                const parent = dialogRef.current;
+                if (!parent) return;
+                // With a sub-dialog open, Tab cycles inside IT, not the whole charge dialog.
+                const subs = parent.querySelectorAll('[data-cobro-subdialog]');
+                const dialog = subs.length ? subs[subs.length - 1] : parent;
                 const focusables = Array.from(dialog.querySelectorAll(
                     'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
                 )).filter((el) => el.getClientRects().length > 0);
@@ -308,7 +311,7 @@ export default function CobrarDialog({ open, onOpenChange, order, onPaid }) {
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
             <DialogPrimitive.Overlay className="cobro-overlay" onClick={(e) => { if (e.target === e.currentTarget) onOpenChange(false); }} />
-        <DialogPrimitive.Content className="cobro-checkout" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-testid="caja-cobrar-dialog" aria-labelledby="checkout-title" onEscapeKeyDown={(e) => { if (loading || result || proofSending) e.preventDefault(); }}>
+        <DialogPrimitive.Content className="cobro-checkout" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" data-testid="caja-cobrar-dialog" aria-labelledby="checkout-title" onEscapeKeyDown={(e) => { if (dialogRef.current?.querySelector('[data-cobro-subdialog]') || loading || result || proofSending) e.preventDefault(); }}>
             {!online && <div className="offline-banner" role="status">Sin conexión. Reconecta para registrar pagos.</div>}
             {/* Header */}
             <CobroHeader

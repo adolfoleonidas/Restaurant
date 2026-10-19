@@ -5,6 +5,8 @@
  */
 
 const NETWORK_MESSAGE = 'Sin conexión con el servidor. Reintentar.';
+const TOO_MANY_PREFIX = 'Demasiados intentos.';
+const TOO_MANY_MESSAGE = `${TOO_MANY_PREFIX} Espera un momento y vuelve a intentar.`;
 
 const FIELD_LABELS = {
     password: 'Contraseña',
@@ -90,6 +92,22 @@ const isNetworkError = (error) => Boolean(error) && (
     || /network error|timeout/i.test(String(error.message || ''))
 );
 
+/**
+ * nginx answers a rate-limited request with a bare 429 (no JSON), so the page's
+ * generic fallback would blame the input ("revisa tu contraseña") and invite a
+ * retry that digs the lockout deeper. A 429 always says to wait; `Retry-After`
+ * (whole seconds) sharpens it when the proxy sends one.
+ */
+const tooManyMessage = (response) => {
+    const headers = response.headers || {};
+    const seconds = Number(headers['retry-after'] ?? headers['Retry-After']);
+    if (!Number.isInteger(seconds) || seconds < 1) return TOO_MANY_MESSAGE;
+    const wait = seconds < 60
+        ? `${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`
+        : `${Math.ceil(seconds / 60)} minutos`;
+    return `${TOO_MANY_PREFIX} Espera ${wait} y vuelve a intentar.`;
+};
+
 export function apiErrorMessage(error, fallback) {
     const response = error && error.response;
     if (!response) {
@@ -97,6 +115,7 @@ export function apiErrorMessage(error, fallback) {
     }
     const detail = response.data && response.data.detail;
     if (typeof detail === 'string' && detail.trim()) return detail;
+    if (response.status === 429) return tooManyMessage(response);
     if (Array.isArray(detail)) {
         const sentences = detail.map(describeEntry).filter(Boolean).map(asSentence);
         return sentences.length ? sentences.join(' ') : fallback;

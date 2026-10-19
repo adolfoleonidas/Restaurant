@@ -421,3 +421,36 @@ def test_the_duplicate_count_failing_cannot_stop_the_start(fake_db, caplog):
     assert fake.orders.catalog[LOOKUP_NAME]["key"] == {"id": 1}
     (message,) = _messages(caplog, logging.ERROR)
     assert message.startswith("orders:") and "uniq_order_id" in message
+
+
+def test_orders_are_indexed_by_attention_for_the_visit_lookups(fake_db):
+    """Los pedidos de una visita se buscan por `{restaurant_id, attention_id}` (cocina,
+    mesas, caja); sin índice cada búsqueda recorría el historial del local."""
+    fake = fake_db()
+    _start()
+
+    assert any(spec["key"] == {"restaurant_id": 1, "attention_id": 1} and not spec["unique"]
+               for spec in fake.orders.catalog.values()), "orders has no (restaurant_id, attention_id) index"
+
+
+def test_counters_are_unique_per_tenant_and_key_without_touching_attention_counters(fake_db):
+    """Dos upserts concurrentes del primer pedido del día creaban dos contadores y repetían
+    el número. El índice es parcial: los contadores de atención usan `_id` y `tenant_id`, sin
+    `key`, y no deben entrar."""
+    fake = fake_db()
+    _start()
+
+    (spec,) = [s for s in fake.counters.catalog.values() if s["key"] == {"restaurant_id": 1, "key": 1}]
+    assert spec["unique"] is True
+    assert spec["partial"] == {"key": {"$type": "string"}}
+
+
+def test_a_counters_collection_that_already_repeats_a_key_cannot_stop_the_start(fake_db, caplog):
+    fake = fake_db()
+    fake.counters.fail_with = DuplicateKeyError("E11000 duplicate key error collection: counters", 11000)
+    caplog.set_level(logging.INFO, logger="database")
+
+    _start()
+
+    (message,) = [m for m in _messages(caplog, logging.ERROR) if m.startswith("counters:")]
+    assert "restaurant_id" in message or "unique" in message

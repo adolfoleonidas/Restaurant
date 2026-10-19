@@ -91,6 +91,7 @@ describe('Caja QR and payment-proof collection', () => {
         mockOrder.payment_status = 'pendiente';
         mockOrder.amount_paid = 0;
         mockOrder.payment_proof_url = undefined;
+        mockOrder.has_proof = undefined;
         mockOrder.payment_proof_method = undefined;
         api.get.mockReset().mockImplementation((path) => Promise.resolve({
             data: path === '/payment-config/collection' ? mockCollectionConfig
@@ -166,6 +167,30 @@ describe('Caja QR and payment-proof collection', () => {
         await cleanup(view);
     });
 
+    it('reads the proof image on demand when the order list only says it has one', async () => {
+        // `GET /orders` no longer carries the base64: the list says `has_proof`, the image comes by id.
+        mockOrder.payment_status = 'comprobante_subido';
+        mockOrder.payment_proof_method = 'yape';
+        mockOrder.has_proof = true;
+        const stored = 'data:image/png;base64,fetched-on-demand';
+        api.get.mockImplementation((path) => Promise.resolve({
+            data: path === '/payment-config/collection' ? mockCollectionConfig
+                : path.startsWith('/orders/') ? { ...mockOrder, payment_proof_url: stored } : null,
+        }));
+        const view = await openCollectionDialog();
+        await flush();
+        expect(api.get.mock.calls.some(([path]) => path === '/orders/order-1')).toBe(true);
+        expect(document.body.querySelector('[data-testid="caja-comprobante-pendiente"] img')?.getAttribute('src')).toBe(stored);
+        await cleanup(view);
+    });
+
+    it('does not fetch the order when the list carries no proof', async () => {
+        const view = await openCollectionDialog();
+        await flush();
+        expect(api.get.mock.calls.some(([path]) => path === '/orders/order-1')).toBe(false);
+        await cleanup(view);
+    });
+
     it('uploads a photo only to the proof endpoint and leaves the balance unchanged', async () => {
         const view = await openCollectionDialog();
         await selectMethod('yape');
@@ -177,7 +202,7 @@ describe('Caja QR and payment-proof collection', () => {
         await flush();
         expect(api.post).toHaveBeenCalledWith('/payments/order-1/proof', {
             method: 'yape', payment_proof: 'data:image/png;base64,iVBORw0KGgo=',
-        });
+        }, { timeout: 120000 });
         expect(api.post.mock.calls.some(([path]) => path === '/payments')).toBe(false);
         expect(document.body.textContent).toContain('PagadoS/ 0.00');
         expect(document.body.textContent).toContain('pendiente de verificación');

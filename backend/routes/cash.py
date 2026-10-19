@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
+from typing import Annotated
 from zoneinfo import ZoneInfo
 import uuid
 from database import db
@@ -155,7 +156,7 @@ async def cash_history(
 @router.get("")
 async def list_registers(
     user: dict = Depends(require_roles(["admin", "cajero"])),
-    limit: int = 60,
+    limit: Annotated[int, Query(ge=1, le=500)] = 60,
     branch_id: str | None = Query(None),
     legacy_only: bool = False,
 ):

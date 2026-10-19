@@ -15,6 +15,7 @@ import AttentionReference from '@/components/AttentionReference';
 import SalesAreasDialog, { newOrderPath } from '@/components/SalesAreasDialog';
 import useBranchNames from '@/hooks/useBranchNames';
 import { ACTIONS, can } from '@/lib/permissions';
+import LoadState from '@/components/LoadState';
 
 const WAITING_THRESHOLD_MIN = 15;
 
@@ -34,7 +35,7 @@ export default function Pedidos() {
     const branchNames = useBranchNames(user?.restaurant_id && user?.id ? `${user.restaurant_id}:${user.id}` : null);
     const generation = useRealtimeGeneration(['orders']);
 
-    const { data } = usePolling(
+    const { data, error, loading, refetch } = usePolling(
         () => {
             const params = {};
             if (filter === 'activos') params.active_only = true;
@@ -46,7 +47,7 @@ export default function Pedidos() {
     );
 
     // Only the sales-area dialog needs the floor, to offer the free tables.
-    const { data: tables } = usePolling(() => listTables().then((r) => r.data), 15000);
+    const { data: tables, error: tablesError } = usePolling(() => listTables().then((r) => r.data), 15000);
 
     // Orders start from the same sales-area decision as the floor: "Nuevo pedido"
     // must not drop the waiter into the composer with the area already assumed.
@@ -87,6 +88,7 @@ export default function Pedidos() {
                 ))}
             </ToggleGroup>
 
+            <LoadState loading={loading} error={error} hasData={data != null} onRetry={refetch} testId="pedidos" errorText="No se pudieron cargar los pedidos. Revisa tu conexión y reintenta.">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {(data || []).map((o) => {
                     const mins = elapsedMinutes(o.created_at);
@@ -185,12 +187,14 @@ export default function Pedidos() {
                     <Card className="col-span-full"><CardContent className="py-16 text-center text-muted-foreground">No hay pedidos en esta vista</CardContent></Card>
                 )}
             </div>
+            </LoadState>
 
             {/* Sales areas — first decision of every order */}
             <SalesAreasDialog
                 open={showAreas}
                 onOpenChange={(open) => { if (!open) setShowAreas(false); }}
                 tables={tables}
+                tablesError={Boolean(tablesError) && tables == null}
                 onSelect={handleAreaSelect}
             />
         </div>

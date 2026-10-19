@@ -1,4 +1,4 @@
-import { get, post, patch, del } from './request';
+import { get, post, patch, del, UPLOAD_TIMEOUT_MS } from './request';
 
 export const getPublicRestaurant = () => get('/public/restaurant');
 export const getPublicCategories = () => get('/public/categories');
@@ -13,7 +13,7 @@ export const listDeliveryBranches = () => get('/public/delivery-branches');
 export const getPublicOrder = (code) => get(`/public/orders/${code}`);
 export const getPublicOrderTable = (code) => get(`/public/orders/${code}/table`);
 export const createPublicOrder = (payload) => post('/public/orders', payload);
-export const uploadPublicOrderProof = (code, body, config) => post(`/public/orders/${code}/proof`, body, config);
+export const uploadPublicOrderProof = (code, body, config) => post(`/public/orders/${code}/proof`, body, { timeout: UPLOAD_TIMEOUT_MS, ...config });
 export const addPublicOrderItem = (code, body) => post(`/public/orders/${code}/items`, body);
 export const updatePublicOrderItem = (code, lineId, body) => patch(`/public/orders/${code}/items/${lineId}`, body);
 export const removePublicOrderItem = (code, lineId) => del(`/public/orders/${code}/items/${lineId}`);

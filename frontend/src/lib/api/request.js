@@ -51,6 +51,10 @@ export const get = (url, config) => {
     return request;
 };
 
+// Images travel as base64 in the body, so on mobile data they outlast the 20 s
+// default: uploads get their own, longer ceiling. Kept here, in the api layer.
+export const UPLOAD_TIMEOUT_MS = 120000;
+
 export const post = (url, body, config) => api.post(...trim([url, body, config]));
 export const patch = (url, body, config) => api.patch(...trim([url, body, config]));
 export const put = (url, body, config) => api.put(...trim([url, body, config]));
