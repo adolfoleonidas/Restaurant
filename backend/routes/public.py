@@ -9,6 +9,7 @@ import re
 import uuid
 import secrets
 import string
+import weakref
 from pymongo.errors import DuplicateKeyError
 from database import db
 from models import PublicOrderCreate, PublicProofUpload, PublicItemsAdd, PublicItemUpdate
@@ -259,6 +260,15 @@ def _public_mutate_guard(o: dict, request: Request):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if o.get("payment_state") == "rechazado":
         raise HTTPException(status_code=400, detail="El pago no se pudo verificar. Consulta al personal antes de seguir.")
+    # Con el pago ya reportado caja está verificando un monto concreto: si el
+    # cliente pudiera cambiar el carrito ahora, se confirmaría un comprobante por
+    # un total distinto del que se termina cobrando. Se congela hasta que el
+    # personal lo confirme o lo rechace.
+    if o.get("payment_state") == "reportado":
+        raise HTTPException(
+            status_code=409,
+            detail="Ya reportaste tu pago: el personal lo está revisando y el pedido no se puede modificar. Consulta al personal.",
+        )
     # Un pedido ya enviado a cocina no se toca; una intención que todavía espera
     # pago sí, porque nada se está preparando.
     if o.get("acceptance_status") == "pendiente":
@@ -1026,30 +1036,94 @@ async def public_remove_item(tracking_code: str, item_id: str, request: Request)
     return _public_order_view(updated)
 
 
+# Topes del stream público. Es un endpoint sin sesión que mantiene una conexión
+# abierta, y `notify.publish()` recorre TODAS las colas dentro del único event
+# loop: sin tope, una sola IP podía sostener miles de streams y degradar salón,
+# cocina y caja. Los contadores viven en el proceso (el backend corre con un solo
+# worker, ver `notify.py`) y se liberan siempre con el `release` de cada stream.
+_PUBLIC_STREAM_PER_HOST = 5
+_PUBLIC_STREAM_GLOBAL = 200
+# El cliente reconecta con backoff (usePublicStream): cerrar a los ~10 min libera
+# cupos de conexiones zombi (celular dormido, proxy que no avisó del corte).
+_PUBLIC_STREAM_MAX_SECONDS = 600
+_PUBLIC_STREAM_PING_SECONDS = 15
+_PUBLIC_STREAMS = {"total": 0, "hosts": {}}
+
+
+def _reset_public_streams():
+    """Gancho de pruebas: vacía los contadores en proceso."""
+    _PUBLIC_STREAMS["total"] = 0
+    _PUBLIC_STREAMS["hosts"].clear()
+
+
+def _reserve_public_stream(host: str):
+    """Reserva un cupo o responde 429. Sin `await`: es atómico en el event loop."""
+    hosts = _PUBLIC_STREAMS["hosts"]
+    if (_PUBLIC_STREAMS["total"] >= _PUBLIC_STREAM_GLOBAL
+            or hosts.get(host, 0) >= _PUBLIC_STREAM_PER_HOST):
+        raise HTTPException(status_code=429, detail="Demasiadas conexiones abiertas. Intenta de nuevo en unos minutos.")
+    _PUBLIC_STREAMS["total"] += 1
+    hosts[host] = hosts.get(host, 0) + 1
+    released = False
+
+    def release():
+        nonlocal released
+        if released:
+            return
+        released = True
+        _PUBLIC_STREAMS["total"] = max(0, _PUBLIC_STREAMS["total"] - 1)
+        left = hosts.get(host, 0) - 1
+        if left > 0:
+            hosts[host] = left
+        else:
+            hosts.pop(host, None)
+
+    return release
+
+
 @router.get("/stream")
-async def public_stream(restaurant_id: str = None, tracking: str = None):
+async def public_stream(request: Request, restaurant_id: str = None, tracking: str = None):
     if not restaurant_id and not tracking:
         raise HTTPException(status_code=400, detail="Se requiere restaurant_id o tracking")
-    rid = restaurant_id
-    order_id = None
-    if tracking:
-        o = await db.orders.find_one(
-            {"tracking_code": tracking.upper()},
-            {"_id": 0, "id": 1, "restaurant_id": 1},
-        )
-        if not o:
-            raise HTTPException(status_code=404, detail="Pedido no encontrado")
-        rid = o["restaurant_id"]
-        order_id = o["id"]
+    release_slot = _reserve_public_stream(client_host(request))
+    queue = None
+    try:
+        rid = restaurant_id
+        order_id = None
+        if tracking:
+            o = await db.orders.find_one(
+                {"tracking_code": tracking.upper()},
+                {"_id": 0, "id": 1, "restaurant_id": 1},
+            )
+            if not o:
+                raise HTTPException(status_code=404, detail="Pedido no encontrado")
+            rid = o["restaurant_id"]
+            order_id = o["id"]
+        elif not await db.restaurants.find_one({"id": rid}, {"_id": 0, "id": 1}):
+            raise HTTPException(status_code=404, detail="Restaurante no encontrado")
+        queue = subscribe()
+    except BaseException:
+        release_slot()
+        raise
 
-    queue = subscribe()
+    def release():
+        release_slot()
+        unsubscribe(queue)
 
     async def gen():
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _PUBLIC_STREAM_MAX_SECONDS
         try:
             yield f"data: {json.dumps({'type': 'hello'})}\n\n"
             while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    # Fin por vida máxima: el cliente reconecta con su backoff.
+                    return
                 try:
-                    event = await asyncio.wait_for(queue.get(), timeout=15)
+                    event = await asyncio.wait_for(
+                        queue.get(), timeout=min(_PUBLIC_STREAM_PING_SECONDS, remaining)
+                    )
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
                     continue
@@ -1060,10 +1134,15 @@ async def public_stream(restaurant_id: str = None, tracking: str = None):
                     continue
                 yield f"data: {json.dumps(event)}\n\n"
         finally:
-            unsubscribe(queue)
+            release()
 
+    stream = gen()
+    # Un generador que nunca arrancó no ejecuta su `finally` al cerrarse: si
+    # Starlette suelta la respuesta sin iterarla, el cupo y la cola se perderían.
+    # `release` es idempotente, así que el finalizador es una red de seguridad.
+    weakref.finalize(stream, release)
     return StreamingResponse(
-        gen(),
+        stream,
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",

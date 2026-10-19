@@ -8,9 +8,9 @@ services:
   backend:
     build: ./backend
     restart: unless-stopped
-    # Do NOT add `ports:` here. The image trusts X-Forwarded-For from any peer
-    # (backend/Dockerfile) because only the frontend (nginx) can reach this
-    # service; publishing it would let anyone spoof their client address.
+    # Do NOT add `ports:` here. FORWARDED_ALLOW_IPS below makes uvicorn trust
+    # X-Forwarded-For from any peer because only the frontend (nginx) can reach
+    # this service; publishing it would let anyone spoof their client address.
     depends_on:
       - mongo
     environment:
@@ -28,6 +28,10 @@ services:
       SEED_COCINA_PASSWORD: ${SEED_COCINA_PASSWORD:?Set SEED_COCINA_PASSWORD (first boot only; production refuses demo defaults)}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET to a unique value of at least 32 characters}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS to the public site origin}
+      # Trusted proxies for X-Forwarded-For (uvicorn reads this variable natively;
+      # the image defaults to trusting none). "*" is safe ONLY here: nginx is the
+      # sole peer and replaces the header. See the comment in backend/Dockerfile.
+      FORWARDED_ALLOW_IPS: "*"
 
   # Scheduled logical backup: one compressed mongodump archive per run in
   # ${BACKUP_DIR} (host folder), keeping only the newest BACKUP_KEEP archives.
