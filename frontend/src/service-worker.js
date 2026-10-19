@@ -16,6 +16,8 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 import { NetworkFirst, StaleWhileRevalidate } from 'workbox-strategies';
+// Import relativo (no `@/`): este archivo lo compila Workbox por separado.
+import { NAVIGATION_DENYLIST, shouldCachePublicApi } from './lib/swRoutes';
 
 // Auto-update (patrón de la doc de Workbox): el service worker nuevo NO espera
 // a que se cierren todas las pestañas; `skipWaiting()` lo activa en cuanto
@@ -36,20 +38,19 @@ precacheAndRoute(precacheManifest);
 // de sin conexión) en lugar del error del navegador.
 registerRoute(
   new NavigationRoute(createHandlerBoundToURL(`${process.env.PUBLIC_URL}/index.html`), {
-    denylist: [/^\/api\//],
+    denylist: NAVIGATION_DENYLIST,
   }),
 );
 
 // Carta pública: es la pantalla que el cliente abre de pie, dentro del local y
 // muchas veces con mala señal. Se intenta la red primero (3 s) y si no hay, se
 // sirve la copia cacheada; los precios caducan a los 5 minutos para que una
-// carta vieja no sobreviva a un cambio de precio. El evento SSE del seguimiento
-// queda fuera a propósito: un stream nunca debe salir de caché.
+// carta vieja no sobreviva a un cambio de precio. Quedan fuera a propósito el
+// stream SSE, el seguimiento del pedido y la sesión de mesa (ver `lib/swRoutes`):
+// van siempre a la red, así el cliente nunca ve un estado viejo ni sus datos
+// quedan guardados en el teléfono.
 registerRoute(
-  ({ request, url }) =>
-    request.method === 'GET'
-    && url.pathname.startsWith('/api/public/')
-    && !url.pathname.startsWith('/api/public/stream'),
+  shouldCachePublicApi,
   new NetworkFirst({
     cacheName: 'carta-publica',
     networkTimeoutSeconds: 3,

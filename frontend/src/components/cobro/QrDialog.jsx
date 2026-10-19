@@ -1,6 +1,7 @@
 import React from 'react';
 import { PAYMENT_LABELS } from '@/lib/format';
 import { X } from 'lucide-react';
+import useSubDialog from '@/hooks/useSubDialog';
 
 /**
  * Enlarged QR for the customer.
@@ -8,9 +9,10 @@ import { X } from 'lucide-react';
 export default function QrDialog({
     backendMethod, setShowQr, walletConfig,
 }) {
+    const sub = useSubDialog(() => setShowQr(false));
     return (
         <div className="cobro-sub-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowQr(false); }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="qr-title" className="cobro-subdialog">
+            <div {...sub.props} role="dialog" aria-modal="true" aria-labelledby="qr-title" className="cobro-subdialog">
                 <header className="dialog-header">
                     <h2 id="qr-title">Código para mostrar al cliente</h2>
                     <button className="icon-button" onClick={() => setShowQr(false)} aria-label="Cerrar QR">

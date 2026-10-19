@@ -1,6 +1,7 @@
 import React from 'react';
 import { fmtMoney } from '@/lib/format';
 import { X } from 'lucide-react';
+import useSubDialog from '@/hooks/useSubDialog';
 
 /**
  * Account movements summary.
@@ -8,9 +9,10 @@ import { X } from 'lucide-react';
 export default function HistoryDialog({
     paid, remaining, setShowHistory,
 }) {
+    const sub = useSubDialog(() => setShowHistory(false));
     return (
         <div className="cobro-sub-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowHistory(false); }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="history-title" className="cobro-subdialog">
+            <div {...sub.props} role="dialog" aria-modal="true" aria-labelledby="history-title" className="cobro-subdialog">
                 <header className="dialog-header">
                     <h2 id="history-title">Movimientos de la cuenta</h2>
                     <button className="icon-button" onClick={() => setShowHistory(false)} aria-label="Cerrar">

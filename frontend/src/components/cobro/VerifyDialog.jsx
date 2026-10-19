@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { fmtMoney } from '@/lib/format';
 import { X } from 'lucide-react';
+import useSubDialog from '@/hooks/useSubDialog';
 import { METHODS } from '@/components/cobro/constants';
 
 /**
@@ -11,6 +12,7 @@ export default function VerifyDialog({
     setVerified, verified, verifyContext, verifyCopy,
     verifyWarning,
 }) {
+    const sub = useSubDialog(() => setShowVerify(false));
     const checkRef = useRef(null);
     const [attempted, setAttempted] = useState(false);
     const missing = attempted && !verified;
@@ -27,7 +29,7 @@ export default function VerifyDialog({
 
     return (
         <div className="cobro-sub-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowVerify(false); }}>
-            <div role="dialog" aria-modal="true" aria-labelledby="verify-title" className="cobro-subdialog">
+            <div {...sub.props} role="dialog" aria-modal="true" aria-labelledby="verify-title" className="cobro-subdialog">
                 <header className="dialog-header">
                     <h2 id="verify-title">Verificar antes de registrar</h2>
                     <button className="icon-button" onClick={() => setShowVerify(false)} aria-label="Cerrar">
