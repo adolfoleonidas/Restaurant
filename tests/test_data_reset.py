@@ -266,3 +266,24 @@ def test_catalog_reset_requires_confirmation_and_password():
         assert wrong_password.value.status_code == 400
         assert len(db.products.docs) == 1
     asyncio.run(run())
+
+
+def test_reset_also_clears_attention_counters_keyed_by_tenant_id():
+    """`attention_numbering` writes `counters` and `attention_number_assignments` with
+    `tenant_id`, not `restaurant_id`: the reset used to leave them, so numbering
+    continued from the old count after a "reset"."""
+    async def run():
+        db = _DB()
+        admin = _admin(db)
+        _seed(db)
+        db.counters.docs.append({"_id": "ctx-1", "tenant_id": RID, "branch_id": "b1", "business_date": "2026-10-19", "value": 9})
+        db.counters.docs.append({"_id": "ctx-2", "tenant_id": "tenant-2", "branch_id": "b9", "value": 4})
+        db.attention_number_assignments.docs.append({"_id": "att-1", "tenant_id": RID, "number": 9})
+        db.attention_number_assignments.docs.append({"_id": "att-2", "tenant_id": "tenant-2", "number": 4})
+        data_routes.db = db
+        await data_routes.reset_operational_data(
+            DataResetRequest(confirm="ELIMINAR", password=ADMIN_PASSWORD), admin
+        )
+        assert [c["_id"] for c in db.counters.docs] == ["ctx-2"]
+        assert [a["_id"] for a in db.attention_number_assignments.docs] == ["att-2"]
+    asyncio.run(run())

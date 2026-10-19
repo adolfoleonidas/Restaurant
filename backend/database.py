@@ -214,6 +214,29 @@ async def ensure_indexes():
         [("restaurant_id", 1), ("branch_id", 1), ("attention_state", 1), ("created_at", -1)],
         name="orders_by_branch_attention",
     )
+    # Los pedidos de una visita (cocina, mesas, caja) se buscan por visita.
+    await db.orders.create_index(
+        [("restaurant_id", 1), ("attention_id", 1)],
+        name="orders_by_attention",
+    )
+    # Los dos asignadores de número de pedido hacen upsert sobre `(restaurant_id, key)`:
+    # sin un índice único, dos primeros pedidos del día concurrentes creaban dos
+    # contadores y repetían el número. Es parcial porque los contadores de atención
+    # viven en la misma colección con `_id` y `tenant_id`, sin `key`.
+    try:
+        await db.counters.create_index(
+            [("restaurant_id", 1), ("key", 1)],
+            unique=True,
+            partialFilterExpression={"key": {"$type": "string"}},
+            name="uniq_counter_per_tenant_key",
+        )
+    except DuplicateKeyError:
+        # Un contador repetido de una carrera anterior no debe impedir el arranque:
+        # los asignadores siguen funcionando, solo sin la garantía del índice.
+        logger.error(
+            "counters: duplicate (restaurant_id, key) rows exist, so the unique index "
+            "uniq_counter_per_tenant_key was not built; remove the repeated counters and restart"
+        )
     await db.payment_configs.create_index("restaurant_id", unique=True)
     await db.products.create_index([("restaurant_id", 1), ("category_id", 1)])
     await db.payments.create_index([("restaurant_id", 1), ("created_at", -1)])

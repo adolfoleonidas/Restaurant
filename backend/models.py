@@ -395,9 +395,15 @@ OrderItemStatus = Literal["borrador", "pendiente", "en_preparacion", "listo", "e
 OrderType = Literal["mesa", "local", "recojo", "delivery", "llevar"]
 
 
+# Most units of one product a client may put on one order line. Nobody serves 100
+# of one dish at a table; the cap keeps a typo (or a hostile client) from asking
+# for a billion and from overflowing every total computed from the line.
+MAX_LINE_QUANTITY = 99
+
+
 class OrderItemInput(BaseModel):
     product_id: str
-    quantity: int = Field(ge=1, default=1)
+    quantity: int = Field(ge=1, le=MAX_LINE_QUANTITY, default=1)
     notes: Optional[str] = Field(default=None, max_length=200)
 
 
@@ -417,7 +423,7 @@ class DraftLineUpsert(BaseModel):
 
     client_line_id: str = Field(min_length=1, max_length=64, pattern=_LINE_ID_PATTERN)
     product_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
-    quantity: int = Field(ge=0)
+    quantity: int = Field(ge=0, le=MAX_LINE_QUANTITY)
     notes: Optional[str] = Field(default=None, max_length=200)
 
 
@@ -542,11 +548,11 @@ class PublicItemsAdd(BaseModel):
 
 
 class PublicItemUpdate(BaseModel):
-    quantity: int = Field(ge=1)
+    quantity: int = Field(ge=1, le=MAX_LINE_QUANTITY)
 
 
 class OrderItemUpdate(BaseModel):
-    quantity: Optional[int] = Field(default=None, ge=1)
+    quantity: Optional[int] = Field(default=None, ge=1, le=MAX_LINE_QUANTITY)
     notes: Optional[str] = None
 
 

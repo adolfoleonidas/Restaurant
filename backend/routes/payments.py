@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Annotated, Optional
 from zoneinfo import ZoneInfo
 import base64
 import copy
@@ -305,7 +305,7 @@ def _period_start(period: str) -> str:
 @router.get("")
 async def list_payments(
     user: dict = Depends(require_roles(["admin", "cajero"])),
-    limit: int = 200,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
     q: Optional[str] = None,
     period: Optional[str] = Query(None, pattern="^(day|week|month)$"),
     branch_id: Optional[str] = None,
@@ -316,7 +316,9 @@ async def list_payments(
     )}
     if period:
         filt["created_at"] = {"$gte": _period_start(period)}
-    items = await db.payments.find(filt, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    # A payment never carries a proof image, but the history is a list: say so in the
+    # projection so a proof can never ride along if one is ever attached to a payment.
+    items = await db.payments.find(filt, {"_id": 0, "payment_proof_url": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     needle = (q or "").strip().lower()
     if needle:
         items = [
@@ -336,7 +338,7 @@ async def list_payments(
 async def list_payment_proofs(
     user: dict = Depends(require_roles(["admin", "cajero"])),
     pending: bool = False,
-    limit: int = 100,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
     branch_id: Optional[str] = None,
     legacy_only: bool = False,
 ):

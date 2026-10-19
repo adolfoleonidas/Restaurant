@@ -29,6 +29,11 @@ OPERATIONAL_COLLECTIONS = (
     "attention_number_assignments",
 )
 
+# Operational collections that `attention_numbering` keys by `tenant_id` (the
+# order-number counters of `routes/orders.py` use `restaurant_id` in the same
+# `counters` collection), so the reset has to match both.
+TENANT_ID_COLLECTIONS = frozenset({"counters", "attention_number_assignments"})
+
 # Catalogue collections wiped by the catalogue reset. The seed ships a demo menu
 # that a real restaurant has to replace; combos are products flagged `is_combo`,
 # so clearing products clears them too.
@@ -68,7 +73,11 @@ async def reset_operational_data(data: DataResetRequest, user: dict = Depends(re
     rid = user["restaurant_id"]
     cleared: dict = {}
     for name in OPERATIONAL_COLLECTIONS:
-        result = await db[name].delete_many({"restaurant_id": rid})
+        scope = {"restaurant_id": rid}
+        if name in TENANT_ID_COLLECTIONS:
+            # Attention numbering writes these with `tenant_id`, not `restaurant_id`.
+            scope = {"$or": [{"restaurant_id": rid}, {"tenant_id": rid}]}
+        result = await db[name].delete_many(scope)
         cleared[name] = result.deleted_count
 
     now = _now()

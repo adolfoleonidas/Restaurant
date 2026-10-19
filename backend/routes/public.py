@@ -308,12 +308,21 @@ async def _next_order_number(restaurant_id: str) -> int:
     # mientras el salón usaba el de hoy, así que dos pedidos del mismo día podían
     # llevar el mismo número.
     today = datetime.now(BUSINESS_TIMEZONE).strftime("%Y-%m-%d")
-    res = await db.counters.find_one_and_update(
-        {"restaurant_id": restaurant_id, "key": f"order_{today}"},
-        {"$inc": {"value": 1}},
-        upsert=True,
-        return_document=True,
-    )
+    res = None
+    for attempt in range(2):
+        try:
+            res = await db.counters.find_one_and_update(
+                {"restaurant_id": restaurant_id, "key": f"order_{today}"},
+                {"$inc": {"value": 1}},
+                upsert=True,
+                return_document=True,
+            )
+            break
+        except DuplicateKeyError:
+            # The first order of the day raced another upsert and lost on the unique
+            # `(restaurant_id, key)` index; the winner's counter exists now, so retry once.
+            if attempt:
+                raise
     if not res or "value" not in (res or {}):
         res = await db.counters.find_one({"restaurant_id": restaurant_id, "key": f"order_{today}"})
     return res.get("value", 1) if res else 1
