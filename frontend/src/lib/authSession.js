@@ -1,7 +1,11 @@
 // Pages a visitor can use without an account: an expired session there is not an
 // error worth throwing them to the login screen for.
+const PUBLIC_SEGMENTS = ['/menu', '/checkout', '/pedido'];
+
 export function isPublicPath(path) {
-    return path === '/' || path === '/login' || path.startsWith('/menu') || path.startsWith('/checkout') || path.startsWith('/pedido');
+    // Whole path segments only: '/pedidos' and '/gestion/menu' are staff pages and
+    // must not be mistaken for the public '/pedido/:code' and '/menu'.
+    return path === '/' || path === '/login' || PUBLIC_SEGMENTS.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
 /**

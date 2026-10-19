@@ -17,7 +17,7 @@ describe('expireSession', () => {
         expect(win.location.href).toBe('/login');
     });
 
-    it.each(['/', '/login', '/menu/abc', '/checkout', '/pedido/XYZ'])(
+    it.each(['/', '/login', '/menu', '/menu/abc', '/checkout', '/pedido/ABC', '/pedido/XYZ'])(
         'leaves the public page %s alone',
         (path) => {
             const win = fakeWindow(path);
@@ -25,6 +25,17 @@ describe('expireSession', () => {
             expect(expireSession(win)).toBe(false);
             expect(localStorage.getItem('token')).toBe('tkn');
             expect(win.location.href).toBe(path);
+        },
+    );
+
+    it.each(['/pedidos', '/pedidos/123', '/pedidos/nuevo', '/gestion/menu', '/menus', '/checkout-admin'])(
+        'treats the staff page %s as private (no prefix matching)',
+        (path) => {
+            const win = fakeWindow(path);
+            expect(isPublicPath(path)).toBe(false);
+            expect(expireSession(win)).toBe(true);
+            expect(localStorage.getItem('token')).toBeNull();
+            expect(win.location.href).toBe('/login');
         },
     );
 });

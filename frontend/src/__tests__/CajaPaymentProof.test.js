@@ -177,7 +177,7 @@ describe('Caja QR and payment-proof collection', () => {
         await flush();
         expect(api.post).toHaveBeenCalledWith('/payments/order-1/proof', {
             method: 'yape', payment_proof: 'data:image/png;base64,iVBORw0KGgo=',
-        });
+        }, { timeout: 120000 });
         expect(api.post.mock.calls.some(([path]) => path === '/payments')).toBe(false);
         expect(document.body.textContent).toContain('PagadoS/ 0.00');
         expect(document.body.textContent).toContain('pendiente de verificación');

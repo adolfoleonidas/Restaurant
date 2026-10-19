@@ -1,7 +1,7 @@
-import { get, post, patch } from './request';
+import { get, post, patch, UPLOAD_TIMEOUT_MS } from './request';
 
 export const createPayment = (payload) => post('/payments', payload);
-export const uploadPaymentProof = (orderId, body) => post(`/payments/${orderId}/proof`, body);
+export const uploadPaymentProof = (orderId, body) => post(`/payments/${orderId}/proof`, body, { timeout: UPLOAD_TIMEOUT_MS });
 export const voidPayment = (id, body) => post(`/payments/${id}/void`, body);
 export const listPayments = (params) => get('/payments', { params });
 export const listPaymentsByOrder = (orderId, config) => get(`/payments/by-order/${orderId}`, config);

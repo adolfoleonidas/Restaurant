@@ -82,6 +82,8 @@ export default function Checkout() {
     const [searchParams] = useSearchParams();
     const [restaurant, setRestaurant] = useState(null);
     const [paymentCfg, setPaymentCfg] = useState(null);
+    const [configError, setConfigError] = useState(false);
+    const [configReloadToken, setConfigReloadToken] = useState(0);
     const [orderType, setOrderType] = useState(() => {
         const t = searchParams.get('tipo');
         return ['local', 'recojo', 'delivery'].includes(t) ? t : 'local';
@@ -113,13 +115,25 @@ export default function Checkout() {
     const pollRef = useRef(null);
 
     useEffect(() => {
-        getPublicRestaurant().then((r) => setRestaurant(r.data));
-        getPublicPaymentConfig().then((r) => {
-            setPaymentCfg(r.data);
-            const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => r.data[`enable_${m}`]);
+        let active = true;
+        // Without the payment config there is no method to pay with, so the submit
+        // button stays disabled: a failed fetch must say so and offer a retry
+        // instead of leaving the customer facing a dead button.
+        setConfigError(false);
+        Promise.all([
+            getPublicRestaurant().then((r) => r.data),
+            getPublicPaymentConfig().then((r) => r.data),
+        ]).then(([restaurantData, cfg]) => {
+            if (!active) return;
+            setRestaurant(restaurantData);
+            setPaymentCfg(cfg);
+            const enabled = ['yape', 'plin', 'efectivo', 'transferencia', 'tarjeta'].find((m) => cfg[`enable_${m}`]);
             if (enabled) setMethod(enabled);
+        }).catch(() => {
+            if (active) setConfigError(true);
         });
-    }, []);
+        return () => { active = false; };
+    }, [configReloadToken]);
 
     // Mesa del QR: se resuelve la capacidad firmada y queda preseleccionada.
     useEffect(() => {
@@ -537,6 +551,16 @@ export default function Checkout() {
             </div>
             <p className="page-kicker mb-2">Carta</p>
             <h1 className="font-display text-4xl font-bold mb-6">Confirmar pedido</h1>
+
+            {configError && (
+                <div className={`rounded-xl border p-4 mb-5 ${TONE_CLASSES.red}`} role="alert" data-testid="checkout-config-error">
+                    <div className="flex items-center gap-2 font-semibold"><AlertCircle className="h-4 w-4" /><span>No pudimos cargar los datos del pedido</span></div>
+                    <p className="mt-1 text-sm opacity-90">Revisa tu conexión y vuelve a intentar.</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => setConfigReloadToken((n) => n + 1)} data-testid="checkout-config-retry">
+                        Reintentar
+                    </Button>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 space-y-5">
