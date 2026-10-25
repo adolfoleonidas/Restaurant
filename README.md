@@ -126,6 +126,18 @@ Estas capacidades están especificadas y en la hoja de ruta ([Issues](https://gi
 | Pruebas | pytest (859 herméticas, 908 en total), Jest + Testing Library, Playwright |
 | Infra | Docker Compose, nginx, GitHub Actions (tests + despliegue), `mongodump` programado |
 
+## Mapa del repositorio
+
+| Ruta | Qué hay |
+|---|---|
+| `backend/` | API FastAPI. Las reglas de negocio viven en módulos (`billing.py`, `order_flow.py`, `payment_policy.py`, `attention*.py`); las rutas, en `routes/`. |
+| `frontend/` | React 18 + Tailwind. Una carpeta por pantalla en `pages/`, el flujo de caja en `components/cobro/` y los permisos en `lib/permissions.js`. |
+| `tests/` | Suite hermética de pytest (859 casos) más las pruebas de integración marcadas. |
+| `frontend/e2e/` | Pruebas de extremo a extremo con Playwright. |
+| `docs/` | Especificación, auditorías, notas de entrega y capturas. Índice en [docs/README.md](docs/README.md). |
+| `scripts/` | Despliegue y comprobaciones previas (`deploy-ssh.ps1`, `pre-deploy-check.ps1`). |
+| `odd/`, `memory/`, `test_reports/` | Herramientas y artefactos internos del flujo de trabajo. No hacen falta para instalar ni usar el producto. |
+
 ## Arquitectura
 
 ```
