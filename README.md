@@ -13,13 +13,21 @@ Pensado para restaurantes de Perú (montos en soles, Yape/Plin, comprobantes), p
 
 ## Capturas
 
-| Salón (administrador) | Cuenta por persona |
+| Salón en servicio | Comanda: la carta en la mesa |
 |---|---|
-| ![Salón con zonas, estados de mesa y barra de acciones](docs/capturas/01-salon.png) | ![Hoja de mesa con cuentas por persona, productos y acciones](docs/capturas/02-cuenta-por-persona.png) |
+| ![Salón con zonas, mesas preparando y total por mesa](docs/capturas/01-salon.png) | ![Compositor de pedido con la carta, categorías y precios](docs/capturas/02-comanda.png) |
 
-| Comanda y cobro | Salón en móvil (mozo) |
+| Pase de cocina | Caja: cuentas por cobrar |
 |---|---|
-| ![Hoja de mesa lista para entregar con resumen y acciones](docs/capturas/03-comanda.png) | ![Salón en pantalla de móvil](docs/capturas/04-salon-movil.png) |
+| ![Pase con pedidos que llegan y al fuego, con tiempo transcurrido](docs/capturas/03-cocina.png) | ![Caja abierta con ventas del día y cuentas pendientes](docs/capturas/04-caja.png) |
+
+| Cobro con medios de pago | Reportes del día |
+|---|---|
+| ![Diálogo de cobro con efectivo, Yape, Plin, tarjeta, transferencia y mixto](docs/capturas/05-cobro.png) | ![Reporte de ventas, ticket promedio y productos más vendidos](docs/capturas/06-reportes.png) |
+
+Salón en el móvil del mozo:
+
+<img src="docs/capturas/07-salon-movil.png" width="320" alt="Salón en pantalla de móvil, con mesas ocupadas y navegación inferior" />
 
 ## Empezar en dos comandos
 
