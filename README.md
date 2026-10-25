@@ -3,7 +3,7 @@
 **Sistema operativo para restaurantes**: salón, pedidos, cocina, caja y carta digital con QR en una sola aplicación web, multi-sucursal y multi-rol.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://github.com/adolfoleonidas/Restaurant/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/adolfoleonidas/Restaurant/actions/workflows/deploy.yml)
+[![Tests](https://img.shields.io/badge/tests-859%20herm%C3%A9ticas-brightgreen.svg)](tests)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](backend/requirements.txt)
 [![React 18](https://img.shields.io/badge/react-18-61dafb.svg)](frontend/package.json)
 
