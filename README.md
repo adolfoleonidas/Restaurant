@@ -203,17 +203,17 @@ cd frontend && npx playwright test
 
 ## Estado del proyecto
 
-Mantenido por una sola persona, en desarrollo activo: 646 commits desde junio de 2026, suite de pruebas y despliegue continuo. Lo que falta hoy es alcance, no ingeniería: instalación más simple, demostración pública y adopción por otros restaurantes.
+Mantenido por una sola persona, en desarrollo activo: 646 commits desde junio de 2026, 859 pruebas herméticas y un workflow de GitHub Actions que ejecuta pruebas y despliegue. Lo que falta hoy es alcance, no ingeniería: instalación más simple, demostración pública y adopción por otros restaurantes.
 
 ## Contribuir
 
 Los issues y pull requests son bienvenidos. Antes de enviar un cambio:
 
 - [ ] `python -m pytest tests -m "not integration"` en verde.
-- [ ] `cd frontend && npm test && npm run build` sin errores.
+- [ ] `cd frontend && CI=true npm test && npm run build` sin errores.
 - [ ] Los cambios de comportamiento actualizan `docs/spec/` y, si aplica, `docs/estados-y-flujo.md`.
 - [ ] Un cambio por PR, con el porqué en la descripción.
 
 ## Licencia
 
-[MIT](LICENSE) © 2026 adolfo leonidas
+[MIT](LICENSE) © 2026 adolfo leonidas · [@adolfoleonidas](https://github.com/adolfoleonidas)
