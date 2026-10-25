@@ -194,6 +194,8 @@ cd frontend && npx playwright test
 
 | Documento | Para qué |
 |---|---|
+| [docs/README.md](docs/README.md) | Índice de toda la documentación, ordenado por lo que quieras hacer. |
+| [docs/recorrido-demo.md](docs/recorrido-demo.md) | Recorrido guiado de 5 minutos con los datos demo. |
 | [docs/spec/README.md](docs/spec/README.md) | Índice de la especificación: PRD, modelo de dominio, estados y UI/UX. |
 | [docs/estados-y-flujo.md](docs/estados-y-flujo.md) | Máquinas de estado de pedido, mesa, pago y caja. |
 | [docs/day-one-runbook.md](docs/day-one-runbook.md) | Puesta en marcha real, respaldos y restauración. |
@@ -207,7 +209,7 @@ Mantenido por una sola persona, en desarrollo activo: 646 commits desde junio de
 
 ## Contribuir
 
-Los issues y pull requests son bienvenidos. Antes de enviar un cambio:
+Los issues y pull requests son bienvenidos; la guía completa está en [CONTRIBUTING.md](CONTRIBUTING.md). Antes de enviar un cambio:
 
 - [ ] `python -m pytest tests -m "not integration"` en verde.
 - [ ] `cd frontend && CI=true npm test && npm run build` sin errores.
