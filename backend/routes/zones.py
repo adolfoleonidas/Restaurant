@@ -6,6 +6,7 @@ from auth import get_current_user, require_roles
 from models import ZoneCreate, ZoneUpdate
 from notify import emit_notice
 from branch_access import assert_owned_branch, validate_user_branch
+from order_states import TERMINAL_ORDER_STATUSES
 
 router = APIRouter()
 
@@ -90,7 +91,7 @@ async def update_zone(zone_id: str, data: ZoneUpdate, user: dict = Depends(requi
             active_order = await db.orders.find_one({
                 "restaurant_id": user["restaurant_id"], "table_id": table["id"],
                 "$or": [
-                    {"status": {"$nin": ["pagado", "cancelado"]}},
+                    {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
                     {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
                 ],
             })

@@ -93,6 +93,8 @@ class _DB:
         self.users = _Collection()
         self.counters = _Collection()
         self.audit_logs = _Collection()
+        # `require_payment_to_close` se lee al liberar/cerrar una mesa.
+        self.restaurants = _Collection()
 
 
 def _user(role="mozo", branch_id="branch-a", **extra):

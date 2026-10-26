@@ -18,6 +18,7 @@ from billing import (
     paid_total, remaining_due, reversal_is_inside_open_shift,
 )
 from order_flow import VersionError, claim_order, claim_attention_mutation, ticket_fields, version_conflict
+from order_states import TERMINAL_ORDER_STATUSES
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -227,7 +228,7 @@ async def upload_staff_proof(
     if not config or not config.get(f"enable_{method}"):
         raise HTTPException(status_code=400, detail="El método de pago no está disponible")
 
-    if order.get("status") in ("pagado", "cancelado") or order.get("payment_status") in ("pagado", "confirmado", "cancelado"):
+    if order.get("status") in TERMINAL_ORDER_STATUSES or order.get("payment_status") in ("pagado", "confirmado", "cancelado"):
         raise HTTPException(status_code=409, detail="El pedido ya tiene un estado de pago final")
 
     existing_proof = order.get("payment_proof_url")
@@ -254,7 +255,7 @@ async def upload_staff_proof(
     now = _now()
     order_filter = {
         "id": order_id, "restaurant_id": restaurant_id,
-        "status": {"$nin": ["pagado", "cancelado"]},
+        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
         "payment_status": {"$nin": ["pagado", "confirmado", "cancelado", "comprobante_subido"]},
         "updated_at": order.get("updated_at"),
     }
@@ -434,7 +435,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     open_reg = await _register_for_order(order, user["restaurant_id"])
     if not open_reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta para la sucursal del pedido")
-    if order["status"] in ("pagado", "cancelado"):
+    if order["status"] in TERMINAL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
         raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
@@ -635,7 +636,7 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     claim_filter = {
         "id": data.order_id,
         "restaurant_id": user["restaurant_id"],
-        "status": {"$nin": ["pagado", "cancelado"]},
+        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
         "updated_at": order.get("updated_at"),
         "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
         "payment_operation": {"$exists": False},

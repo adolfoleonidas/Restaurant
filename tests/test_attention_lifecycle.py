@@ -178,6 +178,8 @@ class _DB:
         self.attentions = _Collection(self, "attentions")
         self.tables = _Collection(self, "tables")
         self.branches = _Collection(self, "branches")
+        # `require_payment_to_close` se lee del local al liberar/cerrar la mesa.
+        self.restaurants = _Collection(self, "restaurants")
         self.payment_configs = _Collection(self, "payment_configs")
         self.attention_number_assignments = _Collection(self, "attention_number_assignments")
         self.counters = _Collection(self, "counters")

@@ -90,6 +90,8 @@ _ORDER_NEXT = {
     "pendiente_pago": {"cancelado"},
     "pagado": set(),
     "cancelado": set(),
+    # Terminal del modo «solo pedidos»: la mesa se liberó sin cobrar.
+    "cerrado_sin_cobro": set(),
 }
 
 _ITEM_NEXT = {
@@ -100,7 +102,7 @@ _ITEM_NEXT = {
     "cancelado": set(),
 }
 
-_KITCHEN_CLOSED = {"pagado", "cancelado", "entregado"}
+_KITCHEN_CLOSED = {"pagado", "cancelado", "cerrado_sin_cobro", "entregado"}
 
 
 def _item_status(item: dict) -> str:
@@ -149,6 +151,8 @@ def sent_items(items: list) -> list:
 def assert_order_transition(current: str, new: str):
     if current == "pagado":
         raise FlowError("El pedido ya está pagado")
+    if current == "cerrado_sin_cobro":
+        raise FlowError("El pedido ya se cerró sin cobro")
     if current == "cancelado":
         raise FlowError("El pedido está cancelado")
     if new not in _ORDER_NEXT.get(current, set()):
@@ -217,7 +221,7 @@ def ticket_fields(order: dict, fulfillment: str, amount_paid, total) -> dict:
 
 def assert_can_serve(order: dict):
     status = order.get("status")
-    if status in ("pagado", "cancelado"):
+    if status in ("pagado", "cancelado", "cerrado_sin_cobro"):
         raise FlowError("El pedido ya está cerrado")
     items = order.get("items") or []
     if (

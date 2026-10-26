@@ -7,9 +7,17 @@ from auth import get_current_user, require_roles
 from models import TableCreate, TableTransfer, TableUpdate
 from notify import emit_notice
 from guest_access import sign_table
-from attention import AttentionBlocked, open_table_attention, recover_opening_intent
+from attention import (
+    AttentionBlocked,
+    close_table_attention,
+    discard_table_opening,
+    open_table_attention,
+    recover_opening_intent,
+)
 from branch_access import assert_owned_branch, read_branch_filter, record_branch_filter, record_lookup_scope
+from order_states import CLOSED_WITHOUT_PAYMENT, TERMINAL_ORDER_STATUSES, is_terminal
 from routes.table_groups import attach_groups, record_audit
+from service_policy import require_payment_to_close
 
 router = APIRouter()
 
@@ -17,7 +25,7 @@ _PRIVATE_OPENING_FIELDS = ("opening_intent", "opening_order_id", "opening_branch
 
 # An order still owns its table while it is unsettled or while its visit is open.
 _OPEN_ORDER = {"$or": [
-    {"status": {"$nin": ["pagado", "cancelado"]}},
+    {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
     {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
 ]}
 _TRANSFERABLE_TABLE_STATUSES = ("disponible", "ocupada")
@@ -236,7 +244,7 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
         raise HTTPException(status_code=400, detail="La mesa tiene una visita abierta")
     active = await db.orders.find_one({
         "restaurant_id": user["restaurant_id"], "table_id": table_id,
-        "status": {"$nin": ["pagado", "cancelado"]},
+        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
         **record_branch_filter(user),
     })
     if active:
@@ -257,21 +265,91 @@ async def seat_table(table_id: str, user: dict = Depends(require_roles(["admin",
     return _table_response(result)
 
 
+async def _close_account_without_payment(order: dict, user: dict, now: str) -> None:
+    """Archive an account that no open visit owns, without inventing money.
+
+    Same end state as `attention._finish_closed` for a visit: the order becomes
+    `cerrado_sin_cobro`, `payment_status` and `amount_paid` keep what really
+    happened, and every active-order query stops seeing it.
+    """
+    if is_terminal(order):
+        return
+    await db.orders.update_one(
+        {"id": order["id"], "restaurant_id": order["restaurant_id"]},
+        {"$set": {
+            "status": CLOSED_WITHOUT_PAYMENT,
+            "closed_without_payment": True,
+            "closed_without_payment_by": user.get("id"),
+            "closed_without_payment_at": now,
+            "payment_requested": False,
+            "updated_at": now,
+        }},
+    )
+
+
 @router.post("/{table_id}/release")
 async def release_table(table_id: str, user: dict = Depends(require_roles(["admin", "mozo"]))):
     scope = await record_lookup_scope(user, db.branches, table_id)
     table = await db.tables.find_one(scope, {"_id": 0})
     if not table:
         raise HTTPException(status_code=404, detail="Mesa no encontrada")
+    restaurant = await db.restaurants.find_one(
+        {"id": user["restaurant_id"]}, {"_id": 0, "require_payment_to_close": 1}
+    )
+    # Con el control apagado, liberar es el verbo del modo «solo pedidos»: no
+    # valida pago ni comida, cierra la visita y archiva la cuenta como cerrada
+    # sin cobro. Encendido, este endpoint se comporta exactamente como antes.
+    payment_control = require_payment_to_close(restaurant)
+
     if table.get("active_attention_id"):
-        raise HTTPException(status_code=400, detail="La mesa tiene una visita abierta")
+        if payment_control:
+            raise HTTPException(status_code=400, detail="La mesa tiene una visita abierta")
+        order = await db.orders.find_one({
+            "restaurant_id": user["restaurant_id"], "table_id": table_id,
+            "attention_id": table["active_attention_id"],
+            **record_branch_filter(user),
+        }, {"_id": 0})
+        if not order:
+            raise HTTPException(
+                status_code=409,
+                detail="La visita de la mesa no tiene una cuenta; vuelve a cargar el salón",
+            )
+        try:
+            await close_table_attention(
+                db, order=order, user=user, now=_now(), enforce_settlement=False,
+            )
+        except AttentionBlocked as exc:
+            raise HTTPException(status_code=409, detail=exc.detail)
+        emit_notice(user["restaurant_id"], "table", table_id=table_id, status="disponible",
+                    branch_id=table.get("branch_id"))
+        await record_audit("release", "table", table_id, user,
+                           {"table_number": table.get("number"), "without_payment": True},
+                           branch_id=table.get("branch_id"))
+        result = await db.tables.find_one(scope, {"_id": 0})
+        result["active_order"] = None
+        return _table_response(result)
+
     active = await db.orders.find_one({
         "restaurant_id": user["restaurant_id"], "table_id": table_id,
-        "status": {"$nin": ["pagado", "cancelado"]},
+        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
         **record_branch_filter(user),
     })
     if active:
-        raise HTTPException(status_code=400, detail="Hay un pedido enviado. No se puede liberar como borrador.")
+        if payment_control:
+            raise HTTPException(status_code=400, detail="Hay un pedido enviado. No se puede liberar como borrador.")
+        now = _now()
+        await _close_account_without_payment(active, user, now)
+        if table.get("opening_order_id") == active["id"]:
+            await discard_table_opening(
+                db, table_id=table_id, restaurant_id=user["restaurant_id"], order_id=active["id"],
+            )
+    elif table.get("opening_order_id") and not payment_control:
+        # Una intención de prepago que nunca llegó a pedido: no hay cuenta que
+        # archivar, solo la reserva que deja la mesa trabada.
+        await discard_table_opening(
+            db, table_id=table_id, restaurant_id=user["restaurant_id"],
+            order_id=table["opening_order_id"],
+        )
     claim = await db.tables.update_one({**scope, "active_attention_id": {"$exists": False}, "opening_order_id": {"$exists": False}},
         {"$set": {"status": "disponible", "updated_at": _now()}})
     if getattr(claim, "matched_count", 0) != 1:
@@ -346,7 +424,7 @@ async def update_table(table_id: str, data: TableUpdate, user: dict = Depends(re
         active = await db.orders.find_one({
             "restaurant_id": user["restaurant_id"], "table_id": table_id,
             "$or": [
-                {"status": {"$nin": ["pagado", "cancelado"]}},
+                {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
                 {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
             ],
         })
@@ -537,7 +615,7 @@ async def transfer_table(table_id: str, data: TableTransfer, user: dict = Depend
             )
         return await _transfer_response(stranded["id"], source, target, user, reconciled=True)
 
-    if order.get("status") in ("pagado", "cancelado") or order.get("attention_state") == "closed":
+    if order.get("status") in TERMINAL_ORDER_STATUSES or order.get("attention_state") == "closed":
         raise HTTPException(status_code=409, detail="La cuenta ya está cerrada; no se puede mover")
     attention_id = order.get("attention_id")
     if attention_id:

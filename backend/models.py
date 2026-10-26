@@ -108,6 +108,9 @@ class RestaurantUpdate(BaseModel):
     social_whatsapp: Optional[str] = None
     prep_mode: Optional[Literal["simple", "detailed"]] = None
     auto_release_table: Optional[bool] = None
+    # Si se apaga, el local usa la app solo como tomador de pedidos: liberar la
+    # mesa y cerrar la visita no exigen pago (ver `service_policy.py`).
+    require_payment_to_close: Optional[bool] = None
     theme_id: Optional[str] = None
     features: Optional[RestaurantFeatures] = None
     # Cobro de pedidos hechos por el cliente desde el QR.
@@ -387,7 +390,9 @@ class ProductUpdate(BaseModel):
 # ============== ORDER ==============
 OrderStatus = Literal[
     "nuevo", "enviado_cocina", "en_preparacion", "listo",
-    "entregado", "pendiente_pago", "pagado", "cancelado"
+    "entregado", "pendiente_pago", "pagado", "cancelado",
+    # Terminal propios del modo «solo pedidos» (ver `order_states.py`).
+    "cerrado_sin_cobro",
 ]
 # `borrador` es el "Pendiente" de la pantalla: el producto está cargado en la
 # cuenta pero todavía no viajó a cocina, así que se puede corregir o borrar.
