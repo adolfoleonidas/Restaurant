@@ -240,7 +240,9 @@ export default function Productos({ section = 'platos' }) {
         setProducts(p.data); setCategories(c.data);
     });
     const generation = useRealtimeGeneration(['catalog']);
-    useEffect(() => { if (generation) load(); }, [generation]);
+    // `load` es estable (`useCallback` en `useLoader`): incluirlo no repite la
+    // carga y deja el build de CI sin el aviso de dependencias faltantes.
+    useEffect(() => { if (generation) load(); }, [generation, load]);
     useEffect(() => { setTab(section); }, [section]);
 
     const simples = useMemo(() => products.filter((p) => !p.is_combo), [products]);
