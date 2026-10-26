@@ -98,6 +98,36 @@ describe('Caja · KPIs del día (S4-1)', () => {
     });
 });
 
+describe('Caja · regularizar cuentas cerradas sin cobro', () => {
+    let host;
+    let root;
+
+    afterEach(async () => {
+        if (root) await act(async () => root.unmount());
+        root = null;
+        document.body.innerHTML = '';
+    });
+
+    it('las lista aparte y ofrece registrar el cobro manual', async () => {
+        mockOrders.push({
+            id: 'order-3', order_number: 12, status: 'cerrado_sin_cobro',
+            closed_without_payment: true, closed_without_payment_at: thirtyMinAgo,
+            total: 30, amount_paid: 0, items: [],
+        });
+        try {
+            ({ host, root } = await renderCaja());
+            expect(host.querySelector('[data-testid="caja-regularizables"]')).not.toBeNull();
+            const button = host.querySelector('[data-testid="caja-regularizar-cobrar-12"]');
+            expect(button).not.toBeNull();
+            expect(button.textContent).toContain('Registrar cobro');
+            // No se mezcla con las cuentas activas.
+            expect(host.querySelector('[data-testid="caja-pedido-12"]')).toBeNull();
+        } finally {
+            mockOrders.pop();
+        }
+    });
+});
+
 describe('Caja · cuentas abiertas (S4-2)', () => {
     let host;
     let root;

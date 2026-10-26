@@ -83,8 +83,14 @@ export default function PedidoDetalle() {
     }, []);
 
     const locked = ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(order?.status);
+    // Una cuenta cerrada sin cobro se puede regularizar: el pago entra a Caja y
+    // la pasa a venta. Editar, servir o anular siguen bloqueados (locked).
+    const regularizable = Boolean(order?.status === 'cerrado_sin_cobro'
+        && order?.closed_without_payment
+        && Number(order.amount_paid || 0) + 0.009 < Number(order.total || 0));
     const canCollect = can(user, ACTIONS.ORDER_COLLECT);
-    const canCharge = Boolean(order && !locked && canCollect
+    const canCharge = Boolean(order && canCollect
+        && !['pagado', 'cancelado'].includes(order.status)
         && Number(order.amount_paid || 0) < Number(order.total || 0));
     // The backend keeps `status` on the kitchen fulfillment and flags the bill
     // request separately (`payment_requested`), so both must be checked.
@@ -258,6 +264,7 @@ export default function PedidoDetalle() {
         pendiente_pago: 'Cuenta solicitada',
         pagado: 'Pagado',
         cancelado: 'Anulado',
+        cerrado_sin_cobro: 'Cerrada sin cobro',
     }[order.status] || order.status;
 
     return (
@@ -426,6 +433,17 @@ export default function PedidoDetalle() {
                         data-testid="pedido-cobrar-button"
                     >
                         <CreditCard className="h-4 w-4 mr-2" /> Cobrar
+                    </PendingButton>
+                )}
+                {regularizable && canCharge && (
+                    <PendingButton
+                        onClick={openCollection}
+                        pending={busy.has('collect')}
+                        pendingLabel="Abriendo cobro…"
+                        className="w-full h-12"
+                        data-testid="pedido-regularizar-button"
+                    >
+                        <CreditCard className="h-4 w-4 mr-2" /> Registrar cobro
                     </PendingButton>
                 )}
                 {billRequested && !canCharge && (

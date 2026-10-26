@@ -1,10 +1,10 @@
 import React from 'react';
-import { Grid2X2, Link2, Search, ShoppingCart } from 'lucide-react';
+import { ClipboardList, Grid2X2, Link2, Search, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { countOf, fmtMoney } from '@/lib/format';
 
-export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, canGoKitchen, selectMode, startSelection, openAreas, searchOpen = false, onToggleFilters }) {
+export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog, scope, chooseScope, searchRef, search, setSearch, navigate, canTake, canGoKitchen, selectMode, startSelection, openAreas, searchOpen = false, onToggleFilters, requirePayment = true }) {
     return (
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
             <div>
@@ -12,6 +12,15 @@ export default function SalonHeader({ summary, floorDue, isOwner, branchCatalog,
                 <h1 className="font-display text-3xl font-semibold flex items-center gap-2">
                     <Grid2X2 className="h-6 w-6 text-primary" /> Salón
                 </h1>
+                {!requirePayment && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2" data-testid="salon-modo-comandas">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                            <ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />
+                            Modo comandas
+                        </span>
+                        <span className="text-xs text-muted-foreground">El pago se cobra fuera del sistema</span>
+                    </div>
+                )}
                 <p className="text-sm text-muted-foreground" data-testid="salon-resumen">
                     En cocina: {countOf(summary.toPrep, 'plato', 'platos')} · Listos: {countOf(summary.toReady, 'plato', 'platos')} · Por cobrar: {countOf(summary.toPay, 'mesa', 'mesas')} ·{' '}
                     <span data-testid="salon-total-en-mesas">{fmtMoney(floorDue)} en mesas</span>

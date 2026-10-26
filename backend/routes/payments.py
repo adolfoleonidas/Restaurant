@@ -18,7 +18,7 @@ from billing import (
     paid_total, remaining_due, reversal_is_inside_open_shift,
 )
 from order_flow import VersionError, claim_order, claim_attention_mutation, ticket_fields, version_conflict
-from order_states import TERMINAL_ORDER_STATUSES
+from order_states import CLOSED_WITHOUT_PAYMENT, TERMINAL_ORDER_STATUSES
 from notify import emit_order, emit_notice
 
 LIMA = ZoneInfo("America/Lima")
@@ -38,6 +38,14 @@ def proof_is_pending(order: dict) -> bool:
     if status:
         return status == "pendiente"
     return order.get("payment_status") == "comprobante_subido"
+
+
+def _is_regularization(order: dict) -> bool:
+    """Una cuenta que el piso cerró sin cobro puede pasar a venta después."""
+    return (
+        order.get("status") == CLOSED_WITHOUT_PAYMENT
+        and bool(order.get("closed_without_payment"))
+    )
 
 
 async def _authorized_order(order_id: str, user: dict) -> dict:
@@ -139,6 +147,7 @@ async def _resume_payment_operation(order: dict, operation: dict, user: dict) ->
             "method": payment["method"],
             "amount": payment["amount"],
             "remaining": operation["remaining"],
+            **({"regularized": True} if payment.get("regularized") else {}),
         },
         "created_at": payment["created_at"],
     }
@@ -154,7 +163,8 @@ async def _resume_payment_operation(order: dict, operation: dict, user: dict) ->
         branch_id=payment.get("branch_id"),
     )
     table_id = operation.get("table_id")
-    if operation["order_status"] == "pagado" and table_id and not operation.get("attention_id"):
+    if (operation["order_status"] == "pagado" and table_id
+            and not operation.get("attention_id") and not operation.get("regularized")):
         restaurant = await db.restaurants.find_one({"id": payment["restaurant_id"]}, {"_id": 0})
         table_status = "disponible" if (restaurant or {}).get("auto_release_table") else "pagada"
         await db.tables.update_one(
@@ -410,6 +420,11 @@ async def payments_for_order(order_id: str, user: dict = Depends(require_roles([
 async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles(["admin", "cajero"]))):
     request_fingerprint = _payment_request_fingerprint(data)
     order = await _authorized_order(data.order_id, user)
+    # La cuenta cerrada sin cobro es terminal, pero su dinero todavía se puede
+    # registrar: es la vía para pasarla a venta cuando el local quiera.
+    regularizing = _is_regularization(order)
+    if regularizing and order.get("payment_status") == "pagado":
+        raise HTTPException(status_code=400, detail="La cuenta ya está pagada")
     if order.get("account_operation") or order.get("account_operation_ref") or order.get("account_operation_id"):
         raise HTTPException(status_code=409, detail="La cuenta está terminando otra operación; reintenta en unos segundos")
     operation = order.get("payment_operation")
@@ -435,9 +450,9 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     open_reg = await _register_for_order(order, user["restaurant_id"])
     if not open_reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta para la sucursal del pedido")
-    if order["status"] in TERMINAL_ORDER_STATUSES:
+    if not regularizing and order["status"] in TERMINAL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
-    if order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
+    if not regularizing and order.get("attention_state") in ("opening", "mutating", "closing", "closed"):
         raise HTTPException(status_code=409, detail="La visita está cambiando; vuelve a cargar el pedido")
 
     # The venue may switch a method off in Datos de cobro; the UI hides it, but a
@@ -581,10 +596,23 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         new_paid,
         bill_total,
     ))
+    if regularizing:
+        # `ticket_fields` sigue al estado de comida; la cuenta permanece cerrada
+        # hasta que el pago cubra el total. Así no vuelve a contar como activa.
+        order_set["status"] = "pagado" if fully_paid else CLOSED_WITHOUT_PAYMENT
+        order_set["regularized_at"] = now
+        order_set["regularized_by"] = user["id"]
+        order_set["regularized_by_name"] = user.get("full_name")
+        if order.get("attention_id"):
+            order_set["attention_state"] = order.get("attention_state") or "closed"
+        if not fully_paid:
+            order_set["paid_at"] = None
     if order_set["status"] == "pagado":
         order_set["paid_at"] = now
 
     payment_id = str(uuid.uuid4())
+    if regularizing:
+        order_set["regularization_payment_id"] = payment_id
     payment = {
         "id": payment_id,
         "restaurant_id": user["restaurant_id"],
@@ -618,6 +646,10 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
     # la recuperación tras un crash se rechazaba como "la cuenta cambió".
     if data.idempotency_key:
         payment["idempotency_key"] = data.idempotency_key
+    if regularizing:
+        payment["regularized"] = True
+        payment["original_order_created_at"] = order.get("created_at")
+        payment["closed_without_payment_at"] = order.get("closed_without_payment_at")
     payment_status = "pagado" if fully_paid else "parcial"
     operation = {
         "id": payment_id,
@@ -631,19 +663,37 @@ async def create_payment(data: PaymentCreate, user: dict = Depends(require_roles
         "source": order.get("source"),
         "table_id": order.get("table_id"),
         "attention_id": order.get("attention_id"),
+        "regularized": regularizing,
     }
     order_set["payment_operation"] = operation
-    claim_filter = {
-        "id": data.order_id,
-        "restaurant_id": user["restaurant_id"],
-        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
-        "updated_at": order.get("updated_at"),
-        "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
-        "payment_operation": {"$exists": False},
-        "account_operation": {"$exists": False},
-        "account_operation_ref": {"$exists": False},
-        "account_operation_id": {"$exists": False},
-    }
+    if regularizing:
+        # La visita ya está cerrada: se conserva su estado en vez de exigirla
+        # abierta. El fence sigue siendo `updated_at` + la cuenta sin operación.
+        claim_filter = {
+            "id": data.order_id,
+            "restaurant_id": user["restaurant_id"],
+            "status": CLOSED_WITHOUT_PAYMENT,
+            "closed_without_payment": True,
+            "updated_at": order.get("updated_at"),
+            "payment_operation": {"$exists": False},
+            "account_operation": {"$exists": False},
+            "account_operation_ref": {"$exists": False},
+            "account_operation_id": {"$exists": False},
+        }
+        if order.get("attention_state") == "closed":
+            claim_filter["attention_state"] = "closed"
+    else:
+        claim_filter = {
+            "id": data.order_id,
+            "restaurant_id": user["restaurant_id"],
+            "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
+            "updated_at": order.get("updated_at"),
+            "attention_state": {"$nin": ["opening", "mutating", "closing", "closed"]},
+            "payment_operation": {"$exists": False},
+            "account_operation": {"$exists": False},
+            "account_operation_ref": {"$exists": False},
+            "account_operation_id": {"$exists": False},
+        }
     if order.get("branch_id"):
         claim_filter["branch_id"] = order["branch_id"]
     claim = await db.orders.update_one(
@@ -737,6 +787,63 @@ async def _attention_void_intent(pay: dict, order: dict, user: dict, reason: str
         "order_patch": order_patch, "movement": movement, "audit": audit,
         "created_at": timestamp,
     }
+
+
+async def _apply_regularization_void(*, payment: dict, order: dict, user: dict,
+                                    reason: str, kind: str) -> dict:
+    """Anula el cobro con el que se regularizó una cuenta cerrada sin cobro.
+
+    La visita ya está cerrada, así que no hay fence de visita que reabrir: se
+    conserva `attention_state` y la cuenta vuelve a `cerrado_sin_cobro` si el
+    dinero dejó de cubrir el total. El pago anulado/desviado y su movimiento de
+    caja siguen el mismo camino idempotente que cualquier otra anulación.
+    """
+    if payment.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="Ese cobro ya no está vigente")
+    if not (order.get("closed_without_payment")
+            and order.get("status") in (CLOSED_WITHOUT_PAYMENT, "pagado")):
+        raise HTTPException(status_code=400, detail="El pedido no está cerrado sin cobro")
+
+    register, record_refund = await _void_cash_context(payment, order, user)
+    intent = await _attention_void_intent(payment, order, user, reason, kind, register, record_refund)
+    patch = intent["order_patch"]
+    total = float(order.get("total") or 0)
+    new_paid = float(patch.get("amount_paid") or 0)
+    if new_paid + 0.009 < total:
+        patch["status"] = CLOSED_WITHOUT_PAYMENT
+        patch["paid_at"] = None
+    else:
+        patch["status"] = "pagado"
+    if order.get("attention_id"):
+        patch["attention_state"] = order.get("attention_state") or "closed"
+    patch["regularization_voided_at"] = _now()
+    patch["regularization_voided_by"] = user["id"]
+    operation = {
+        **intent, "type": "void", "order_status": patch["status"],
+        "table_reopen": None, "regularized": True,
+    }
+    claim_filter = {
+        "id": order["id"], "restaurant_id": order["restaurant_id"],
+        "updated_at": order.get("updated_at"),
+        "payment_operation": {"$exists": False},
+        "account_operation": {"$exists": False},
+        "account_operation_ref": {"$exists": False},
+        "account_operation_id": {"$exists": False},
+    }
+    if order.get("branch_id"):
+        claim_filter["branch_id"] = order["branch_id"]
+    claimed = await db.orders.update_one(
+        claim_filter, {"$set": {**patch, "payment_operation": operation}}
+    )
+    if getattr(claimed, "modified_count", 0) != 1:
+        latest = await db.orders.find_one(
+            {"id": order["id"], "restaurant_id": order["restaurant_id"]}
+        )
+        pending = (latest or {}).get("payment_operation")
+        if pending and pending.get("id") == operation["id"]:
+            return await _resume_void_operation(latest, pending)
+        raise HTTPException(status_code=409, detail="La cuenta cambió; vuelve a cargarla antes de anular el cobro")
+    return await _resume_void_operation({**order, **patch, "payment_operation": operation}, operation)
 
 
 async def _ensure_void_audit(intent: dict) -> None:
@@ -1031,6 +1138,12 @@ async def apply_void_payment(payment_id: str, user: dict, reason: str, kind: str
         if pending["payment_id"] == payment_id:
             return resumed
         return await apply_void_payment(payment_id, user, reason, kind)
+    # Un cobro de regularización no reabre la visita: la cuenta sigue cerrada y
+    # solo cambia su saldo. Va antes del camino de visita abierta.
+    if pay.get("regularized"):
+        return await _apply_regularization_void(
+            payment=pay, order=order, user=user, reason=reason, kind=kind,
+        )
     if _has_open_visit(order):
         return await _apply_attention_void(payment=pay, order=order, user=user, reason=reason, kind=kind)
 

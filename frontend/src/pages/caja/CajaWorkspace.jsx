@@ -57,6 +57,19 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         [pendingGeneration, contextKey]
     );
     const { data: tables } = usePolling(() => scopedGet('/tables').then((r) => r.data), 20000, [tablesGeneration, contextKey]);
+    // Cuentas que el piso liberó sin cobro y todavía se pueden pasar a venta.
+    const { data: closedWithoutPayment, refetch: refetchRegularizables } = usePolling(
+        () => scopedGet('/orders', { status: 'cerrado_sin_cobro' }).then((r) => r.data),
+        12000,
+        [pendingGeneration, contextKey]
+    );
+    const regularizables = useMemo(() => (closedWithoutPayment || [])
+        .filter((o) => o.status === 'cerrado_sin_cobro' && o.closed_without_payment)
+        .filter((o) => Number(o.amount_paid || 0) + 0.009 < Number(o.total || 0))
+        .map((o) => ({
+            ...o,
+            table_number: (tables || []).find((t) => t.id === o.table_id)?.number,
+        })), [closedWithoutPayment, tables]);
     // Pagos de hoy: la misma fuente que el historial (`/payments?period=day`),
     // sólo para los KPIs. El cobro anulado/devuelto no cuenta como venta.
     const { data: dayPayments } = usePolling(
@@ -86,14 +99,14 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
      */
     useEffect(() => {
         const id = params.get('order');
-        if (!id || !pending) return;
-        const hit = pending.find((o) => o.id === id);
+        if (!id || (!pending && regularizables.length === 0)) return;
+        const hit = [...(pending || []), ...regularizables].find((o) => o.id === id);
         if (!hit) return;
         selectOrder(hit);
         const rest = new URLSearchParams(params);
         rest.delete('order');
         setParams?.(rest, { replace: true });
-    }, [params, pending, selectOrder, setParams]);
+    }, [params, pending, regularizables, selectOrder, setParams]);
 
     const cobrables = useMemo(() => {
         // Un pedido web con comprobante ya subido se resuelve en su propio bloque
@@ -119,6 +132,9 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
     );
     const daySales = todayPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const openDue = cobrables.reduce(
+        (sum, o) => sum + Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0)),
+        0
+    ) + regularizables.reduce(
         (sum, o) => sum + Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0)),
         0
     );
@@ -190,6 +206,11 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                 {ownerContext && scopeParams.legacy_only ? (
                     <p className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">No hay una caja histórica abierta</p>
                 ) : <OpenCajaCard onOpened={refetchReg} branchId={selectedBranchId} canOpen={canOpen} runMutation={runMutation} />}
+            {regularizables.length > 0 && (
+                <p className="text-sm text-muted-foreground" data-testid="caja-regularizables-sin-turno">
+                    Hay {countOf(regularizables.length, 'cuenta cerrada sin cobro', 'cuentas cerradas sin cobro')}; abre la caja para registrarlas.
+                </p>
+            )}
             {cobrables.length > 0 && (
                 <Card data-testid="caja-cuentas-cerradas">
                     <CardContent className="p-4">
@@ -311,6 +332,36 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                     </div>
                 )}
             </CardContent></Card>
+
+            {regularizables.length > 0 && (
+                <Card data-testid="caja-regularizables"><CardContent className="p-4">
+                    <h2 className="font-display text-lg font-semibold mb-1">Cuentas cerradas sin cobro ({regularizables.length})</h2>
+                    <p className="text-xs text-muted-foreground mb-3">
+                        Se liberaron sin cobrar. Registra el cobro para pasarlas a venta; si fue un error, se puede anular después.
+                    </p>
+                    <div className="divide-y">
+                        {regularizables.map((o) => (
+                            <div key={o.id} className="py-3 flex items-center justify-between gap-3" data-testid={`caja-regularizar-${o.order_number}`}>
+                                <div className="min-w-0">
+                                    <div className="font-display text-lg font-bold truncate">{accountLabel(o)}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                        {o.table_number ? `Mesa ${o.table_number} · ` : ''}
+                                        {fmtDateTime(o.closed_without_payment_at || o.updated_at)} · {countOf((o.items || []).length, 'ítem', 'ítems')}
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <div className="font-display text-xl font-bold tabular-nums">
+                                        {fmtMoney(Math.max(0, Number(o.total || 0) - Number(o.amount_paid || 0)))}
+                                    </div>
+                                    <Button size="sm" className="mt-1 h-11" onClick={() => selectOrder(o)} data-testid={`caja-regularizar-cobrar-${o.order_number}`}>
+                                        <DollarSign className="h-4 w-4 mr-1" />Registrar cobro
+                                    </Button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </CardContent></Card>
+            )}
             </>
             )}
 
@@ -345,7 +396,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
                 <Button variant="outline" onClick={() => { refetchReg(); setCloseDialog(true); }} className="h-12 w-full" data-testid="caja-cerrar-button"><Lock className="h-4 w-4 mr-2" /> Cerrar turno</Button>
             </div>
             )}
-            <CobrarDialog open={!!pendingOrder} onOpenChange={(o) => !o && closeCollection()} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); }} />
+            <CobrarDialog open={!!pendingOrder} onOpenChange={(o) => !o && closeCollection()} order={pendingOrder} onPaid={() => { refetchPending(); refetchReg(); refetchRegularizables(); }} />
             <CloseCajaDialog open={closeDialog} onOpenChange={setCloseDialog} register={register} onClosed={refetchReg} runMutation={runMutation} />
         </div>
     );

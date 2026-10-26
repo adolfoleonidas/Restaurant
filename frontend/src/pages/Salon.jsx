@@ -181,6 +181,7 @@ export default function Salon() {
                     openAreas={openAreas}
                     searchOpen={filtersOpen}
                     onToggleFilters={toggleFilters}
+                    requirePayment={requirePayment}
                 />
 
                 {selection.selectMode && (

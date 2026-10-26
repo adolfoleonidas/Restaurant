@@ -283,14 +283,15 @@ describe('Caja', () => {
         mockUser = CASHIER;
         await mount(<Caja />);
         await emit(DRAFT_EDIT);
-        expect(fetched(...urls)).toEqual({ '/cash/current': 0, '/orders': 1, '/tables': 0, '/payments': 0 });
+        // Dos listas de pedidos: las cuentas activas y las cerradas sin cobro.
+        expect(fetched(...urls)).toEqual({ '/cash/current': 0, '/orders': 2, '/tables': 0, '/payments': 0 });
     });
 
     it('a payment refreshes the register, the pending accounts and the payments, not the tables', async () => {
         mockUser = CASHIER;
         await mount(<Caja />);
         await emit(PAYMENT);
-        expect(fetched(...urls)).toEqual({ '/cash/current': 1, '/orders': 1, '/tables': 0, '/payments': 1 });
+        expect(fetched(...urls)).toEqual({ '/cash/current': 1, '/orders': 2, '/tables': 0, '/payments': 1 });
     });
 
     it('a cash event refreshes only the register; a table event only the tables', async () => {
@@ -306,6 +307,6 @@ describe('Caja', () => {
         mockUser = CASHIER;
         await mount(<Caja />);
         await emit(LEGACY);
-        expect(fetched(...urls)).toEqual({ '/cash/current': 1, '/orders': 1, '/tables': 1, '/payments': 1 });
+        expect(fetched(...urls)).toEqual({ '/cash/current': 1, '/orders': 2, '/tables': 1, '/payments': 1 });
     });
 });

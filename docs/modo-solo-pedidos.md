@@ -12,7 +12,8 @@ como antes.
 | Liberar la mesa | Solo si no hay pedido ni visita abierta (o si la mesa está `pagada`) | Libera aunque haya una cuenta abierta |
 | Cuenta que queda abierta | No se puede cerrar | Se archiva como `cerrado_sin_cobro` |
 | Dinero | Sin cambios | `payment_status` y `amount_paid` se conservan; **no se inventa un cobro** |
-| Caja / ventas | Sin cambios | Esa cuenta no suma venta ni aparece como cobrable |
+| Caja / ventas | Sin cambios | Esa cuenta no suma venta hasta que se regularice |
+| Salón | Sin distintivo | Badge **«Modo comandas · el pago se cobra fuera del sistema»** |
 
 Con el ajuste apagado, la tarjeta de la mesa y el menú ⋯ de la hoja ofrecen
 **«Liberar mesa»** en lugar de «Finalizar mesa». La acción llama a
@@ -27,6 +28,28 @@ Con el ajuste apagado, la tarjeta de la mesa y el menú ⋯ de la hoja ofrecen
 
 Una cuenta que ya estaba `pagado` o `cancelado` no se degrada: conserva su
 estado.
+
+## Regularizar después: pasar la cuenta a venta
+
+La cuenta archivada no se pierde. El dueño o el cajero puede registrarla cuando
+quiera:
+
+1. **Caja → Cuentas cerradas sin cobro**: aparecen las cuentas que se liberaron
+   sin pago, con su mesa, fecha y saldo.
+2. **Registrar cobro** abre el mismo cobro de Caja (efectivo, Yape, Plin,
+   tarjeta, transferencia o mixto).
+3. Si el cobro cubre el total, la cuenta pasa a **`pagado`** y suma al turno y a
+   los reportes. Si es parcial, sigue **`cerrado_sin_cobro`** con su saldo y se
+   puede completar después.
+4. Si se registró por error, el cobro se puede **anular o devolver** desde el
+   historial de Caja; la cuenta vuelve a «cerrada sin cobro».
+
+La fecha del cobro es la del momento en que se registra (el turno abierto), no
+la del servicio original: un cobro regularizado hoy aparece en las ventas de hoy.
+El registro del pago conserva `original_order_created_at` para la trazabilidad.
+
+La misma acción está en el detalle del pedido (`/pedidos/:id`) como
+**«Registrar cobro»** para quien tenga permiso de cobro.
 
 ## Qué no cambia
 
@@ -55,9 +78,17 @@ estado.
 - `backend/order_states.py` — `cerrado_sin_cobro` y los estados terminales.
 - `backend/attention.py` — `close_table_attention(..., enforce_settlement=False)`.
 - `backend/routes/tables.py` — `POST /tables/{id}/release` en modo sin cobro.
+- `backend/routes/payments.py` — `create_payment` regulariza una cuenta
+  `cerrado_sin_cobro`; `_apply_regularization_void` permite anular ese cobro.
 - `frontend/src/lib/servicePolicy.js` y `useRequirePayment` — política en pantalla.
 - `frontend/src/pages/salon/sheetActions.js`, `MesaCard.jsx` — «Liberar mesa».
+- `frontend/src/pages/salon/SalonHeader.jsx` — badge «Modo comandas».
+- `frontend/src/pages/caja/CajaWorkspace.jsx` — lista y cobro de las cerradas sin cobro.
+- `frontend/src/pages/PedidoDetalle.jsx` — «Registrar cobro» en el detalle.
 
-Pruebas: `tests/test_sales_only_mode.py` (backend) y
+Pruebas: `tests/test_sales_only_mode.py` y
+`tests/test_regularize_closed_without_payment.py` (backend);
 `frontend/src/__tests__/MesaCardRelease.test.js`,
-`attentionClose.test.js`, `salonSheetActions.test.js`.
+`attentionClose.test.js`, `salonSheetActions.test.js`,
+`SalonHeaderSummary.test.js`, `PedidoDetalleActionFeedback.test.js` y
+`CajaDayKpis.test.js`.

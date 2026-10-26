@@ -28,6 +28,33 @@ describe('Salón header summary', () => {
     });
 });
 
+describe('Salón · modo comandas', () => {
+    async function renderHeader(extra = {}) {
+        const host = document.createElement('div');
+        document.body.appendChild(host);
+        const root = createRoot(host);
+        await act(async () => root.render(
+            <SalonHeader {...baseProps} summary={{ toPrep: 0, toReady: 0, toPay: 0 }} {...extra} />,
+        ));
+        return { host, root };
+    }
+
+    it('avisa que el pago se cobra fuera del sistema solo cuando el control está apagado', async () => {
+        const on = await renderHeader();
+        expect(on.host.querySelector('[data-testid="salon-modo-comandas"]')).toBeNull();
+        await act(async () => on.root.unmount());
+        on.host.remove();
+
+        const off = await renderHeader({ requirePayment: false });
+        const badge = off.host.querySelector('[data-testid="salon-modo-comandas"]');
+        expect(badge).not.toBeNull();
+        expect(badge.textContent).toContain('Modo comandas');
+        expect(badge.textContent).toContain('fuera del sistema');
+        await act(async () => off.root.unmount());
+        off.host.remove();
+    });
+});
+
 describe('Salón filter chips', () => {
     it('say that they count tables', async () => {
         const FloorFilters = require('@/pages/salon/FloorFilters').default;

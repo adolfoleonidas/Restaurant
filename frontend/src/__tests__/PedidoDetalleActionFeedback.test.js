@@ -99,6 +99,21 @@ describe('order detail actions show they are working', () => {
         expect(q('pedido-cobrar-button').disabled).toBe(true);
     });
 
+    test('una cuenta cerrada sin cobro ofrece Registrar cobro y no ofrece editar ni anular', async () => {
+        await mount({ status: 'cerrado_sin_cobro', closed_without_payment: true, total: 25, amount_paid: 0 });
+
+        const regularize = q('pedido-regularizar-button');
+        expect(regularize).not.toBeNull();
+        expect(regularize.textContent).toContain('Registrar cobro');
+        expect(q('pedido-cobrar-button')).toBeNull();
+        expect(q('pedido-cancelar-button')).toBeNull();
+
+        await act(async () => root.unmount());
+        host.remove();
+        await mount({ status: 'pagado', closed_without_payment: true, total: 25, amount_paid: 25 });
+        expect(q('pedido-regularizar-button')).toBeNull();
+    });
+
     test('confirming the cancellation sends once and says Anulando…', async () => {
         await mount({ status: 'nuevo' });
         await tap(q('pedido-cancelar-button'));
