@@ -13,7 +13,7 @@
 import { countOf } from '@/lib/format';
 
 const ACTIVE_ATTENTION_STATES = ['opening', 'open', 'mutating', 'closing'];
-const SETTLED_ORDER_STATUSES = ['pagado', 'cancelado'];
+const SETTLED_ORDER_STATUSES = ['pagado', 'cancelado', 'cerrado_sin_cobro'];
 const JOINABLE_TABLE_STATUSES = ['disponible', 'ocupada'];
 const TRANSFERABLE_TABLE_STATUSES = ['disponible', 'ocupada'];
 

@@ -7,7 +7,7 @@ export default function FloorGrid({
     tables, tablesLoading, scopePending, filteredUnits, zoneSections, canServe, canCharge,
     canClose, canTake, closing, selectMode, selected, pickedGroupIds, toggleSelected,
     pickIssues, onSeparate, separatePending, openSheet, deliver, openCharge, closeAttention,
-    requestBill, takeOrderInline, branchNames,
+    requestBill, takeOrderInline, branchNames, requirePayment = true, onRelease,
 }) {
     return (
         <>
@@ -68,6 +68,7 @@ export default function FloorGrid({
                                             canCharge={canCharge}
                                             canClose={canClose}
                                             canTake={canTake}
+                                            requirePayment={requirePayment}
                                             closing={closing}
                                             selectMode={selectMode}
                                             picked={selected.includes(unit.entry.table.id)}
@@ -79,6 +80,7 @@ export default function FloorGrid({
                                             onCloseAttention={closeAttention}
                                             onRequestBill={requestBill}
                                             onTake={takeOrderInline}
+                                            onRelease={onRelease}
                                         />
                                     )
                                 ))}

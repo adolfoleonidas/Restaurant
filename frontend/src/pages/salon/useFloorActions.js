@@ -32,7 +32,7 @@ export function servedOrderPatch(order) {
  * (`deliver:<orderId>`, `close:<orderId>`, `bill:<orderId>`, `release:<tableId>`).
  */
 export default function useFloorActions({
-    canTake, canUseCaja, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
+    canTake, canUseCaja, requirePayment = true, closeSheet, refreshAll, refetchTables, navigate, patchOrder,
 }) {
     const [run, pending] = usePendingAction();
     const closingKey = [...pending].find((key) => key.startsWith('close:'));
@@ -102,8 +102,16 @@ export default function useFloorActions({
         if (!canTake) return undefined;
         return run(`release:${t.id}`, async () => {
             await releaseTableRequest(t.id);
-            toast.success(`Mesa ${t.number} libre`);
+            // Sin control de pagos el backend además archiva las cuentas de la
+            // visita como «cerradas sin cobro»; el aviso lo dice para que no se
+            // lea como una mesa liberada con la cuenta todavía viva.
+            toast.success(requirePayment
+                ? `Mesa ${t.number} libre`
+                : `Mesa ${t.number} libre · cuenta cerrada sin cobro`);
             closeSheet();
+            // También los pedidos: al liberar sin cobro la cuenta deja de ser
+            // activa, y el piso la sigue leyendo de la lista de pedidos.
+            refreshAll?.();
             refetchTables?.();
         }, { errorMessage: 'No se pudo liberar' });
     };

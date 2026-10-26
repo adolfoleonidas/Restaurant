@@ -2,10 +2,15 @@ import { useEffect, useState } from 'react';
 import { getRestaurant } from '@/lib/api/restaurant';
 import { useAuth } from '@/contexts/AuthContext';
 import { DEFAULT_FEATURES, mergeFeatures, subscribeFeatures } from '@/lib/features';
+import { applyRestaurantPolicy } from '@/lib/servicePolicy';
 
 /**
- * Reads the venue's enabled modules and keeps them fresh: Ajustes calls
+ * Reads the venue's settings and keeps them fresh: Ajustes calls
  * `notifyFeaturesChanged()` after a successful save, so no polling is needed.
+ *
+ * Trae dos cosas del mismo documento: los módulos (`features`) y la política de
+ * cobro (`require_payment_to_close`), que se publica en `lib/servicePolicy` para
+ * que el piso la lea sin otro GET.
  */
 export default function useRestaurantFeatures() {
     const { user } = useAuth();
@@ -28,7 +33,13 @@ export default function useRestaurantFeatures() {
             try { request = getRestaurant(); } catch { return; }
             if (!request || typeof request.then !== 'function') return;
             request
-                .then(({ data }) => { if (active) setFeatures(mergeFeatures(data?.features)); })
+                .then(({ data }) => {
+                    if (!active) return;
+                    setFeatures(mergeFeatures(data?.features));
+                    // Misma lectura: la política de cobro viaja en el mismo
+                    // documento y alimenta `useRequirePayment` sin otro GET.
+                    applyRestaurantPolicy(data);
+                })
                 .catch(() => { /* keep the current flags */ });
         };
         load();

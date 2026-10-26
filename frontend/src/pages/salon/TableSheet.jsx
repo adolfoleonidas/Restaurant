@@ -18,7 +18,7 @@ import { buildMoreActions } from './sheetActions';
  * every action from the container.
  */
 export default function TableSheet({
-    model, sheet, perms, data, actions,
+    model, sheet, perms, data, actions, requirePayment = true,
 }) {
     const { table: t, history, loading, accountsLoading, accountTable, accounts, group, members, groupAccounts, order, currentAccountId, floor, canCompose, allItems, orderItems, sendState, sentNotice, showSend, hasAccount, personAccounts, persons, cards, summaryRows, receiptAccounts, tableDishes, tableTotal, tableConsumido, tablePagado, tablePendiente, pendingCount, draftUnits, actionOrder, actionAccountId, actionDue, closeable, billRequested } = model;
     const { composerOpen, saveState, personNameEdit, setPersonNameEdit, aliasDraft, setAliasDraft, sharedDraft, setSharedDraft, cardRenameId, setCardRenameId, cardRenameDraft, setCardRenameDraft, savingItem, sendingToKitchen, receiptOpen, setReceiptOpen, summaryOpen, setSummaryOpen, setMoveAccountId, leaveComposer, closeSheet, saveAlias, commitCardRename, editAccount, selectAccount, addProductToAccount, removeProductFromAccount, requestSend, changeItemQty, saveItemNotes, voidProduct, clearDraft, startNewAccount, moveItemToPerson, takeOrderInline, splitAccount, mergeAccounts, composeTableFor } = sheet;
@@ -30,7 +30,7 @@ export default function TableSheet({
     // menú, disparado por el botón de tres puntitos de la cabecera (S13). La
     // zona de acciones queda con dos botones: "+ Nuevo pedido" y "Cobrar".
     const moreActions = buildMoreActions({
-        t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId, closeable, billRequested, closing, pending, canTake, canServe, closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill, setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
+        t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId, closeable, billRequested, closing, pending, canTake, canServe, requirePayment, closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill, setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
     });
 
     return (

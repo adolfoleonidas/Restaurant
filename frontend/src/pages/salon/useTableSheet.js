@@ -164,8 +164,8 @@ export default function useTableSheet({
 
         const all = await listing;
         if (all) {
-            const active = all.filter((o) => !['pagado', 'cancelado'].includes(o.status));
-            const past = all.filter((o) => ['pagado', 'cancelado'].includes(o.status)).slice(0, 8);
+            const active = all.filter((o) => !['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(o.status));
+            const past = all.filter((o) => ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(o.status)).slice(0, 8);
             setOpenTable((s) => (s && s.table.id === t.id ? {
                 ...s,
                 accounts: accountSnapshots({ ...s, accounts: active }, s.order),
@@ -873,7 +873,7 @@ export default function useTableSheet({
             setReviewOrderId(null);
             setComposerOpen(false);
             const latest = await selectAccount(orderId);
-            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+            if (latest?.id !== orderId || ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(latest.status)
                 || !draftCount(latest.items || [], latest.status)) return;
             setComposerOpen(true);
             return;
@@ -883,7 +883,7 @@ export default function useTableSheet({
             setReviewOrderId(null);
             setComposerOpen(false);
             const latest = await openSheet(target.table, orderId);
-            if (latest?.id !== orderId || ['pagado', 'cancelado'].includes(latest.status)
+            if (latest?.id !== orderId || ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(latest.status)
                 || !draftCount(latest.items || [], latest.status)) {
                 setComposerOpen(false);
                 return;

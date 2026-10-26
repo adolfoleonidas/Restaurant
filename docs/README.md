@@ -27,6 +27,7 @@ El índice de la especificación, con el orden de lectura recomendado y las regl
 | Tema | Documento |
 |---|---|
 | Menú del día | [menu-del-dia.md](menu-del-dia.md) |
+| Modo «solo pedidos» (sin validar cobro al liberar mesa) | [modo-solo-pedidos.md](modo-solo-pedidos.md) |
 | Asistente de voz | [voice-assistant.md](voice-assistant.md) |
 | OCR de comprobantes | [proof-ocr.md](proof-ocr.md) |
 | QR de mesa y prepago | [releases/mesa-qr-prepago.md](releases/mesa-qr-prepago.md), [releases/table-qr-access.md](releases/table-qr-access.md) |

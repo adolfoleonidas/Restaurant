@@ -132,6 +132,24 @@ describe('buildMoreActions', () => {
         expect(buildMoreActions(base({ hasAccount: false, order: null, canTake: false, t: { id: 't1', number: 4, status: 'pagada' } }))[0].disabled).toBe(true);
     });
 
+    test('sin control de pagos la salida es "Liberar mesa", no "Finalizar mesa"', () => {
+        const ctx = base({ requirePayment: false });
+        const actions = buildMoreActions(ctx);
+        expect(keys(actions)).not.toContain('cerrar');
+        expect(keys(actions)).not.toContain('solicitar-cuenta');
+        const release = actions.find((a) => a.key === 'liberar-sin-cobro');
+        expect(release).toMatchObject({ label: 'Liberar mesa', testId: 'mesa-sheet-liberar', disabled: false });
+        release.onSelect();
+        expect(ctx.releaseTable).toHaveBeenCalledWith(ctx.t);
+        // En modo con cobro, la acción no existe (solo la mesa pagada la ofrece).
+        expect(keys(buildMoreActions(base()))).not.toContain('liberar-sin-cobro');
+        // Una mesa sentada sin pedido también se puede liberar en este modo.
+        expect(keys(buildMoreActions(base({
+            hasAccount: false, order: null, requirePayment: false,
+            t: { id: 't1', number: 4, status: 'ocupada' },
+        })))).toEqual(['liberar']);
+    });
+
     test('a free table without account has no extra actions', () => {
         expect(buildMoreActions(base({ hasAccount: false, order: null, t: { id: 't1', number: 4, status: 'disponible' } }))).toEqual([]);
     });

@@ -99,7 +99,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
         // Un pedido web con comprobante ya subido se resuelve en su propio bloque
         // (Ver comprobante / Confirmar). Se excluye de las listas de cobro para que
         // una misma cuenta no ofrezca dos acciones de dinero a la vez.
-        const list = (pending || []).filter((o) => o.status !== 'pagado' && o.status !== 'cancelado');
+        const list = (pending || []).filter((o) => !['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(o.status));
         const requested = list.filter((o) => o.payment_requested || o.status === 'pendiente_pago');
         const rest = list.filter((o) => !(o.payment_requested || o.status === 'pendiente_pago'));
         return [...requested, ...rest].map((o) => ({
@@ -136,6 +136,7 @@ export default function CajaWorkspace({ ownerContext = false, contextKey = 'staf
             o.source === 'public'
             && o.status !== 'pagado'
             && o.status !== 'cancelado'
+            && o.status !== 'cerrado_sin_cobro'
             && o.payment_status !== 'confirmado'
             && o.acceptance_status !== 'pendiente'
         )
