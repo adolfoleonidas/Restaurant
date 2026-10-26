@@ -1,6 +1,6 @@
 const ACTIVE_ATTENTION_STATES = new Set(['opening', 'open', 'mutating', 'closing']);
 const COMPLETED_FOOD_STATES = new Set(['entregado', 'cancelado']);
-const CLOSED_ORDER_STATES = new Set(['pagado', 'cancelado']);
+const CLOSED_ORDER_STATES = new Set(['pagado', 'cancelado', 'cerrado_sin_cobro']);
 const PROOF_STATES = ['comprobante_subido', 'confirmado'];
 // La cuenta se cobró entera: nada pendiente de verificar y el dinero cubre el total.
 const UNSETTLED_CANCELLED = ['pendiente', 'cancelado', undefined, null];
@@ -39,6 +39,8 @@ function foodIsDone(order) {
  */
 export function isSettled(order) {
     if (!order) return false;
+    // Archivada sin cobro por el modo «solo pedidos»: no hay nada que liquidar.
+    if (order.status === 'cerrado_sin_cobro') return true;
     if (PROOF_STATES.includes(order.payment_status)) return false;
     const paid = Number(order.amount_paid || 0);
     if (order.status === 'cancelado') {
@@ -60,9 +62,12 @@ export function isSettled(order) {
  * todas estén listas antes de cerrar (`attention.py:444-451`) y sin mirarlas el
  * botón se ofrecía y el cierre respondía «La cuenta #N no está lista».
  */
-export function canCloseAttention(table, order, visitOrders = null) {
+export function canCloseAttention(table, order, visitOrders = null, { requirePayment = true } = {}) {
     if (!order || activeAttentionOrder(table, [order]) !== order) return false;
     if (!['open', 'closing'].includes(order.attention_state)) return false;
+    // Modo «solo pedidos»: cerrar la visita solo mira que esté abierta. El
+    // servidor aplica la misma política (`require_payment_to_close`).
+    if (!requirePayment) return true;
     if (!foodIsDone(order) || !isSettled(order)) return false;
     if (visitOrders && visitOrders.length) {
         return visitOrders.every((sibling) => (

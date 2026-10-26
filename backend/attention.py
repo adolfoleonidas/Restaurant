@@ -3,6 +3,8 @@ import uuid
 
 from pymongo.errors import DuplicateKeyError
 
+from order_states import CLOSED_WITHOUT_PAYMENT, is_terminal
+
 
 class AttentionBlocked(Exception):
     def __init__(self, detail: str):
@@ -316,15 +318,21 @@ async def _restore_open(db, order: dict, attention: dict) -> bool:
     return bool(latest and latest.get("attention_state") == "open")
 
 
-async def _write_close_audit(db, order: dict, attention: dict, user: dict, now: str) -> None:
+async def _write_close_audit(db, order: dict, attention: dict, user: dict, now: str,
+                             *, closed_without_payment: bool = False) -> None:
     event_id = f"attention-close:{attention['id']}"
+    details = {"order_id": order["id"], "amount_paid": _money(order.get("amount_paid"))}
+    # Solo se agrega cuando es cierto: los cierres normales conservan la misma
+    # forma que antes y un reintento de un cierre viejo sigue coincidiendo.
+    if closed_without_payment:
+        details["closed_without_payment"] = True
     entry = {
         "id": str(uuid.uuid4()), "event_id": event_id,
         "restaurant_id": order["restaurant_id"],
         "user_id": attention.get("closed_by") or user.get("id"),
         "action": "close_attention", "entity": "attention",
         "entity_id": attention["id"],
-        "details": {"order_id": order["id"], "amount_paid": _money(order.get("amount_paid"))},
+        "details": details,
         "created_at": attention.get("closed_at") or now,
     }
     existing = await db.audit_logs.find_one({"event_id": event_id}, {"_id": 0})
@@ -347,7 +355,11 @@ async def _write_close_audit(db, order: dict, attention: dict, user: dict, now: 
 
 
 async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str) -> dict:
-    await _write_close_audit(db, order, attention, user, now)
+    # El modo «solo pedidos» deja la marca en la visita, así un reintento del
+    # cierre la recupera sin volver a preguntar la política del local.
+    without_payment = bool(attention.get("closed_without_payment"))
+    await _write_close_audit(db, order, attention, user, now,
+                             closed_without_payment=without_payment)
     if order.get("table_id"):
         # An old retry cannot release a table already claimed by a later visit.
         await db.tables.update_one({
@@ -357,9 +369,22 @@ async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str)
             "$unset": {"active_attention_id": ""}})
     # Cierra todas las cuentas (órdenes) de la visita, no solo la canónica.
     for sibling in await _attention_orders(db, attention):
+        fields = {"attention_state": "closed", "attention_open": False, "updated_at": now}
+        # Sin control de pagos, la cuenta que quedó abierta se archiva como
+        # cerrada sin cobro. No se toca el dinero: `payment_status` y
+        # `amount_paid` conservan lo que realmente hay, y una cuenta ya pagada o
+        # anulada no se degrada.
+        if without_payment and not is_terminal(sibling):
+            fields.update({
+                "status": CLOSED_WITHOUT_PAYMENT,
+                "closed_without_payment": True,
+                "closed_without_payment_by": attention.get("closed_without_payment_by") or user.get("id"),
+                "closed_without_payment_at": now,
+                "payment_requested": False,
+            })
         await db.orders.update_one(
             {"id": sibling["id"], "restaurant_id": order["restaurant_id"], "attention_id": attention["id"]},
-            {"$set": {"attention_state": "closed", "attention_open": False, "updated_at": now},
+            {"$set": fields,
              "$unset": {"attention_close_token": "", "attention_close_actor": "", "attention_close_actor_name": ""}},
         )
     # Verifica que ninguna cuenta quedó abierta (reconciliación).
@@ -369,13 +394,19 @@ async def _finish_closed(db, order: dict, attention: dict, user: dict, now: str)
     return await _load_attention(db, order) or attention
 
 
-async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dict:
+async def close_table_attention(db, *, order: dict, user: dict, now: str,
+                                enforce_settlement: bool = True) -> dict:
     """Claim the canonical order fence, verify ledger, close, then release by visit id.
 
     La visita se identifica por su propio id, nunca por `order["id"]`: `order_id`
     del documento guarda sólo la cuenta canónica, así que anclar el cierre a esa
     cuenta dejaba sin salida a cualquier otra cuenta de la misma visita —el mozo
     veía "reintenta la misma visita" para siempre y la mesa quedaba tomada—.
+
+    `enforce_settlement=False` es el modo «solo pedidos»: no se exige cuenta
+    liquidada ni comida entregada, y las cuentas abiertas se archivan como
+    `cerrado_sin_cobro` en `_finish_closed`. Un local con el control de pagos
+    encendido nunca pasa ese argumento, así que su cierre no cambia.
     """
     current = await db.orders.find_one({
         "id": order["id"], "restaurant_id": order["restaurant_id"],
@@ -440,28 +471,39 @@ async def close_table_attention(db, *, order: dict, user: dict, now: str) -> dic
 
     if not order or order.get("attention_close_token") != attention["id"]:
         raise AttentionBlocked("El cierre no conserva su reclamo; reintenta la misma visita")
-    payments = await _completed_payments(db, order)
-    reason = close_block_reason(order, payments)
-    if reason:
-        if not await _restore_open(db, order, attention):
-            raise AttentionBlocked("No se pudo revertir el intento; la visita permanece bloqueada")
-        raise AttentionBlocked(reason)
-
-    # Multi-cuenta: cada cuenta de la visita debe estar liquidada antes de cerrar.
-    siblings = [o for o in await _attention_orders(db, attention) if o["id"] != order["id"]]
-    for sibling in siblings:
-        sreason = close_block_reason(sibling, await _completed_payments(db, sibling))
-        if sreason:
+    if enforce_settlement:
+        payments = await _completed_payments(db, order)
+        reason = close_block_reason(order, payments)
+        if reason:
             if not await _restore_open(db, order, attention):
                 raise AttentionBlocked("No se pudo revertir el intento; la visita permanece bloqueada")
-            raise AttentionBlocked(f"La cuenta #{sibling.get('order_number')} no está lista: {sreason}")
+            raise AttentionBlocked(reason)
 
-    await _write_close_audit(db, order, attention, user, now)
+        # Multi-cuenta: cada cuenta de la visita debe estar liquidada antes de cerrar.
+        siblings = [o for o in await _attention_orders(db, attention) if o["id"] != order["id"]]
+        for sibling in siblings:
+            sreason = close_block_reason(sibling, await _completed_payments(db, sibling))
+            if sreason:
+                if not await _restore_open(db, order, attention):
+                    raise AttentionBlocked("No se pudo revertir el intento; la visita permanece bloqueada")
+                raise AttentionBlocked(f"La cuenta #{sibling.get('order_number')} no está lista: {sreason}")
+
+    without_payment = not enforce_settlement
+    await _write_close_audit(db, order, attention, user, now,
+                             closed_without_payment=without_payment)
+    closed_fields = {"status": "closed", "closed_by": attention.get("closed_by"),
+                     "closed_by_name": attention.get("closed_by_name"),
+                     "closed_at": attention.get("closed_at") or now}
+    if without_payment:
+        closed_fields.update({
+            "closed_without_payment": True,
+            "closed_without_payment_by": user.get("id"),
+            "closed_without_payment_at": now,
+        })
     changed = await db.attentions.update_one({
         "id": attention["id"], "restaurant_id": order["restaurant_id"],
         "status": "closing",
-    }, {"$set": {"status": "closed", "closed_by": attention.get("closed_by"),
-        "closed_by_name": attention.get("closed_by_name"), "closed_at": attention.get("closed_at") or now}})
+    }, {"$set": closed_fields})
     if getattr(changed, "matched_count", 0) != 1:
         attention = await _load_attention(db, order)
         if not attention or attention.get("status") != "closed":

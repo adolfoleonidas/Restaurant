@@ -7,7 +7,7 @@ import { canRequestBill } from '@/lib/attentionClose';
  */
 export function buildMoreActions({
     t, order, accountTable, accounts, hasAccount, floor, actionOrder, actionAccountId,
-    closeable, billRequested, closing, canTake, canServe, pending = new Set(),
+    closeable, billRequested, closing, canTake, canServe, requirePayment = true, pending = new Set(),
     closeSheet, navigate, takeOrderInline, deliver, closeAttention, requestBill,
     setSummaryOpen, splitAccount, openTransfer, setMoveAccountId, mergeAccounts, releaseTable,
 }) {
@@ -48,7 +48,7 @@ export function buildMoreActions({
                 disabled: closing === actionOrder?.id,
                 onSelect: () => closeAttention(actionOrder),
             }] : []),
-            ...(!closeable && canTake && canRequestBill(actionOrder, { billRequested }) ? [{
+            ...(!closeable && requirePayment && canTake && canRequestBill(actionOrder, { billRequested }) ? [{
                 key: 'solicitar-cuenta',
                 label: pending.has(`bill:${actionOrder?.id}`) ? 'Solicitando…' : 'Solicitar cuenta',
                 disabled: pending.has(`bill:${actionOrder?.id}`),
@@ -76,6 +76,16 @@ export function buildMoreActions({
                 testId: 'mesa-sheet-mover-pedido',
                 onSelect: () => openTransfer(t),
             }] : []),
+            // Modo «solo pedidos»: liberar es la salida de la mesa y no valida
+            // pago ni comida. Reemplaza a «Finalizar mesa» (closeable es false
+            // en este modo, ver `selectSheetModel`).
+            ...(!requirePayment && canTake && hasAccount ? [{
+                key: 'liberar-sin-cobro',
+                label: pending.has(`release:${t.id}`) ? 'Liberando…' : 'Liberar mesa',
+                testId: 'mesa-sheet-liberar',
+                disabled: pending.has(`release:${t.id}`),
+                onSelect: () => releaseTable(t),
+            }] : []),
             ...(accounts.length > 1 && canTake ? [
                 {
                     key: 'mover-cuenta',
@@ -92,9 +102,9 @@ export function buildMoreActions({
                     onSelect: mergeAccounts,
                 },
             ] : []),
-        ] : t.status === 'pagada' ? [{
-            // La mesa ya está pagada: liberarla es la única
-            // acción y vive en ⋯, no en la barra (S13).
+        ] : (t.status === 'pagada' || (!requirePayment && t.status === 'ocupada')) ? [{
+            // Mesa pagada, o mesa sentada sin pedido en modo «solo pedidos»:
+            // liberarla es la única acción y vive en ⋯, no en la barra (S13).
             key: 'liberar',
             label: pending.has(`release:${t.id}`) ? 'Liberando…' : 'Liberar mesa',
             testId: 'mesa-sheet-liberar',

@@ -82,7 +82,7 @@ export default function PedidoDetalle() {
         setCollectionOrderId(null);
     }, []);
 
-    const locked = ['pagado', 'cancelado'].includes(order?.status);
+    const locked = ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(order?.status);
     const canCollect = can(user, ACTIONS.ORDER_COLLECT);
     const canCharge = Boolean(order && !locked && canCollect
         && Number(order.amount_paid || 0) < Number(order.total || 0));

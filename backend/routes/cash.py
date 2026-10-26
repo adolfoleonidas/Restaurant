@@ -8,6 +8,7 @@ from auth import get_current_user, require_roles
 from branch_access import branch_query, has_tenantwide_branch_access, read_branch_filter, resolve_branch_id
 from models import CashOpen, CashClose, CashMovement
 from billing import method_amounts, shift_payment_filter
+from order_states import TERMINAL_ORDER_STATUSES
 from pymongo.errors import DuplicateKeyError
 from notify import emit_notice
 
@@ -209,7 +210,7 @@ async def close_register(data: CashClose, user: dict = Depends(require_roles(["a
     if not reg:
         raise HTTPException(status_code=400, detail="No hay caja abierta")
     unresolved_status = [
-        {"status": {"$nin": ["pagado", "cancelado"]}},
+        {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
         {"payment_status": {"$in": ["comprobante_subido", "confirmado"]}},
         {"payment_proof_status": "pendiente"},
         {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},

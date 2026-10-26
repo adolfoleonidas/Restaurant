@@ -18,6 +18,7 @@ from branch_access import has_tenantwide_branch_access, validate_user_branch
 from database import db
 from models import PaymentCreate
 from notify import emit_notice, emit_order
+from order_states import TERMINAL_ORDER_STATUSES
 from payment_policy import needs_counter_verification
 from routes.payments import create_payment
 
@@ -148,7 +149,7 @@ async def list_pending_prepayments(user: dict = Depends(require_roles(["admin", 
         "acceptance_status": "pendiente",
         "prepay_required": True,
         # Un pedido cancelado ya no espera nada: sin esto seguía en la cola.
-        "status": {"$nin": ["pagado", "cancelado"]},
+        "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
     }
     query.update(await _branch_scope(user))
     orders = await db.orders.find(query, {"_id": 0}).sort("created_at", 1).to_list(200)
@@ -194,7 +195,7 @@ async def confirm_public_prepayment(order_id: str, user: dict = Depends(require_
     scope = await _branch_scope(user)
     if scope and order.get("branch_id") != scope["branch_id"]:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-    if order.get("status") in ("pagado", "cancelado"):
+    if order.get("status") in TERMINAL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if order.get("payment_state") == "confirmado":
         return {"ok": True, "already_confirmed": True, "order_id": order_id}

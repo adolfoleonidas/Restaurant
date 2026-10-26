@@ -87,6 +87,19 @@ describe('active table attention presentation', () => {
         expect(canCloseAttention(table, delivered)).toBe(true);
     });
 
+    it('sin control de pagos solo exige que la visita esté abierta', () => {
+        // Modo «solo pedidos»: cuenta impaga y comida sin entregar no bloquean.
+        const unpaid = {
+            ...delivered, status: 'entregado', payment_status: 'pendiente',
+            amount_paid: 0, items: [{ status: 'listo' }],
+        };
+        expect(canCloseAttention(table, unpaid)).toBe(false);
+        expect(canCloseAttention(table, unpaid, null, { requirePayment: false })).toBe(true);
+        expect(canCloseAttention(table, unpaid, [{ id: 'otra' }], { requirePayment: false })).toBe(true);
+        // La visita tiene que seguir abierta: eso no lo relaja el modo.
+        expect(canCloseAttention(table, { ...unpaid, attention_state: 'closed' }, null, { requirePayment: false })).toBe(false);
+    });
+
     it('reads the same settlement rule the server applies', () => {
         expect(isSettled(delivered)).toBe(true);
         expect(isSettled({ ...delivered, amount_paid: 0 })).toBe(false);

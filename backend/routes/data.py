@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from database import db
 from auth import require_roles, verify_password_async
 from notify import emit_notice
+from order_states import TERMINAL_ORDER_STATUSES
 
 router = APIRouter()
 
@@ -129,7 +130,7 @@ async def reset_catalog(data: DataResetRequest, user: dict = Depends(require_rol
 
     rid = user["restaurant_id"]
     active = await db.orders.count_documents(
-        {"restaurant_id": rid, "status": {"$nin": ["pagado", "cancelado"]}}
+        {"restaurant_id": rid, "status": {"$nin": list(TERMINAL_ORDER_STATUSES)}}
     )
     if active:
         raise HTTPException(

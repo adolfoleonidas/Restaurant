@@ -17,6 +17,7 @@ from menu_day import NOT_IN_MENU, index_items, resolve, today_menu
 from business_time import BUSINESS_TIMEZONE
 from billing import guarded_totals, line_subtotal, public_order_totals, sum_line_subtotals
 from order_flow import VersionError, bill_requested, claim_order, ticket_fields, version_conflict
+from order_states import TERMINAL_ORDER_STATUSES
 from attention import AttentionBlocked, open_table_attention, reserve_table_opening, recover_opening_intent
 from attention_acceptance import AttentionAcceptanceError, capture_attention_context, number_accepted_order
 from attention_presentation import public_attention_reference
@@ -55,7 +56,7 @@ _ACTIVE_ORDER_STATUSES = [
 
 
 def _derive_kitchen_status(items: list, current: str) -> str:
-    if current in ("pagado", "cancelado", "pendiente_pago"):
+    if current in ("pagado", "cancelado", "cerrado_sin_cobro", "pendiente_pago"):
         return current
     work = [i for i in items if i.get("status") not in ("entregado", "cancelado")]
     if not work:
@@ -256,7 +257,7 @@ def _public_read_guard(request: Request):
 def _public_mutate_guard(o: dict, request: Request):
     if not o:
         _public_order_missing(request)
-    if o["status"] in ("pagado", "cancelado"):
+    if o["status"] in TERMINAL_ORDER_STATUSES:
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     if o.get("payment_state") == "rechazado":
         raise HTTPException(status_code=400, detail="El pago no se pudo verificar. Consulta al personal antes de seguir.")
@@ -1193,7 +1194,7 @@ async def upload_proof(tracking_code: str, data: PublicProofUpload, request: Req
     o = await db.orders.find_one({"tracking_code": tracking_code.upper()})
     if not o:
         _public_order_missing(request)
-    if o.get("status") in ("pagado", "cancelado") or o.get("payment_status") in ("pagado", "confirmado", "cancelado"):
+    if o.get("status") in TERMINAL_ORDER_STATUSES or o.get("payment_status") in ("pagado", "confirmado", "cancelado"):
         raise HTTPException(status_code=400, detail="El pedido ya está cerrado")
     proof = _validated_public_proof(data.payment_proof or "")
     fields = {

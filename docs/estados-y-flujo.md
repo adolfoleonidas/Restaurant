@@ -37,6 +37,7 @@ Fuentes: `backend/order_flow.py`, `backend/attention.py`, `backend/payment_polic
 | `pendiente_pago` | cancelado | `cuenta` | Cuenta | **NO — estado muerto** |
 | `pagado` | — (terminal) | `pagada` | Cuenta pagada | sí |
 | `cancelado` | — (terminal) | `atencion` | Atención abierta | sí |
+| `cerrado_sin_cobro` | — (terminal) | — (la mesa ya se liberó) | Cerrada sin cobro | solo con **Exigir cobro antes de liberar la mesa** apagado; ver [modo-solo-pedidos.md](modo-solo-pedidos.md) |
 
 ### `pendiente_pago` no se guarda nunca
 

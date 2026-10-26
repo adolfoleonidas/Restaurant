@@ -7,6 +7,7 @@ from auth import get_current_user, require_roles
 from branch_access import record_branch_filter
 from models import ProductCreate, ProductUpdate, ProductAvailability, ProductsImport
 from notify import emit_notice
+from order_states import TERMINAL_ORDER_STATUSES
 
 
 async def get_or_create_combos_category(restaurant_id: str):
@@ -282,7 +283,7 @@ async def set_availability(product_id: str, data: ProductAvailability, user: dic
         orders = await db.orders.find(
             {
                 "restaurant_id": user["restaurant_id"],
-                "status": {"$nin": ["pagado", "cancelado"]},
+                "status": {"$nin": list(TERMINAL_ORDER_STATUSES)},
                 "items.product_id": product_id,
                 **record_branch_filter(user),
             },

@@ -14,6 +14,8 @@ export const ORDER_STATUS_LABELS = {
     pendiente_pago: 'Pendiente de pago',
     pagado: 'Pagado',
     cancelado: 'Anulado',
+    // Modo «solo pedidos»: la mesa se liberó sin cobrar en la app.
+    cerrado_sin_cobro: 'Cerrada sin cobro',
 };
 
 export const TABLE_STATUS_LABELS = {
@@ -42,6 +44,7 @@ export const ORDER_STATE_CLASS = {
     pendiente_pago: 'state-esperando',
     pagado: 'state-pagado',
     cancelado: 'state-cancelada',
+    cerrado_sin_cobro: 'state-entregado',
 };
 
 export const TABLE_STATE_DOT = {
@@ -52,7 +55,7 @@ export const TABLE_STATE_DOT = {
 export const ORDER_STATE_DOT = {
     nuevo: '#3B82F6', enviado_cocina: '#F59E0B', en_preparacion: '#F59E0B',
     listo: '#3B82F6', entregado: '#0EA5E9', pendiente_pago: '#F59E0B',
-    pagado: '#22C55E', cancelado: '#71717A',
+    pagado: '#22C55E', cancelado: '#71717A', cerrado_sin_cobro: '#64748B',
 };
 
 /** Per-item progress chips shown on the public product card of a live order. */

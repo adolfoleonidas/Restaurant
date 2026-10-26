@@ -36,13 +36,14 @@ from branch_access import (
 from database import db
 from models import TableGroupAddTable, TableGroupCreate
 from notify import emit_notice
+from order_states import TERMINAL_ORDER_STATUSES
 
 router = APIRouter()
 
 # A table is busy while it owns an order that is not settled, or while it still
 # carries the fence of an open visit.
 _BUSY_ORDER = {"$or": [
-    {"status": {"$nin": ["pagado", "cancelado"]}},
+    {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
     {"attention_state": {"$in": ["opening", "open", "mutating", "closing"]}},
 ]}
 # Statuses a table can be joined from when it owns no visit: "pagada" and

@@ -263,7 +263,7 @@ export function canComposeAccountAt(account, table, attentionId = table?.active_
     return Boolean(account?.id && isComposableTable(table)
         && account.table_id === table.id
         && (!account.order_type || account.order_type === 'mesa')
-        && !['pagado', 'cancelado'].includes(account.status)
+        && !['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(account.status)
         && (!account.attention_state || account.attention_state === 'open')
         && (!attentionId || account.attention_id === attentionId)
         && (!account.branch_id || !table.branch_id || account.branch_id === table.branch_id));
@@ -288,7 +288,7 @@ export function indexOrdersByTable(orders) {
     return map;
 }
 
-const CLOSED_STATUSES = ['cancelado', 'pagado'];
+const CLOSED_STATUSES = ['cancelado', 'pagado', 'cerrado_sin_cobro'];
 
 /** Una cuenta debe algo cuando está abierta y ya tiene algo más que borradores. */
 const billableDue = (order) => (
@@ -529,7 +529,7 @@ export function selectFreshOrder(openOrder, liveOrder) {
  * account id below fall back to the account itself (kept as is).
  */
 export function selectSheetModel({
-    openTable, sheetOrder, tables, activeOrders, orders, canTake, canClose,
+    openTable, sheetOrder, tables, activeOrders, orders, canTake, canClose, requirePayment = true,
 }) {
     const { table: openedTable, history, loading, accountsLoading, accountTable, accounts, accountId } = openTable;
     // El estado sale de la mesa viva del piso, no de la copia que se guardó al abrir la hoja.
@@ -625,7 +625,10 @@ export function selectSheetModel({
             && ['open', 'closing'].includes(o.attention_state)
         ))
         : [];
-    const closeable = canClose && canCloseAttention(t, actionOrder, visitSiblings);
+    // Sin control de pagos, «Finalizar mesa» se sustituye por «Liberar mesa»
+    // (la acción del ⋯), que cierra la visita sin validar nada.
+    const closeable = canClose && requirePayment
+        && canCloseAttention(t, actionOrder, visitSiblings, { requirePayment });
     const billRequested = Boolean(actionOrder?.payment_requested) || actionOrder?.status === 'pendiente_pago';
     return {
         table: t,
@@ -679,7 +682,7 @@ export function selectMiniOrder(orders, lastOpened) {
     if (!lastOpened) return null;
     const live = orders.find((o) => o.id === lastOpened.accountId && o.table_id === lastOpened.tableId);
     const order = live || lastOpened.account;
-    if (!order || ['pagado', 'cancelado'].includes(order.status)) return null;
+    if (!order || ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(order.status)) return null;
     return order;
 }
 

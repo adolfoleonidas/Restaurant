@@ -22,7 +22,7 @@ function itemReadyId(order, item, occurrence) {
 export function buildRoleNotifications(role, orders = []) {
     const items = [];
     for (const o of orders) {
-        if (!o || o.status === 'pagado' || o.status === 'cancelado') continue;
+        if (!o || ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(o.status)) continue;
         const n = o.order_number;
         const body = dishes(o) || who(o);
         const detailHref = role === 'cocina' ? '/cocina' : `/pedidos/${o.id}`;

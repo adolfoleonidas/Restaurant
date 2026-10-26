@@ -408,6 +408,8 @@ El permiso **Cerrar atención** es independiente de los permisos de cobro y de c
 
 Cerrar cuenta, atención, liberar mesa y cerrar caja son distintos. Atención cerrada no se reabre ni recibe pedidos. Liberación física requiere confirmación autorizada.
 
+**Excepción configurable — modo «solo pedidos».** Un local que usa la aplicación únicamente como tomador de pedidos puede apagar **Exigir cobro antes de liberar la mesa**. En ese modo, «Liberar mesa» cierra la visita sin exigir entrega ni saldo cero, y archiva las cuentas abiertas con el estado terminal `cerrado_sin_cobro`: el dinero real no se altera y no se registra una venta. El ajuste arranca encendido, así que el comportamiento por defecto no cambia. Ver [`docs/modo-solo-pedidos.md`](../modo-solo-pedidos.md).
+
 ### RF-15 — Controlar caja
 
 Cada sucursal puede utilizar:

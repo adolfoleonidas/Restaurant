@@ -104,8 +104,13 @@ function Restaurante() {
     const [r, setR] = useState(null);
     useEffect(() => { getRestaurant().then((res) => setR(res.data)); }, []);
     const save = async () => {
-        try { const { data } = await updateRestaurant(r); setR(data); toast.success('Configuración guardada'); }
-        catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la configuración. Revisa tu conexión y reintenta.')); }
+        try {
+            const { data } = await updateRestaurant(r);
+            setR(data);
+            // Las pantallas abiertas (Salón) releen la política de cobro.
+            notifyFeaturesChanged();
+            toast.success('Configuración guardada');
+        } catch (e) { toast.error(apiErrorMessage(e, 'No se pudo guardar la configuración. Revisa tu conexión y reintenta.')); }
     };
     if (!r) return <div className="text-muted-foreground">Cargando…</div>;
     return (
@@ -136,6 +141,26 @@ function Restaurante() {
                     Liberar mesa automáticamente al cobrar
                 </label>
                 <p className="text-xs text-muted-foreground mt-1">Al pagar la cuenta completa, la mesa pasa directo a «Disponible» (reaparece en la carta web al instante). Si está apagado, queda «Cuenta pagada» hasta que el mozo la libere.</p>
+            </div>
+            <div className="md:col-span-2 border-t pt-4 space-y-2">
+                <label className="flex items-center gap-2 text-sm cursor-pointer min-h-11 sm:min-h-0">
+                    <Switch
+                        checked={r.require_payment_to_close !== false}
+                        onCheckedChange={(v) => setR({ ...r, require_payment_to_close: v })}
+                        data-testid="config-require-payment"
+                        aria-label="Exigir cobro antes de liberar la mesa"
+                    />
+                    Exigir cobro antes de liberar la mesa
+                </label>
+                <p className="text-xs text-muted-foreground">
+                    Encendido, la mesa solo se finaliza cuando la cuenta está pagada. Apagado, la app funciona
+                    como <strong>tomador de pedidos</strong>: «Liberar mesa» no valida pago ni comida y la cuenta queda
+                    archivada como «cerrada sin cobro» —no se registra un cobro ni una venta—.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                    Es el comportamiento de siempre salvo que apagues esta opción. Si usas Caja y reportes de dinero,
+                    déjala encendida.
+                </p>
             </div>
             <div className="md:col-span-2 border-t pt-4 space-y-3">
                 <div>

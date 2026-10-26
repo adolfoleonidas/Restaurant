@@ -1,5 +1,5 @@
 import React from 'react';
-import { Ban, Bell, Check, CheckCheck, Clock, Link2, Plus, Receipt, ReceiptText, UtensilsCrossed } from 'lucide-react';
+import { Ban, Bell, Check, CheckCheck, Clock, DoorOpen, Link2, Plus, Receipt, ReceiptText, UtensilsCrossed } from 'lucide-react';
 import AttentionReference from '@/components/AttentionReference';
 import { FLOOR_STYLE } from '@/lib/floorStyle';
 import { elapsedMinutes, fmtElapsed, fmtMoney, countOf } from '@/lib/format';
@@ -72,6 +72,7 @@ export default function MesaCard({
     canCharge,
     canClose,
     canTake,
+    requirePayment = true,
     closing = null,
     selectMode = false,
     picked = false,
@@ -83,6 +84,7 @@ export default function MesaCard({
     onCloseAttention,
     onRequestBill,
     onTake,
+    onRelease,
 }) {
     const pendingActions = usePendingActions();
     const { table: t, floor, displayOrder, serviceOrder, ready, due, billRequested, showVisitaActiva, group, groupBadge, groupNumbers } = item;
@@ -98,7 +100,13 @@ export default function MesaCard({
     const isLate = floor.key === 'cuenta' && urgency === 'bad';
     // Miembros del grupo además de la mesa que muestra esta tarjeta.
     const groupOthers = (groupNumbers || []).filter((n) => Number(n) !== Number(t.number));
-    const closeable = canClose && canCloseAttention(t, serviceOrder, item.visitOrders);
+    // Con el control de pagos apagado, la acción de cierre es «Liberar mesa» y no
+    // valida cuenta ni comida; el servidor archiva las cuentas sin cobro.
+    const closeable = canClose && requirePayment
+        && canCloseAttention(t, serviceOrder, item.visitOrders, { requirePayment });
+    // También una mesa sentada sin pedido: en este modo se libera desde el piso.
+    const releaseable = !requirePayment && canTake
+        && (Boolean(serviceOrder) || t.status === 'ocupada');
     const showDeliver = canServe && (floor.key === 'listo' || ready > 0) && Boolean(serviceOrder);
     const showCobrar = canCharge && floor.key === 'cuenta' && Boolean(serviceOrder);
     const takeable = canTake && (floor.key === 'libre' || floor.key === 'sentados');
@@ -156,7 +164,13 @@ export default function MesaCard({
             key: 'cerrar', label: busy ? 'Cerrando…' : 'Finalizar mesa', icon: CheckCheck, variant: 'outline',
             disabled: busy, testId: `servicio-cerrar-${t.number}`, onClick: () => onCloseAttention(serviceOrder),
         });
-    } else if (!showCobrar && canTake && canRequestBill(serviceOrder, { billRequested })) {
+    } else if (releaseable) {
+        const busy = pendingActions.has(`release:${t.id}`);
+        actions.push({
+            key: 'liberar', label: busy ? 'Liberando…' : 'Liberar mesa', icon: DoorOpen, variant: 'outline',
+            disabled: busy, testId: `mesa-card-liberar-${t.number}`, onClick: () => onRelease?.(t),
+        });
+    } else if (!showCobrar && canTake && requirePayment && canRequestBill(serviceOrder, { billRequested })) {
         // Pedir la cuenta es el paso siguiente a servir, y en el piso no existía:
         // en «Entregado» la tarjeta se quedaba sin ningún botón y había que abrir
         // la hoja de cada mesa. La regla la comparte con la hoja (`canRequestBill`),

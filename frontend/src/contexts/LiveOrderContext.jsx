@@ -49,11 +49,11 @@ export const LiveOrderProvider = ({ children }) => {
     const { data: order, refetch } = usePolling(fetcher, 10000, [meta?.tracking_code, streamGen]);
 
     useEffect(() => {
-        if (order && ['pagado', 'cancelado'].includes(order.status)) clearMeta();
+        if (order && ['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(order.status)) clearMeta();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [order?.status]);
 
-    const isActive = Boolean(order) && !['pagado', 'cancelado'].includes(order.status);
+    const isActive = Boolean(order) && !['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(order.status);
 
     const productQty = (productId) => (order?.items || [])
         .filter((i) => i.product_id === productId && i.status !== 'cancelado')

@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { PendingActionsContext } from '@/contexts/PendingActionsContext';
 import useBranchNames from '@/hooks/useBranchNames';
 import useRestaurantFeatures from '@/hooks/useRestaurantFeatures';
+import useRequirePayment from '@/hooks/useRequirePayment';
 import { ACTIONS, can, canAccessRoute } from '@/lib/permissions';
 import { groupLabel, groupMembers } from '@/lib/tableGroups';
 import { countOf } from '@/lib/format';
@@ -64,6 +65,8 @@ export default function Salon() {
     // anular productos enviados solo aparece con la flag activa.
     const features = useRestaurantFeatures();
     const canVoidItems = Boolean(features.item_void);
+    // Modo «solo pedidos» (Ajustes → Exigir cobro antes de liberar la mesa).
+    const requirePayment = useRequirePayment();
 
     const [showNewOrder, setShowNewOrder] = useState(false);
     const [filtersOpen, setFiltersOpen] = useState(() => {
@@ -108,6 +111,7 @@ export default function Salon() {
         // Cobrar manda a la caja: `salon.charge` exige la función de cobro, y esa
         // función es la que abre `/caja` (ver `permissions.test.js`).
         canUseCaja: canAccessRoute(user, '/caja'),
+        requirePayment,
         closeSheet, refreshAll, refetchTables, navigate, patchOrder,
     });
 
@@ -146,6 +150,7 @@ export default function Salon() {
     const sheetModel = openTable
         ? selectSheetModel({
             openTable, sheetOrder: sheet.sheetOrder, tables, activeOrders, orders, canTake, canClose,
+            requirePayment,
         })
         : null;
 
@@ -234,6 +239,8 @@ export default function Salon() {
                     canCharge={canCharge}
                     canClose={canClose}
                     canTake={canTake}
+                    requirePayment={requirePayment}
+                    onRelease={floorActions.releaseTable}
                     selectMode={selection.selectMode}
                     selected={selection.selected}
                     pickedGroupIds={selection.pickedGroupIds}
@@ -266,6 +273,7 @@ export default function Salon() {
                 <TableSheet
                     model={sheetModel}
                     sheet={sheet}
+                    requirePayment={requirePayment}
                     perms={{
                         canTake, canServe, canCharge, canVoidItems,
                     }}

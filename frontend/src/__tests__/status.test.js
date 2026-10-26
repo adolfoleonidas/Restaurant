@@ -30,6 +30,7 @@ describe('status constants', () => {
             pendiente_pago: 'Pendiente de pago',
             pagado: 'Pagado',
             cancelado: 'Anulado',
+            cerrado_sin_cobro: 'Cerrada sin cobro',
         });
         expect(TABLE_STATUS_LABELS).toEqual({
             disponible: 'Disponible',

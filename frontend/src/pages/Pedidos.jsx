@@ -23,6 +23,7 @@ const FILTERS = [
     { value: 'activos', label: 'Activos' },
     { value: 'pendiente_pago', label: 'Pendiente pago' },
     { value: 'pagado', label: 'Pagados' },
+    { value: 'cerrado_sin_cobro', label: 'Sin cobro' },
     { value: 'cancelado', label: 'Anulados' },
     { value: 'all', label: 'Todos' },
 ];
@@ -92,7 +93,8 @@ export default function Pedidos() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {(data || []).map((o) => {
                     const mins = elapsedMinutes(o.created_at);
-                    const isWaiting = mins >= WAITING_THRESHOLD_MIN && o.status !== 'pagado' && o.status !== 'cancelado';
+                    const isWaiting = mins >= WAITING_THRESHOLD_MIN
+                        && !['pagado', 'cancelado', 'cerrado_sin_cobro'].includes(o.status);
                     const needsCobrar = o.status === 'pendiente_pago' && o.payment_status !== 'pagado' && o.payment_status !== 'comprobante_subido';
                     const needsVerify = o.payment_status === 'comprobante_subido';
                     const isPartial = o.payment_status === 'parcial';

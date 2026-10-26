@@ -7,6 +7,7 @@ from auth import require_roles, get_current_user
 from billing import rank_products, summarize_payments
 from branch_access import read_branch_filter
 from order_flow import bill_requested
+from order_states import TERMINAL_ORDER_STATUSES
 
 _OPEN_END = "9999-12-31T23:59:59+00:00"
 BUSINESS_TIMEZONE = ZoneInfo("America/Lima")
@@ -62,7 +63,7 @@ async def dashboard(
     active_orders = await db.orders.count_documents(_scoped_report_query(
         rid,
         branch_filter,
-        {"status": {"$nin": ["pagado", "cancelado"]}},
+        {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}},
     ))
     occupied_tables = await db.tables.count_documents(_scoped_report_query(
         rid,
@@ -232,7 +233,7 @@ async def today_board(
     ).to_list(2)
     active = await db.orders.find(
         _scoped_report_query(
-            rid, branch_filter, {"status": {"$nin": ["pagado", "cancelado"]}}
+            rid, branch_filter, {"status": {"$nin": list(TERMINAL_ORDER_STATUSES)}}
         ),
         {"_id": 0},
     ).to_list(500)
