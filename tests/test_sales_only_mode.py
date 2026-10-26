@@ -73,6 +73,10 @@ def test_sales_only_close_archives_unpaid_account_without_inventing_money():
     assert order["payment_status"] == "pendiente"
     assert order["amount_paid"] == 0.0
     assert order["attention_state"] == "closed"
+    # La comanda no se toca: cocina y mozo siguen trabajando con los mismos
+    # estados de plato. El modo solo cambia cómo se libera la mesa.
+    assert order["fulfillment_status"] == "entregado"
+    assert order["items"][0]["status"] == "entregado"
     assert order["closed_without_payment"] is True
     assert db.attentions.docs[0]["status"] == "closed"
     assert db.attentions.docs[0]["closed_without_payment"] is True
