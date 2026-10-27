@@ -221,6 +221,8 @@ function Marca() {
                 social_whatsapp: r.social_whatsapp || '',
             });
             setR(data);
+            // El encabezado y las demás pantallas releen nombre/logo.
+            notifyFeaturesChanged();
             toast.success('Marca guardada');
         } catch (e) { toast.error(apiErrorMessage(e, 'Error al guardar la marca')); }
         finally { setSaving(false); }

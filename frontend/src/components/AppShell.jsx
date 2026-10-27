@@ -6,6 +6,7 @@ import { isOwner as isOwnerUser, navItemsFor as permittedNavItems } from '@/lib/
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { BrandMark } from '@/components/BrandMark';
+import { subscribeFeatures } from '@/lib/features';
 import BuildStamp from '@/components/BuildStamp';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { KitchenAlerts } from '@/components/KitchenAlerts';
@@ -209,10 +210,16 @@ export const AppShell = () => {
 
     useEffect(() => {
         let active = true;
-        getRestaurant().then(({ data }) => {
-            if (active) setRestaurant(data);
-        }).catch(() => {});
-        return () => { active = false; };
+        const load = () => {
+            getRestaurant().then(({ data }) => {
+                if (active) setRestaurant(data);
+            }).catch(() => {});
+        };
+        load();
+        // Ajustes avisa al guardar la marca: el logo/nombre del encabezado se
+        // actualiza sin recargar la página.
+        const unsubscribe = subscribeFeatures(load);
+        return () => { active = false; unsubscribe(); };
     }, []);
     const [open, setOpen] = useState(false);
     const [confirmLogout, setConfirmLogout] = useState(false);
