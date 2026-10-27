@@ -31,6 +31,12 @@ jest.mock('@/lib/api/products', () => ({
     __esModule: true,
     updateProduct: jest.fn(() => Promise.resolve({ data: {} })),
 }));
+// El catálogo de estas pruebas no trae `category_id`, así que no se piden
+// categorías; el mock evita cargar axios y deja el agrupado en «Carta».
+jest.mock('@/lib/api/categories', () => ({
+    __esModule: true,
+    listCategories: jest.fn(() => Promise.resolve({ data: [] })),
+}));
 
 import {
     applyMenuTemplate, copyMenuFrom, deleteMenuTemplate, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuDay, saveMenuTemplate, setMenuSoldOut,
@@ -190,6 +196,45 @@ describe('GestionarMenu', () => {
 
         // `null` = «usa el del catálogo». Un 0 cobraría el plato gratis.
         expect(saveMenuDay.mock.calls[0][0].items.find((i) => i.product_id === 'p1').price).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('conserva el precio especial que ya tenía el día si no se toca', async () => {
+        getMenuDay.mockResolvedValue({
+            data: {
+                ...DIA,
+                selection: [{ product_id: 'p1', price: 9.5, sold_out: false }],
+            },
+        });
+        const { container, root } = await render();
+        expect(container.querySelector('[data-testid="menu-precio-p1"]').value).toBe('9.5');
+
+        await click(container.querySelector('[data-testid="menu-publicar"]'));
+        const items = saveMenuDay.mock.calls[0][0].items;
+        expect(items.find((item) => item.product_id === 'p1').price).toBe(9.5);
+        await act(async () => root.unmount());
+    });
+
+    it('con cero platos ofrecidos no publica y propone copiar el de ayer', async () => {
+        getMenuDay.mockResolvedValue({
+            data: {
+                ...DIA,
+                has_menu: false,
+                published: false,
+                selection: [],
+                catalog: DIA.catalog.map((product) => ({
+                    ...product,
+                    is_fixed: false,
+                    offered_today: false,
+                })),
+            },
+        });
+        const { container, root } = await render();
+
+        expect(container.querySelector('[data-testid="menu-sin-ofrecidos"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="menu-publicar"]').disabled).toBe(true);
+        await click(container.querySelector('[data-testid="menu-copiar-ayer"]'));
+        expect(copyMenuFrom).toHaveBeenCalledWith({ date: undefined, from_date: '2026-03-09' });
         await act(async () => root.unmount());
     });
 

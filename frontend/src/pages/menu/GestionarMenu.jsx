@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CalendarDays, ChevronDown, Eye } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { fmtMoney } from '@/lib/format';
 import {
     applyMenuTemplate, deleteMenuTemplate, getMenuDay, listMenuTemplates, repeatMenuTemplate, saveMenuTemplate,
 } from '@/lib/api/menu';
+import { listCategories } from '@/lib/api/categories';
 import { toast } from 'sonner';
 
 import MenuDayView from './MenuDayView';
@@ -29,8 +32,34 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 const TABS = [
     { key: 'today', label: 'Hoy' },
     { key: 'week', label: 'Semana' },
-    { key: 'catalog', label: 'Catálogo' },
+    { key: 'catalog', label: 'Carta fija' },
 ];
+
+const LONG_DATE = new Intl.DateTimeFormat('es-PE', { weekday: 'long', day: 'numeric', month: 'long' });
+const SHORT_DATE = new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: 'numeric', month: 'short' });
+
+function dayDate(value) {
+    return value ? new Date(`${value}T12:00:00`) : null;
+}
+
+function longDate(value) {
+    const date = dayDate(value);
+    return date ? LONG_DATE.format(date) : '';
+}
+
+function shortDate(value, today) {
+    if (!value) return '';
+    if (value === today) return 'Hoy';
+    const date = dayDate(value);
+    if (!date) return value;
+    return SHORT_DATE.format(date);
+}
+
+function sumaDias(fecha, dias) {
+    const d = new Date(`${fecha}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + dias);
+    return d.toISOString().slice(0, 10);
+}
 
 export default function GestionarMenu() {
     // El día que se está editando. `undefined` = hoy, y quien decide cuál es hoy es
@@ -56,52 +85,101 @@ export default function GestionarMenu() {
     const [porBorrar, setPorBorrar] = useState(null);
     const [borrando, setBorrando] = useState(false);
     const [plantillasError, setPlantillasError] = useState(null);
+    // Nombres de categoría para agrupar el catálogo. La pantalla funciona sin
+    // ellos: si el catálogo no trae `category_id` (o la lectura falla), todo cae
+    // en un grupo «Carta» y no se pierde ningún plato.
+    const [categorias, setCategorias] = useState([]);
 
     useEffect(() => {
         if (!hoyServidor && data?.date && diaAbierto === undefined) setHoyServidor(data.date);
     }, [data, diaAbierto, hoyServidor]);
+
+    const tieneCategorias = useMemo(
+        () => (data?.catalog || []).some((product) => product.category_id),
+        [data?.catalog],
+    );
+    useEffect(() => {
+        if (!tieneCategorias) return undefined;
+        let vivo = true;
+        listCategories()
+            .then(({ data: filas }) => { if (vivo) setCategorias(Array.isArray(filas) ? filas : []); })
+            .catch(() => { /* el agrupado cae a «Carta» */ });
+        return () => { vivo = false; };
+    }, [tieneCategorias, data?.date]);
     // Solo los precios que el dueño ha tocado. Los demás van sin precio, para que
     // sigan el del catálogo: mandar el que se muestra lo congelaría en este día, y
     // un precio viejo arrastrado es cobrar mal sin que nadie lo note.
     const [precios, setPrecios] = useState({});
     // Tarjetas o lista: en computadora la tabla del salón es más cómoda para el
     // trabajo en bloque; en el celular, la lista compacta.
-    const [modo, setModo] = useState('cards');
+    const [modo, setModo] = useState(() => (
+        typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'cards'
+    ));
+    // La lista compacta es la vista natural del teléfono; si la ventana cambió
+    // de tamaño antes de montar, se corrige una vez sin pisar la elección manual.
+    useEffect(() => {
+        if (typeof window !== 'undefined' && window.matchMedia?.('(max-width: 767px)').matches) {
+            setModo((actual) => (actual === 'cards' ? 'list' : actual));
+        }
+    }, []);
     const ids = useMemo(() => {
         if (seleccion) return seleccion;
         return new Set((data?.selection || []).map((item) => item.product_id));
     }, [seleccion, data]);
 
     // La carta fija se ofrece siempre: se refleja aquí para que la pantalla diga la
-    // verdad antes de guardar, y no después.
+    // verdad antes de guardar, y no después. `price_override` separa lo que hoy se
+    // escribe (borrador local) del precio efectivo que muestra el servidor.
     const catalogo = useMemo(
-        () => (data?.catalog || []).map((p) => ({
-            ...p,
-            offered_today: p.is_fixed || ids.has(p.product_id),
-            today_price: precios[p.product_id] !== undefined && precios[p.product_id] !== ''
-                ? precios[p.product_id]
-                : p.today_price,
-        })),
+        () => (data?.catalog || []).map((p) => {
+            const guardado = (data?.selection || []).find((item) => item.product_id === p.product_id)?.price;
+            const borrador = precios[p.product_id];
+            return {
+                ...p,
+                offered_today: p.is_fixed || ids.has(p.product_id),
+                price_override: borrador !== undefined ? borrador : (guardado ?? null),
+                today_price: borrador !== undefined && borrador !== '' ? borrador : p.today_price,
+            };
+        }),
         [data, ids, precios],
     );
 
-    /** La selección que se manda al servidor, con los precios que se tocaron. */
+    const ofrecidos = catalogo.filter((product) => product.offered_today).length;
+    const agotados = catalogo.filter((product) => product.sold_out).length;
+    const ayer = data?.date ? sumaDias(data.date, -1) : null;
+
+    /**
+     * La selección que se manda al servidor. Los precios que el dueño no tocó
+     * conservan el que ya tenía el día: si no, guardar otro cambio borraría en
+     * silencio el precio especial de hoy.
+     */
     const seleccionParaGuardar = () => [...ids].map((product_id) => {
         const bruto = precios[product_id];
-        if (bruto === undefined || bruto === '') return { product_id, price: null };
+        const guardado = (data?.selection || []).find((item) => item.product_id === product_id)?.price ?? null;
+        if (bruto === undefined) return { product_id, price: guardado };
+        if (bruto === '') return { product_id, price: null };
         const importe = Number(bruto);
         return { product_id, price: Number.isFinite(importe) && importe >= 0 ? importe : null };
     });
 
+    /** ¿Hay cambios locales que todavía no se guardaron? */
+    const dirty = useMemo(() => {
+        if (!data) return false;
+        const guardados = new Map((data.selection || []).map((item) => [item.product_id, item.price ?? null]));
+        if (ids.size !== guardados.size) return true;
+        for (const product_id of ids) {
+            if (!guardados.has(product_id)) return true;
+            if (precios[product_id] === undefined) continue;
+            const siguiente = precios[product_id] === '' ? null : Number(precios[product_id]);
+            if (!Number.isFinite(siguiente) && precios[product_id] !== '') return true;
+            if (siguiente !== guardados.get(product_id)) return true;
+        }
+        return false;
+    }, [data, ids, precios]);
+
     // La semana: los siete días desde el «hoy» del servidor, con su estado real.
     // Se piden al abrir la pestaña, no al montar, para no castigar la pantalla que
     // el dueño usa a diario con siete peticiones que no va a mirar.
-    const sumaDias = (fecha, dias) => {
-        const d = new Date(`${fecha}T00:00:00Z`);
-        d.setUTCDate(d.getUTCDate() + dias);
-        return d.toISOString().slice(0, 10);
-    };
-
     /** Los siete días desde el «hoy» del servidor, con su estado real. */
     const cargarSemana = useCallback(async () => {
         if (!hoyServidor) return;
@@ -204,6 +282,7 @@ export default function GestionarMenu() {
         try {
             await save(seleccionParaGuardar(), true);
             setSeleccion(null);
+            setPrecios({});
             toast.success('Menú publicado: la carta ya lo muestra');
         } catch (e) {
             toast.error(apiErrorMessage(e, 'No se pudo publicar el menú'));
@@ -214,18 +293,20 @@ export default function GestionarMenu() {
         try {
             await save(seleccionParaGuardar(), false);
             setSeleccion(null);
+            setPrecios({});
             toast.success('Guardado como borrador. La carta no cambia hasta publicar');
         } catch (e) {
             toast.error(apiErrorMessage(e, 'No se pudo guardar el borrador'));
         }
     };
 
-    const traerDeOtroDia = async () => {
-        if (!desde) { toast.error('Elige de qué día copiar'); return; }
+    const traerDeOtroDia = async (fecha = desde) => {
+        if (!fecha) { toast.error('Elige de qué día copiar'); return; }
         try {
-            const payload = await copyFrom(desde);
+            const payload = await copyFrom(fecha);
             setSeleccion(null);
-            toast.success(`Traídos ${payload.copied} platos del ${desde}`);
+            setPrecios({});
+            toast.success(`Traídos ${payload.copied} platos del ${fecha}. Revisa y publica para que la carta cambie.`);
         } catch (e) {
             toast.error(apiErrorMessage(e, 'No se pudo copiar ese día'));
         }
@@ -273,14 +354,96 @@ export default function GestionarMenu() {
         }
     };
 
+    const fijos = catalogo.filter((product) => product.is_fixed).length;
+    const estado = !data
+        ? null
+        : data.published
+            ? { label: 'Publicado', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200' }
+            : data.has_menu
+                ? { label: 'Borrador', className: 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200' }
+                : ids.size > 0
+                    ? { label: 'Sin guardar', className: 'border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200' }
+                    : fijos > 0
+                        ? { label: 'Solo carta fija', className: 'border-border bg-muted text-muted-foreground' }
+                        : { label: 'Sin menú', className: 'border-border bg-muted text-muted-foreground' };
+    const pageTitle = tab === 'today' ? 'Menú de hoy' : tab === 'week' ? 'Semana del menú' : 'Carta fija';
+    const pageSubtitle = tab === 'today'
+        ? <> Elige qué se vende hoy. <strong>Guardar</strong> deja un borrador; <strong>Publicar</strong> es lo que cambia la carta del cliente. </>
+        : tab === 'week'
+            ? 'Revisa los próximos siete días y abre el que quieras editar.'
+            : 'Decide qué platos se ofrecen todos los días, sin volver a elegirlos cada mañana.';
+
     return (
-        <div className="space-y-4" data-testid="gestionar-menu">
-            <div>
-                <p className="page-kicker mb-1">Carta</p>
-                <h1 className="font-display text-3xl font-semibold">Gestionar menú</h1>
-                <p className="text-sm text-muted-foreground">
-                    Elige lo que se vende hoy sin tocar el catálogo. Mañana empieza en blanco.
-                </p>
+        <div className={`space-y-4 ${tab === 'today' ? 'pb-32 md:pb-0' : ''}`} data-testid="gestionar-menu">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                    <p className="page-kicker mb-1">Carta</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <h1 className="font-display text-3xl font-semibold">{pageTitle}</h1>
+                        {tab === 'today' && estado && (
+                            <span data-testid="menu-estado" className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${estado.className}`}>
+                                {estado.label}
+                            </span>
+                        )}
+                        {tab === 'today' && dirty && data?.has_menu && (
+                            <span data-testid="menu-cambios" className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-200">
+                                Cambios sin guardar
+                            </span>
+                        )}
+                    </div>
+                    <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{pageSubtitle}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        {tab === 'today' && data?.date && (
+                            <span className="inline-flex items-center gap-1">
+                                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                                {longDate(data.date)}
+                            </span>
+                        )}
+                        {tab === 'today' && data && (
+                            <span>
+                                {ofrecidos} de {catalogo.length} platos ofrecidos
+                                {agotados > 0 ? ` · ${agotados} agotado${agotados === 1 ? '' : 's'}` : ''}
+                            </span>
+                        )}
+                        <a className="inline-flex min-h-6 items-center gap-1 text-primary underline-offset-2 hover:underline" href="/menu" target="_blank" rel="noreferrer">
+                            <Eye className="h-3.5 w-3.5" aria-hidden="true" /> Ver carta
+                        </a>
+                    </div>
+                </div>
+
+                {/* Una sola barra de acciones: fija sobre la navegación en móvil y
+                    estática a la derecha en escritorio. Evita duplicar botones y
+                    solo existe en «Hoy»: guardar/publicar pertenecen al día. */}
+                {tab === 'today' && <div className="fixed inset-x-0 bottom-[calc(var(--bottom-nav-h)+var(--safe-bottom))] z-30 border-t bg-card p-3 md:static md:inset-auto md:z-auto md:border-0 md:bg-transparent md:p-0">
+                    <div className="mb-2 min-w-0 md:hidden">
+                        <p className="text-sm font-semibold">{dirty ? 'Cambios sin guardar' : (data?.published ? 'Publicado' : 'Sin cambios')}</p>
+                        <p className="text-xs text-muted-foreground">{ofrecidos} de {catalogo.length} platos ofrecidos</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 flex-1 md:flex-none"
+                            onClick={guardarBorrador}
+                            disabled={saving || loading || !data || Boolean(error)}
+                            data-testid="menu-guardar"
+                        >
+                            {saving ? 'Guardando…' : 'Guardar borrador'}
+                        </Button>
+                        <Button
+                            type="button"
+                            className="h-11 flex-1 md:flex-none"
+                            onClick={publicar}
+                            disabled={saving || loading || !data || Boolean(error) || ofrecidos === 0}
+                            title={ofrecidos === 0
+                                ? 'Ofrece al menos un plato para publicar el menú'
+                                : undefined}
+                            data-testid="menu-publicar"
+                        >
+                            {saving ? 'Guardando…' : 'Publicar menú'}
+                        </Button>
+                    </div>
+                </div>}
             </div>
 
             <div className="flex items-center gap-1 border-b" role="tablist" aria-label="Secciones">
@@ -292,7 +455,7 @@ export default function GestionarMenu() {
                         aria-selected={tab === t.key}
                         onClick={() => setTab(t.key)}
                         data-testid={`menu-tab-${t.key}`}
-                        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}
+                        className={`min-h-11 px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t.key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground'}`}
                     >
                         {t.label}
                     </button>
@@ -301,34 +464,61 @@ export default function GestionarMenu() {
 
             {tab === 'week' && (
                 <section className="space-y-3" data-testid="menu-semana">
-                    <p className="text-sm text-muted-foreground">
-                        Los próximos siete días. Programar esta semana no repite todas las semanas:
-                        eso se activará aparte, porque no es lo mismo.
-                    </p>
+                    <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="text-sm font-medium">Próximos siete días</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            Abre un día para editarlo. Programar esta semana no repite todas las semanas:
+                            eso se activará aparte, porque no es lo mismo.
+                        </p>
+                    </div>
                     {semana === null && <p className="text-sm text-muted-foreground" data-testid="menu-semana-cargando">Leyendo la semana…</p>}
                     {semana !== null && (
-                        <div className="rounded-xl border border-border divide-y">
-                            {semana.map(({ fecha, dia }) => (
-                                <div key={fecha} className="flex items-center gap-3 px-3 py-2" data-testid={`menu-dia-${fecha}`}>
-                                    <span className="tabular-nums text-sm w-28 shrink-0">{fecha}</span>
-                                    <span className="min-w-0 flex-1 text-sm text-muted-foreground" data-testid={`menu-dia-estado-${fecha}`}>
-                                        {dia?.published ? 'Publicado' : (dia?.has_menu ? 'Borrador' : 'Sin menú')}
-                                    </span>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => { setDiaAbierto(fecha); setTab('today'); setSeleccion(null); setPrecios({}); }}
-                                        data-testid={`menu-dia-abrir-${fecha}`}
+                        <div className="overflow-hidden rounded-xl border border-border bg-card divide-y">
+                            {semana.map(({ fecha, dia }) => {
+                                const weekState = dia?.published
+                                    ? { label: 'Publicado', className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200' }
+                                    : dia?.has_menu
+                                        ? { label: 'Borrador', className: 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200' }
+                                        : { label: 'Sin menú', className: 'border-border bg-muted text-muted-foreground' };
+                                const isToday = fecha === hoyServidor;
+                                return (
+                                    <div
+                                        key={fecha}
+                                        className={`flex flex-wrap items-center gap-3 px-3 py-2.5 ${isToday ? 'bg-primary/5' : ''}`}
+                                        data-testid={`menu-dia-${fecha}`}
                                     >
-                                        Abrir
-                                    </Button>
-                                </div>
-                            ))}
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm font-medium">{shortDate(fecha, hoyServidor)}</p>
+                                            <p className="text-xs tabular-nums text-muted-foreground">{fecha}</p>
+                                        </div>
+                                        <span
+                                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${weekState.className}`}
+                                            data-testid={`menu-dia-estado-${fecha}`}
+                                        >
+                                            {weekState.label}
+                                        </span>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => { setDiaAbierto(fecha); setTab('today'); setSeleccion(null); setPrecios({}); }}
+                                            data-testid={`menu-dia-abrir-${fecha}`}
+                                        >
+                                            {isToday ? 'Editar hoy' : 'Abrir'}
+                                        </Button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
 
-                    <div className="rounded-xl border border-border p-3 space-y-3" data-testid="menu-plantillas">
+                    <div className="rounded-xl border border-border bg-card p-3 space-y-3" data-testid="menu-plantillas">
+                        <div>
+                            <p className="text-sm font-medium">Plantillas de menú</p>
+                            <p className="text-xs text-muted-foreground">
+                                Guarda una selección para reutilizarla en otro día. No guarda precios ni el estado de agotado.
+                            </p>
+                        </div>
                         <div className="flex items-end gap-2 flex-wrap">
                             <div className="min-w-[12rem] flex-1">
                                 <label className="block text-xs text-muted-foreground mb-1" htmlFor="menu-plantilla-nombre">
@@ -410,26 +600,38 @@ export default function GestionarMenu() {
 
             {tab === 'catalog' && (
                 <section className="space-y-3" data-testid="menu-catalogo">
-                    <p className="text-sm text-muted-foreground">
-                        La carta fija se ofrece siempre. Lo demás solo se ofrece los días en que
-                        lo pongas en el menú.
-                    </p>
-                    <div className="rounded-xl border border-border divide-y">
-                        {(data?.catalog || []).map((p) => (
-                            <div key={p.product_id} className="flex items-center gap-3 px-3 py-2" data-testid={`menu-catalogo-${p.product_id}`}>
-                                <span className="min-w-0 flex-1 truncate font-medium" title={p.name}>{p.name}</span>
-                                <span className="tabular-nums text-sm shrink-0">{fmtMoney(p.base_price)}</span>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant={p.is_fixed ? 'default' : 'outline'}
-                                    onClick={() => marcarFija(p.product_id, !p.is_fixed)}
-                                    data-testid={`menu-fija-${p.product_id}`}
-                                >
-                                    {p.is_fixed ? 'Carta fija' : 'Del día'}
-                                </Button>
-                            </div>
-                        ))}
+                    <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="text-sm font-medium">Carta fija</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            Un plato de carta fija se ofrece todos los días (bebidas, clásicos). Uno «del día»
+                            solo aparece si lo agregas al menú de hoy.
+                        </p>
+                    </div>
+                    <div className="divide-y overflow-hidden rounded-xl border border-border bg-card">
+                        {(data?.catalog || []).map((p) => {
+                            const category = categorias.find((item) => item.id === p.category_id)?.name;
+                            return (
+                                <div key={p.product_id} className="flex flex-wrap items-center gap-3 px-3 py-2.5" data-testid={`menu-catalogo-${p.product_id}`}>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium" title={p.name}>{p.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {category ? `${category} · ` : ''}{fmtMoney(p.base_price)}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                            {p.is_fixed ? 'Siempre' : 'Solo del día'}
+                                        </span>
+                                        <Switch
+                                            checked={Boolean(p.is_fixed)}
+                                            onCheckedChange={(value) => marcarFija(p.product_id, value)}
+                                            aria-label={`${p.name}: ${p.is_fixed ? 'quitar de carta fija' : 'marcar como carta fija'}`}
+                                            data-testid={`menu-fija-${p.product_id}`}
+                                        />
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
             )}
@@ -439,8 +641,11 @@ export default function GestionarMenu() {
                     {/* Abrir otro día desde la semana no puede ser invisible: si no,
                         se publicaría en la fecha equivocada sin darse cuenta. */}
                     {diaAbierto && (
-                        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-border bg-muted/40 px-3 py-2" data-testid="menu-dia-abierto">
-                            <span className="text-sm font-medium">Estás editando el {diaAbierto}</span>
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2" data-testid="menu-dia-abierto">
+                            <CalendarDays className="h-4 w-4 shrink-0 text-amber-800 dark:text-amber-200" aria-hidden="true" />
+                            <span className="min-w-0 flex-1 text-sm font-medium">
+                                Estás editando el <strong>{diaAbierto}</strong>, no el menú de hoy.
+                            </span>
                             <Button
                                 type="button"
                                 size="sm"
@@ -452,44 +657,100 @@ export default function GestionarMenu() {
                             </Button>
                         </div>
                     )}
-                    <div className="flex items-end gap-2 flex-wrap">
-                        <div>
-                            <label className="block text-xs text-muted-foreground mb-1" htmlFor="menu-desde">Copiar de otro día</label>
-                            <Input
-                                id="menu-desde"
-                                type="date"
-                                className="h-11"
-                                value={desde}
-                                onChange={(e) => setDesde(e.target.value)}
-                                data-testid="menu-copiar-desde"
-                            />
-                        </div>
-                        <Button type="button" variant="outline" onClick={traerDeOtroDia} disabled={saving} data-testid="menu-copiar">
-                            Traer esos platos
-                        </Button>
-                        <div className="flex-1" />
-                        <Button type="button" variant="outline" onClick={guardarBorrador} disabled={saving || loading} data-testid="menu-guardar">
-                            Guardar borrador
-                        </Button>
-                        <Button type="button" onClick={publicar} disabled={saving || loading} data-testid="menu-publicar">
-                            {saving ? 'Guardando…' : 'Publicar menú'}
-                        </Button>
-                    </div>
 
-                    {loading && <p className="text-sm text-muted-foreground" data-testid="menu-cargando">Cargando…</p>}
-                    {error && <p className="text-sm text-destructive" data-testid="menu-error">{error}</p>}
+                    {loading && (
+                        <div className="rounded-xl border border-border bg-card p-4">
+                            <p className="text-sm text-muted-foreground" data-testid="menu-cargando">Cargando el menú de hoy…</p>
+                        </div>
+                    )}
+                    {error && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3">
+                            <p className="min-w-0 flex-1 text-sm text-destructive" data-testid="menu-error">{error}</p>
+                            <Button type="button" size="sm" variant="outline" onClick={reload}>Reintentar</Button>
+                        </div>
+                    )}
 
                     {!loading && !error && (
-                        <MenuDayView
-                            catalog={catalogo}
-                            mode={modo}
-                            onModeChange={setModo}
-                            saving={saving}
-                            onToggleOffered={alternarOfrecido}
-                            onToggleSoldOut={alternarAgotado}
-                            onPriceChange={(productId, valor) => setPrecios((previos) => ({ ...previos, [productId]: valor }))}
-                            onBulkOffer={alternarVarios}
-                        />
+                        <>
+                            {catalogo.length > 0 && ofrecidos === 0 && (
+                                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3" data-testid="menu-sin-ofrecidos">
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold">Hoy no ofreces ningún plato del menú.</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            La carta mostrará solo la carta fija. Copia el menú de ayer o elige platos abajo.
+                                        </p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => traerDeOtroDia(ayer)}
+                                        disabled={!ayer || saving}
+                                        data-testid="menu-copiar-ayer"
+                                    >
+                                        Copiar el menú de ayer
+                                    </Button>
+                                </div>
+                            )}
+
+                            <details className="group rounded-xl border border-border bg-card px-3 py-2" data-testid="menu-copiar-panel">
+                                <summary className="flex min-h-9 cursor-pointer list-none items-center gap-2 text-sm font-medium">
+                                    <ChevronDown className="h-4 w-4 shrink-0" aria-hidden="true" />
+                                    Copiar platos de otro día
+                                    <span className="ml-auto hidden text-xs font-normal text-muted-foreground sm:inline">
+                                        No copia precios ni el estado de agotado
+                                    </span>
+                                </summary>
+                                <div className="mt-3 flex flex-wrap items-end gap-2 border-t pt-3">
+                                    <div>
+                                        <label className="mb-1 block text-xs text-muted-foreground" htmlFor="menu-desde">Día de origen</label>
+                                        <Input
+                                            id="menu-desde"
+                                            type="date"
+                                            className="h-11"
+                                            value={desde}
+                                            max={data?.date || undefined}
+                                            onChange={(e) => setDesde(e.target.value)}
+                                            data-testid="menu-copiar-desde"
+                                        />
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-11"
+                                        onClick={() => traerDeOtroDia()}
+                                        disabled={saving}
+                                        data-testid="menu-copiar"
+                                    >
+                                        Traer esos platos
+                                    </Button>
+                                    {ayer && (
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            className="h-11"
+                                            onClick={() => traerDeOtroDia(ayer)}
+                                            disabled={saving}
+                                            data-testid="menu-copiar-ayer-panel"
+                                        >
+                                            Usar el de ayer
+                                        </Button>
+                                    )}
+                                </div>
+                            </details>
+
+                            <MenuDayView
+                                catalog={catalogo}
+                                categories={categorias}
+                                mode={modo}
+                                onModeChange={setModo}
+                                saving={saving}
+                                onToggleOffered={alternarOfrecido}
+                                onToggleSoldOut={alternarAgotado}
+                                onPriceChange={(productId, valor) => setPrecios((previos) => ({ ...previos, [productId]: valor }))}
+                                onBulkOffer={alternarVarios}
+                            />
+                        </>
                     )}
                 </>
             )}

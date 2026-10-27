@@ -132,6 +132,41 @@ describe('MenuDayView', () => {
         await act(async () => root.unmount());
     });
 
+    it('agrupa por categoría y no ofrece precio donde no aplica', async () => {
+        const { container, root } = await render({
+            catalog: [
+                { ...CATALOGO[0], category_id: 'c1' },
+                { ...CATALOGO[1], category_id: 'c2' },
+                { ...CATALOGO[2], category_id: 'c2' },
+            ],
+            categories: [{ id: 'c1', name: 'Entradas' }, { id: 'c2', name: 'Segundos' }],
+        });
+        expect(container.textContent).toContain('Entradas');
+        expect(container.textContent).toContain('Segundos');
+        // El precio de hoy solo se edita en un plato ofrecido y del día.
+        expect(container.querySelector('[data-testid="menu-precio-p1"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="menu-precio-p2"]')).toBeNull();
+        expect(container.querySelector('[data-testid="menu-precio-p3"]')).toBeNull();
+        await act(async () => root.unmount());
+    });
+
+    it('busca y filtra sin perder el resumen de la carta', async () => {
+        const { container, root } = await render();
+        const search = container.querySelector('[data-testid="menu-buscar"]');
+        await act(async () => {
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            setter.call(search, 'Ceviche');
+            search.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.querySelector('[data-testid="menu-plato-p3"]')).not.toBeNull();
+        expect(container.querySelector('[data-testid="menu-plato-p1"]')).toBeNull();
+        expect(container.querySelector('[data-testid="menu-day-resumen"]').textContent).toContain('3 de 4');
+
+        await click(container.querySelector('[data-testid="menu-filtro-ofrecidos"]'));
+        expect(container.querySelector('[data-testid="menu-day-sin-resultados"]')).not.toBeNull();
+        await act(async () => root.unmount());
+    });
+
     it('con la carta vacía lo dice en vez de quedarse en blanco', async () => {
         const { container, root } = await render({ catalog: [] });
         expect(container.querySelector('[data-testid="menu-day-vacio"]')).not.toBeNull();
