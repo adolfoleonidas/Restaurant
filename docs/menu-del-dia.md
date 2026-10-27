@@ -24,7 +24,7 @@ le deja pedirlo: parar a alguien a media atención es peor que la excepción.
 - **Del día** (por defecto): solo se ofrecen si están en el menú publicado de hoy.
 
 Sin marcar la carta fija, **publicar un menú esconde todo lo que no esté en él**.
-Por eso el interruptor vive en la pestaña «Catálogo».
+Por eso el interruptor vive en la pestaña «Carta fija».
 
 ## Piezas
 
@@ -35,26 +35,45 @@ Por eso el interruptor vive en la pestaña «Catálogo».
 | `backend/business_time.py` | La zona del negocio, para que «hoy» no lo decida un dispositivo con la hora mal puesta |
 | `frontend/src/pages/menu/` | La pantalla: `GestionarMenu` (pestañas), `MenuDayView` (tarjetas y lista), `useMenuDay` (estado) |
 
-La ruta es **`/menu`** («Menú de hoy» en el menú lateral), solo dueño y encargado.
+La pantalla de gestión es **`/gestion/menu`** («Menú de hoy» en el menú lateral),
+solo dueño y encargado. **`/menu`** es la carta pública.
+
+## Cómo se lee la pantalla
+
+- **Estado arriba, junto al título**: `Sin menú`, `Sin guardar` (hay platos
+  elegidos en pantalla), `Borrador` (guardado, la carta todavía no cambia) o
+  `Publicado`. Si hay cambios locales sobre un menú guardado, aparece además
+  `Cambios sin guardar`.
+- **Platos agrupados por categoría**, con buscador y filtros `Todos`, `En menú`,
+  `Fuera` y `Agotados`. El resumen cuenta los que se ofrecen hoy.
+- **Cada plato dice su estado** (`En el menú`, `Fuera hoy`, `Agotado`) y tiene un
+  interruptor **Ofrecer hoy**. La casilla de la izquierda es para el trabajo en
+  bloque; al marcar varias aparece la barra para aplicar el cambio.
+- **El precio solo se edita cuando el plato se ofrece y es del día**. Vacío significa
+  «usa el precio de carta», que se muestra al lado. Un plato de carta fija no tiene
+  precio de hoy: se ofrece siempre.
+- **`Marcar agotado` es inmediato** y no espera a publicar; los pedidos ya tomados
+  siguen. `Habilitar` lo devuelve a la carta.
+- **Con cero platos ofrecidos no se puede publicar** y se propone copiar el menú de
+  ayer. Guardar borrador sí se permite.
+- **En el teléfono**, la lista compacta es la vista por defecto y `Guardar` /
+  `Publicar` quedan fijos encima de la navegación, con el conteo y el aviso de
+  cambios.
 
 ## Pantallas
 
 - **Hoy**: tarjetas o lista, ofrecer y quitar de una en una o **en bloque**, agotar
-  al instante, **precio editable en la fila**, copiar de otro día, guardar borrador
-  y **publicar**. Preparar no es publicar: el borrador no cambia la carta.
+  al instante, **precio editable en la fila cuando corresponde**, copiar de otro día,
+  guardar borrador y **publicar**. Preparar no es publicar: el borrador no cambia la
+  carta.
 - **Semana**: los próximos siete días con su estado real (publicado, borrador o sin
-  menú) y poder abrir cualquiera. Abrir otro día se avisa en pantalla, porque
-  publicar en la fecha equivocada no se deshace de un vistazo.
-- **Catálogo**: el interruptor de carta fija.
+  menú), fechas legibles y poder abrir cualquiera. Abrir otro día se avisa en
+  pantalla, porque publicar en la fecha equivocada no se deshace de un vistazo.
+- **Carta fija**: el interruptor «Siempre / Solo del día» de cada plato.
 
-## Lo que falta
+## Plantillas y repetición
 
-**Plantillas y repetición explícita de la semana** (por ejemplo «almuerzo
-habitual», o repetir la semana). Con dos reglas ya decididas:
-
-- **programar esta semana no es repetir todas las semanas**: la repetición se activa
-  expresamente, nunca por defecto;
-- una plantilla guarda **los platos, no los precios**: un precio viejo arrastrado es
-  cobrar mal sin que nadie lo note.
-
-El resto está hecho y con tests (59 nuevos entre backend y frontend).
+Las plantillas se guardan desde **Semana**: guardan **los platos, no los precios**
+(un precio viejo arrastrado es cobrar mal sin que nadie lo note). Repetir es
+explícito: hay que elegir los días; **programar esta semana no repite todas las
+semanas**.
