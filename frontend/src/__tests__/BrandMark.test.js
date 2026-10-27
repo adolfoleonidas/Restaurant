@@ -8,6 +8,18 @@ describe('getSafeLogoUrl', () => {
         expect(getSafeLogoUrl('/uploads/mark.png')).toBe('/uploads/mark.png');
     });
 
+    it('accepts the image data URLs that Ajustes saves from FileReader', () => {
+        const jpeg = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ==';
+        expect(getSafeLogoUrl(jpeg)).toBe(jpeg);
+        expect(getSafeLogoUrl('data:image/png;base64,iVBORw0KGgo=')).toBe('data:image/png;base64,iVBORw0KGgo=');
+        expect(getSafeLogoUrl('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=')).toBe('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=');
+    });
+
+    it('rejects non-image or non-base64 data URLs', () => {
+        expect(getSafeLogoUrl('data:text/html;base64,PHNjcmlwdD4=')).toBeNull();
+        expect(getSafeLogoUrl('data:image/svg+xml,<svg onload="alert(1)"></svg>')).toBeNull();
+    });
+
     it('rejects executable and protocol-relative URLs', () => {
         expect(getSafeLogoUrl('javascript:alert(1)')).toBeNull();
         expect(getSafeLogoUrl('//cdn.example.com/mark.png')).toBeNull();
@@ -26,6 +38,13 @@ describe('BrandMark', () => {
         expect(markup).toContain('Casa Andina');
         expect(markup).toContain('src="https://cdn.example.com/logo.png"');
         expect(markup).toContain('alt=""');
+    });
+
+    it('renders a logo saved as a data URL beside the restaurant name', () => {
+        const logo = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ==';
+        const markup = renderToStaticMarkup(<BrandMark name="Sabores de Cheo" logoUrl={logo} />);
+        expect(markup).toContain(`src="${logo}"`);
+        expect(markup).toContain('Sabores de Cheo');
     });
 
     it('renders the steam-and-plate fallback when no logo is configured', () => {

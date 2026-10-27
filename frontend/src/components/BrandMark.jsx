@@ -1,9 +1,17 @@
 import React, { useState } from 'react';
 
+// El logo se guarda como data URL desde Ajustes (FileReader). Solo se aceptan
+// imágenes raster/SVG en base64: nunca `data:text/html` ni SVG con marcado
+// suelto. La CSP de nginx ya permite `img-src data:`.
+const SAFE_LOGO_DATA_URL = /^data:image\/(?:png|jpe?g|webp|gif|svg\+xml);base64,[A-Za-z0-9+/]+={0,2}$/i;
+
 export function getSafeLogoUrl(value) {
     if (typeof value !== 'string') return null;
     const url = value.trim();
     if (!url) return null;
+    if (url.startsWith('data:')) {
+        return SAFE_LOGO_DATA_URL.test(url) ? url : null;
+    }
     try {
         if (url.startsWith('/')) {
             const parsed = new URL(url, 'https://restaurant.invalid');
