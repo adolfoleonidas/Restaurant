@@ -307,7 +307,7 @@ export default function MenuDayView({
                             data-testid="menu-buscar"
                         />
                     </div>
-                    <div className="flex flex-wrap gap-1">
+                    <div className="grid grid-cols-2 gap-1 sm:flex sm:flex-wrap">
                         {FILTERS.map((filter) => {
                             const count = filter.key === 'todos'
                                 ? catalog.length
@@ -324,7 +324,7 @@ export default function MenuDayView({
                                     variant={filtro === filter.key ? 'default' : 'outline'}
                                     aria-pressed={filtro === filter.key}
                                     onClick={() => setFiltro(filter.key)}
-                                    className="shrink-0"
+                                    className="w-full shrink-0 sm:w-auto"
                                     aria-label={`${filter.label}: ${count}`}
                                     data-testid={`menu-filtro-${filter.key}`}
                                 >
